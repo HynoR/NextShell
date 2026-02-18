@@ -1,0 +1,47 @@
+{
+  "name": "@nextshell/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NextShell desktop application",
+  "author": "NextShell Team",
+  "type": "module",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && vite build",
+    "dist": "bun run build && electron-builder --config build/electron-builder.yml",
+    "dist:dir": "bun run build && electron-builder --dir --config build/electron-builder.yml",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@xterm/addon-clipboard": "^0.2.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/xterm": "^6.0.0",
+    "antd": "^6.3.0",
+    "better-sqlite3": "^12.6.2",
+    "chokidar": "^5.0.0",
+    "electron-log": "^5.4.3",
+    "iconv-lite": "^0.7.0",
+    "keytar": "^7.9.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-resizable-panels": "^4.6.4",
+    "ssh2": "^1.17.0",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "electron": "^40.4.1",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.0"
+  }
+}

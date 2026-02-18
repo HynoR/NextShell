@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "types": ["node", "electron"],
+    "lib": ["ES2022"],
+    "paths": {
+      "@nextshell/core": ["../../packages/core/src/index.ts"],
+      "@nextshell/shared": ["../../packages/shared/src/index.ts"],
+      "@nextshell/storage": ["../../packages/storage/src/index.ts"],
+      "@nextshell/security": ["../../packages/security/src/index.ts"],
+      "@nextshell/ssh": ["../../packages/ssh/src/index.ts"],
+      "@nextshell/terminal": ["../../packages/terminal/src/index.ts"],
+      "@nextshell/ui-kit": ["../../packages/ui-kit/src/index.ts"]
+    }
+  },
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "vite.config.ts"]
+}

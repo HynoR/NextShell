@@ -1,0 +1,27 @@
+# dependencies
+node_modules
+
+# build outputs
+dist
+dist-electron
+.out
+
+# caches
+.vite
+.cache
+
+# logs
+*.log
+logs
+
+docs/
+apps/desktop/dist/
+
+# os/editor
+.DS_Store
+.idea
+.vscode
+
+
+CLAUDE.md
+AGENTS.md

@@ -1,0 +1,14 @@
+appId: com.nextshell.desktop
+productName: NextShell
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+mac:
+  category: public.app-category.developer-tools
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage

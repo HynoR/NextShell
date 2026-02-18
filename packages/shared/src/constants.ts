@@ -1,0 +1,1 @@
+export const AUTH_REQUIRED_PREFIX = "AUTH_REQUIRED::";

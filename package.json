@@ -1,0 +1,24 @@
+{
+  "name": "nextshell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NextShell desktop prototype workspace",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/desktop dev",
+    "build": "bun run --cwd apps/desktop build",
+    "typecheck": "bun run --cwd apps/desktop typecheck"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "packageManager": "bun@1.3.4",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.2.0",
+    "remixicon": "^4.9.1",
+    "tailwindcss": "^4.2.0"
+  }
+}
