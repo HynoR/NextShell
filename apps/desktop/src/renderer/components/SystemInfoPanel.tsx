@@ -150,76 +150,103 @@ export const SystemInfoPanel = ({
           {!hasVisibleTerminal ? (
             <div className="monitor-placeholder">请先连接 SSH 终端以启动 Monitor Session</div>
           ) : snapshot ? (
-            <div className="monitor-v2">
-              <div className="monitor-v2-meta">
-                <div>{formatUptime(snapshot.uptimeHours)}</div>
-                <div>{formatLoad(snapshot)}</div>
+            <div className="flex flex-col gap-3 py-1">
+              <div className="flex items-center justify-between px-1 mb-1">
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--t2)] font-medium bg-[var(--bg-elevated)] px-2 py-1 rounded-md border border-[var(--border-dim)] shadow-sm">
+                  <i className="ri-timer-line text-[var(--t3)]" />
+                  {formatUptime(snapshot.uptimeHours)}
+                </div>
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--t2)] font-mono bg-[var(--bg-elevated)] px-2 py-1 rounded-md border border-[var(--border-dim)] shadow-sm">
+                  <i className="ri-dashboard-3-line text-[var(--t3)]" />
+                  {formatLoad(snapshot)}
+                </div>
               </div>
 
-              <div className="monitor-v2-list">
-                <div className="monitor-v2-row">
-                  <div className="monitor-v2-label">CPU</div>
-                  <div className="monitor-v2-track">
+              <div className="flex flex-col gap-2.5 px-1">
+                <div className="grid grid-cols-[40px_1fr_85px] items-center gap-2.5">
+                  <div className="text-[11px] font-semibold text-[var(--t2)] tracking-wide uppercase">CPU</div>
+                  <div className="h-6 relative bg-black/5 dark:bg-white/5 border border-[var(--border-dim)] rounded-md overflow-hidden shadow-inner">
                     <div
-                      className={`monitor-v2-fill ${barClass(snapshot.cpuPercent)}`}
+                      className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ${snapshot.cpuPercent > 90 ? 'bg-red-500/40' : snapshot.cpuPercent > 70 ? 'bg-amber-500/40' : 'bg-blue-500/30'}`}
                       style={{ width: `${Math.min(snapshot.cpuPercent, 100)}%` }}
                     />
-                    <span className="monitor-v2-pct">{snapshot.cpuPercent.toFixed(0)}%</span>
+                    <div className="absolute inset-y-0 left-2.5 flex items-center text-[11.5px] font-mono font-bold text-[var(--t1)] drop-shadow-sm">
+                      {snapshot.cpuPercent.toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="monitor-v2-extra" />
+                  <div className="text-right text-[10.5px] font-mono text-[var(--t3)]" />
                 </div>
 
-                <div className="monitor-v2-row">
-                  <div className="monitor-v2-label">内存</div>
-                  <div className="monitor-v2-track">
+                <div className="grid grid-cols-[40px_1fr_85px] items-center gap-2.5">
+                  <div className="text-[11px] font-semibold text-[var(--t2)] tracking-wide uppercase">内存</div>
+                  <div className="h-6 relative bg-black/5 dark:bg-white/5 border border-[var(--border-dim)] rounded-md overflow-hidden shadow-inner">
                     <div
-                      className={`monitor-v2-fill mem ${barClass(snapshot.memoryPercent)}`}
+                      className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ${snapshot.memoryPercent > 90 ? 'bg-red-500/40' : snapshot.memoryPercent > 70 ? 'bg-amber-500/40' : 'bg-emerald-500/30'}`}
                       style={{ width: `${Math.min(snapshot.memoryPercent, 100)}%` }}
                     />
-                    <span className="monitor-v2-pct">{snapshot.memoryPercent.toFixed(0)}%</span>
+                    <div className="absolute inset-y-0 left-2.5 flex items-center text-[11.5px] font-mono font-bold text-[var(--t1)] drop-shadow-sm">
+                      {snapshot.memoryPercent.toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="monitor-v2-extra">
-                    {formatMemoryShort(snapshot.memoryUsedMb)}/{formatMemoryShort(snapshot.memoryTotalMb)}
+                  <div className="text-right text-[10.5px] font-mono text-[var(--t2)]">
+                    <span className="text-[var(--t1)]">{formatMemoryShort(snapshot.memoryUsedMb)}</span>
+                    <span className="text-[var(--t3)] opacity-60 mx-0.5">/</span>
+                    <span className="text-[var(--t3)]">{formatMemoryShort(snapshot.memoryTotalMb)}</span>
                   </div>
                 </div>
 
-                <div className="monitor-v2-row">
-                  <div className="monitor-v2-label">交换</div>
-                  <div className="monitor-v2-track">
+                <div className="grid grid-cols-[40px_1fr_85px] items-center gap-2.5">
+                  <div className="text-[11px] font-semibold text-[var(--t2)] tracking-wide uppercase">交换</div>
+                  <div className="h-6 relative bg-black/5 dark:bg-white/5 border border-[var(--border-dim)] rounded-md overflow-hidden shadow-inner">
                     <div
-                      className={`monitor-v2-fill swap ${barClass(snapshot.swapPercent)}`}
+                      className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ${snapshot.swapPercent > 90 ? 'bg-red-500/40' : snapshot.swapPercent > 70 ? 'bg-amber-500/40' : 'bg-indigo-500/30'}`}
                       style={{ width: `${Math.min(snapshot.swapPercent, 100)}%` }}
                     />
-                    <span className="monitor-v2-pct">{snapshot.swapPercent.toFixed(0)}%</span>
+                    <div className="absolute inset-y-0 left-2.5 flex items-center text-[11.5px] font-mono font-bold text-[var(--t1)] drop-shadow-sm">
+                      {snapshot.swapPercent.toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="monitor-v2-extra">
-                    {formatMemoryShort(snapshot.swapUsedMb)}/{formatMemoryShort(snapshot.swapTotalMb)}
+                  <div className="text-right text-[10.5px] font-mono text-[var(--t2)]">
+                    <span className="text-[var(--t1)]">{formatMemoryShort(snapshot.swapUsedMb)}</span>
+                    <span className="text-[var(--t3)] opacity-60 mx-0.5">/</span>
+                    <span className="text-[var(--t3)]">{formatMemoryShort(snapshot.swapTotalMb)}</span>
                   </div>
                 </div>
 
-                <div className="monitor-v2-row">
-                  <div className="monitor-v2-label">磁盘</div>
-                  <div className="monitor-v2-track">
+                <div className="grid grid-cols-[40px_1fr_85px] items-center gap-2.5">
+                  <div className="text-[11px] font-semibold text-[var(--t2)] tracking-wide uppercase">磁盘</div>
+                  <div className="h-6 relative bg-black/5 dark:bg-white/5 border border-[var(--border-dim)] rounded-md overflow-hidden shadow-inner">
                     <div
-                      className={`monitor-v2-fill disk ${barClass(snapshot.diskPercent)}`}
+                      className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ${snapshot.diskPercent > 90 ? 'bg-red-500/40' : snapshot.diskPercent > 70 ? 'bg-amber-500/40' : 'bg-teal-500/30'}`}
                       style={{ width: `${Math.min(snapshot.diskPercent, 100)}%` }}
                     />
-                    <span className="monitor-v2-pct">{snapshot.diskPercent.toFixed(0)}%</span>
+                    <div className="absolute inset-y-0 left-2.5 flex items-center text-[11.5px] font-mono font-bold text-[var(--t1)] drop-shadow-sm">
+                      {snapshot.diskPercent.toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="monitor-v2-extra">
-                    {snapshot.diskUsedGb.toFixed(1)}G/{snapshot.diskTotalGb.toFixed(1)}G
+                  <div className="text-right text-[10.5px] font-mono text-[var(--t2)]">
+                    <span className="text-[var(--t1)]">{snapshot.diskUsedGb.toFixed(1)}G</span>
+                    <span className="text-[var(--t3)] opacity-60 mx-0.5">/</span>
+                    <span className="text-[var(--t3)]">{snapshot.diskTotalGb.toFixed(1)}G</span>
                   </div>
                 </div>
               </div>
 
-              <div className="monitor-net-v2">
-                <div className="monitor-net-v2-head">
-                  <div className="monitor-net-v2-flow">
-                    <span className="up">↑ {formatRate(snapshot.networkOutMbps)}</span>
-                    <span className="down">↓ {formatRate(snapshot.networkInMbps)}</span>
+              <div className="mt-1 pt-3 border-t border-[var(--border-dim)] px-1">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-3.5 text-[11.5px] font-mono">
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                      <i className="ri-arrow-up-line" />
+                      <span className="font-semibold">{formatRate(snapshot.networkOutMbps)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      <i className="ri-arrow-down-line" />
+                      <span className="font-semibold">{formatRate(snapshot.networkInMbps)}</span>
+                    </div>
                   </div>
                   <select
-                    className="monitor-net-v2-select"
+                    aria-label="选择网络接口"
+                    className="h-[22px] px-2 rounded bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--t1)] text-[10.5px] font-mono focus:outline-none focus:border-[var(--accent)] cursor-pointer shadow-sm transition-colors hover:bg-[var(--bg-hover)]"
                     value={snapshot.networkInterface}
                     onChange={(event) => onSelectNetworkInterface?.(event.target.value)}
                   >
@@ -229,13 +256,16 @@ export const SystemInfoPanel = ({
                   </select>
                 </div>
 
-                <div className="monitor-net-v2-chart">
+                <div className="h-[90px] rounded-lg border border-[var(--border-dim)] bg-black/[0.03] dark:bg-white/[0.02] p-2 relative overflow-hidden group shadow-inner">
                   {chartPoints.length === 0 ? (
-                    <div className="monitor-net-v2-empty">等待网络采样数据...</div>
+                    <div className="w-full h-full flex items-center justify-center text-[11px] text-[var(--t3)] animate-pulse">
+                      等待网络采样数据...
+                    </div>
                   ) : (
                     <svg
                       viewBox={`0 0 ${chartPoints.length * 10 + 8} ${NETWORK_CHART_HEIGHT}`}
                       preserveAspectRatio="none"
+                      className="w-full h-full drop-shadow-sm"
                     >
                       {[0.25, 0.5, 0.75].map((line) => (
                         <line
@@ -244,7 +274,8 @@ export const SystemInfoPanel = ({
                           y1={(1 - line) * NETWORK_CHART_HEIGHT}
                           x2={chartPoints.length * 10 + 8}
                           y2={(1 - line) * NETWORK_CHART_HEIGHT}
-                          className="monitor-net-v2-grid"
+                          className="stroke-[var(--border-dim)] stroke-1"
+                          strokeDasharray="3 3"
                         />
                       ))}
                       {chartPoints.map((point, index) => {
@@ -253,20 +284,22 @@ export const SystemInfoPanel = ({
                         const outHeight = (point.outMbps / chartMax) * (NETWORK_CHART_HEIGHT - 4);
 
                         return (
-                          <g key={`${point.capturedAt}-${index}`}>
+                          <g key={`${point.capturedAt}-${index}`} className="transition-all duration-300 hover:opacity-80 cursor-default">
                             <rect
                               x={x}
                               y={NETWORK_CHART_HEIGHT - inHeight}
-                              width="3"
-                              height={Math.max(1, inHeight)}
-                              className="monitor-net-v2-bar-in"
+                              width="4"
+                              height={Math.max(2, inHeight)}
+                              rx="2"
+                              className="fill-emerald-500/70 dark:fill-emerald-400/80"
                             />
                             <rect
                               x={x + 4}
                               y={NETWORK_CHART_HEIGHT - outHeight}
-                              width="3"
-                              height={Math.max(1, outHeight)}
-                              className="monitor-net-v2-bar-out"
+                              width="4"
+                              height={Math.max(2, outHeight)}
+                              rx="2"
+                              className="fill-orange-500/70 dark:fill-orange-400/80"
                             />
                           </g>
                         );

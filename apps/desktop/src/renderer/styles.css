@@ -32,6 +32,36 @@
   --r-lg: 12px;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base:      #eef2f8;
+  --bg-surface:   #f7f9fc;
+  --bg-elevated:  #ffffff;
+  --bg-hover:     #f0f4fa;
+  --bg-active:    #e8eef8;
+
+  --border-dim:   rgba(14, 31, 53, 0.05);
+  --border:       rgba(14, 31, 53, 0.14);
+  --border-mid:   rgba(14, 31, 53, 0.2);
+
+  --accent:       #1768d6;
+  --accent-dim:   rgba(23, 104, 214, 0.14);
+  --accent-glow:  rgba(23, 104, 214, 0.08);
+
+  --ok:    #0f9d69;
+  --warn:  #d97706;
+  --err:   #dc2626;
+
+  --t1: #122033;
+  --t2: #4d5b73;
+  --t3: #7f8ca3;
+}
+
 /* ── Reset ───────────────────────────────────────────────── */
 body {
   margin: 0;
@@ -2776,6 +2806,40 @@ body {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.mgr-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  border: 1px solid rgba(77, 159, 255, 0.4);
+  border-radius: var(--r-sm);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--sans);
+  padding: 0 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+}
+
+.mgr-connect-btn i {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.mgr-connect-btn:hover:not(:disabled) {
+  background: rgba(77, 159, 255, 0.2);
+  border-color: var(--accent);
+}
+
+.mgr-connect-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .mgr-form-header-icon-btn {

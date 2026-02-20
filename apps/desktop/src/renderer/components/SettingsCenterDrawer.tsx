@@ -18,7 +18,7 @@ import {
   message
 } from "antd";
 import { usePreferencesStore } from "../store/usePreferencesStore";
-import type { BackupArchiveMeta } from "@nextshell/core";
+import type { BackupArchiveMeta, WindowAppearance } from "@nextshell/core";
 
 interface SettingsCenterDrawerProps {
   open: boolean;
@@ -83,6 +83,9 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   const [terminalBackgroundImagePath, setTerminalBackgroundImagePath] = useState(
     preferences.terminal.backgroundImagePath
   );
+  const [windowAppearance, setWindowAppearance] = useState<WindowAppearance>(
+    preferences.window.appearance
+  );
   const [minimizeToTray, setMinimizeToTray] = useState(preferences.window.minimizeToTray);
   const [confirmBeforeClose, setConfirmBeforeClose] = useState(preferences.window.confirmBeforeClose);
   const [saving, setSaving] = useState(false);
@@ -142,6 +145,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
     setRestoreConflictPolicy(preferences.backup.defaultRestoreConflictPolicy);
     setBackupRememberPassword(preferences.backup.rememberPassword);
+    setWindowAppearance(preferences.window.appearance);
     setMinimizeToTray(preferences.window.minimizeToTray);
     setConfirmBeforeClose(preferences.window.confirmBeforeClose);
   }, [open, preferences]);
@@ -355,6 +359,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           rememberPassword: backupRememberPassword
         },
         window: {
+          appearance: windowAppearance,
           minimizeToTray,
           confirmBeforeClose
         }
@@ -388,6 +393,19 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
       <div className="flex flex-col gap-3">
         <Typography.Title level={5}>窗口行为</Typography.Title>
         <Typography.Text type="secondary">控制关闭按钮的行为方式。</Typography.Text>
+        <div className="flex flex-col gap-2 mt-1.5">
+          <Typography.Text>界面风格</Typography.Text>
+          <Select<WindowAppearance>
+            value={windowAppearance}
+            disabled={loading}
+            onChange={setWindowAppearance}
+            options={[
+              { label: "跟随系统（默认）", value: "system" },
+              { label: "亮色模式", value: "light" },
+              { label: "暗色模式", value: "dark" }
+            ]}
+          />
+        </div>
         <div className="settings-switch-row">
           <span>关闭后最小化到托盘</span>
           <Switch

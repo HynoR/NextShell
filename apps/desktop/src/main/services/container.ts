@@ -469,6 +469,16 @@ const mergePreferences = (
   current: AppPreferences,
   patch: AppPreferencesPatch
 ): AppPreferences => {
+  const normalizeWindowAppearance = (
+    value: "system" | "light" | "dark" | undefined,
+    fallback: AppPreferences["window"]["appearance"]
+  ): AppPreferences["window"]["appearance"] => {
+    if (value === "system" || value === "light" || value === "dark") {
+      return value;
+    }
+    return fallback;
+  };
+
   const normalizeTerminalColor = (value: string | undefined, fallback: string): string => {
     const trimmed = value?.trim();
     if (!trimmed || !/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
@@ -546,6 +556,10 @@ const mergePreferences = (
           : current.backup.lastBackupAt
     },
     window: {
+      appearance: normalizeWindowAppearance(
+        patch.window?.appearance,
+        current.window.appearance
+      ),
       minimizeToTray: patch.window?.minimizeToTray ?? current.window.minimizeToTray,
       confirmBeforeClose: patch.window?.confirmBeforeClose ?? current.window.confirmBeforeClose
     }

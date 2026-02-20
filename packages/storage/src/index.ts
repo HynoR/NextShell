@@ -363,6 +363,12 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
             : fallback.backup.lastBackupAt
       },
       window: {
+        appearance:
+          parsed.window?.appearance === "system" ||
+          parsed.window?.appearance === "light" ||
+          parsed.window?.appearance === "dark"
+            ? parsed.window.appearance
+            : fallback.window.appearance,
         minimizeToTray:
           typeof parsed.window?.minimizeToTray === "boolean"
             ? parsed.window.minimizeToTray

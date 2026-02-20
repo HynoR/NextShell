@@ -20,6 +20,7 @@ interface ConnectionManagerModalProps {
   proxies: ProxyProfile[];
   onClose: () => void;
   onConnectionSaved: (payload: ConnectionUpsertInput) => Promise<void>;
+  onConnectConnection: (connectionId: string) => Promise<void>;
   onConnectionRemoved: (connectionId: string) => Promise<void>;
   onConnectionsImported: () => Promise<void>;
   onReloadSshKeys: () => Promise<void>;
@@ -246,6 +247,7 @@ export const ConnectionManagerModal = ({
   proxies,
   onClose,
   onConnectionSaved,
+  onConnectConnection,
   onConnectionRemoved,
   onConnectionsImported,
   onReloadSshKeys,
@@ -258,6 +260,7 @@ export const ConnectionManagerModal = ({
   const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
   const [saving, setSaving] = useState(false);
+  const [connectingFromForm, setConnectingFromForm] = useState(false);
   const [importingPreview, setImportingPreview] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importPreviewQueue, setImportPreviewQueue] = useState<ImportPreviewBatch[]>([]);
@@ -407,6 +410,97 @@ export const ConnectionManagerModal = ({
     setMode("idle");
     setSelectedConnectionId(undefined);
   }, []);
+
+  const saveConnection = useCallback(async (values: ConnectionUpsertInput): Promise<string | undefined> => {
+    const password = sanitizeOptionalText(values.password);
+    const hostFingerprint = sanitizeOptionalText(values.hostFingerprint);
+    const groupPath = sanitizeTextArray(values.groupPath);
+    const tags = sanitizeTextArray(values.tags);
+    const notes = sanitizeOptionalText(values.notes);
+    const port = Number(values.port);
+    const terminalEncoding = values.terminalEncoding ?? "utf-8";
+    const backspaceMode = values.backspaceMode ?? "ascii-backspace";
+    const deleteMode = values.deleteMode ?? "vt220-delete";
+
+    if (values.authType === "privateKey" && !values.sshKeyId) {
+      message.error("私钥认证需要选择一个 SSH 密钥。");
+      return undefined;
+    }
+
+    if (values.strictHostKeyChecking && !hostFingerprint) {
+      message.error("启用严格主机校验时必须填写主机指纹。");
+      return undefined;
+    }
+
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      message.error("端口必须是 1-65535 的整数。");
+      return undefined;
+    }
+
+    setSaving(true);
+    try {
+      const payload: ConnectionUpsertInput = {
+        id: values.id ?? selectedConnectionId ?? crypto.randomUUID(),
+        name: values.name.trim(),
+        host: values.host.trim(),
+        port,
+        username: (values.username ?? "").trim(),
+        authType: values.authType,
+        password,
+        sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined,
+        hostFingerprint,
+        strictHostKeyChecking: values.strictHostKeyChecking ?? false,
+        proxyId: values.proxyId,
+        terminalEncoding,
+        backspaceMode,
+        deleteMode,
+        tags,
+        groupPath: groupPath.length > 0 ? groupPath : ["server"],
+        notes,
+        favorite: values.favorite ?? false,
+        monitorSession: values.monitorSession ?? false
+      };
+      await onConnectionSaved(payload);
+      message.success(selectedConnectionId ? "连接已更新" : "连接已创建");
+      setSelectedConnectionId(payload.id);
+      setMode("edit");
+      form.setFieldsValue({
+        password: undefined
+      });
+      return payload.id;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "保存失败";
+      message.error(reason);
+      return undefined;
+    } finally {
+      setSaving(false);
+    }
+  }, [form, onConnectionSaved, selectedConnectionId]);
+
+  const handleSaveAndConnect = useCallback(async () => {
+    if (saving || connectingFromForm) {
+      return;
+    }
+
+    let values: ConnectionUpsertInput;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
+
+    const connectionId = await saveConnection(values);
+    if (!connectionId) {
+      return;
+    }
+
+    setConnectingFromForm(true);
+    try {
+      await onConnectConnection(connectionId);
+    } finally {
+      setConnectingFromForm(false);
+    }
+  }, [connectingFromForm, form, onConnectConnection, saveConnection, saving]);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -723,6 +817,20 @@ export const ConnectionManagerModal = ({
               </div>
               <div className="mgr-form-header-right">
                 <span className="mgr-ssh-badge">SSH</span>
+                <button
+                  type="button"
+                  className="mgr-connect-btn"
+                  onClick={() => void handleSaveAndConnect()}
+                  disabled={saving || connectingFromForm}
+                  title="保存并连接"
+                >
+                  {connectingFromForm ? (
+                    <i className="ri-loader-4-line mgr-form-header-icon-spin" aria-hidden="true" />
+                  ) : (
+                    <i className="ri-terminal-box-line" aria-hidden="true" />
+                  )}
+                  连接
+                </button>
                 {mode === "edit" ? (
                   <Tooltip title="删除连接">
                     <button
@@ -761,7 +869,7 @@ export const ConnectionManagerModal = ({
                     type="button"
                     className="mgr-form-header-icon-btn mgr-form-header-icon-btn--primary"
                     onClick={() => form.submit()}
-                    disabled={saving}
+                    disabled={saving || connectingFromForm}
                     aria-label="保存连接"
                   >
                     {saving ? (
@@ -791,67 +899,7 @@ export const ConnectionManagerModal = ({
               className="mgr-form"
               initialValues={DEFAULT_VALUES}
               onFinish={async (values) => {
-                const password = sanitizeOptionalText(values.password);
-                const hostFingerprint = sanitizeOptionalText(values.hostFingerprint);
-                const groupPath = sanitizeTextArray(values.groupPath);
-                const tags = sanitizeTextArray(values.tags);
-                const notes = sanitizeOptionalText(values.notes);
-                const port = Number(values.port);
-                const terminalEncoding = values.terminalEncoding ?? "utf-8";
-                const backspaceMode = values.backspaceMode ?? "ascii-backspace";
-                const deleteMode = values.deleteMode ?? "vt220-delete";
-
-                if (values.authType === "privateKey" && !values.sshKeyId) {
-                  message.error("私钥认证需要选择一个 SSH 密钥。");
-                  return;
-                }
-
-                if (values.strictHostKeyChecking && !hostFingerprint) {
-                  message.error("启用严格主机校验时必须填写主机指纹。");
-                  return;
-                }
-
-                if (!Number.isInteger(port) || port < 1 || port > 65535) {
-                  message.error("端口必须是 1-65535 的整数。");
-                  return;
-                }
-
-                setSaving(true);
-                try {
-                  const payload: ConnectionUpsertInput = {
-                    id: values.id ?? selectedConnectionId ?? crypto.randomUUID(),
-                    name: values.name.trim(),
-                    host: values.host.trim(),
-                    port,
-                    username: (values.username ?? "").trim(),
-                    authType: values.authType,
-                    password,
-                    sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined,
-                    hostFingerprint,
-                    strictHostKeyChecking: values.strictHostKeyChecking ?? false,
-                    proxyId: values.proxyId,
-                    terminalEncoding,
-                    backspaceMode,
-                    deleteMode,
-                    tags,
-                    groupPath: groupPath.length > 0 ? groupPath : ["server"],
-                    notes,
-                    favorite: values.favorite ?? false,
-                    monitorSession: values.monitorSession ?? false
-                  };
-                  await onConnectionSaved(payload);
-                  message.success(selectedConnectionId ? "连接已更新" : "连接已创建");
-                  setSelectedConnectionId(payload.id);
-                  setMode("edit");
-                  form.setFieldsValue({
-                    password: undefined
-                  });
-                } catch (error) {
-                  const reason = error instanceof Error ? error.message : "保存失败";
-                  message.error(reason);
-                } finally {
-                  setSaving(false);
-                }
+                await saveConnection(values);
               }}
             >
               {/* Section: 连接信息 */}

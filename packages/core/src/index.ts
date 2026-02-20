@@ -236,6 +236,7 @@ export interface SavedCommand {
 
 export type BackupConflictPolicy = "skip" | "force";
 export type RestoreConflictPolicy = "skip_older" | "force";
+export type WindowAppearance = "system" | "light" | "dark";
 
 export interface AppPreferences {
   transfer: {
@@ -266,6 +267,7 @@ export interface AppPreferences {
     lastBackupAt: string | null;
   };
   window: {
+    appearance: WindowAppearance;
     minimizeToTray: boolean;
     confirmBeforeClose: boolean;
   };
@@ -298,6 +300,7 @@ export interface AppPreferencesPatch {
     lastBackupAt?: string | null;
   };
   window?: {
+    appearance?: WindowAppearance;
     minimizeToTray?: boolean;
     confirmBeforeClose?: boolean;
   };
@@ -407,6 +410,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     lastBackupAt: null
   },
   window: {
+    appearance: "system",
     minimizeToTray: false,
     confirmBeforeClose: true
   }

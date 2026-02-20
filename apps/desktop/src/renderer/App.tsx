@@ -346,6 +346,9 @@ export const App = () => {
         proxies={proxies}
         onClose={() => setManagerOpen(false)}
         onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
+        onConnectConnection={async (connectionId: string) => {
+          await startSession(connectionId);
+        }}
         onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
         onConnectionsImported={loadConnections}
         onReloadSshKeys={loadSshKeys}

@@ -37,6 +37,7 @@ export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
 export const backupConflictPolicySchema = z.enum(["skip", "force"]);
 export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
+export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
 
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
@@ -315,6 +316,7 @@ export const appPreferencesSchema = z.object({
     lastBackupAt: z.string().nullable().default(DEFAULT_APP_PREFERENCES.backup.lastBackupAt)
   }).default(DEFAULT_APP_PREFERENCES.backup),
   window: z.object({
+    appearance: windowAppearanceSchema.default(DEFAULT_APP_PREFERENCES.window.appearance),
     minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
     confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose)
   }).default(DEFAULT_APP_PREFERENCES.window)
@@ -347,6 +349,7 @@ export const appPreferencesPatchSchema = z.object({
     lastBackupAt: z.string().nullable().optional()
   }).optional(),
   window: z.object({
+    appearance: windowAppearanceSchema.optional(),
     minimizeToTray: z.boolean().optional(),
     confirmBeforeClose: z.boolean().optional()
   }).optional()
