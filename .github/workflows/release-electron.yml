@@ -53,7 +53,6 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       EP_DRAFT: false
-      BUN_INSTALL_CACHE_DIR: ${{ github.workspace }}/.cache/bun/install
       ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
     steps:
@@ -65,25 +64,6 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Restore Bun cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/bun
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/desktop/node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('bun.lock', 'package.json', 'apps/desktop/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-modules-
-
       - name: Restore Electron caches
         uses: actions/cache@v4
         with:
@@ -94,7 +74,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-electron-
 
-      - name: Install dependencies
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: bun install --frozen-lockfile --backend=copyfile
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
         run: bun install --frozen-lockfile
 
       - name: Build and publish ${{ matrix.platform }}
