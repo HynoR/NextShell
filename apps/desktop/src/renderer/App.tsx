@@ -336,7 +336,8 @@ export const App = () => {
             tab === "files" ||
             tab === "connections" ||
             tab === "live-edit" ||
-            tab === "disk"
+            tab === "disk" ||
+            tab === "about"
           ) {
             setBottomTab(tab);
           }

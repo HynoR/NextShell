@@ -8,6 +8,7 @@ import { defineConfig } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appVersion = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8")).version as string;
+const githubRepo = (process.env["NEXTSHELL_GITHUB_REPO"] ?? process.env["VITE_GITHUB_REPO"] ?? "HynoR/NextShell").trim();
 const pkg = (name: string) => path.resolve(__dirname, "../../packages", name, "src");
 const aliases = {
   "@nextshell/core": path.join(pkg("core"), "index.ts"),
@@ -28,7 +29,7 @@ export default defineConfig({
         entry: "src/main/index.ts",
         vite: {
           define: {
-            "process.env.VITE_GITHUB_REPO": JSON.stringify("HynoR/NextShell"),
+            "process.env.VITE_GITHUB_REPO": JSON.stringify(githubRepo),
             "process.env.VITE_APP_VERSION": JSON.stringify(appVersion)
           },
           resolve: {
@@ -83,7 +84,7 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
-    __GITHUB_REPO__: JSON.stringify("HynoR/NextShell")
+    __GITHUB_REPO__: JSON.stringify(githubRepo)
   },
   server: {
     port: 5173,

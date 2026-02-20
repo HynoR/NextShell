@@ -2291,6 +2291,11 @@ body {
   color: var(--t1);
 }
 
+.cc-section-header:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .cc-section-header > i:first-child {
   font-size: 14px;
   color: var(--t3);
@@ -4235,6 +4240,12 @@ body {
 .about-actions {
   display: flex;
   gap: 10px;
+}
+
+.about-placeholder {
+  color: var(--t3);
+  opacity: 0.45;
+  font-style: italic;
 }
 
 /* ── Disk Monitor Pane ─────────────────────────────────────────── */

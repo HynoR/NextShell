@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent
+} from "react";
 import {
   Button,
   Drawer,
@@ -343,14 +349,28 @@ export const CommandCenterPane = ({
     setSectionCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const onSectionHeaderKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    key: string
+  ) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault();
+    toggleSection(key);
+  };
+
   return (
     <div className="cc-pane">
       {/* ── Section 1: Command Library ── */}
       <div className="cc-section">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={!sectionCollapsed.library}
           className="cc-section-header"
           onClick={() => toggleSection("library")}
+          onKeyDown={(event) => onSectionHeaderKeyDown(event, "library")}
         >
           <i
             className={sectionCollapsed.library ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
@@ -391,7 +411,7 @@ export const CommandCenterPane = ({
               <i className="ri-add-line" aria-hidden="true" />
             </button>
           </span>
-        </button>
+        </div>
 
         {!sectionCollapsed.library && (
           <div className="cc-section-body">
@@ -457,10 +477,13 @@ export const CommandCenterPane = ({
 
       {/* ── Section 2: Batch Execution ── */}
       <div className="cc-section">
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
+          aria-expanded={!sectionCollapsed.batch}
           className="cc-section-header"
           onClick={() => toggleSection("batch")}
+          onKeyDown={(event) => onSectionHeaderKeyDown(event, "batch")}
         >
           <i
             className={sectionCollapsed.batch ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
@@ -469,7 +492,7 @@ export const CommandCenterPane = ({
           <i className="ri-stack-line cc-section-icon" aria-hidden="true" />
           <span className="cc-section-title">批量执行</span>
           {batchRunning && <Tag color="processing" style={{ margin: 0, lineHeight: "18px", fontSize: 10 }}>执行中</Tag>}
-        </button>
+        </div>
 
         {!sectionCollapsed.batch && (
           <div className="cc-section-body cc-batch-body">

@@ -152,7 +152,7 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   });
 
   ipcMain.handle(IPCChannel.DialogOpenPath, (event, payload) => {
-    const input = parsePayload(dialogOpenPathSchema, payload, "打开本地文件");
+    const input = parsePayload(dialogOpenPathSchema, payload, "打开路径");
     return services.openLocalPath(event.sender, input);
   });
 

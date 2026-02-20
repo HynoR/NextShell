@@ -1,13 +1,27 @@
 import { useCallback, useState } from "react";
-import { Button, Tag, message } from "antd";
+import { Button, Tag, Tooltip, message } from "antd";
 import type { UpdateCheckResult } from "@nextshell/shared";
 
 const appVersion = __APP_VERSION__;
 const githubRepo = __GITHUB_REPO__;
+const normalizedRepo = githubRepo.trim();
+const hasRepo = normalizedRepo.length > 0;
+
+// Fallback example values shown when no repo is configured
+const displayRepo = hasRepo ? normalizedRepo : "owner/repo";
+const displayRepoUrl = `https://github.com/${displayRepo}`;
 
 export const AboutPane = () => {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
+  const releaseUrl = result?.hasUpdate ? result.releaseUrl : null;
+
+  const handleOpenLink = useCallback(async (url: string) => {
+    const openResult = await window.nextshell.dialog.openPath({ path: url, revealInFolder: false });
+    if (!openResult.ok) {
+      void message.error(openResult.error ? `打开链接失败: ${openResult.error}` : "打开链接失败");
+    }
+  }, []);
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -28,8 +42,6 @@ export const AboutPane = () => {
     }
   }, []);
 
-  const repoUrl = `https://github.com/${githubRepo}`;
-
   return (
     <div className="about-pane">
       <div className="about-header">
@@ -38,9 +50,7 @@ export const AboutPane = () => {
           <span className="about-app-name">NextShell</span>
           <Tag color="blue">v{appVersion}</Tag>
         </div>
-        <p className="about-desc">
-          现代化的 SSH 终端管理工具
-        </p>
+        <p className="about-desc">现代化的 SSH 终端管理工具</p>
       </div>
 
       <div className="about-section">
@@ -48,19 +58,23 @@ export const AboutPane = () => {
           <span className="about-label">
             <i className="ri-github-fill" aria-hidden="true" /> GitHub 仓库
           </span>
-          <a
-            className="about-link"
-            href={repoUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => {
-              e.preventDefault();
-              void window.nextshell.dialog.openPath({ path: repoUrl, revealInFolder: false });
-            }}
-          >
-            {githubRepo}
-            <i className="ri-external-link-line" aria-hidden="true" />
-          </a>
+          {hasRepo ? (
+            <a
+              className="about-link"
+              href={displayRepoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleOpenLink(displayRepoUrl);
+              }}
+            >
+              {displayRepo}
+              <i className="ri-external-link-line" aria-hidden="true" />
+            </a>
+          ) : (
+            <span className="about-value about-placeholder">{displayRepo}</span>
+          )}
         </div>
 
         <div className="about-row">
@@ -70,11 +84,11 @@ export const AboutPane = () => {
           <span className="about-value">v{appVersion}</span>
         </div>
 
-        {result?.latestVersion ? (
-          <div className="about-row">
-            <span className="about-label">
-              <i className="ri-download-cloud-line" aria-hidden="true" /> 最新版本
-            </span>
+        <div className="about-row">
+          <span className="about-label">
+            <i className="ri-download-cloud-line" aria-hidden="true" /> 最新版本
+          </span>
+          {result?.latestVersion ? (
             <span className="about-value">
               {result.latestVersion}
               {result.hasUpdate ? (
@@ -83,22 +97,24 @@ export const AboutPane = () => {
                 <Tag color="default" style={{ marginLeft: 8 }}>已是最新</Tag>
               )}
             </span>
-          </div>
-        ) : null}
+          ) : (
+            <span className="about-value about-placeholder">—</span>
+          )}
+        </div>
 
-        {result?.hasUpdate && result.releaseUrl ? (
+        {releaseUrl ? (
           <div className="about-row">
             <span className="about-label">
               <i className="ri-links-line" aria-hidden="true" /> 下载地址
             </span>
             <a
               className="about-link"
-              href={result.releaseUrl}
+              href={releaseUrl}
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => {
                 e.preventDefault();
-                void window.nextshell.dialog.openPath({ path: result.releaseUrl!, revealInFolder: false });
+                void handleOpenLink(releaseUrl);
               }}
             >
               前往 Release 页面
@@ -109,14 +125,17 @@ export const AboutPane = () => {
       </div>
 
       <div className="about-actions">
-        <Button
-          type="primary"
-          icon={<i className="ri-refresh-line" aria-hidden="true" />}
-          loading={checking}
-          onClick={() => void handleCheckUpdate()}
-        >
-          检查更新
-        </Button>
+        <Tooltip title={!hasRepo ? "未配置 GitHub 仓库，无法检查更新" : undefined}>
+          <Button
+            type="primary"
+            icon={<i className="ri-refresh-line" aria-hidden="true" />}
+            loading={checking}
+            disabled={!hasRepo}
+            onClick={() => void handleCheckUpdate()}
+          >
+            检查更新
+          </Button>
+        </Tooltip>
       </div>
     </div>
   );

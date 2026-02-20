@@ -450,6 +450,142 @@ const parseIntSafe = (value: string | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+type ParsedPrereleaseIdentifier = number | string;
+
+interface ParsedComparableVersion {
+  core: number[];
+  prerelease: ParsedPrereleaseIdentifier[] | null;
+}
+
+const parseExternalUrl = (rawPath: string): URL | undefined => {
+  const trimmed = rawPath.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const protocol = url.protocol.toLowerCase();
+    if (protocol === "http:" || protocol === "https:") {
+      return url;
+    }
+  } catch {
+    // ignore invalid URL payloads and continue with local path logic
+  }
+
+  return undefined;
+};
+
+const normalizeGithubRepo = (rawRepo: string): string | undefined => {
+  const trimmed = rawRepo.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const withoutPrefix = trimmed
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(withoutPrefix)) {
+    return withoutPrefix;
+  }
+  return undefined;
+};
+
+const parseComparableVersion = (rawVersion: string): ParsedComparableVersion | null => {
+  const normalized = rawVersion.trim().replace(/^v/i, "");
+  const match = normalized.match(
+    /^(\d+(?:\.\d+)*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/
+  );
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const core = match[1].split(".").map((segment) => Number.parseInt(segment, 10));
+  if (core.length === 0 || core.some((segment) => !Number.isSafeInteger(segment) || segment < 0)) {
+    return null;
+  }
+
+  const prereleasePart = match[2];
+  if (!prereleasePart) {
+    return { core, prerelease: null };
+  }
+
+  const prerelease = prereleasePart.split(".").map((identifier): ParsedPrereleaseIdentifier => {
+    if (/^\d+$/.test(identifier)) {
+      return Number.parseInt(identifier, 10);
+    }
+    return identifier.toLowerCase();
+  });
+
+  return { core, prerelease };
+};
+
+const compareCoreSegments = (a: number[], b: number[]): number => {
+  const maxLength = Math.max(a.length, b.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const left = a[index] ?? 0;
+    const right = b[index] ?? 0;
+    if (left !== right) {
+      return left - right;
+    }
+  }
+  return 0;
+};
+
+const comparePrerelease = (
+  a: ParsedPrereleaseIdentifier[] | null,
+  b: ParsedPrereleaseIdentifier[] | null
+): number => {
+  if (!a && !b) {
+    return 0;
+  }
+  if (!a) {
+    return 1;
+  }
+  if (!b) {
+    return -1;
+  }
+
+  const maxLength = Math.max(a.length, b.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const left = a[index];
+    const right = b[index];
+
+    if (left === undefined) {
+      return -1;
+    }
+    if (right === undefined) {
+      return 1;
+    }
+    if (left === right) {
+      continue;
+    }
+
+    const leftIsNumber = typeof left === "number";
+    const rightIsNumber = typeof right === "number";
+
+    if (leftIsNumber && rightIsNumber) {
+      return left - right;
+    }
+    if (leftIsNumber) {
+      return -1;
+    }
+    if (rightIsNumber) {
+      return 1;
+    }
+
+    const textCompare = left.localeCompare(right, "en", { sensitivity: "base" });
+    if (textCompare !== 0) {
+      return textCompare;
+    }
+  }
+
+  return 0;
+};
+
 const resolveLocalPath = (rawPath: string): string => {
   const trimmed = rawPath.trim();
   if (!trimmed) {
@@ -1631,6 +1767,29 @@ export const createServiceContainer = (
     input: DialogOpenPathInput
   ): Promise<{ ok: boolean; error?: string }> => {
     const owner = BrowserWindow.fromWebContents(sender);
+    const externalUrl = parseExternalUrl(input.path);
+
+    if (externalUrl) {
+      if (input.revealInFolder) {
+        return { ok: false, error: "URL 不支持在文件夹中显示。" };
+      }
+
+      try {
+        await shell.openExternal(externalUrl.toString());
+        return { ok: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "打开链接失败";
+        if (owner) {
+          void dialog.showMessageBox(owner, {
+            type: "error",
+            title: "打开链接失败",
+            message
+          });
+        }
+        return { ok: false, error: message };
+      }
+    }
+
     const targetPath = resolveLocalPath(input.path);
 
     if (!targetPath || !fs.existsSync(targetPath)) {
@@ -1969,20 +2128,22 @@ export const createServiceContainer = (
   // ─── Update Check ───────────────────────────────────────────────────────
 
   const compareVersions = (a: string, b: string): number => {
-    const parse = (v: string) => {
-      const m = v.match(/^v?(\d{1,3})\.(\d{1,3})\.(\d{1,3})/);
-      if (!m) return [0, 0, 0] as const;
-      return [Number(m[1]), Number(m[2]), Number(m[3])] as const;
-    };
-    const [a1, a2, a3] = parse(a);
-    const [b1, b2, b3] = parse(b);
-    if (a1 !== b1) return a1 - b1;
-    if (a2 !== b2) return a2 - b2;
-    return a3 - b3;
+    const parsedA = parseComparableVersion(a);
+    const parsedB = parseComparableVersion(b);
+
+    if (parsedA && parsedB) {
+      const coreCompare = compareCoreSegments(parsedA.core, parsedB.core);
+      if (coreCompare !== 0) {
+        return coreCompare;
+      }
+      return comparePrerelease(parsedA.prerelease, parsedB.prerelease);
+    }
+
+    return a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
   };
 
   const checkForUpdate = async (): Promise<UpdateCheckResult> => {
-    const githubRepo = process.env["VITE_GITHUB_REPO"] ?? "";
+    const githubRepo = normalizeGithubRepo(process.env["VITE_GITHUB_REPO"] ?? "");
     const currentVersion = process.env["VITE_APP_VERSION"] ?? "0.0.0";
 
     if (!githubRepo) {
@@ -1991,7 +2152,7 @@ export const createServiceContainer = (
         latestVersion: null,
         hasUpdate: false,
         releaseUrl: null,
-        error: "未配置 GitHub 仓库"
+        error: "未配置或配置了无效的 GitHub 仓库"
       };
     }
 
