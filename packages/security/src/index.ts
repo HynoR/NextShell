@@ -174,53 +174,31 @@ const parseSecretRef = (ref: string): string | undefined => {
   return ref.slice(SECRET_REF_PREFIX.length);
 };
 
+export const generateDeviceKey = (): string => {
+  return randomBytes(32).toString("hex");
+};
+
 export class EncryptedSecretVault implements CredentialVault {
-  private masterKey: Buffer | undefined;
-
-  constructor(private readonly store: SecretStoreDB) {}
-
-  unlock(masterKey: Buffer): void {
-    this.masterKey = masterKey;
-  }
-
-  lock(): void {
-    this.masterKey = undefined;
-  }
-
-  isUnlocked(): boolean {
-    return this.masterKey !== undefined;
-  }
-
-  private requireKey(): Buffer {
-    if (!this.masterKey) {
-      throw new Error("Secret vault is locked. Please unlock with your backup password first.");
-    }
-    return this.masterKey;
-  }
+  constructor(
+    private readonly store: SecretStoreDB,
+    private readonly deviceKey: Buffer
+  ) {}
 
   async storeCredential(key: string, secret: string): Promise<string> {
-    const masterKey = this.requireKey();
     const id = key;
     const aad = `nextshell-secret:${id}`;
-    const { ciphertextB64, ivB64, tagB64 } = encryptAesGcm(secret, masterKey, aad);
+    const { ciphertextB64, ivB64, tagB64 } = encryptAesGcm(secret, this.deviceKey, aad);
     this.store.putSecret(id, "credential", ciphertextB64, ivB64, tagB64, aad);
     return `${SECRET_REF_PREFIX}${id}`;
   }
 
   async readCredential(ref: string): Promise<string | undefined> {
     const id = parseSecretRef(ref);
-    if (!id) {
-      return undefined;
-    }
-
+    if (!id) return undefined;
     const row = this.store.getSecret(id);
-    if (!row) {
-      return undefined;
-    }
-
-    const masterKey = this.requireKey();
+    if (!row) return undefined;
     try {
-      return decryptAesGcm(row.ciphertext_b64, row.iv_b64, row.tag_b64, masterKey, row.aad);
+      return decryptAesGcm(row.ciphertext_b64, row.iv_b64, row.tag_b64, this.deviceKey, row.aad);
     } catch {
       return undefined;
     }
@@ -228,9 +206,7 @@ export class EncryptedSecretVault implements CredentialVault {
 
   async deleteCredential(ref: string): Promise<void> {
     const id = parseSecretRef(ref);
-    if (!id) {
-      return;
-    }
+    if (!id) return;
     this.store.deleteSecret(id);
   }
 }
@@ -238,7 +214,7 @@ export class EncryptedSecretVault implements CredentialVault {
 // ─── Keytar Password Cache ──────────────────────────────────────────────────
 
 const KEYTAR_SERVICE = "NextShell";
-const KEYTAR_ACCOUNT = "backup-master-password";
+const KEYTAR_ACCOUNT = "backup-password";
 
 export class KeytarPasswordCache {
   private readonly keytar: KeytarModule | undefined;

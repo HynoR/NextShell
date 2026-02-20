@@ -8,13 +8,14 @@ import {
 } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import {
+import type {
   useCommandHistory,
-  type CommandHistoryEntry
+  CommandHistoryEntry
 } from "../hooks/useCommandHistory";
 
 interface CommandInputBarProps {
   session?: SessionDescriptor;
+  commandHistory: ReturnType<typeof useCommandHistory>;
   searchMode: boolean;
   onSearchModeChange: (enabled: boolean) => void;
   terminalSearchTerm: string;
@@ -27,6 +28,7 @@ type PanelMode = "history" | "search";
 
 export const CommandInputBar = ({
   session,
+  commandHistory,
   searchMode,
   onSearchModeChange,
   terminalSearchTerm,
@@ -43,7 +45,7 @@ export const CommandInputBar = ({
     navigateUp,
     navigateDown,
     resetNavigation
-  } = useCommandHistory();
+  } = commandHistory;
 
   const [commandInput, setCommandInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);

@@ -554,6 +554,15 @@ const migrations: MigrationDefinition[] = [
         CREATE UNIQUE INDEX IF NOT EXISTS idx_template_params_command_param ON command_template_params(command_id, param_name);
       `);
     }
+  },
+  {
+    version: 12,
+    name: "add_device_key_setting",
+    apply: (_db) => {
+      // Device key is stored as an app_setting row.
+      // The actual generation + insertion happens at runtime in container.ts on first launch.
+      // This migration is a no-op placeholder for version tracking.
+    }
   }
 ];
 
@@ -584,6 +593,8 @@ export interface ConnectionRepository {
   saveAppPreferences: (preferences: AppPreferences) => AppPreferences;
   getMasterKeyMeta: () => MasterKeyMeta | undefined;
   saveMasterKeyMeta: (meta: MasterKeyMeta) => void;
+  getDeviceKey: () => string | undefined;
+  saveDeviceKey: (key: string) => void;
   getSecretStore: () => SecretStoreDB;
   listTemplateParams: (commandId?: string) => CommandTemplateParam[];
   upsertTemplateParams: (commandId: string, params: Record<string, string>) => void;
@@ -1176,6 +1187,30 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       value_json: JSON.stringify(meta),
       updated_at: now
     });
+  }
+
+  getDeviceKey(): string | undefined {
+    const row = this.db.prepare(
+      "SELECT value_json FROM app_settings WHERE key = ?"
+    ).get("device_key") as { value_json: string } | undefined;
+    if (!row?.value_json) return undefined;
+    try {
+      const parsed = JSON.parse(row.value_json);
+      return typeof parsed === "string" ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  saveDeviceKey(key: string): void {
+    const now = new Date().toISOString();
+    this.db.prepare(
+      `INSERT INTO app_settings (key, value_json, updated_at)
+       VALUES (@key, @value_json, @updated_at)
+       ON CONFLICT(key) DO UPDATE SET
+         value_json = excluded.value_json,
+         updated_at = excluded.updated_at`
+    ).run({ key: "device_key", value_json: JSON.stringify(key), updated_at: now });
   }
 
   getSecretStore(): SecretStoreDB {

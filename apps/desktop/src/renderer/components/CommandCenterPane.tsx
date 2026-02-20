@@ -14,7 +14,6 @@ import {
 } from "antd";
 import type {
   BatchCommandExecutionResult,
-  CommandExecutionResult,
   ConnectionProfile,
   SavedCommand
 } from "@nextshell/core";
@@ -79,10 +78,7 @@ interface CommandCenterPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
   connections: ConnectionProfile[];
-}
-
-interface CommandRecord extends CommandExecutionResult {
-  id: string;
+  onExecuteCommand?: (command: string) => void;
 }
 
 const toGroupPath = (connection: ConnectionProfile): string => {
@@ -95,7 +91,8 @@ const toGroupPath = (connection: ConnectionProfile): string => {
 export const CommandCenterPane = ({
   connection,
   connected,
-  connections
+  connections,
+  onExecuteCommand
 }: CommandCenterPaneProps) => {
   const rememberTemplateParams = usePreferencesStore(
     (state) => state.preferences.commandCenter.rememberTemplateParams
@@ -114,8 +111,6 @@ export const CommandCenterPane = ({
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<SavedCommand | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
-  const [history, setHistory] = useState<CommandRecord[]>([]);
-  const [runningCommandId, setRunningCommandId] = useState<string | undefined>(undefined);
   const [batchCommand, setBatchCommand] = useState("");
   const [batchGroup, setBatchGroup] = useState<string | undefined>(undefined);
   const [batchConnectionIds, setBatchConnectionIds] = useState<string[]>([]);
@@ -247,7 +242,7 @@ export const CommandCenterPane = ({
     }
   };
 
-  const runCommand = async (command: string, commandId?: string): Promise<void> => {
+  const runCommand = (command: string): void => {
     if (!connection) {
       message.warning("请先选择连接。");
       return;
@@ -258,22 +253,7 @@ export const CommandCenterPane = ({
     }
     const normalized = command.trim();
     if (!normalized) return;
-    try {
-      setRunningCommandId(commandId);
-      const result = await window.nextshell.command.exec({
-        connectionId: connection.id,
-        command: normalized
-      });
-      setHistory((prev) => [
-        { ...result, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` },
-        ...prev
-      ].slice(0, 12));
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "执行失败";
-      message.error(reason);
-    } finally {
-      setRunningCommandId(undefined);
-    }
+    onExecuteCommand?.(normalized);
   };
 
   const openTemplateDrawer = (cmd: SavedCommand) => {
@@ -288,7 +268,7 @@ export const CommandCenterPane = ({
     setTemplateDrawerOpen(true);
   };
 
-  const runTemplateFromDrawer = async () => {
+  const runTemplateFromDrawer = () => {
     if (!templateCommand) return;
     const resolved = substituteTemplate(templateCommand.command, templateParams);
     if (rememberTemplateParams) {
@@ -298,7 +278,7 @@ export const CommandCenterPane = ({
     }
     setTemplateDrawerOpen(false);
     setTemplateCommand(null);
-    void runCommand(resolved);
+    runCommand(resolved);
   };
 
   const runSavedCommand = (cmd: SavedCommand) => {
@@ -306,7 +286,7 @@ export const CommandCenterPane = ({
       openTemplateDrawer(cmd);
       return;
     }
-    void runCommand(cmd.command, cmd.id);
+    runCommand(cmd.command);
   };
 
   const runBatch = async (): Promise<void> => {
@@ -356,8 +336,7 @@ export const CommandCenterPane = ({
 
   const [sectionCollapsed, setSectionCollapsed] = useState<Record<string, boolean>>({
     library: false,
-    batch: true,
-    history: false
+    batch: true
   });
 
   const toggleSection = (key: string) => {
@@ -448,11 +427,7 @@ export const CommandCenterPane = ({
                               onClick={() => runSavedCommand(cmd)}
                               title="执行"
                             >
-                              {runningCommandId === cmd.id ? (
-                                <i className="ri-loader-4-line" aria-hidden="true" />
-                              ) : (
-                                <i className="ri-play-line" aria-hidden="true" />
-                              )}
+                              <i className="ri-play-line" aria-hidden="true" />
                             </button>
                             <button
                               className="cc-action-btn"
@@ -589,54 +564,6 @@ export const CommandCenterPane = ({
         )}
       </div>
 
-      {/* ── Section 3: Recent Results ── */}
-      <div className="cc-section">
-        <button
-          type="button"
-          className="cc-section-header"
-          onClick={() => toggleSection("history")}
-        >
-          <i
-            className={sectionCollapsed.history ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
-            aria-hidden="true"
-          />
-          <i className="ri-history-line cc-section-icon" aria-hidden="true" />
-          <span className="cc-section-title">最近执行</span>
-          {history.length > 0 && <span className="cc-section-count">{history.length}</span>}
-        </button>
-
-        {!sectionCollapsed.history && (
-          <div className="cc-section-body">
-            {history.length === 0 ? (
-              <div className="cc-empty-hint">
-                <i className="ri-terminal-line" aria-hidden="true" />
-                <span>暂无执行记录</span>
-              </div>
-            ) : (
-              <div className="cc-history-list">
-                {history.map((item) => (
-                  <div key={item.id} className="cc-result-item">
-                    <div className="cc-result-item-head">
-                      <code className="cc-result-cmd">{item.command}</code>
-                      <Tag
-                        color={item.exitCode === 0 ? "green" : "red"}
-                        style={{ margin: 0, lineHeight: "18px", fontSize: 10, flexShrink: 0 }}
-                      >
-                        exit {item.exitCode}
-                      </Tag>
-                    </div>
-                    <pre className="cc-output">{item.stdout || "(empty)"}</pre>
-                    {item.stderr ? (
-                      <pre className="cc-output error">{item.stderr}</pre>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       <Modal
         title={editingCommand ? "编辑命令" : "新建命令"}
         open={editModalOpen}
@@ -697,7 +624,7 @@ export const CommandCenterPane = ({
         }}
         size={400}
         footer={
-          <Button type="primary" onClick={() => void runTemplateFromDrawer()}>
+          <Button type="primary" onClick={() => runTemplateFromDrawer()}>
             执行
           </Button>
         }

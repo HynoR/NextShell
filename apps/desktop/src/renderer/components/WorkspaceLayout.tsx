@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Tabs } from "antd";
+import { message, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type { ConnectionProfile, SessionDescriptor, SessionType } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
@@ -15,6 +15,7 @@ import { SystemInfoPanel } from "./SystemInfoPanel";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { TransferQueuePanel } from "./TransferQueuePanel";
 import type { AuthPromptState } from "../hooks/useSessionLifecycle";
+import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
 import { promptModal } from "../utils/promptModal";
 
@@ -120,6 +121,18 @@ export const WorkspaceLayout = ({
   const [terminalSearchTerm, setTerminalSearchTerm] = useState("");
   const bottomPanelRef = usePanelRef();
   const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
+  const resizeFitRafRef = useRef(0);
+  const commandHistory = useCommandHistory();
+
+  const handleExecuteCommand = useCallback((command: string) => {
+    if (!activeTerminalSession || activeTerminalSession.status !== "connected") {
+      return;
+    }
+    window.nextshell.session
+      .write({ sessionId: activeTerminalSession.id, data: `${command}\r` })
+      .catch(() => message.error("发送命令失败"));
+    void commandHistory.push(command);
+  }, [activeTerminalSession, commandHistory]);
 
   const headerSessionText = useMemo(() => {
     if (!activeSession) return "no session";
@@ -333,7 +346,7 @@ export const WorkspaceLayout = ({
                       className={
                         activeSession?.type === "processManager" || activeSession?.type === "networkMonitor"
                           ? "hidden"
-                          : ""
+                          : "flex-1 min-h-0 flex flex-col"
                       }
                     >
                       <TerminalPane
@@ -345,6 +358,7 @@ export const WorkspaceLayout = ({
                       />
                       <CommandInputBar
                         session={activeTerminalSession}
+                        commandHistory={commandHistory}
                         searchMode={terminalSearchMode}
                         onSearchModeChange={setTerminalSearchMode}
                         terminalSearchTerm={terminalSearchTerm}
@@ -370,6 +384,10 @@ export const WorkspaceLayout = ({
                   collapsedSize="4%"
                   onResize={() => {
                     setBottomCollapsed(bottomPanelRef.current?.isCollapsed() ?? false);
+                    cancelAnimationFrame(resizeFitRafRef.current);
+                    resizeFitRafRef.current = requestAnimationFrame(() => {
+                      terminalPaneRef.current?.fit();
+                    });
                   }}
                 >
                   <div className="bottom-workbench">
@@ -441,6 +459,7 @@ export const WorkspaceLayout = ({
                               connection={activeConnection}
                               connected={isActiveConnectionTerminalConnected}
                               connections={connections}
+                              onExecuteCommand={handleExecuteCommand}
                             />
                           )
                         }

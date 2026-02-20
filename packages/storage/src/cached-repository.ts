@@ -70,6 +70,12 @@ export class CachedConnectionRepository implements ConnectionRepository {
     value: undefined
   };
 
+  // ── Device key cache ─────────────────────────────────────────────────────
+  private deviceKeyCache: { loaded: boolean; value: string | undefined } = {
+    loaded: false,
+    value: undefined
+  };
+
   // ── Audit log write-behind queue ─────────────────────────────────────────
   private auditBuf: AppendAuditLogInput[] = [];
   private auditTimer: ReturnType<typeof setInterval> | undefined;
@@ -366,6 +372,18 @@ export class CachedConnectionRepository implements ConnectionRepository {
   saveMasterKeyMeta(meta: MasterKeyMeta): void {
     this.inner.saveMasterKeyMeta(meta);
     this.mkMeta = { loaded: true, value: meta };
+  }
+
+  getDeviceKey(): string | undefined {
+    if (!this.deviceKeyCache.loaded) {
+      this.deviceKeyCache = { loaded: true, value: this.inner.getDeviceKey() };
+    }
+    return this.deviceKeyCache.value;
+  }
+
+  saveDeviceKey(key: string): void {
+    this.inner.saveDeviceKey(key);
+    this.deviceKeyCache = { loaded: true, value: key };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

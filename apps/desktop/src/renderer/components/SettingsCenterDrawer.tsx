@@ -168,7 +168,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
 
   const handleSetPassword = async (): Promise<void> => {
     if (!pwdInput || pwdInput.length < 6) {
-      message.warning("密码至少需要 6 个字符。");
+      message.warning("备份密码至少需要 6 个字符。");
       return;
     }
     if (pwdInput !== pwdConfirm) {
@@ -178,7 +178,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     setPwdBusy(true);
     try {
       await window.nextshell.backup.setPassword({ password: pwdInput, confirmPassword: pwdConfirm });
-      message.success("云存档密码已设置");
+      message.success("备份密码已设置");
       setPwdInput("");
       setPwdConfirm("");
       await refreshPasswordStatus();
@@ -191,13 +191,13 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
 
   const handleUnlockPassword = async (): Promise<void> => {
     if (!pwdInput) {
-      message.warning("请输入密码。");
+      message.warning("请输入备份密码。");
       return;
     }
     setPwdBusy(true);
     try {
       await window.nextshell.backup.unlockPassword({ password: pwdInput });
-      message.success("密码已解锁");
+      message.success("备份密码已解锁");
       setPwdInput("");
       setPwdConfirm("");
       await refreshPasswordStatus();
@@ -211,7 +211,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   const handleClearRemembered = async (): Promise<void> => {
     try {
       await window.nextshell.backup.clearRemembered();
-      message.success("已清除系统钥匙串中的密码缓存");
+      message.success("已清除钥匙串中的备份密码缓存");
       await refreshPasswordStatus();
     } catch (error) {
       message.error(error instanceof Error ? error.message : "清除缓存失败");
@@ -550,19 +550,19 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
 
         <Typography.Title level={5}>云存档</Typography.Title>
         <Typography.Text type="secondary">
-          使用 rclone 将加密备份同步到远端存储。需要先设置主密码。
+          使用 rclone 将加密备份同步到远端存储。备份密码仅用于加密存档，不影响日常使用。
         </Typography.Text>
 
         {/* Password status indicator */}
         <div className="flex items-center gap-2 mt-2">
-          <Typography.Text>密码状态: </Typography.Text>
+          <Typography.Text>备份密码状态: </Typography.Text>
           {pwdStatusLoading ? (
             <Skeleton.Input active size="small" style={{ width: 120 }} />
           ) : pwdStatus.isSet ? (
             pwdStatus.isUnlocked ? (
-              <Badge status="success" text="已设置 · 已解锁" />
+              <Badge status="success" text="已设置 · 本次已解锁" />
             ) : (
-              <Badge status="warning" text="已设置 · 未解锁" />
+              <Badge status="processing" text="已设置" />
             )
           ) : (
             <Badge status="default" text="未设置" />
@@ -574,11 +574,11 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
 
         {/* Password input section */}
         <div className="flex flex-col gap-2 mt-1.5">
-          <Typography.Text>{pwdStatus.isSet ? "输入密码" : "设置密码"}</Typography.Text>
+          <Typography.Text>{pwdStatus.isSet ? "输入备份密码" : "设置备份密码"}</Typography.Text>
           <Input.Password
             value={pwdInput}
             onChange={(e) => setPwdInput(e.target.value)}
-            placeholder={pwdStatus.isSet ? "输入主密码以解锁" : "新密码（至少 6 个字符）"}
+            placeholder={pwdStatus.isSet ? "输入备份密码以解锁" : "新备份密码（至少 6 个字符）"}
             disabled={pwdBusy}
           />
           {!pwdStatus.isSet && (
@@ -608,7 +608,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
                 loading={pwdBusy}
                 onClick={() => void handleSetPassword()}
               >
-                设置密码
+                设置备份密码
               </Button>
             )}
             {pwdStatus.keytarAvailable && pwdStatus.isSet && (
@@ -670,7 +670,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         <div className="flex flex-col gap-2 mt-1.5">
           <Typography.Text>记住密码</Typography.Text>
           <div className="settings-switch-row">
-            <span>使用系统钥匙串记住主密码</span>
+            <span>使用系统钥匙串记住备份密码</span>
             <Switch
               checked={backupRememberPassword}
               disabled={loading || !pwdStatus.keytarAvailable}
@@ -726,7 +726,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           </Space>
           {!pwdStatus.isUnlocked && (
             <Typography.Text type="warning" style={{ fontSize: 12 }}>
-              请先解锁主密码后再执行备份/还原操作。
+              请先设置并解锁备份密码后再执行备份/还原操作。
             </Typography.Text>
           )}
           {preferences.backup.lastBackupAt && (

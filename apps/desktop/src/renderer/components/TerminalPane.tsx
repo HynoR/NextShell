@@ -33,6 +33,7 @@ export interface TerminalPaneHandle {
   setSearchTerm: (value: string) => void;
   findNext: () => void;
   findPrevious: () => void;
+  fit: () => void;
 }
 
 interface FrozenTerminalOptions {
@@ -210,7 +211,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         searchAddonRef.current?.findNext(nextTerm, { incremental: true });
       },
       findNext,
-      findPrevious
+      findPrevious,
+      fit: () => {
+        fitRef.current?.fit();
+      }
     }),
     [findNext, findPrevious]
   );

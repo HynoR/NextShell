@@ -66,9 +66,9 @@ import { IPCChannel, AUTH_REQUIRED_PREFIX } from "../../../../../packages/shared
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
+  generateDeviceKey,
   createMasterKeyMeta,
-  verifyMasterPassword,
-  deriveMasterKey
+  verifyMasterPassword
 } from "../../../../../packages/security/src/index";
 import { SQLiteConnectionRepository, CachedConnectionRepository } from "../../../../../packages/storage/src/index";
 import { RemoteEditManager } from "./remote-edit-manager";
@@ -816,33 +816,37 @@ export const createServiceContainer = (
   const connections = new CachedConnectionRepository(rawRepo);
   connections.seedIfEmpty([]);
 
-  const vault = new EncryptedSecretVault(connections.getSecretStore());
-  const keytarCache = new KeytarPasswordCache();
-  let masterPassword: string | undefined;
+  // ─── Device Key (always-on local credential encryption) ────────────────────
+  let deviceKeyHex = connections.getDeviceKey();
+  if (!deviceKeyHex) {
+    deviceKeyHex = generateDeviceKey();
+    connections.saveDeviceKey(deviceKeyHex);
+    logger.info("[Security] generated new device key");
+  }
+  const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKeyHex, "hex"));
 
-  // Try to auto-unlock from keytar on startup
-  const tryAutoUnlock = async (): Promise<void> => {
+  // ─── Backup Password (optional, for cloud backup only) ────────────────────
+  const keytarCache = new KeytarPasswordCache();
+  let backupPassword: string | undefined;
+
+  // Try to recall backup password from keytar on startup
+  const tryRecallBackupPassword = async (): Promise<void> => {
     const meta = connections.getMasterKeyMeta();
-    if (!meta) {
-      return;
-    }
+    if (!meta) return;
     const cached = await keytarCache.recall();
-    if (!cached) {
-      return;
-    }
+    if (!cached) return;
     if (verifyMasterPassword(cached, meta)) {
-      masterPassword = cached;
-      vault.unlock(deriveMasterKey(cached, meta));
-      logger.info("[Security] auto-unlocked from keytar cache");
+      backupPassword = cached;
+      logger.info("[Security] recalled backup password from keytar");
     }
   };
 
-  void tryAutoUnlock();
+  void tryRecallBackupPassword();
 
   const backupService = new BackupService({
     dataDir: options.dataDir,
     repo: connections,
-    getMasterPassword: () => masterPassword
+    getMasterPassword: () => backupPassword
   });
 
   const activeSessions = new Map<string, ActiveSession>();
@@ -1596,11 +1600,6 @@ export const createServiceContainer = (
 
     if (input.proxyType === "socks5" && input.proxyPassword && !input.proxyUsername) {
       throw new Error("Proxy username is required when setting SOCKS5 proxy password.");
-    }
-
-    const hasSensitiveInput = Boolean(input.password || input.privateKeyContent || input.proxyPassword);
-    if (hasSensitiveInput && !vault.isUnlocked()) {
-      throw new Error("请先在设置中心设置并解锁云存档主密码，再保存密码/私钥信息。");
     }
 
     const normalizedUsername = input.username.trim();
@@ -3427,33 +3426,26 @@ export const createServiceContainer = (
   const backupSetPassword = async (password: string): Promise<{ ok: true }> => {
     const meta = createMasterKeyMeta(password);
     connections.saveMasterKeyMeta(meta);
-    masterPassword = password;
-    vault.unlock(deriveMasterKey(password, meta));
+    backupPassword = password;
     await rememberPasswordBestEffort(password, "set");
-
     connections.appendAuditLog({
       action: "backup.password_set",
       level: "info",
       message: "Cloud backup password configured"
     });
-
     return { ok: true };
   };
 
   const backupUnlockPassword = async (password: string): Promise<{ ok: true }> => {
     const meta = connections.getMasterKeyMeta();
     if (!meta) {
-      throw new Error("尚未设置云存档密码。请先设置密码。");
+      throw new Error("尚未设置备份密码。请先设置密码。");
     }
-
     if (!verifyMasterPassword(password, meta)) {
-      throw new Error("云存档密码错误。");
+      throw new Error("备份密码错误。");
     }
-
-    masterPassword = password;
-    vault.unlock(deriveMasterKey(password, meta));
+    backupPassword = password;
     await rememberPasswordBestEffort(password, "unlock");
-
     return { ok: true };
   };
 
@@ -3466,7 +3458,7 @@ export const createServiceContainer = (
     const meta = connections.getMasterKeyMeta();
     return {
       isSet: meta !== undefined,
-      isUnlocked: vault.isUnlocked(),
+      isUnlocked: backupPassword !== undefined,
       keytarAvailable: keytarCache.isAvailable()
     };
   };
