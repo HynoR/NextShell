@@ -86,7 +86,8 @@ import type {
   SshKeyUpsertInput,
   TemplateParamsListInput,
   TemplateParamsUpsertInput,
-  TemplateParamsClearInput
+  TemplateParamsClearInput,
+  UpdateCheckResult
 } from "./contracts";
 
 export type SessionEventUnsubscribe = () => void;
@@ -197,5 +198,8 @@ export interface NextShellApi {
     list: (payload?: ProxyListInput) => Promise<ProxyProfile[]>;
     upsert: (payload: ProxyUpsertInput) => Promise<ProxyProfile>;
     remove: (payload: ProxyRemoveInput) => Promise<{ ok: true }>;
+  };
+  about: {
+    checkUpdate: () => Promise<UpdateCheckResult>;
   };
 }

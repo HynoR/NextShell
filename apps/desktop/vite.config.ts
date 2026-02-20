@@ -1,4 +1,5 @@
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -6,6 +7,7 @@ import electron from "vite-plugin-electron/simple";
 import { defineConfig } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appVersion = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8")).version as string;
 const pkg = (name: string) => path.resolve(__dirname, "../../packages", name, "src");
 const aliases = {
   "@nextshell/core": path.join(pkg("core"), "index.ts"),
@@ -25,6 +27,10 @@ export default defineConfig({
       main: {
         entry: "src/main/index.ts",
         vite: {
+          define: {
+            "process.env.VITE_GITHUB_REPO": JSON.stringify("HynoR/NextShell"),
+            "process.env.VITE_APP_VERSION": JSON.stringify(appVersion)
+          },
           resolve: {
             alias: aliases
           },
@@ -74,6 +80,10 @@ export default defineConfig({
   ],
   resolve: {
     alias: aliases
+  },
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+    __GITHUB_REPO__: JSON.stringify("HynoR/NextShell")
   },
   server: {
     port: 5173,

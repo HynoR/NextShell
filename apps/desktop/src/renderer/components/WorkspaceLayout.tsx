@@ -9,8 +9,10 @@ import type {
 } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
+import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionTreePanel } from "./ConnectionTreePanel";
+import { DiskMonitorPane } from "./DiskMonitorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
@@ -19,6 +21,7 @@ import { SessionAuthRetryModal } from "./SessionAuthRetryModal";
 import { SystemInfoPanel } from "./SystemInfoPanel";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { TransferQueuePanel } from "./TransferQueuePanel";
+import { AboutPane } from "./AboutPane";
 import type { AuthPromptState } from "../hooks/useSessionLifecycle";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
@@ -203,7 +206,13 @@ export const WorkspaceLayout = ({
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="shell-header">
-        <div className="titlebar-brand">
+        <div className="titlebar-brand" />
+        <div className="titlebar-center">
+          <QuickConnectBar
+            connections={connections}
+            sessions={sessions}
+            onConnect={(connectionId) => void onTreeConnect(connectionId)}
+          />
         </div>
         <div className="header-actions">
           <span className="hdr-sep" />
@@ -506,7 +515,7 @@ export const WorkspaceLayout = ({
                       items={[
                         {
                           key: "connections",
-                          label: "连接",
+                          label: "连接中心",
                           children: (
                             <ConnectionTreePanel
                               connections={connections}
@@ -549,6 +558,22 @@ export const WorkspaceLayout = ({
                               onExecuteCommand={handleExecuteCommand}
                             />
                           ),
+                        },
+                        {
+                          key: "disk",
+                          label: "磁盘",
+                          children: (
+                            <DiskMonitorPane
+                              connection={activeConnection}
+                              connected={isActiveConnectionTerminalConnected}
+                              onOpenSettings={onOpenSettings}
+                            />
+                          ),
+                        },
+                        {
+                          key: "about",
+                          label: "关于",
+                          children: <AboutPane />,
                         },
                       ]}
                     />

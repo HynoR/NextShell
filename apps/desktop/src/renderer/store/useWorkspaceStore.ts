@@ -9,7 +9,7 @@ import type {
   ProxyProfile
 } from "@nextshell/core";
 
-type BottomTab = "connections" | "files" | "live-edit" | "commands";
+export type BottomTab = "connections" | "files" | "live-edit" | "commands" | "disk";
 
 interface WorkspaceState {
   connections: ConnectionProfile[];
@@ -143,7 +143,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setBottomTab: (tab) =>
     set({
       bottomTab:
-        tab === "commands" || tab === "files" || tab === "connections" || tab === "live-edit"
+        tab === "commands" ||
+        tab === "files" ||
+        tab === "connections" ||
+        tab === "live-edit" ||
+        tab === "disk"
           ? tab
           : "connections"
     })

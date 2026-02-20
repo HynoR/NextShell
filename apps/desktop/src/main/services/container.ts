@@ -76,6 +76,7 @@ import type {
   ProxyRemoveInput
 } from "../../../../../packages/shared/src/index";
 import { IPCChannel, AUTH_REQUIRED_PREFIX } from "../../../../../packages/shared/src/index";
+import type { UpdateCheckResult } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
@@ -186,6 +187,7 @@ export interface ServiceContainer {
   listProxies: () => ProxyProfile[];
   upsertProxy: (input: ProxyUpsertInput) => Promise<ProxyProfile>;
   removeProxy: (input: ProxyRemoveInput) => Promise<{ ok: true }>;
+  checkForUpdate: () => Promise<UpdateCheckResult>;
   getAppPreferences: () => AppPreferences;
   updateAppPreferences: (patch: SettingsUpdateInput) => AppPreferences;
   openFilesDialog: (
@@ -1962,6 +1964,91 @@ export const createServiceContainer = (
 
     proxyRepo.remove(input.id);
     return { ok: true };
+  };
+
+  // ─── Update Check ───────────────────────────────────────────────────────
+
+  const compareVersions = (a: string, b: string): number => {
+    const parse = (v: string) => {
+      const m = v.match(/^v?(\d{1,3})\.(\d{1,3})\.(\d{1,3})/);
+      if (!m) return [0, 0, 0] as const;
+      return [Number(m[1]), Number(m[2]), Number(m[3])] as const;
+    };
+    const [a1, a2, a3] = parse(a);
+    const [b1, b2, b3] = parse(b);
+    if (a1 !== b1) return a1 - b1;
+    if (a2 !== b2) return a2 - b2;
+    return a3 - b3;
+  };
+
+  const checkForUpdate = async (): Promise<UpdateCheckResult> => {
+    const githubRepo = process.env["VITE_GITHUB_REPO"] ?? "";
+    const currentVersion = process.env["VITE_APP_VERSION"] ?? "0.0.0";
+
+    if (!githubRepo) {
+      return {
+        currentVersion,
+        latestVersion: null,
+        hasUpdate: false,
+        releaseUrl: null,
+        error: "未配置 GitHub 仓库"
+      };
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${githubRepo}/releases/latest`,
+        {
+          headers: {
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "NextShell-UpdateChecker"
+          }
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return {
+            currentVersion,
+            latestVersion: null,
+            hasUpdate: false,
+            releaseUrl: `https://github.com/${githubRepo}/releases`,
+            error: "未找到任何 Release"
+          };
+        }
+        throw new Error(`GitHub API 返回 ${response.status}`);
+      }
+
+      const data = (await response.json()) as { tag_name?: string; html_url?: string };
+      const latestVersion = data.tag_name ?? null;
+
+      if (!latestVersion) {
+        return {
+          currentVersion,
+          latestVersion: null,
+          hasUpdate: false,
+          releaseUrl: `https://github.com/${githubRepo}/releases`,
+          error: "Release 缺少 tag"
+        };
+      }
+
+      return {
+        currentVersion,
+        latestVersion,
+        hasUpdate: compareVersions(latestVersion, currentVersion) > 0,
+        releaseUrl: data.html_url ?? `https://github.com/${githubRepo}/releases`,
+        error: null
+      };
+    } catch (error) {
+      logger.error("[UpdateCheck]", error);
+      return {
+        currentVersion,
+        latestVersion: null,
+        hasUpdate: false,
+        releaseUrl: null,
+        error: error instanceof Error ? error.message : "检查更新失败"
+      };
+    }
   };
 
   const removeConnection = async (id: string): Promise<{ ok: true }> => {
@@ -3864,6 +3951,7 @@ export const createServiceContainer = (
     listProxies,
     upsertProxy,
     removeProxy,
+    checkForUpdate,
     getAppPreferences,
     updateAppPreferences,
     openFilesDialog,

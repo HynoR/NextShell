@@ -176,6 +176,9 @@ const api: NextShellApi = {
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.ProxyUpsert, payload),
     remove: (payload) => ipcRenderer.invoke(IPCChannel.ProxyRemove, payload)
   },
+  about: {
+    checkUpdate: () => ipcRenderer.invoke(IPCChannel.UpdateCheck, {})
+  },
   platform: process.platform
 };
 

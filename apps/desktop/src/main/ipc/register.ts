@@ -63,7 +63,8 @@ import {
   sshKeyRemoveSchema,
   proxyListSchema,
   proxyUpsertSchema,
-  proxyRemoveSchema
+  proxyRemoveSchema,
+  updateCheckSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -433,5 +434,12 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.ProxyRemove, (_event, payload) => {
     const input = parsePayload(proxyRemoveSchema, payload, "代理删除");
     return services.removeProxy(input);
+  });
+
+  // ─── Update Check ─────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.UpdateCheck, async (_event, payload) => {
+    parsePayload(updateCheckSchema, payload ?? {}, "检查更新");
+    return services.checkForUpdate();
   });
 };

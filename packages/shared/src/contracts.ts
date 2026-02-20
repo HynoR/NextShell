@@ -568,3 +568,14 @@ export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;
 export type ConnectionExportInput = z.infer<typeof connectionExportSchema>;
 export type ConnectionImportPreviewInput = z.infer<typeof connectionImportPreviewSchema>;
 export type ConnectionImportExecuteInput = z.infer<typeof connectionImportExecuteSchema>;
+
+export const updateCheckSchema = z.object({});
+export type UpdateCheckInput = z.infer<typeof updateCheckSchema>;
+
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  releaseUrl: string | null;
+  error: string | null;
+}

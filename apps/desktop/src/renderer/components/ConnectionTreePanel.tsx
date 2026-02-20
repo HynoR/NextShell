@@ -34,7 +34,7 @@ const buildTree = (
   const root: GroupNode = {
     type: "group",
     key: "root",
-    label: "连接",
+    label: "连接中心",
     children: []
   };
 

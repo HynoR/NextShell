@@ -331,7 +331,13 @@ export const App = () => {
         onOpenLocalFile={(task) => void handleOpenTransferLocalFile(task.localPath)}
         onTransferPanelToggle={() => setTransferPanelCollapsed((v) => !v)}
         onSetBottomTab={(tab) => {
-          if (tab === "commands" || tab === "files" || tab === "connections" || tab === "live-edit") {
+          if (
+            tab === "commands" ||
+            tab === "files" ||
+            tab === "connections" ||
+            tab === "live-edit" ||
+            tab === "disk"
+          ) {
             setBottomTab(tab);
           }
         }}

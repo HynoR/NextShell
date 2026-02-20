@@ -151,12 +151,12 @@ export const SystemInfoPanel = ({
             <div className="monitor-placeholder">请先连接 SSH 终端以启动 Monitor Session</div>
           ) : snapshot ? (
             <div className="flex flex-col gap-3 py-1">
-              <div className="flex items-center justify-between px-1 mb-1">
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--t2)] font-medium bg-[var(--bg-elevated)] px-2 py-1 rounded-md border border-[var(--border-dim)] shadow-sm">
+              <div className="flex flex-col gap-2 px-1 mb-1">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--t2)] font-medium bg-[var(--bg-elevated)] px-2.5 py-1.5 rounded-md border border-[var(--border-dim)] shadow-sm">
                   <i className="ri-timer-line text-[var(--t3)]" />
                   {formatUptime(snapshot.uptimeHours)}
                 </div>
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--t2)] font-mono bg-[var(--bg-elevated)] px-2 py-1 rounded-md border border-[var(--border-dim)] shadow-sm">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--t2)] font-mono bg-[var(--bg-elevated)] px-2.5 py-1.5 rounded-md border border-[var(--border-dim)] shadow-sm">
                   <i className="ri-dashboard-3-line text-[var(--t3)]" />
                   {formatLoad(snapshot)}
                 </div>

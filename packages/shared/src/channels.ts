@@ -68,5 +68,6 @@ export const IPCChannel = {
   ProxyRemove: "nextshell:proxy:remove",
   ConnectionExport: "nextshell:connection:export",
   ConnectionImportPreview: "nextshell:connection:import:preview",
-  ConnectionImportExecute: "nextshell:connection:import:execute"
+  ConnectionImportExecute: "nextshell:connection:import:execute",
+  UpdateCheck: "nextshell:update:check"
 } as const;
