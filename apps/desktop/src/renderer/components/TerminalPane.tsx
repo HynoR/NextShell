@@ -5,7 +5,7 @@ import React, {
   useImperativeHandle,
   useRef
 } from "react";
-import { message } from "antd";
+import { App as AntdApp } from "antd";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -130,6 +130,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   sessionIds,
   onRequestSearchMode
 }, ref) => {
+  const { message } = AntdApp.useApp();
   const terminalPreferences = usePreferencesStore((state) => state.preferences.terminal);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);

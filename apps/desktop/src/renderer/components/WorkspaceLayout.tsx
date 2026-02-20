@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { message, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
-import type { ConnectionProfile, SessionDescriptor, SessionType, SshKeyProfile } from "@nextshell/core";
+import type {
+  ConnectionProfile,
+  SessionDescriptor,
+  SessionType,
+  SshKeyProfile,
+} from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { CommandInputBar } from "./CommandInputBar";
@@ -22,7 +27,7 @@ import { promptModal } from "../utils/promptModal";
 const SESSION_TYPE_ICON: Record<SessionType, string> = {
   terminal: "ri-terminal-line",
   processManager: "ri-cpu-line",
-  networkMonitor: "ri-global-line"
+  networkMonitor: "ri-global-line",
 };
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
@@ -41,7 +46,6 @@ interface WorkspaceLayoutProps {
   activeTerminalConnection?: ConnectionProfile;
   terminalSessionIds: string[];
   isActiveConnectionTerminalConnected: boolean;
-  isConnecting: boolean;
   monitor?: import("@nextshell/core").MonitorSnapshot;
   transferTasks: TransferTask[];
   transferPanelCollapsed: boolean;
@@ -49,11 +53,11 @@ interface WorkspaceLayoutProps {
   authPromptState?: AuthPromptState;
   MAX_SESSION_OPEN_ATTEMPTS: number;
   onLoadConnections: () => void;
-  onConnectActiveConnection: () => void;
   onOpenManager: () => void;
   onOpenSettings: () => void;
   onActivateConnection: (connectionId: string) => void;
   onTreeDoubleConnect: (connectionId: string) => void;
+  onTreeConnect: (connectionId: string) => void;
   onCloseSession: (sessionId: string) => void;
   onReconnectSession: (sessionId: string) => void;
   onRenameSession: (sessionId: string, title: string) => void;
@@ -86,7 +90,6 @@ export const WorkspaceLayout = ({
   activeTerminalConnection,
   terminalSessionIds,
   isActiveConnectionTerminalConnected,
-  isConnecting,
   monitor,
   transferTasks,
   transferPanelCollapsed,
@@ -94,11 +97,11 @@ export const WorkspaceLayout = ({
   authPromptState,
   MAX_SESSION_OPEN_ATTEMPTS,
   onLoadConnections,
-  onConnectActiveConnection,
   onOpenManager,
   onOpenSettings,
   onActivateConnection,
   onTreeDoubleConnect,
+  onTreeConnect,
   onCloseSession,
   onReconnectSession,
   onRenameSession,
@@ -121,29 +124,36 @@ export const WorkspaceLayout = ({
   const [bottomCollapsed, setBottomCollapsed] = useState(false);
   const [terminalSearchMode, setTerminalSearchMode] = useState(false);
   const [terminalSearchTerm, setTerminalSearchTerm] = useState("");
+  const [addressCopied, setAddressCopied] = useState(false);
   const bottomPanelRef = usePanelRef();
   const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
   const resizeFitRafRef = useRef(0);
   const commandHistory = useCommandHistory();
 
-  const handleExecuteCommand = useCallback((command: string) => {
-    if (!activeTerminalSession || activeTerminalSession.status !== "connected") {
-      return;
-    }
-    window.nextshell.session
-      .write({ sessionId: activeTerminalSession.id, data: `${command}\r` })
-      .catch(() => message.error("发送命令失败"));
-    void commandHistory.push(command);
-  }, [activeTerminalSession, commandHistory]);
+  const handleExecuteCommand = useCallback(
+    (command: string) => {
+      if (
+        !activeTerminalSession ||
+        activeTerminalSession.status !== "connected"
+      ) {
+        return;
+      }
+      window.nextshell.session
+        .write({ sessionId: activeTerminalSession.id, data: `${command}\r` })
+        .catch(() => message.error("发送命令失败"));
+      void commandHistory.push(command);
+    },
+    [activeTerminalSession, commandHistory],
+  );
 
   const headerSessionText = useMemo(() => {
     if (!activeSession) return "no session";
     const sessionIndex = activeSession.title.match(/#\d+$/)?.[0];
-    const baseLabel = (
+    const baseLabel =
       activeSessionConnection?.name?.trim() ||
       activeSessionConnection?.host?.trim() ||
-      activeSession.title.replace(/\s+#\d+$/, "").trim()
-    ) || "session";
+      activeSession.title.replace(/\s+#\d+$/, "").trim() ||
+      "session";
     return `${activeSession.status} ${baseLabel}${sessionIndex ? ` ${sessionIndex}` : ""}`;
   }, [activeSession, activeSessionConnection]);
 
@@ -168,46 +178,38 @@ export const WorkspaceLayout = ({
     setTerminalSearchMode(true);
   }, []);
 
+  const handleOpenProcessManagerFromMonitor = useCallback(() => {
+    if (!activeConnectionId) return;
+    onOpenProcessManager(activeConnectionId);
+  }, [activeConnectionId, onOpenProcessManager]);
+
+  const handleOpenNetworkMonitorFromMonitor = useCallback(() => {
+    if (!activeConnectionId) return;
+    onOpenNetworkMonitor(activeConnectionId);
+  }, [activeConnectionId, onOpenNetworkMonitor]);
+
+  const sidebarAddress = activeSessionConnection
+    ? `${activeSessionConnection.host}:${activeSessionConnection.port}`
+    : null;
+
+  const handleCopyAddress = useCallback(() => {
+    if (!sidebarAddress) return;
+    navigator.clipboard.writeText(sidebarAddress).then(() => {
+      setAddressCopied(true);
+      setTimeout(() => setAddressCopied(false), 1500);
+    }).catch(() => undefined);
+  }, [sidebarAddress]);
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <header className="shell-header">
         <div className="titlebar-brand">
-          <span className="brand-icon">NS</span>
-          <span className="brand-name">NextShell</span>
         </div>
         <div className="header-actions">
-          <button
-            className="hdr-btn"
-            onClick={() => void onLoadConnections()}
-            title="刷新连接列表"
-          >
-            <i className="ri-refresh-line" aria-hidden="true" />
-            刷新
-          </button>
-          <div className={`header-session-status ${headerSessionClass}`} title={headerSessionText}>
-            <span className="header-session-dot" />
-            <span className="header-session-text">{headerSessionText}</span>
-          </div>
           <span className="hdr-sep" />
-          <button
-            className={`hdr-btn primary${!activeConnectionId || isConnecting ? " disabled" : ""}`}
-            disabled={!activeConnectionId || isConnecting}
-            onClick={() => void onConnectActiveConnection()}
-            title="新建终端（可多开）"
-          >
-            {isConnecting ? (
-              <><i className="ri-loader-4-line ri-spin" aria-hidden="true" /> 连接中…</>
-            ) : (
-              "连接"
-            )}
-          </button>
-          <button
-            className="hdr-btn"
-            onClick={onOpenManager}
-            title="管理连接"
-          >
+          <button className="hdr-btn" onClick={onOpenManager} title="管理连接">
             <i className="ri-links-line" aria-hidden="true" />
-            连接管理器
+            服务器
           </button>
           <button
             className="hdr-btn"
@@ -215,21 +217,59 @@ export const WorkspaceLayout = ({
             title="打开设置中心"
           >
             <i className="ri-settings-3-line" aria-hidden="true" />
-            设置中心
+            设置
           </button>
         </div>
       </header>
 
       <main className="flex flex-1 min-w-0 min-h-0 overflow-hidden">
-        <Group orientation="horizontal" className="w-full h-full min-w-0 min-h-0">
+        <Group
+          orientation="horizontal"
+          className="w-full h-full min-w-0 min-h-0"
+        >
           <Panel defaultSize="18%" minSize="14%" maxSize="36%">
             <aside className="w-full h-full flex flex-col bg-[var(--bg-surface)] border-r border-[var(--border)] overflow-hidden">
+              <div className={`sidebar-session-card ${headerSessionClass}`}>
+                <div className="sidebar-session-row">
+                  <span className="sidebar-session-dot" />
+                  <span className="sidebar-session-status">{activeSession?.status ?? "disconnected"}</span>
+                  <button
+                    type="button"
+                    className="sidebar-refresh-btn"
+                    onClick={() => void onLoadConnections()}
+                    title="刷新连接列表"
+                  >
+                    <i className="ri-refresh-line" aria-hidden="true" />
+                  </button>
+                </div>
+                {sidebarAddress ? (
+                  <button
+                    type="button"
+                    className="sidebar-session-addr"
+                    title={addressCopied ? "已复制" : "点击复制地址"}
+                    onClick={handleCopyAddress}
+                  >
+                    {addressCopied ? (
+                      <><i className="ri-check-line" aria-hidden="true" /> 已复制</>
+                    ) : (
+                      <><i className="ri-clipboard-line" aria-hidden="true" /> {sidebarAddress}</>
+                    )}
+                  </button>
+                ) : (
+                  <span className="sidebar-session-addr empty">未选择服务器</span>
+                )}
+              </div>
               {activeConnection?.monitorSession ? (
                 <SystemInfoPanel
                   monitorSessionEnabled
                   hasVisibleTerminal={isActiveConnectionTerminalConnected}
                   snapshot={monitor}
                   onSelectNetworkInterface={onSelectNetworkInterface}
+                  onOpenProcessManager={handleOpenProcessManagerFromMonitor}
+                  onOpenNetworkMonitor={handleOpenNetworkMonitorFromMonitor}
+                  monitorActionsDisabled={
+                    !activeConnectionId || !isActiveConnectionTerminalConnected
+                  }
                 />
               ) : null}
               <TransferQueuePanel
@@ -239,7 +279,10 @@ export const WorkspaceLayout = ({
                 onRetry={(taskId) => void onRetryTransfer(taskId)}
                 onClearFinished={onClearFinishedTransfers}
                 onOpenLocalFile={(task) => {
-                  if (task.direction === "download" && task.status === "success") {
+                  if (
+                    task.direction === "download" &&
+                    task.status === "success"
+                  ) {
                     onOpenLocalFile(task);
                   }
                 }}
@@ -249,13 +292,17 @@ export const WorkspaceLayout = ({
           <Separator className="panel-resize-handle horizontal" />
           <Panel minSize="48%">
             <section className="w-full h-full min-w-0 min-h-0 flex flex-col overflow-hidden">
-              <Group orientation="vertical" className="w-full h-full min-w-0 min-h-0">
+              <Group
+                orientation="vertical"
+                className="w-full h-full min-w-0 min-h-0"
+              >
                 <Panel defaultSize="68%" minSize="38%">
                   <div className="terminal-shell">
                     <div className="session-tabs">
                       {sessions.map((session) => {
                         const isTerminal = isTerminalSession(session);
-                        const iconClass = SESSION_TYPE_ICON[session.type ?? "terminal"];
+                        const iconClass =
+                          SESSION_TYPE_ICON[session.type ?? "terminal"];
                         return (
                           <button
                             key={session.id}
@@ -263,8 +310,12 @@ export const WorkspaceLayout = ({
                             className={[
                               "session-tab",
                               session.id === activeSessionId ? "active" : "",
-                              session.id === draggingSessionId ? "dragging" : ""
-                            ].filter(Boolean).join(" ")}
+                              session.id === draggingSessionId
+                                ? "dragging"
+                                : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
                             onClick={() => {
                               onSetActiveSession(session.id);
                               onSetActiveConnection(session.connectionId);
@@ -272,12 +323,18 @@ export const WorkspaceLayout = ({
                             onDoubleClick={() => {
                               if (!isTerminal) return;
                               void (async () => {
-                                const title = await promptModal("会话标题", undefined, session.title);
+                                const title = await promptModal(
+                                  "会话标题",
+                                  undefined,
+                                  session.title,
+                                );
                                 if (title) onRenameSession(session.id, title);
                               })();
                             }}
                             draggable={isTerminal}
-                            onDragStart={() => { if (isTerminal) setDraggingSessionId(session.id); }}
+                            onDragStart={() => {
+                              if (isTerminal) setDraggingSessionId(session.id);
+                            }}
                             onDragEnd={() => setDraggingSessionId(undefined)}
                             onDragOver={(event) => event.preventDefault()}
                             onDrop={(event) => {
@@ -287,8 +344,13 @@ export const WorkspaceLayout = ({
                               setDraggingSessionId(undefined);
                             }}
                           >
-                            <i className={`tab-type-icon ${iconClass}`} aria-hidden="true" />
-                            <span className="session-title">{session.title}</span>
+                            <i
+                              className={`tab-type-icon ${iconClass}`}
+                              aria-hidden="true"
+                            />
+                            <span className="session-title">
+                              {session.title}
+                            </span>
                             {isTerminal && session.status !== "connected" ? (
                               <span
                                 className="tab-action tab-reconnect"
@@ -300,18 +362,30 @@ export const WorkspaceLayout = ({
                                 role="button"
                                 tabIndex={0}
                                 onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
                                     event.preventDefault();
                                     void onReconnectSession(session.id);
                                   }
                                 }}
                               >
-                                <i className="ri-refresh-line" aria-hidden="true" />
+                                <i
+                                  className="ri-refresh-line"
+                                  aria-hidden="true"
+                                />
                               </span>
                             ) : null}
                             {isTerminal ? (
-                              <span className="tab-action tab-drag" title="拖拽重排 / 双击重命名">
-                                <i className="ri-drag-move-2-line" aria-hidden="true" />
+                              <span
+                                className="tab-action tab-drag"
+                                title="拖拽重排 / 双击重命名"
+                              >
+                                <i
+                                  className="ri-drag-move-2-line"
+                                  aria-hidden="true"
+                                />
                               </span>
                             ) : null}
                             <span
@@ -328,7 +402,10 @@ export const WorkspaceLayout = ({
                               role="button"
                               tabIndex={0}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
                                   event.preventDefault();
                                   if (isTerminal) {
                                     void onCloseSession(session.id);
@@ -346,7 +423,8 @@ export const WorkspaceLayout = ({
                     </div>
                     <div
                       className={
-                        activeSession?.type === "processManager" || activeSession?.type === "networkMonitor"
+                        activeSession?.type === "processManager" ||
+                        activeSession?.type === "networkMonitor"
                           ? "hidden"
                           : "flex-1 min-h-0 flex flex-col"
                       }
@@ -364,7 +442,9 @@ export const WorkspaceLayout = ({
                         searchMode={terminalSearchMode}
                         onSearchModeChange={setTerminalSearchMode}
                         terminalSearchTerm={terminalSearchTerm}
-                        onTerminalSearchTermChange={handleTerminalSearchTermChange}
+                        onTerminalSearchTermChange={
+                          handleTerminalSearchTermChange
+                        }
                         onTerminalSearchNext={handleTerminalSearchNext}
                         onTerminalSearchPrevious={handleTerminalSearchPrevious}
                       />
@@ -385,7 +465,9 @@ export const WorkspaceLayout = ({
                   collapsible
                   collapsedSize="4%"
                   onResize={() => {
-                    setBottomCollapsed(bottomPanelRef.current?.isCollapsed() ?? false);
+                    setBottomCollapsed(
+                      bottomPanelRef.current?.isCollapsed() ?? false,
+                    );
                     cancelAnimationFrame(resizeFitRafRef.current);
                     resizeFitRafRef.current = requestAnimationFrame(() => {
                       terminalPaneRef.current?.fit();
@@ -411,11 +493,15 @@ export const WorkspaceLayout = ({
                             }}
                           >
                             <i
-                              className={bottomCollapsed ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
+                              className={
+                                bottomCollapsed
+                                  ? "ri-arrow-up-s-line"
+                                  : "ri-arrow-down-s-line"
+                              }
                               aria-hidden="true"
                             />
                           </button>
-                        )
+                        ),
                       }}
                       items={[
                         {
@@ -430,10 +516,11 @@ export const WorkspaceLayout = ({
                               onConnectByDoubleClick={(connectionId) => {
                                 void onTreeDoubleConnect(connectionId);
                               }}
-                              onOpenProcessManager={onOpenProcessManager}
-                              onOpenNetworkMonitor={onOpenNetworkMonitor}
+                              onConnect={(connectionId) => {
+                                void onTreeConnect(connectionId);
+                              }}
                             />
-                          )
+                          ),
                         },
                         {
                           key: "files",
@@ -444,14 +531,12 @@ export const WorkspaceLayout = ({
                               connected={isActiveConnectionTerminalConnected}
                               onOpenSettings={onOpenSettings}
                             />
-                          )
+                          ),
                         },
                         {
                           key: "live-edit",
                           label: "实时编辑",
-                          children: (
-                            <LiveEditPane connections={connections} />
-                          )
+                          children: <LiveEditPane connections={connections} />,
                         },
                         {
                           key: "commands",
@@ -463,8 +548,8 @@ export const WorkspaceLayout = ({
                               connections={connections}
                               onExecuteCommand={handleExecuteCommand}
                             />
-                          )
-                        }
+                          ),
+                        },
                       ]}
                     />
                   </div>

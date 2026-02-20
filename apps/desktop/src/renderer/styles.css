@@ -55,6 +55,16 @@ body {
   -webkit-app-region: drag;
 }
 
+/* macOS: leave room for traffic-light buttons on the left */
+[data-platform="darwin"] .shell-header {
+  padding-left: 80px;
+}
+
+/* Windows: leave room for titleBarOverlay min/max/close on the right */
+[data-platform="win32"] .shell-header {
+  padding-right: 142px;
+}
+
 .titlebar-brand {
   display: flex;
   align-items: center;
@@ -132,6 +142,108 @@ body {
 
 .header-session-status.failed .header-session-dot {
   background: var(--err);
+}
+
+/* ── Sidebar session status card ── */
+.sidebar-session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 9px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.sidebar-session-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-session-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3f5570;
+  flex-shrink: 0;
+}
+
+.sidebar-session-card.connected .sidebar-session-dot {
+  background: var(--ok);
+  box-shadow: 0 0 5px rgba(61, 214, 140, 0.45);
+}
+
+.sidebar-session-card.connecting .sidebar-session-dot {
+  background: var(--warn);
+}
+
+.sidebar-session-card.failed .sidebar-session-dot {
+  background: var(--err);
+}
+
+.sidebar-session-status {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--t2);
+  text-transform: lowercase;
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+
+.sidebar-refresh-btn:hover {
+  color: var(--t1);
+  background: var(--bg-hover);
+}
+
+.sidebar-session-card.connected .sidebar-session-status {
+  color: var(--ok);
+}
+
+.sidebar-session-addr {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  font-size: 11px;
+  font-family: var(--mono);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.12s;
+  text-align: left;
+  max-width: 100%;
+}
+
+.sidebar-session-addr:not(.empty):hover {
+  color: var(--accent);
+}
+
+.sidebar-session-addr.empty {
+  cursor: default;
+  font-style: italic;
+  font-size: 11px;
 }
 
 .hdr-btn {
@@ -529,6 +641,45 @@ body {
   font-size: 11px;
 }
 
+.monitor-manager-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-dim);
+}
+
+.monitor-manager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--t2);
+  font-size: 12px;
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.monitor-manager-btn i {
+  font-size: 14px;
+}
+
+.monitor-manager-btn:hover:not(:disabled) {
+  border-color: rgba(77, 159, 255, 0.45);
+  color: var(--accent);
+  background: rgba(77, 159, 255, 0.1);
+}
+
+.monitor-manager-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ── Connection panel (custom tree) ───────────────────────── */
 
 .ct-panel {
@@ -813,32 +964,29 @@ body {
   flex-shrink: 0;
 }
 
-.ct-monitor-actions {
-  display: inline-flex;
-  gap: 2px;
-  margin-left: 2px;
-  flex-shrink: 0;
-}
-
-.ct-monitor-btn {
-  display: inline-flex;
+.ct-connect-btn {
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  border-radius: 3px;
-  color: var(--t3);
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0;
-  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-sm);
+  color: var(--accent);
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.12s;
+  pointer-events: none;
+  margin-left: 4px;
 }
 
-.ct-monitor-btn:hover {
-  background: rgba(77, 159, 255, 0.12);
-  color: var(--accent);
+.ct-server-row:hover .ct-connect-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ct-connect-btn:hover {
+  background: var(--accent-dim);
 }
 
 .ct-empty {
@@ -2379,10 +2527,46 @@ body {
 .mgr-server-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  padding: 5px 6px 5px 10px;
+  padding: 0;
+}
+
+.mgr-server-check-btn {
+  width: 20px;
+  height: 20px;
+  margin-left: 4px;
   border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--t3);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+.mgr-server-check-btn:hover {
+  color: var(--accent);
+  background: rgba(77, 159, 255, 0.12);
+}
+
+.mgr-server-check-btn.checked {
+  color: var(--accent);
+}
+
+.mgr-server-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 28px);
+  padding: 5px 6px 5px 6px;
+  border: none;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--t1);
   font-size: 12px;
@@ -2395,15 +2579,15 @@ body {
   margin: 1px 0;
 }
 
-.mgr-server-row:hover {
+.mgr-server-row:hover .mgr-server-select-btn {
   background: var(--bg-hover);
 }
 
-.mgr-server-row:active {
+.mgr-server-select-btn:active {
   background: var(--bg-active);
 }
 
-.mgr-server-row.selected {
+.mgr-server-row.selected .mgr-server-select-btn {
   background: var(--accent-dim);
   box-shadow: inset 3px 0 0 var(--accent);
 }

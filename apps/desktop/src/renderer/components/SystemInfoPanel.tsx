@@ -6,6 +6,9 @@ interface SystemInfoPanelProps {
   hasVisibleTerminal: boolean;
   snapshot?: MonitorSnapshot;
   onSelectNetworkInterface?: (networkInterface: string) => void;
+  onOpenProcessManager?: () => void;
+  onOpenNetworkMonitor?: () => void;
+  monitorActionsDisabled?: boolean;
 }
 
 interface NetworkPoint {
@@ -62,7 +65,10 @@ export const SystemInfoPanel = ({
   monitorSessionEnabled,
   hasVisibleTerminal,
   snapshot,
-  onSelectNetworkInterface
+  onSelectNetworkInterface,
+  onOpenProcessManager,
+  onOpenNetworkMonitor,
+  monitorActionsDisabled
 }: SystemInfoPanelProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const [networkHistory, setNetworkHistory] = useState<Record<string, NetworkPoint[]>>({});
@@ -119,6 +125,8 @@ export const SystemInfoPanel = ({
   if (!monitorSessionEnabled) {
     return null;
   }
+
+  const showManagerActions = Boolean(onOpenProcessManager || onOpenNetworkMonitor);
 
   return (
     <section className="monitor-panel">
@@ -271,6 +279,30 @@ export const SystemInfoPanel = ({
           ) : (
             <div className="monitor-placeholder">等待监控数据...</div>
           )}
+        </div>
+      ) : null}
+      {showManagerActions ? (
+        <div className="monitor-manager-actions">
+          <button
+            type="button"
+            className="monitor-manager-btn"
+            onClick={() => onOpenProcessManager?.()}
+            disabled={monitorActionsDisabled}
+            title="打开进程管理器"
+          >
+            <i className="ri-cpu-line" aria-hidden="true" />
+            <span>进程管理器</span>
+          </button>
+          <button
+            type="button"
+            className="monitor-manager-btn"
+            onClick={() => onOpenNetworkMonitor?.()}
+            disabled={monitorActionsDisabled}
+            title="打开网络管理器"
+          >
+            <i className="ri-global-line" aria-hidden="true" />
+            <span>网络管理器</span>
+          </button>
         </div>
       ) : null}
     </section>

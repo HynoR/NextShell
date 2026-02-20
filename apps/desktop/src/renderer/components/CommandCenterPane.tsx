@@ -569,7 +569,7 @@ export const CommandCenterPane = ({
         open={editModalOpen}
         onOk={() => void submitEdit()}
         onCancel={() => setEditModalOpen(false)}
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">

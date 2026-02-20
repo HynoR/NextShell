@@ -6,6 +6,8 @@ interface ConnectionImportModalProps {
   open: boolean;
   entries: ConnectionImportEntry[];
   existingConnections: ConnectionProfile[];
+  sourceName?: string;
+  sourceProgress?: string;
   onClose: () => void;
   onImported: () => Promise<void>;
 }
@@ -14,6 +16,8 @@ export const ConnectionImportModal = ({
   open,
   entries,
   existingConnections,
+  sourceName,
+  sourceProgress,
   onClose,
   onImported
 }: ConnectionImportModalProps) => {
@@ -118,7 +122,6 @@ export const ConnectionImportModal = ({
       }
 
       await onImported();
-      onClose();
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
       message.error(`导入失败：${reason}`);
@@ -131,14 +134,19 @@ export const ConnectionImportModal = ({
     <Modal
       open={open}
       onCancel={onClose}
-      title="导入连接"
+      title={sourceProgress ? `导入连接 (${sourceProgress})` : "导入连接"}
       width={720}
       okText="确认导入"
       cancelText="取消"
       onOk={handleConfirm}
       confirmLoading={importing}
-      destroyOnClose
+      destroyOnHidden
     >
+      {sourceName ? (
+        <div style={{ marginBottom: 8, color: "var(--t3)", fontSize: 12, fontFamily: "var(--mono)" }}>
+          文件：{sourceName}
+        </div>
+      ) : null}
       <div style={{ marginBottom: 12 }}>
         <span style={{ marginRight: 12 }}>冲突处理：</span>
         <Radio.Group

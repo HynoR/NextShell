@@ -7,8 +7,7 @@ interface ConnectionTreePanelProps {
   activeConnectionId?: string;
   onSelect: (connectionId: string) => void;
   onConnectByDoubleClick: (connectionId: string) => void;
-  onOpenProcessManager: (connectionId: string) => void;
-  onOpenNetworkMonitor: (connectionId: string) => void;
+  onConnect: (connectionId: string) => void;
 }
 
 interface GroupNode {
@@ -22,7 +21,6 @@ interface LeafNode {
   type: "leaf";
   connection: ConnectionProfile;
   isConnected: boolean;
-  showMonitorActions: boolean;
 }
 
 type TreeNode = GroupNode | LeafNode;
@@ -74,13 +72,10 @@ const buildTree = (
 
     const group = ensureGroup(connection.groupPath);
     const isConnected = connectedConnectionIds.has(connection.id);
-    const showMonitorActions = Boolean(connection.monitorSession && isConnected);
-
     group.children.push({
       type: "leaf",
       connection,
-      isConnected,
-      showMonitorActions
+      isConnected
     });
   }
 
@@ -114,15 +109,13 @@ const ServerRow = ({
   isActive,
   onSelect,
   onDoubleClick,
-  onOpenProcessManager,
-  onOpenNetworkMonitor
+  onConnect
 }: {
   node: LeafNode;
   isActive: boolean;
   onSelect: () => void;
   onDoubleClick: () => void;
-  onOpenProcessManager: () => void;
-  onOpenNetworkMonitor: () => void;
+  onConnect: () => void;
 }) => {
   const c = node.connection;
   return (
@@ -134,7 +127,7 @@ const ServerRow = ({
         e.stopPropagation();
         onDoubleClick();
       }}
-      title={`${c.name} (${c.host}:${c.port}) — 双击连接`}
+      title={`${c.name} (${c.host}:${c.port})`}
     >
       <span className={`ct-status-dot${node.isConnected ? " online" : ""}`} />
       {c.favorite ? (
@@ -142,46 +135,25 @@ const ServerRow = ({
       ) : null}
       <span className="ct-server-name">{c.name}</span>
       <span className="ct-server-host">{c.host}</span>
-      {node.showMonitorActions ? (
-        <span className="ct-monitor-actions">
-          <span
-            className="ct-monitor-btn"
-            title="进程管理器"
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenProcessManager();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.stopPropagation();
-                onOpenProcessManager();
-              }
-            }}
-          >
-            <i className="ri-cpu-line" aria-hidden="true" />
-          </span>
-          <span
-            className="ct-monitor-btn"
-            title="网络监控"
-            role="button"
-            tabIndex={0}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenNetworkMonitor();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.stopPropagation();
-                onOpenNetworkMonitor();
-              }
-            }}
-          >
-            <i className="ri-global-line" aria-hidden="true" />
-          </span>
-        </span>
-      ) : null}
+      <span
+        className="ct-connect-btn"
+        title="新建终端连接"
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          onConnect();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            onConnect();
+          }
+        }}
+      >
+        <i className="ri-terminal-box-line" aria-hidden="true" />
+      </span>
     </button>
   );
 };
@@ -203,8 +175,7 @@ const TreeGroup = ({
   activeConnectionId,
   onSelect,
   onDoubleClick,
-  onOpenProcessManager,
-  onOpenNetworkMonitor
+  onConnect
 }: {
   node: GroupNode;
   depth: number;
@@ -213,8 +184,7 @@ const TreeGroup = ({
   activeConnectionId?: string;
   onSelect: (id: string) => void;
   onDoubleClick: (id: string) => void;
-  onOpenProcessManager: (id: string) => void;
-  onOpenNetworkMonitor: (id: string) => void;
+  onConnect: (id: string) => void;
 }) => {
   const isExpanded = expanded.has(node.key);
   return (
@@ -239,8 +209,7 @@ const TreeGroup = ({
                 activeConnectionId={activeConnectionId}
                 onSelect={onSelect}
                 onDoubleClick={onDoubleClick}
-                onOpenProcessManager={onOpenProcessManager}
-                onOpenNetworkMonitor={onOpenNetworkMonitor}
+                onConnect={onConnect}
               />
             ) : (
               <ServerRow
@@ -249,8 +218,7 @@ const TreeGroup = ({
                 isActive={child.connection.id === activeConnectionId}
                 onSelect={() => onSelect(child.connection.id)}
                 onDoubleClick={() => onDoubleClick(child.connection.id)}
-                onOpenProcessManager={() => onOpenProcessManager(child.connection.id)}
-                onOpenNetworkMonitor={() => onOpenNetworkMonitor(child.connection.id)}
+                onConnect={() => onConnect(child.connection.id)}
               />
             )
           )}
@@ -266,8 +234,7 @@ export const ConnectionTreePanel = ({
   activeConnectionId,
   onSelect,
   onConnectByDoubleClick,
-  onOpenProcessManager,
-  onOpenNetworkMonitor
+  onConnect
 }: ConnectionTreePanelProps) => {
   const [keyword, setKeyword] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["root"]));
@@ -359,8 +326,7 @@ export const ConnectionTreePanel = ({
             activeConnectionId={activeConnectionId}
             onSelect={onSelect}
             onDoubleClick={onConnectByDoubleClick}
-            onOpenProcessManager={onOpenProcessManager}
-            onOpenNetworkMonitor={onOpenNetworkMonitor}
+            onConnect={onConnect}
           />
         )}
       </div>

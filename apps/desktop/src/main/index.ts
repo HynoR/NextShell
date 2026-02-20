@@ -65,6 +65,9 @@ const createTray = (mainWindow: BrowserWindow): Tray => {
 };
 
 const createMainWindow = async (): Promise<void> => {
+  const isMac = process.platform === "darwin";
+  const isWin = process.platform === "win32";
+
   const mainWindow = new BrowserWindow({
     width: 1560,
     height: 940,
@@ -72,6 +75,9 @@ const createMainWindow = async (): Promise<void> => {
     minHeight: 780,
     backgroundColor: "#0a1d30",
     title: "NextShell",
+    titleBarStyle: "hidden",
+    ...(isMac && { windowButtonPosition: { x: 14, y: 14 } }),
+    ...(isWin && { titleBarOverlay: { color: "#0f1923", symbolColor: "#c9d1d9", height: 44 } }),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,

@@ -304,7 +304,6 @@ export const App = () => {
         activeTerminalConnection={activeTerminalConnection}
         terminalSessionIds={terminalSessionIds}
         isActiveConnectionTerminalConnected={isActiveConnectionTerminalConnected}
-        isConnecting={isConnecting}
         monitor={monitor}
         transferTasks={transferTasks}
         transferPanelCollapsed={transferPanelCollapsed}
@@ -312,11 +311,11 @@ export const App = () => {
         authPromptState={authPromptState}
         MAX_SESSION_OPEN_ATTEMPTS={MAX_SESSION_OPEN_ATTEMPTS}
         onLoadConnections={() => void loadConnections()}
-        onConnectActiveConnection={() => void connectActiveConnection()}
         onOpenManager={() => setManagerOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         onActivateConnection={activateConnection}
         onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}
+        onTreeConnect={(connectionId) => void startSession(connectionId)}
         onCloseSession={handleCloseSession}
         onReconnectSession={handleReconnectSession}
         onRenameSession={handleRenameSession}

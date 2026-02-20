@@ -175,7 +175,8 @@ const api: NextShellApi = {
     list: (payload) => ipcRenderer.invoke(IPCChannel.ProxyList, payload ?? {}),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.ProxyUpsert, payload),
     remove: (payload) => ipcRenderer.invoke(IPCChannel.ProxyRemove, payload)
-  }
+  },
+  platform: process.platform
 };
 
 contextBridge.exposeInMainWorld("nextshell", api);

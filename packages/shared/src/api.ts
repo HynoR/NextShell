@@ -92,6 +92,8 @@ import type {
 export type SessionEventUnsubscribe = () => void;
 
 export interface NextShellApi {
+  /** Current OS platform, set synchronously from process.platform in the preload. */
+  platform: string;
   connection: {
     list: (query: ConnectionListQuery) => Promise<ConnectionProfile[]>;
     upsert: (payload: ConnectionUpsertInput) => Promise<ConnectionProfile>;

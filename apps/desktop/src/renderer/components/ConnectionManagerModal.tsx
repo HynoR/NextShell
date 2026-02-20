@@ -8,6 +8,11 @@ import { ConnectionImportModal } from "./ConnectionImportModal";
 
 type ManagerTab = "connections" | "keys" | "proxies";
 
+interface ImportPreviewBatch {
+  fileName: string;
+  entries: ConnectionImportEntry[];
+}
+
 interface ConnectionManagerModalProps {
   open: boolean;
   connections: ConnectionProfile[];
@@ -117,25 +122,43 @@ const MgrGroupRow = ({
 const MgrServerRow = ({
   connection,
   isSelected,
-  onSelect
+  isExportSelected,
+  onSelect,
+  onToggleExportSelect
 }: {
   connection: ConnectionProfile;
   isSelected: boolean;
+  isExportSelected: boolean;
   onSelect: () => void;
+  onToggleExportSelect: () => void;
 }) => (
-  <button
-    type="button"
-    className={`mgr-server-row${isSelected ? " selected" : ""}`}
-    onClick={onSelect}
-    title={`${connection.name} (${connection.host}:${connection.port})`}
-  >
-    <span className="mgr-server-status" />
-    {connection.favorite ? (
-      <i className="ri-star-fill mgr-server-star" aria-hidden="true" />
-    ) : null}
-    <span className="mgr-server-name">{connection.name}</span>
-    <span className="mgr-server-host">{connection.host}</span>
-  </button>
+  <div className={`mgr-server-row${isSelected ? " selected" : ""}`}>
+    <button
+      type="button"
+      className={`mgr-server-check-btn${isExportSelected ? " checked" : ""}`}
+      onClick={onToggleExportSelect}
+      title={isExportSelected ? "取消导出选择" : "加入导出选择"}
+      aria-label={isExportSelected ? "取消导出选择" : "加入导出选择"}
+    >
+      <i
+        className={isExportSelected ? "ri-checkbox-circle-fill" : "ri-checkbox-blank-circle-line"}
+        aria-hidden="true"
+      />
+    </button>
+    <button
+      type="button"
+      className="mgr-server-select-btn"
+      onClick={onSelect}
+      title={`${connection.name} (${connection.host}:${connection.port})`}
+    >
+      <span className="mgr-server-status" />
+      {connection.favorite ? (
+        <i className="ri-star-fill mgr-server-star" aria-hidden="true" />
+      ) : null}
+      <span className="mgr-server-name">{connection.name}</span>
+      <span className="mgr-server-host">{connection.host}</span>
+    </button>
+  </div>
 );
 
 const MgrTreeGroup = ({
@@ -144,14 +167,18 @@ const MgrTreeGroup = ({
   expanded,
   toggleExpanded,
   selectedConnectionId,
-  onSelect
+  selectedExportIds,
+  onSelect,
+  onToggleExportSelect
 }: {
   node: MgrGroupNode;
   depth: number;
   expanded: Set<string>;
   toggleExpanded: (key: string) => void;
   selectedConnectionId: string | undefined;
+  selectedExportIds: Set<string>;
   onSelect: (id: string) => void;
+  onToggleExportSelect: (id: string) => void;
 }) => {
   const isExpanded = expanded.has(node.key);
   return (
@@ -174,14 +201,18 @@ const MgrTreeGroup = ({
                 expanded={expanded}
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
+                selectedExportIds={selectedExportIds}
                 onSelect={onSelect}
+                onToggleExportSelect={onToggleExportSelect}
               />
             ) : (
               <MgrServerRow
                 key={child.connection.id}
                 connection={child.connection}
                 isSelected={child.connection.id === selectedConnectionId}
+                isExportSelected={selectedExportIds.has(child.connection.id)}
                 onSelect={() => onSelect(child.connection.id)}
+                onToggleExportSelect={() => onToggleExportSelect(child.connection.id)}
               />
             )
           )}
@@ -203,7 +234,7 @@ const DEFAULT_VALUES = {
   groupPath: ["server"],
   tags: [],
   favorite: false,
-  monitorSession: false
+  monitorSession: true
 };
 
 /* ── Main component ─────────────────────────────────────── */
@@ -224,10 +255,13 @@ export const ConnectionManagerModal = ({
   const [mode, setMode] = useState<"idle" | "new" | "edit">("idle");
   const [keyword, setKeyword] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>();
+  const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
   const [saving, setSaving] = useState(false);
+  const [importingPreview, setImportingPreview] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importEntries, setImportEntries] = useState<ConnectionImportEntry[]>([]);
+  const [importPreviewQueue, setImportPreviewQueue] = useState<ImportPreviewBatch[]>([]);
+  const [importQueueIndex, setImportQueueIndex] = useState(0);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
 
@@ -241,9 +275,14 @@ export const ConnectionManagerModal = ({
     form.resetFields();
     form.setFieldsValue(DEFAULT_VALUES);
     setSelectedConnectionId(undefined);
+    setSelectedExportIds(new Set());
     setMode("idle");
     setKeyword("");
     setActiveTab("connections");
+    setImportingPreview(false);
+    setImportModalOpen(false);
+    setImportPreviewQueue([]);
+    setImportQueueIndex(0);
   }, [form, open]);
 
   // Auto-expand all groups when keyword is set
@@ -285,6 +324,18 @@ export const ConnectionManagerModal = ({
     () => connections.find((c) => c.id === selectedConnectionId),
     [connections, selectedConnectionId]
   );
+
+  const selectedExportCount = selectedExportIds.size;
+  const currentImportBatch = importPreviewQueue[importQueueIndex];
+
+  useEffect(() => {
+    if (selectedExportIds.size === 0) return;
+    const validIds = new Set(connections.map((connection) => connection.id));
+    setSelectedExportIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [connections, selectedExportIds.size]);
 
   const applyConnectionToForm = useCallback((connection: ConnectionProfile) => {
     form.setFieldsValue({
@@ -368,12 +419,13 @@ export const ConnectionManagerModal = ({
 
   const handleExportAll = useCallback(async () => {
     if (connections.length === 0) return;
+    const exportIds = connections.map((connection) => connection.id);
     try {
       const result = await window.nextshell.connection.exportToFile({
-        connectionIds: connections.map((c) => c.id)
+        connectionIds: exportIds
       });
-      if ("filePath" in result && result.ok) {
-        message.success(`已导出 ${connections.length} 个连接`);
+      if (result.ok) {
+        message.success(`已导出 ${exportIds.length} 个连接`);
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
@@ -381,27 +433,124 @@ export const ConnectionManagerModal = ({
     }
   }, [connections]);
 
-  const handleImport = useCallback(async () => {
+  const handleToggleExportSelect = useCallback((connectionId: string) => {
+    setSelectedExportIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(connectionId)) {
+        next.delete(connectionId);
+      } else {
+        next.add(connectionId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleExportSelected = useCallback(async () => {
+    if (selectedExportIds.size === 0) return;
+    const exportIds = connections
+      .map((connection) => connection.id)
+      .filter((id) => selectedExportIds.has(id));
+    if (exportIds.length === 0) return;
+
     try {
+      const result = await window.nextshell.connection.exportToFile({
+        connectionIds: exportIds
+      });
+      if (result.ok) {
+        message.success(`已导出 ${exportIds.length} 个连接`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "未知错误";
+      message.error(`导出失败：${reason}`);
+    }
+  }, [connections, selectedExportIds]);
+
+  const resetImportFlow = useCallback(() => {
+    setImportModalOpen(false);
+    setImportPreviewQueue([]);
+    setImportQueueIndex(0);
+  }, []);
+
+  const getFileName = useCallback((filePath: string): string => {
+    const normalized = filePath.replace(/\\/g, "/");
+    const splitIndex = normalized.lastIndexOf("/");
+    if (splitIndex < 0) {
+      return normalized;
+    }
+    return normalized.slice(splitIndex + 1);
+  }, []);
+
+  const handleImport = useCallback(async () => {
+    if (importingPreview) return;
+    try {
+      setImportingPreview(true);
       const dialogResult = await window.nextshell.dialog.openFiles({
         title: "选择导入文件",
-        multi: false
+        multi: true
       });
       if (dialogResult.canceled || dialogResult.filePaths.length === 0) return;
 
-      const filePath = dialogResult.filePaths[0]!;
-      const entries = await window.nextshell.connection.importPreview({ filePath });
-      if (entries.length === 0) {
-        message.warning("文件中没有可导入的连接");
+      const previewResults = await Promise.all(dialogResult.filePaths.map(async (filePath) => {
+        const fileName = getFileName(filePath);
+        try {
+          const entries = await window.nextshell.connection.importPreview({ filePath });
+          if (entries.length === 0) {
+            return { fileName, warning: `${fileName}：文件中没有可导入的连接` as string };
+          }
+          return { fileName, entries } as { fileName: string; entries: ConnectionImportEntry[] };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "未知错误";
+          return { fileName, warning: `${fileName}：${reason}` as string };
+        }
+      }));
+
+      const queue: ImportPreviewBatch[] = [];
+      const warnings: string[] = [];
+      previewResults.forEach((item) => {
+        if ("warning" in item) {
+          warnings.push(item.warning);
+          return;
+        }
+        queue.push({ fileName: item.fileName, entries: item.entries });
+      });
+
+      if (warnings.length > 0) {
+        warnings.forEach((item) => {
+          message.warning(item);
+        });
+      }
+
+      if (queue.length === 0) {
+        message.warning("未找到可导入的连接文件");
         return;
       }
-      setImportEntries(entries);
+
+      setImportPreviewQueue(queue);
+      setImportQueueIndex(0);
       setImportModalOpen(true);
+      if (queue.length > 1) {
+        message.info(`已加载 ${queue.length} 个 JSON，将按文件逐个导入`);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
       message.error(`导入预览失败：${reason}`);
+    } finally {
+      setImportingPreview(false);
     }
-  }, []);
+  }, [getFileName, importingPreview]);
+
+  const handleImportBatchImported = useCallback(async () => {
+    await onConnectionsImported();
+    const nextIndex = importQueueIndex + 1;
+    if (nextIndex < importPreviewQueue.length) {
+      setImportQueueIndex(nextIndex);
+      const nextBatch = importPreviewQueue[nextIndex];
+      message.info(`继续导入 ${nextBatch?.fileName ?? "下一个文件"} (${nextIndex + 1}/${importPreviewQueue.length})`);
+      return;
+    }
+
+    resetImportFlow();
+  }, [importPreviewQueue, importQueueIndex, onConnectionsImported, resetImportFlow]);
 
   return (
     <>
@@ -513,18 +662,33 @@ export const ConnectionManagerModal = ({
                 expanded={expanded}
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
+                selectedExportIds={selectedExportIds}
                 onSelect={handleSelect}
+                onToggleExportSelect={handleToggleExportSelect}
               />
             )}
           </div>
 
           {/* Footer */}
           <div className="mgr-sidebar-footer">
-            <span className="mgr-count">{connections.length} 个连接</span>
+            <span className="mgr-count">
+              {connections.length} 个连接
+              {selectedExportCount > 0 ? ` · 已选 ${selectedExportCount}` : ""}
+            </span>
             <div className="mgr-sidebar-footer-actions">
               <Tooltip title="导入连接">
-                <button type="button" className="mgr-action-btn" onClick={handleImport}>
-                  <i className="ri-upload-2-line" />
+                <button type="button" className="mgr-action-btn" onClick={handleImport} disabled={importingPreview}>
+                  <i className={importingPreview ? "ri-loader-4-line ri-spin" : "ri-upload-2-line"} />
+                </button>
+              </Tooltip>
+              <Tooltip title="导出选中连接">
+                <button
+                  type="button"
+                  className="mgr-action-btn"
+                  onClick={handleExportSelected}
+                  disabled={selectedExportCount === 0}
+                >
+                  <i className="ri-download-cloud-2-line" />
                 </button>
               </Tooltip>
               <Tooltip title="导出所有连接">
@@ -927,10 +1091,12 @@ export const ConnectionManagerModal = ({
 
     <ConnectionImportModal
       open={importModalOpen}
-      entries={importEntries}
+      entries={currentImportBatch?.entries ?? []}
       existingConnections={connections}
-      onClose={() => setImportModalOpen(false)}
-      onImported={onConnectionsImported}
+      sourceName={currentImportBatch?.fileName}
+      sourceProgress={importPreviewQueue.length > 1 ? `${importQueueIndex + 1}/${importPreviewQueue.length}` : undefined}
+      onClose={resetImportFlow}
+      onImported={handleImportBatchImported}
     />
     </>
   );

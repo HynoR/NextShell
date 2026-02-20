@@ -1,5 +1,6 @@
 appId: com.nextshell.desktop
 productName: NextShell
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 directories:
   output: release
 files:

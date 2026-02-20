@@ -1,11 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ConfigProvider, theme } from "antd";
+import { App as AntdApp, ConfigProvider, theme } from "antd";
 import "antd/dist/reset.css";
 import "@xterm/xterm/css/xterm.css";
 import "remixicon/fonts/remixicon.css";
 import { App } from "./App";
 import "./styles.css";
+
+// Expose current OS platform as a CSS data attribute so layout can adapt
+// without JS conditionals (e.g. macOS traffic-lights vs Windows overlay)
+document.documentElement.dataset.platform = window.nextshell.platform;
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -63,7 +67,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         },
       }}
     >
-      <App />
+      <AntdApp>
+        <App />
+      </AntdApp>
     </ConfigProvider>
   </React.StrictMode>
 );
