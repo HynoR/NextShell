@@ -503,7 +503,10 @@ const mergePreferences = (
       lineHeight: normalizeTerminalLineHeight(
         patch.terminal?.lineHeight,
         current.terminal.lineHeight
-      )
+      ),
+      backgroundImagePath: patch.terminal?.backgroundImagePath !== undefined
+        ? patch.terminal.backgroundImagePath
+        : current.terminal.backgroundImagePath
     },
     backup: {
       remotePath: patch.backup?.remotePath !== undefined
@@ -522,6 +525,10 @@ const mergePreferences = (
         patch.backup?.lastBackupAt !== undefined
           ? patch.backup.lastBackupAt
           : current.backup.lastBackupAt
+    },
+    window: {
+      minimizeToTray: patch.window?.minimizeToTray ?? current.window.minimizeToTray,
+      confirmBeforeClose: patch.window?.confirmBeforeClose ?? current.window.confirmBeforeClose
     }
   };
 };

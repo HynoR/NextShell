@@ -14,7 +14,8 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   remoteEdit: { ...prefs.remoteEdit },
   commandCenter: { ...prefs.commandCenter },
   terminal: { ...prefs.terminal },
-  backup: { ...prefs.backup }
+  backup: { ...prefs.backup },
+  window: { ...prefs.window }
 });
 
 const readLegacyValue = (key: string): string | undefined => {
@@ -138,7 +139,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       remoteEdit: { ...prev.remoteEdit, ...(patch.remoteEdit ?? {}) },
       commandCenter: { ...prev.commandCenter, ...(patch.commandCenter ?? {}) },
       terminal: { ...prev.terminal, ...(patch.terminal ?? {}) },
-      backup: { ...prev.backup, ...(patch.backup ?? {}) }
+      backup: { ...prev.backup, ...(patch.backup ?? {}) },
+      window: { ...prev.window, ...(patch.window ?? {}) }
     };
     set({ preferences: optimistic });
 

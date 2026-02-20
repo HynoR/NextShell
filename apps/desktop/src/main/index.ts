@@ -1,12 +1,68 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Tray, Menu, dialog, nativeImage, protocol, net } from "electron";
 import { logger } from "./logger";
 import { registerIpcHandlers } from "./ipc/register";
 import { createServiceContainer, type ServiceContainer } from "./services/container";
 
+// Must be called before app is ready — register local asset protocol for background images
+protocol.registerSchemesAsPrivileged([
+  { scheme: "nextshell-asset", privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
+]);
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let services: ServiceContainer | undefined;
+let tray: Tray | undefined;
+let isQuitting = false;
+
+const getWindowPrefs = () => {
+  const prefs = services?.getAppPreferences();
+  return {
+    minimizeToTray: prefs?.window?.minimizeToTray ?? false,
+    confirmBeforeClose: prefs?.window?.confirmBeforeClose ?? true
+  };
+};
+
+const destroyTray = (): void => {
+  if (tray) {
+    tray.destroy();
+    tray = undefined;
+  }
+};
+
+const createTray = (mainWindow: BrowserWindow): Tray => {
+  const icon = nativeImage.createEmpty();
+  const t = new Tray(icon);
+  if (process.platform === "darwin") {
+    t.setTitle(">_");
+  }
+  t.setToolTip("NextShell");
+
+  const buildMenu = () => Menu.buildFromTemplate([
+    {
+      label: "显示 NextShell",
+      click: () => {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    },
+    { type: "separator" },
+    {
+      label: "退出",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  t.setContextMenu(buildMenu());
+  t.on("click", () => {
+    mainWindow.show();
+    mainWindow.focus();
+  });
+  return t;
+};
 
 const createMainWindow = async (): Promise<void> => {
   const mainWindow = new BrowserWindow({
@@ -21,6 +77,42 @@ const createMainWindow = async (): Promise<void> => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
+    }
+  });
+
+  mainWindow.on("close", (event) => {
+    if (isQuitting) {
+      destroyTray();
+      return;
+    }
+
+    const { minimizeToTray, confirmBeforeClose } = getWindowPrefs();
+
+    if (minimizeToTray) {
+      event.preventDefault();
+      mainWindow.hide();
+      if (!tray) {
+        tray = createTray(mainWindow);
+      }
+      return;
+    }
+
+    destroyTray();
+
+    if (confirmBeforeClose) {
+      event.preventDefault();
+      const result = dialog.showMessageBoxSync(mainWindow, {
+        type: "question",
+        buttons: ["取消", "退出"],
+        defaultId: 0,
+        cancelId: 0,
+        title: "退出确认",
+        message: "确定要退出 NextShell 吗？"
+      });
+      if (result === 1) {
+        isQuitting = true;
+        app.quit();
+      }
     }
   });
 
@@ -47,12 +139,23 @@ app.whenReady().then(async () => {
     keytarServiceName: "NextShell"
   });
 
+  // Serve local image files under nextshell-asset:// for terminal background images
+  protocol.handle("nextshell-asset", (request) => {
+    const url = new URL(request.url);
+    const filePath = decodeURIComponent(url.pathname);
+    return net.fetch(`file://${filePath}`);
+  });
+
   registerIpcHandlers(services);
   await createMainWindow();
   logger.info("[App] main window ready");
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    const existingWindow = BrowserWindow.getAllWindows()[0];
+    if (existingWindow) {
+      existingWindow.show();
+      existingWindow.focus();
+    } else {
       void createMainWindow();
     }
   });
@@ -65,6 +168,8 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  destroyTray();
   if (services) {
     void services.dispose();
   }

@@ -253,6 +253,8 @@ export interface AppPreferences {
     foregroundColor: string;
     fontSize: number;
     lineHeight: number;
+    /** 背景图片绝对路径，空字符串表示不使用图片 */
+    backgroundImagePath: string;
   };
   backup: {
     remotePath: string;
@@ -262,6 +264,10 @@ export interface AppPreferences {
     defaultRestoreConflictPolicy: RestoreConflictPolicy;
     rememberPassword: boolean;
     lastBackupAt: string | null;
+  };
+  window: {
+    minimizeToTray: boolean;
+    confirmBeforeClose: boolean;
   };
 }
 
@@ -281,6 +287,7 @@ export interface AppPreferencesPatch {
     foregroundColor?: string;
     fontSize?: number;
     lineHeight?: number;
+    backgroundImagePath?: string;
   };
   backup?: {
     remotePath?: string;
@@ -289,6 +296,10 @@ export interface AppPreferencesPatch {
     defaultRestoreConflictPolicy?: RestoreConflictPolicy;
     rememberPassword?: boolean;
     lastBackupAt?: string | null;
+  };
+  window?: {
+    minimizeToTray?: boolean;
+    confirmBeforeClose?: boolean;
   };
 }
 
@@ -344,7 +355,8 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     backgroundColor: "#0b2740",
     foregroundColor: "#d8eaff",
     fontSize: 14,
-    lineHeight: 1.2
+    lineHeight: 1.2,
+    backgroundImagePath: ""
   },
   backup: {
     remotePath: "",
@@ -353,5 +365,9 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     defaultRestoreConflictPolicy: "skip_older",
     rememberPassword: true,
     lastBackupAt: null
+  },
+  window: {
+    minimizeToTray: false,
+    confirmBeforeClose: true
   }
 };

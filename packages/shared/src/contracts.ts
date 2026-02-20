@@ -303,7 +303,8 @@ export const appPreferencesSchema = z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
     foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
-    lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight)
+    lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight),
+    backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.terminal.backgroundImagePath)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
   backup: z.object({
     remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
@@ -312,7 +313,11 @@ export const appPreferencesSchema = z.object({
     defaultRestoreConflictPolicy: restoreConflictPolicySchema.default(DEFAULT_APP_PREFERENCES.backup.defaultRestoreConflictPolicy),
     rememberPassword: z.boolean().default(DEFAULT_APP_PREFERENCES.backup.rememberPassword),
     lastBackupAt: z.string().nullable().default(DEFAULT_APP_PREFERENCES.backup.lastBackupAt)
-  }).default(DEFAULT_APP_PREFERENCES.backup)
+  }).default(DEFAULT_APP_PREFERENCES.backup),
+  window: z.object({
+    minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
+    confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose)
+  }).default(DEFAULT_APP_PREFERENCES.window)
 }).default(DEFAULT_APP_PREFERENCES);
 
 export const appPreferencesPatchSchema = z.object({
@@ -330,7 +335,8 @@ export const appPreferencesPatchSchema = z.object({
     backgroundColor: terminalColorSchema.optional(),
     foregroundColor: terminalColorSchema.optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
-    lineHeight: z.coerce.number().min(1).max(2).optional()
+    lineHeight: z.coerce.number().min(1).max(2).optional(),
+    backgroundImagePath: z.string().optional()
   }).optional(),
   backup: z.object({
     remotePath: z.string().optional(),
@@ -339,6 +345,10 @@ export const appPreferencesPatchSchema = z.object({
     defaultRestoreConflictPolicy: restoreConflictPolicySchema.optional(),
     rememberPassword: z.boolean().optional(),
     lastBackupAt: z.string().nullable().optional()
+  }).optional(),
+  window: z.object({
+    minimizeToTray: z.boolean().optional(),
+    confirmBeforeClose: z.boolean().optional()
   }).optional()
 });
 

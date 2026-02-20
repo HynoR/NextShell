@@ -261,7 +261,8 @@ const cloneDefaultPreferences = (): AppPreferences => {
     remoteEdit: { ...DEFAULT_APP_PREFERENCES_VALUE.remoteEdit },
     commandCenter: { ...DEFAULT_APP_PREFERENCES_VALUE.commandCenter },
     terminal: { ...DEFAULT_APP_PREFERENCES_VALUE.terminal },
-    backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup }
+    backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
+    window: { ...DEFAULT_APP_PREFERENCES_VALUE.window }
   };
 };
 
@@ -327,7 +328,11 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.terminal.lineHeight >= 1 &&
           parsed.terminal.lineHeight <= 2
             ? parsed.terminal.lineHeight
-            : fallback.terminal.lineHeight
+            : fallback.terminal.lineHeight,
+        backgroundImagePath:
+          typeof parsed.terminal?.backgroundImagePath === "string"
+            ? parsed.terminal.backgroundImagePath
+            : fallback.terminal.backgroundImagePath
       },
       backup: {
         remotePath:
@@ -356,6 +361,16 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.backup?.lastBackupAt === "string"
             ? parsed.backup.lastBackupAt
             : fallback.backup.lastBackupAt
+      },
+      window: {
+        minimizeToTray:
+          typeof parsed.window?.minimizeToTray === "boolean"
+            ? parsed.window.minimizeToTray
+            : fallback.window.minimizeToTray,
+        confirmBeforeClose:
+          typeof parsed.window?.confirmBeforeClose === "boolean"
+            ? parsed.window.confirmBeforeClose
+            : fallback.window.confirmBeforeClose
       }
     };
   } catch {

@@ -1,4 +1,4 @@
-import {
+import React, {
   forwardRef,
   useCallback,
   useEffect,
@@ -243,11 +243,14 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 
     const terminal = new Terminal({
       cursorBlink: true,
+      allowTransparency: true,
       fontSize: terminalPreferences.fontSize,
       lineHeight: terminalPreferences.lineHeight,
       fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
       theme: {
-        background: terminalPreferences.backgroundColor,
+        background: terminalPreferences.backgroundImagePath
+          ? "rgba(0, 0, 0, 0)"
+          : terminalPreferences.backgroundColor,
         foreground: terminalPreferences.foregroundColor,
         cursor: terminalPreferences.foregroundColor
       }
@@ -426,7 +429,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 
     terminal.options.theme = {
       ...terminal.options.theme,
-      background: terminalPreferences.backgroundColor,
+      background: terminalPreferences.backgroundImagePath
+        ? "rgba(0, 0, 0, 0)"
+        : terminalPreferences.backgroundColor,
       foreground: terminalPreferences.foregroundColor,
       cursor: terminalPreferences.foregroundColor
     };
@@ -448,7 +453,8 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     terminalPreferences.backgroundColor,
     terminalPreferences.foregroundColor,
     terminalPreferences.fontSize,
-    terminalPreferences.lineHeight
+    terminalPreferences.lineHeight,
+    terminalPreferences.backgroundImagePath
   ]);
 
   useEffect(() => {
@@ -547,9 +553,19 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }
   }, [appendSessionOutput, connection, replaySessionOutput, session]);
 
+  const bgImagePath = terminalPreferences.backgroundImagePath;
+  const containerStyle: React.CSSProperties = bgImagePath
+    ? {
+        backgroundImage: `url("nextshell-asset://local${bgImagePath}")`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat"
+      }
+    : {};
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 py-1.5 px-1" ref={containerRef} />
+      <div className="flex-1 min-h-0 py-1.5 px-1" style={containerStyle} ref={containerRef} />
     </div>
   );
 });

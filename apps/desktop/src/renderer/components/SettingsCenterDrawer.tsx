@@ -80,6 +80,11 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   );
   const [terminalFontSize, setTerminalFontSize] = useState<number>(preferences.terminal.fontSize);
   const [terminalLineHeight, setTerminalLineHeight] = useState<number>(preferences.terminal.lineHeight);
+  const [terminalBackgroundImagePath, setTerminalBackgroundImagePath] = useState(
+    preferences.terminal.backgroundImagePath
+  );
+  const [minimizeToTray, setMinimizeToTray] = useState(preferences.window.minimizeToTray);
+  const [confirmBeforeClose, setConfirmBeforeClose] = useState(preferences.window.confirmBeforeClose);
   const [saving, setSaving] = useState(false);
 
   // ─── Backup state ─────────────────────────────────────────────────────────
@@ -131,11 +136,14 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     );
     setTerminalFontSize(preferences.terminal.fontSize);
     setTerminalLineHeight(preferences.terminal.lineHeight);
+    setTerminalBackgroundImagePath(preferences.terminal.backgroundImagePath);
     setBackupRemotePath(preferences.backup.remotePath);
     setRclonePath(preferences.backup.rclonePath);
     setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
     setRestoreConflictPolicy(preferences.backup.defaultRestoreConflictPolicy);
     setBackupRememberPassword(preferences.backup.rememberPassword);
+    setMinimizeToTray(preferences.window.minimizeToTray);
+    setConfirmBeforeClose(preferences.window.confirmBeforeClose);
   }, [open, preferences]);
 
   useEffect(() => {
@@ -336,7 +344,8 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           backgroundColor: normalizedTerminalBackgroundColor,
           foregroundColor: normalizedTerminalForegroundColor,
           fontSize: terminalFontSize,
-          lineHeight: terminalLineHeight
+          lineHeight: terminalLineHeight,
+          backgroundImagePath: terminalBackgroundImagePath
         },
         backup: {
           remotePath: backupRemotePath.trim(),
@@ -344,6 +353,10 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           defaultBackupConflictPolicy: backupConflictPolicy,
           defaultRestoreConflictPolicy: restoreConflictPolicy,
           rememberPassword: backupRememberPassword
+        },
+        window: {
+          minimizeToTray,
+          confirmBeforeClose
         }
       });
 
@@ -373,6 +386,32 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
       )}
     >
       <div className="flex flex-col gap-3">
+        <Typography.Title level={5}>窗口行为</Typography.Title>
+        <Typography.Text type="secondary">控制关闭按钮的行为方式。</Typography.Text>
+        <div className="settings-switch-row">
+          <span>关闭后最小化到托盘</span>
+          <Switch
+            checked={minimizeToTray}
+            disabled={loading}
+            onChange={setMinimizeToTray}
+          />
+        </div>
+        <div className="settings-switch-row">
+          <span>关闭窗口前确认</span>
+          <Switch
+            checked={confirmBeforeClose}
+            disabled={loading || minimizeToTray}
+            onChange={setConfirmBeforeClose}
+          />
+        </div>
+        {minimizeToTray && (
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            启用"最小化到托盘"时，关闭按钮将隐藏窗口到系统托盘；可从托盘菜单中退出应用。
+          </Typography.Text>
+        )}
+
+        <Divider />
+
         <Typography.Title level={5}>文件传输</Typography.Title>
         <Typography.Text type="secondary">统一设置上传/下载默认路径。</Typography.Text>
 
@@ -458,13 +497,71 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         <Divider />
 
         <Typography.Title level={5}>终端主题</Typography.Title>
-        <Typography.Text type="secondary">设置终端背景、文字颜色和排版参数。</Typography.Text>
+        <Typography.Text type="secondary">设置终端背景图片、颜色和排版参数。</Typography.Text>
+
+        <div className="flex flex-col gap-2 mt-1.5">
+          <Typography.Text>终端背景图片</Typography.Text>
+          <div className="flex gap-2 items-center">
+            <Input
+              style={{ flex: 1 }}
+              value={terminalBackgroundImagePath}
+              disabled={loading}
+              readOnly
+              placeholder="未设置（点击右侧按钮选择图片）"
+            />
+            <Button
+              onClick={() =>
+                void (async () => {
+                  try {
+                    const result = await window.nextshell.dialog.openFiles({
+                      title: "选择终端背景图片",
+                      multi: false
+                    });
+                    if (!result.canceled && result.filePaths[0]) {
+                      setTerminalBackgroundImagePath(result.filePaths[0]);
+                    }
+                  } catch {
+                    message.error("打开文件选择器失败");
+                  }
+                })()
+              }
+            >
+              选择图片
+            </Button>
+            {terminalBackgroundImagePath && (
+              <Button
+                danger
+                onClick={() => setTerminalBackgroundImagePath("")}
+              >
+                清除
+              </Button>
+            )}
+          </div>
+          {terminalBackgroundImagePath && (
+            <div
+              style={{
+                height: 80,
+                borderRadius: 6,
+                overflow: "hidden",
+                backgroundImage: `url("nextshell-asset://local${terminalBackgroundImagePath}")`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                border: "1px solid rgba(255,255,255,0.1)"
+              }}
+            />
+          )}
+          {terminalBackgroundImagePath && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              已设置背景图片，背景颜色设置将被禁用。
+            </Typography.Text>
+          )}
+        </div>
 
         <div className="flex flex-col gap-2 mt-1.5">
           <Typography.Text>主题预设</Typography.Text>
           <Select
             value={terminalThemePreset}
-            disabled={loading}
+            disabled={loading || !!terminalBackgroundImagePath}
             options={[
               ...TERMINAL_THEME_PRESETS.map((item) => ({ label: item.label, value: item.value })),
               { label: "自定义", value: CUSTOM_THEME_PRESET }
@@ -487,14 +584,14 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
             <Input
               style={{ flex: 1 }}
               value={terminalBackgroundColor}
-              disabled={loading}
+              disabled={loading || !!terminalBackgroundImagePath}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
               placeholder="#0b2740"
             />
             <input
               className="settings-color-input"
               type="color"
-              disabled={loading}
+              disabled={loading || !!terminalBackgroundImagePath}
               value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#0b2740"}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
             />
