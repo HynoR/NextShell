@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  App as AntdApp,
   Badge,
   Button,
   Divider,
@@ -15,8 +16,7 @@ import {
   Spin,
   Switch,
   Tag,
-  Typography,
-  message
+  Typography
 } from "antd";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import type { BackupArchiveMeta, WindowAppearance } from "@nextshell/core";
@@ -59,6 +59,7 @@ const resolvePresetByColors = (backgroundColor: string, foregroundColor: string)
 };
 
 export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProps) => {
+  const { message, modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const loading = usePreferencesStore((state) => state.loading);
   const initialize = usePreferencesStore((state) => state.initialize);
@@ -261,7 +262,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   };
 
   const handleRestore = async (archiveId: string): Promise<void> => {
-    Modal.confirm({
+    modal.confirm({
       title: "确认还原",
       content: "还原操作会在下次启动时覆盖当前数据库。确定继续？",
       okText: "确认还原",

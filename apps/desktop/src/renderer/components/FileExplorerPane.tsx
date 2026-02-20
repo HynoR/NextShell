@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Modal, Table, Tree, Typography, message } from "antd";
+import { App as AntdApp, Modal, Table, Tree, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import type { ConnectionProfile, RemoteFileEntry } from "@nextshell/core";
@@ -337,6 +337,7 @@ const ContextMenu = ({
 
 // ── Main component ────────────────────────────────────────
 export const FileExplorerPane = ({ connection, connected, onOpenSettings }: FileExplorerPaneProps) => {
+  const { modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const enqueueTask = useTransferQueueStore((state) => state.enqueueTask);
@@ -775,7 +776,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings }: File
   // ── Create directory / file ─────────────────────────────
   const handleCreateDirectory = async (): Promise<void> => {
     if (!connection) return;
-    const folderName = await promptModal("新建目录名称");
+    const folderName = await promptModal(modal, "新建目录名称");
     if (!folderName) return;
     const targetPath = joinRemotePath(pathName, folderName);
     try {
@@ -793,7 +794,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings }: File
 
   const handleCreateFile = async (): Promise<void> => {
     if (!connection) return;
-    const fileName = await promptModal("新建文件名称");
+    const fileName = await promptModal(modal, "新建文件名称");
     if (!fileName) return;
     const targetPath = joinRemotePath(pathName, fileName);
     setBusy(true);
@@ -809,7 +810,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings }: File
   const handleRename = async (entry?: RemoteFileEntry): Promise<void> => {
     const target = entry ?? singleSelected;
     if (!connection || !target) return;
-    const toPath = await promptModal("重命名为", undefined, target.path);
+    const toPath = await promptModal(modal, "重命名为", undefined, target.path);
     if (!toPath || toPath === target.path) return;
     const normalized = normalizeRemotePath(toPath);
     setBusy(true);

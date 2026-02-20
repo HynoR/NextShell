@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Form, Input, InputNumber, Modal, Select, Switch, Tooltip, message } from "antd";
 import type { ConnectionProfile, ConnectionImportEntry, SshKeyProfile, ProxyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
@@ -269,6 +269,7 @@ export const ConnectionManagerModal = ({
   const [importQueueIndex, setImportQueueIndex] = useState(0);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
+  const appliedFocusConnectionIdRef = useRef<string | undefined>(undefined);
 
   const tree = useMemo(
     () => buildManagerTree(connections, keyword),
@@ -390,13 +391,19 @@ export const ConnectionManagerModal = ({
   }, [connections, applyConnectionToForm]);
 
   useEffect(() => {
-    if (!open || !focusConnectionId) {
+    if (!open) {
+      appliedFocusConnectionIdRef.current = undefined;
+      return;
+    }
+
+    if (!focusConnectionId || appliedFocusConnectionIdRef.current === focusConnectionId) {
       return;
     }
 
     setActiveTab("connections");
     setKeyword("");
     handleSelect(focusConnectionId);
+    appliedFocusConnectionIdRef.current = focusConnectionId;
   }, [focusConnectionId, handleSelect, open]);
 
   const handleReset = useCallback(() => {

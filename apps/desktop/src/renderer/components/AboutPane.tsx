@@ -10,6 +10,7 @@ const hasRepo = normalizedRepo.length > 0;
 // Fallback example values shown when no repo is configured
 const displayRepo = hasRepo ? normalizedRepo : "owner/repo";
 const displayRepoUrl = `https://github.com/${displayRepo}`;
+const licenseUrl = `https://github.com/${displayRepo}/blob/main/LICENSE`;
 
 export const AboutPane = () => {
   const [checking, setChecking] = useState(false);
@@ -82,6 +83,29 @@ export const AboutPane = () => {
             <i className="ri-information-line" aria-hidden="true" /> 当前版本
           </span>
           <span className="about-value">v{appVersion}</span>
+        </div>
+
+        <div className="about-row">
+          <span className="about-label">
+            <i className="ri-book-2-line" aria-hidden="true" /> License
+          </span>
+          {hasRepo ? (
+            <a
+              className="about-link"
+              href={licenseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleOpenLink(licenseUrl);
+              }}
+            >
+              GNU General Public License v3.0
+              <i className="ri-external-link-line" aria-hidden="true" />
+            </a>
+          ) : (
+            <span className="about-value about-placeholder">GNU General Public License v3.0</span>
+          )}
         </div>
 
         <div className="about-row">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Form, Input, Modal, Select, message } from "antd";
+import { App as AntdApp, Form, Input, Modal, Select, message } from "antd";
 import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { promptModal } from "../utils/promptModal";
@@ -405,6 +405,7 @@ export const ConnectionTreePanel = ({
   onQuickSave,
   onOpenManagerForConnection
 }: ConnectionTreePanelProps) => {
+  const { modal } = AntdApp.useApp();
   const [keyword, setKeyword] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["root"]));
   const [contextMenu, setContextMenu] = useState<ConnectionContextMenuState | null>(null);
@@ -511,7 +512,7 @@ export const ConnectionTreePanel = ({
 
   const handleEditName = useCallback(
     async (connection: ConnectionProfile) => {
-      const name = await promptModal("编辑连接名称", "输入新的连接名称", connection.name);
+      const name = await promptModal(modal, "编辑连接名称", "输入新的连接名称", connection.name);
       if (!name || name === connection.name) {
         return;
       }
@@ -527,7 +528,7 @@ export const ConnectionTreePanel = ({
         setSavingName(false);
       }
     },
-    [onQuickSave]
+    [modal, onQuickSave]
   );
 
   const handleOpenCredentialEditor = useCallback(

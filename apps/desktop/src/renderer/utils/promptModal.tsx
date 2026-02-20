@@ -1,13 +1,27 @@
-import { Input, Modal } from "antd";
+import { App as AntdApp, Input } from "antd";
 
 /**
  * Drop-in replacement for window.prompt() using Ant Design Modal.
  * Returns the trimmed input value, or null if the user cancels / leaves blank.
  */
-export function promptModal(title: string, placeholder?: string, defaultValue?: string): Promise<string | null> {
+type ModalInstance = ReturnType<typeof AntdApp.useApp>["modal"];
+
+export function promptModal(
+  modal: ModalInstance,
+  title: string,
+  placeholder?: string,
+  defaultValue?: string
+): Promise<string | null> {
   return new Promise((resolve) => {
     let value = defaultValue ?? "";
-    Modal.confirm({
+    let close: (() => void) | undefined;
+    let settled = false;
+    const settle = (result: string | null): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const instance = modal.confirm({
       title,
       content: (
         <Input
@@ -16,17 +30,18 @@ export function promptModal(title: string, placeholder?: string, defaultValue?: 
           onChange={(e) => { value = e.target.value; }}
           onPressEnter={() => {
             const trimmed = value.trim();
-            Modal.destroyAll();
-            resolve(trimmed || null);
+            close?.();
+            settle(trimmed || null);
           }}
           autoFocus
         />
       ),
       onOk: () => {
         const trimmed = value.trim();
-        resolve(trimmed || null);
+        settle(trimmed || null);
       },
-      onCancel: () => resolve(null),
+      onCancel: () => settle(null),
     });
+    close = instance.destroy;
   });
 }

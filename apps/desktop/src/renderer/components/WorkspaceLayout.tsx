@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { message, Tabs } from "antd";
+import { App as AntdApp, message, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type {
   ConnectionProfile,
@@ -127,6 +127,7 @@ export const WorkspaceLayout = ({
   onAuthPromptCancel,
   onAuthPromptSubmit,
 }: WorkspaceLayoutProps) => {
+  const { modal } = AntdApp.useApp();
   const [draggingSessionId, setDraggingSessionId] = useState<string>();
   const [bottomCollapsed, setBottomCollapsed] = useState(false);
   const [terminalSearchMode, setTerminalSearchMode] = useState(false);
@@ -337,6 +338,7 @@ export const WorkspaceLayout = ({
                               if (!isTerminal) return;
                               void (async () => {
                                 const title = await promptModal(
+                                  modal,
                                   "会话标题",
                                   undefined,
                                   session.title,
