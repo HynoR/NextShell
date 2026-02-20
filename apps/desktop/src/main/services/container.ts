@@ -101,6 +101,7 @@ import {
   parseCompetitorImport
 } from "./import-export";
 import { logger } from "../logger";
+import { applyAppearanceToAllWindows } from "../window-theme";
 
 interface ActiveSession {
   descriptor: SessionDescriptor;
@@ -1715,7 +1716,13 @@ export const createServiceContainer = (
   const updateAppPreferences = (patch: SettingsUpdateInput): AppPreferences => {
     const current = connections.getAppPreferences();
     const merged = mergePreferences(current, patch);
-    return connections.saveAppPreferences(merged);
+    const saved = connections.saveAppPreferences(merged);
+
+    if (patch.window?.appearance !== undefined) {
+      applyAppearanceToAllWindows(saved.window.appearance);
+    }
+
+    return saved;
   };
 
   const openFilesDialog = async (

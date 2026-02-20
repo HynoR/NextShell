@@ -22,3 +22,10 @@ bun run dev
 - SFTP 文件浏览
 - 远程资源监控（无 agent）
 - 本地存储 + Keychain 敏感信息管理
+
+## Build Versioning
+
+- Release 构建（GitHub Actions tag workflow）通过 `NEXTSHELL_BUILD_VERSION` 注入版本，值来自 git tag（支持 `v1.2.3` / `1.2.3`）。
+- 非 tag 构建默认使用 `apps/desktop/package.json` 的基础版本拼接短 commit SHA：`<base>-dev+<shortSha>`。
+- 如果无法读取 git SHA，则回退为 `<base>-dev+unknown`。
+- 应用内版本显示、更新检查当前版本、备份元数据 `appVersion` 均使用同一构建版本来源。

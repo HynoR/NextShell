@@ -71,6 +71,7 @@ jobs:
       ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
       RELEASE_VERSION: ${{ needs.verify-main-tag.outputs.release_version }}
+      NEXTSHELL_BUILD_VERSION: ${{ needs.verify-main-tag.outputs.release_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

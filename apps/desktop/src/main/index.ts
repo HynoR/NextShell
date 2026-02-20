@@ -1,9 +1,24 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, Tray, Menu, dialog, nativeImage, protocol, net } from "electron";
+import {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  dialog,
+  nativeImage,
+  protocol,
+  net,
+  nativeTheme
+} from "electron";
 import { logger } from "./logger";
 import { registerIpcHandlers } from "./ipc/register";
 import { createServiceContainer, type ServiceContainer } from "./services/container";
+import {
+  applyAppearanceToAllWindows,
+  resolveWindowBackgroundColor,
+  resolveWindowsTitleBarOverlay
+} from "./window-theme";
 
 // Must be called before app is ready — register local asset protocol for background images
 protocol.registerSchemesAsPrivileged([
@@ -67,17 +82,18 @@ const createTray = (mainWindow: BrowserWindow): Tray => {
 const createMainWindow = async (): Promise<void> => {
   const isMac = process.platform === "darwin";
   const isWin = process.platform === "win32";
+  const appearance = services?.getAppPreferences().window.appearance ?? "system";
 
   const mainWindow = new BrowserWindow({
     width: 1560,
     height: 940,
     minWidth: 1280,
     minHeight: 780,
-    backgroundColor: "#0a1d30",
+    backgroundColor: resolveWindowBackgroundColor(appearance),
     title: "NextShell",
     titleBarStyle: "hidden",
     ...(isMac && { windowButtonPosition: { x: 14, y: 14 } }),
-    ...(isWin && { titleBarOverlay: { color: "#0f1923", symbolColor: "#c9d1d9", height: 44 } }),
+    ...(isWin && { titleBarOverlay: resolveWindowsTitleBarOverlay(appearance) }),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.mjs"),
       contextIsolation: true,
@@ -153,6 +169,16 @@ app.whenReady().then(async () => {
   });
 
   registerIpcHandlers(services);
+
+  if (process.platform === "win32") {
+    nativeTheme.on("updated", () => {
+      const appearance = services?.getAppPreferences().window.appearance ?? "system";
+      if (appearance === "system") {
+        applyAppearanceToAllWindows(appearance);
+      }
+    });
+  }
+
   await createMainWindow();
   logger.info("[App] main window ready");
 

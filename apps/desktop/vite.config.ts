@@ -1,5 +1,6 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -7,7 +8,38 @@ import electron from "vite-plugin-electron/simple";
 import { defineConfig } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appVersion = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8")).version as string;
+
+const resolveBaseVersion = (): string => {
+  const parsed = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8")) as {
+    version?: string;
+  };
+  const version = parsed.version?.trim();
+  return version && version.length > 0 ? version : "0.0.0";
+};
+
+const resolveGitShortSha = (): string | undefined => {
+  try {
+    const shortSha = execSync("git rev-parse --short HEAD", {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "ignore"]
+    }).toString("utf-8").trim();
+    return shortSha.length > 0 ? shortSha : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const resolveBuildVersion = (): string => {
+  const envVersion = process.env["NEXTSHELL_BUILD_VERSION"]?.trim();
+  if (envVersion) {
+    return envVersion;
+  }
+  const baseVersion = resolveBaseVersion();
+  const shortSha = resolveGitShortSha() ?? "unknown";
+  return `${baseVersion}-dev+${shortSha}`;
+};
+
+const appVersion = resolveBuildVersion();
 const githubRepo = (process.env["NEXTSHELL_GITHUB_REPO"] ?? process.env["VITE_GITHUB_REPO"] ?? "HynoR/NextShell").trim();
 const pkg = (name: string) => path.resolve(__dirname, "../../packages", name, "src");
 const aliases = {

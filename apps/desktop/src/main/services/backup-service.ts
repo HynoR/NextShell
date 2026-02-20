@@ -11,7 +11,7 @@ import { logger } from "../logger";
 
 const execFileAsync = promisify(execFile);
 
-const APP_VERSION = "0.1.0";
+const APP_VERSION = (process.env["VITE_APP_VERSION"] ?? "0.0.0").trim() || "0.0.0";
 const NSBK_EXTENSION = ".nsbk";
 const META_EXTENSION = ".meta.json";
 const SNAPSHOT_FILENAME = "nextshell.snapshot.db";

@@ -16,6 +16,7 @@ logs
 
 docs/
 apps/desktop/dist/
+apps/desktop/release/
 
 # os/editor
 .DS_Store
