@@ -10,6 +10,9 @@ import {
   commandHistoryListSchema,
   commandHistoryPushSchema,
   commandHistoryRemoveSchema,
+  connectionExportSchema,
+  connectionImportPreviewSchema,
+  connectionImportExecuteSchema,
   connectionListQuerySchema,
   connectionRemoveSchema,
   connectionUpsertSchema,
@@ -110,6 +113,21 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.ConnectionRemove, (_event, payload) => {
     const input = parsePayload(connectionRemoveSchema, payload, "连接删除");
     return services.removeConnection(input.id);
+  });
+
+  ipcMain.handle(IPCChannel.ConnectionExport, (event, payload) => {
+    const input = parsePayload(connectionExportSchema, payload, "连接导出");
+    return services.exportConnections(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.ConnectionImportPreview, (_event, payload) => {
+    const input = parsePayload(connectionImportPreviewSchema, payload, "连接导入预览");
+    return services.importConnectionsPreview(input.filePath);
+  });
+
+  ipcMain.handle(IPCChannel.ConnectionImportExecute, (_event, payload) => {
+    const input = parsePayload(connectionImportExecuteSchema, payload, "连接导入执行");
+    return services.importConnectionsExecute(input);
   });
 
   ipcMain.handle(IPCChannel.SettingsGet, (_event, payload) => {

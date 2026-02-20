@@ -19,7 +19,10 @@ const api: NextShellApi = {
   connection: {
     list: (query) => ipcRenderer.invoke(IPCChannel.ConnectionList, query),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionUpsert, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRemove, payload)
+    remove: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRemove, payload),
+    exportToFile: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionExport, payload),
+    importPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportPreview, payload),
+    importExecute: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportExecute, payload)
   },
   session: {
     open: (payload) => ipcRenderer.invoke(IPCChannel.SessionOpen, payload),

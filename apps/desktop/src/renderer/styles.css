@@ -2479,6 +2479,36 @@ body {
   padding: 7px 12px;
   border-top: 1px solid var(--border-dim);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mgr-sidebar-footer-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.mgr-action-btn {
+  background: none;
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  color: var(--t2);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mgr-action-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.mgr-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .mgr-count {

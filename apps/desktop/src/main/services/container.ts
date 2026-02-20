@@ -1,3 +1,4 @@
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,9 +18,13 @@ import type {
   CommandExecutionResult,
   CommandHistoryEntry,
   CommandTemplateParam,
+  ConnectionExportFile,
+  ConnectionImportEntry,
+  ConnectionImportResult,
   ConnectionListQuery,
   ConnectionProfile,
   DeleteMode,
+  ExportedConnection,
   MigrationRecord,
   MonitorProcess,
   MonitorSnapshot,
@@ -49,6 +54,8 @@ import type {
   DialogOpenFilesInput,
   DialogOpenPathInput,
   CommandBatchExecInput,
+  ConnectionExportInput,
+  ConnectionImportExecuteInput,
   ConnectionUpsertInput,
   MonitorProcessKillInput,
   SessionAuthOverrideInput,
@@ -86,6 +93,12 @@ import {
 } from "../../../../../packages/storage/src/index";
 import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
+import {
+  isNextShellFormat,
+  isCompetitorFormat,
+  parseNextShellImport,
+  parseCompetitorImport
+} from "./import-export";
 import { logger } from "../logger";
 
 interface ActiveSession {
@@ -161,6 +174,12 @@ export interface ServiceContainer {
   listConnections: (query: ConnectionListQuery) => ConnectionProfile[];
   upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   removeConnection: (id: string) => Promise<{ ok: true }>;
+  exportConnections: (
+    sender: WebContents,
+    input: ConnectionExportInput
+  ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+  importConnectionsPreview: (filePath: string) => Promise<ConnectionImportEntry[]>;
+  importConnectionsExecute: (input: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   listSshKeys: () => SshKeyProfile[];
   upsertSshKey: (input: SshKeyUpsertInput) => Promise<SshKeyProfile>;
   removeSshKey: (input: SshKeyRemoveInput) => Promise<{ ok: true }>;
@@ -1965,6 +1984,185 @@ export const createServiceContainer = (
     return { ok: true };
   };
 
+  // ── Connection Import/Export ────────────────────────────────────────────
+
+  const exportConnections = async (
+    sender: WebContents,
+    input: ConnectionExportInput
+  ): Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }> => {
+    const owner = BrowserWindow.fromWebContents(sender);
+    const saveOptions = {
+      title: "导出连接",
+      defaultPath: "nextshell-connections.json",
+      filters: [{ name: "JSON", extensions: ["json"] }]
+    };
+    const result = owner
+      ? await dialog.showSaveDialog(owner, saveOptions)
+      : await dialog.showSaveDialog(saveOptions);
+
+    if (result.canceled || !result.filePath) {
+      return { ok: false, canceled: true };
+    }
+
+    const allConnections = connections.list({});
+    const idSet = new Set(input.connectionIds);
+    const filtered = allConnections.filter((c) => idSet.has(c.id));
+
+    const exportedConnections: ExportedConnection[] = [];
+    for (const conn of filtered) {
+      let password: string | undefined;
+      if (conn.authType === "password" && conn.credentialRef) {
+        try {
+          password = await vault.readCredential(conn.credentialRef);
+        } catch {
+          // If we can't read the credential, export without password
+        }
+      }
+
+      exportedConnections.push({
+        name: conn.name,
+        host: conn.host,
+        port: conn.port,
+        username: conn.username,
+        authType: conn.authType,
+        password,
+        groupPath: conn.groupPath,
+        tags: conn.tags,
+        notes: conn.notes,
+        favorite: conn.favorite,
+        terminalEncoding: conn.terminalEncoding,
+        backspaceMode: conn.backspaceMode,
+        deleteMode: conn.deleteMode,
+        monitorSession: conn.monitorSession
+      });
+    }
+
+    const exportFile: ConnectionExportFile = {
+      format: "nextshell-connections",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      connections: exportedConnections
+    };
+
+    fs.writeFileSync(result.filePath, JSON.stringify(exportFile, null, 2), "utf-8");
+
+    connections.appendAuditLog({
+      action: "connection.export",
+      level: "info",
+      message: `Exported ${exportedConnections.length} connections`,
+      metadata: { filePath: result.filePath, count: exportedConnections.length }
+    });
+
+    return { ok: true, filePath: result.filePath };
+  };
+
+  const importConnectionsPreview = async (filePath: string): Promise<ConnectionImportEntry[]> => {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const data: unknown = JSON.parse(raw);
+
+    if (isNextShellFormat(data)) {
+      return parseNextShellImport(data);
+    }
+
+    if (isCompetitorFormat(data)) {
+      return parseCompetitorImport(data);
+    }
+
+    throw new Error("无法识别的导入文件格式");
+  };
+
+  const importConnectionsExecute = async (
+    input: ConnectionImportExecuteInput
+  ): Promise<ConnectionImportResult> => {
+    const result: ConnectionImportResult = {
+      created: 0,
+      skipped: 0,
+      overwritten: 0,
+      failed: 0,
+      passwordsUnavailable: 0,
+      errors: []
+    };
+
+    const allConnections = connections.list({});
+
+    for (const entry of input.entries) {
+      try {
+        const existing = allConnections.find(
+          (c) => c.host === entry.host && c.port === entry.port && c.username === entry.username
+        );
+
+        if (existing) {
+          if (input.conflictPolicy === "skip") {
+            result.skipped++;
+            continue;
+          }
+
+          if (input.conflictPolicy === "overwrite") {
+            await upsertConnection({
+              id: existing.id,
+              name: entry.name,
+              host: entry.host,
+              port: entry.port,
+              username: entry.username,
+              authType: entry.authType,
+              password: entry.password,
+              strictHostKeyChecking: false,
+              groupPath: entry.groupPath,
+              tags: entry.tags,
+              notes: entry.notes,
+              favorite: entry.favorite,
+              terminalEncoding: entry.terminalEncoding,
+              backspaceMode: entry.backspaceMode,
+              deleteMode: entry.deleteMode,
+              monitorSession: entry.monitorSession
+            });
+            result.overwritten++;
+            if (!entry.password && entry.authType === "password") {
+              result.passwordsUnavailable++;
+            }
+            continue;
+          }
+        }
+
+        // "duplicate" policy or no existing match — create new
+        await upsertConnection({
+          name: entry.name,
+          host: entry.host,
+          port: entry.port,
+          username: entry.username,
+          authType: entry.authType,
+          password: entry.password,
+          strictHostKeyChecking: false,
+          groupPath: entry.groupPath,
+          tags: entry.tags,
+          notes: entry.notes,
+          favorite: entry.favorite,
+          terminalEncoding: entry.terminalEncoding,
+          backspaceMode: entry.backspaceMode,
+          deleteMode: entry.deleteMode,
+          monitorSession: entry.monitorSession
+        });
+        result.created++;
+        if (!entry.password && entry.authType === "password") {
+          result.passwordsUnavailable++;
+        }
+      } catch (error) {
+        result.failed++;
+        const reason = error instanceof Error ? error.message : "未知错误";
+        result.errors.push(`${entry.name} (${entry.host}:${entry.port}): ${reason}`);
+      }
+    }
+
+    connections.appendAuditLog({
+      action: "connection.import",
+      level: "info",
+      message: `Imported connections: ${result.created} created, ${result.overwritten} overwritten, ${result.skipped} skipped, ${result.failed} failed`,
+      metadata: { ...result }
+    });
+
+    return result;
+  };
+
   const openSession = async (
     connectionId: string,
     sender: WebContents,
@@ -3643,6 +3841,9 @@ export const createServiceContainer = (
     listConnections,
     upsertConnection,
     removeConnection,
+    exportConnections,
+    importConnectionsPreview,
+    importConnectionsExecute,
     listSshKeys,
     upsertSshKey,
     removeSshKey,

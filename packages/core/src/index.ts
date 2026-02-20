@@ -340,6 +340,46 @@ export interface CommandTemplateParam {
   updatedAt: string;
 }
 
+export interface ExportedConnection {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  authType: AuthType;
+  password?: string;
+  groupPath: string[];
+  tags: string[];
+  notes?: string;
+  favorite: boolean;
+  terminalEncoding: TerminalEncoding;
+  backspaceMode: BackspaceMode;
+  deleteMode: DeleteMode;
+  monitorSession: boolean;
+}
+
+export interface ConnectionExportFile {
+  format: "nextshell-connections";
+  version: 1;
+  exportedAt: string;
+  connections: ExportedConnection[];
+}
+
+export interface ConnectionImportEntry extends ExportedConnection {
+  passwordUnavailable?: boolean;
+  sourceFormat: "nextshell" | "competitor";
+}
+
+export type ImportConflictPolicy = "skip" | "overwrite" | "duplicate";
+
+export interface ConnectionImportResult {
+  created: number;
+  skipped: number;
+  overwritten: number;
+  failed: number;
+  passwordsUnavailable: number;
+  errors: string[];
+}
+
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   transfer: {
     uploadDefaultDir: "~",

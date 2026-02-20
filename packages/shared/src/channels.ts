@@ -65,5 +65,8 @@ export const IPCChannel = {
   SshKeyRemove: "nextshell:ssh-key:remove",
   ProxyList: "nextshell:proxy:list",
   ProxyUpsert: "nextshell:proxy:upsert",
-  ProxyRemove: "nextshell:proxy:remove"
+  ProxyRemove: "nextshell:proxy:remove",
+  ConnectionExport: "nextshell:connection:export",
+  ConnectionImportPreview: "nextshell:connection:import:preview",
+  ConnectionImportExecute: "nextshell:connection:import:execute"
 } as const;

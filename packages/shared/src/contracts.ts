@@ -466,6 +466,36 @@ export const proxyRemoveSchema = z.object({
   force: z.boolean().default(false)
 });
 
+// ─── Connection Import/Export ────────────────────────────────────────────────
+
+export const connectionExportSchema = z.object({
+  connectionIds: z.array(z.string().uuid()).min(1)
+});
+
+export const connectionImportPreviewSchema = z.object({
+  filePath: z.string().min(1)
+});
+
+export const connectionImportExecuteSchema = z.object({
+  entries: z.array(z.object({
+    name: z.string().min(1),
+    host: z.string().min(1),
+    port: z.coerce.number().int().min(1).max(65535),
+    username: z.string(),
+    authType: authTypeSchema,
+    password: z.string().optional(),
+    groupPath: z.array(z.string().min(1)).min(1),
+    tags: z.array(z.string()).default([]),
+    notes: z.string().optional(),
+    favorite: z.boolean().default(false),
+    terminalEncoding: terminalEncodingSchema.default("utf-8"),
+    backspaceMode: backspaceModeSchema.default("ascii-backspace"),
+    deleteMode: deleteModeSchema.default("vt220-delete"),
+    monitorSession: z.boolean().default(false),
+  })),
+  conflictPolicy: z.enum(["skip", "overwrite", "duplicate"]).default("skip")
+});
+
 export type ConnectionListQueryInput = z.infer<typeof connectionListQuerySchema>;
 export type ConnectionUpsertInput = z.infer<typeof connectionUpsertSchema>;
 export type ConnectionRemoveInput = z.infer<typeof connectionRemoveSchema>;
@@ -532,3 +562,6 @@ export type SshKeyRemoveInput = z.infer<typeof sshKeyRemoveSchema>;
 export type ProxyListInput = z.infer<typeof proxyListSchema>;
 export type ProxyUpsertInput = z.infer<typeof proxyUpsertSchema>;
 export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;
+export type ConnectionExportInput = z.infer<typeof connectionExportSchema>;
+export type ConnectionImportPreviewInput = z.infer<typeof connectionImportPreviewSchema>;
+export type ConnectionImportExecuteInput = z.infer<typeof connectionImportExecuteSchema>;

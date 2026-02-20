@@ -5,6 +5,8 @@ import type {
   CommandExecutionResult,
   CommandHistoryEntry,
   CommandTemplateParam,
+  ConnectionImportEntry,
+  ConnectionImportResult,
   ConnectionListQuery,
   ConnectionProfile,
   MigrationRecord,
@@ -36,6 +38,9 @@ import type {
   CommandHistoryListInput,
   CommandHistoryPushInput,
   CommandHistoryRemoveInput,
+  ConnectionExportInput,
+  ConnectionImportExecuteInput,
+  ConnectionImportPreviewInput,
   ConnectionRemoveInput,
   ConnectionUpsertInput,
   DialogOpenDirectoryInput,
@@ -91,6 +96,9 @@ export interface NextShellApi {
     list: (query: ConnectionListQuery) => Promise<ConnectionProfile[]>;
     upsert: (payload: ConnectionUpsertInput) => Promise<ConnectionProfile>;
     remove: (payload: ConnectionRemoveInput) => Promise<{ ok: true }>;
+    exportToFile: (payload: ConnectionExportInput) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+    importPreview: (payload: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
+    importExecute: (payload: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   };
   session: {
     open: (payload: SessionOpenInput) => Promise<SessionDescriptor>;

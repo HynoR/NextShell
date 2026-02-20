@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Form, Input, InputNumber, Modal, Select, Switch, Tooltip, message } from "antd";
-import type { ConnectionProfile, SshKeyProfile, ProxyProfile } from "@nextshell/core";
+import type { ConnectionProfile, ConnectionImportEntry, SshKeyProfile, ProxyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
+import { ConnectionImportModal } from "./ConnectionImportModal";
 
 type ManagerTab = "connections" | "keys" | "proxies";
 
@@ -15,6 +16,7 @@ interface ConnectionManagerModalProps {
   onClose: () => void;
   onConnectionSaved: (payload: ConnectionUpsertInput) => Promise<void>;
   onConnectionRemoved: (connectionId: string) => Promise<void>;
+  onConnectionsImported: () => Promise<void>;
   onReloadSshKeys: () => Promise<void>;
   onReloadProxies: () => Promise<void>;
 }
@@ -214,6 +216,7 @@ export const ConnectionManagerModal = ({
   onClose,
   onConnectionSaved,
   onConnectionRemoved,
+  onConnectionsImported,
   onReloadSshKeys,
   onReloadProxies
 }: ConnectionManagerModalProps) => {
@@ -223,6 +226,8 @@ export const ConnectionManagerModal = ({
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
   const [saving, setSaving] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importEntries, setImportEntries] = useState<ConnectionImportEntry[]>([]);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
 
@@ -361,7 +366,45 @@ export const ConnectionManagerModal = ({
     });
   }, []);
 
+  const handleExportAll = useCallback(async () => {
+    if (connections.length === 0) return;
+    try {
+      const result = await window.nextshell.connection.exportToFile({
+        connectionIds: connections.map((c) => c.id)
+      });
+      if ("filePath" in result && result.ok) {
+        message.success(`已导出 ${connections.length} 个连接`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "未知错误";
+      message.error(`导出失败：${reason}`);
+    }
+  }, [connections]);
+
+  const handleImport = useCallback(async () => {
+    try {
+      const dialogResult = await window.nextshell.dialog.openFiles({
+        title: "选择导入文件",
+        multi: false
+      });
+      if (dialogResult.canceled || dialogResult.filePaths.length === 0) return;
+
+      const filePath = dialogResult.filePaths[0]!;
+      const entries = await window.nextshell.connection.importPreview({ filePath });
+      if (entries.length === 0) {
+        message.warning("文件中没有可导入的连接");
+        return;
+      }
+      setImportEntries(entries);
+      setImportModalOpen(true);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "未知错误";
+      message.error(`导入预览失败：${reason}`);
+    }
+  }, []);
+
   return (
+    <>
     <Modal
       open={open}
       onCancel={onClose}
@@ -478,6 +521,19 @@ export const ConnectionManagerModal = ({
           {/* Footer */}
           <div className="mgr-sidebar-footer">
             <span className="mgr-count">{connections.length} 个连接</span>
+            <div className="mgr-sidebar-footer-actions">
+              <Tooltip title="导入连接">
+                <button type="button" className="mgr-action-btn" onClick={handleImport}>
+                  <i className="ri-upload-2-line" />
+                </button>
+              </Tooltip>
+              <Tooltip title="导出所有连接">
+                <button type="button" className="mgr-action-btn" onClick={handleExportAll}
+                  disabled={connections.length === 0}>
+                  <i className="ri-download-2-line" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
         </div>
 
@@ -868,5 +924,14 @@ export const ConnectionManagerModal = ({
         <ProxyManagerPanel proxies={proxies} onReload={onReloadProxies} />
       )}
     </Modal>
+
+    <ConnectionImportModal
+      open={importModalOpen}
+      entries={importEntries}
+      existingConnections={connections}
+      onClose={() => setImportModalOpen(false)}
+      onImported={onConnectionsImported}
+    />
+    </>
   );
 };

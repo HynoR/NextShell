@@ -348,6 +348,7 @@ export const App = () => {
         onClose={() => setManagerOpen(false)}
         onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
         onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
+        onConnectionsImported={loadConnections}
         onReloadSshKeys={loadSshKeys}
         onReloadProxies={loadProxies}
       />
