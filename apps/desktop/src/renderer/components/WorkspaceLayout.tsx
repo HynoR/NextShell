@@ -7,7 +7,7 @@ import type {
   SessionType,
   SshKeyProfile,
 } from "@nextshell/core";
-import type { SessionAuthOverrideInput } from "@nextshell/shared";
+import type { ConnectionUpsertInput, SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
@@ -61,6 +61,8 @@ interface WorkspaceLayoutProps {
   onActivateConnection: (connectionId: string) => void;
   onTreeDoubleConnect: (connectionId: string) => void;
   onTreeConnect: (connectionId: string) => void;
+  onTreeQuickSaveConnection: (payload: ConnectionUpsertInput) => Promise<void>;
+  onTreeEditServer: (connectionId: string) => void;
   onCloseSession: (sessionId: string) => void;
   onReconnectSession: (sessionId: string) => void;
   onRenameSession: (sessionId: string, title: string) => void;
@@ -105,6 +107,8 @@ export const WorkspaceLayout = ({
   onActivateConnection,
   onTreeDoubleConnect,
   onTreeConnect,
+  onTreeQuickSaveConnection,
+  onTreeEditServer,
   onCloseSession,
   onReconnectSession,
   onRenameSession,
@@ -519,6 +523,7 @@ export const WorkspaceLayout = ({
                           children: (
                             <ConnectionTreePanel
                               connections={connections}
+                              sshKeys={sshKeys}
                               sessions={sessions}
                               activeConnectionId={activeConnectionId}
                               onSelect={onActivateConnection}
@@ -528,6 +533,8 @@ export const WorkspaceLayout = ({
                               onConnect={(connectionId) => {
                                 void onTreeConnect(connectionId);
                               }}
+                              onQuickSave={(payload) => onTreeQuickSaveConnection(payload)}
+                              onOpenManagerForConnection={onTreeEditServer}
                             />
                           ),
                         },

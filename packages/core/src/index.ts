@@ -254,8 +254,6 @@ export interface AppPreferences {
     foregroundColor: string;
     fontSize: number;
     lineHeight: number;
-    /** 背景图片绝对路径，空字符串表示不使用图片 */
-    backgroundImagePath: string;
   };
   backup: {
     remotePath: string;
@@ -270,6 +268,10 @@ export interface AppPreferences {
     appearance: WindowAppearance;
     minimizeToTray: boolean;
     confirmBeforeClose: boolean;
+    /** APP 背景图片绝对路径，空字符串表示不使用图片 */
+    backgroundImagePath: string;
+    /** APP 背景整体透明度（30-80） */
+    backgroundOpacity: number;
   };
 }
 
@@ -289,7 +291,6 @@ export interface AppPreferencesPatch {
     foregroundColor?: string;
     fontSize?: number;
     lineHeight?: number;
-    backgroundImagePath?: string;
   };
   backup?: {
     remotePath?: string;
@@ -303,6 +304,8 @@ export interface AppPreferencesPatch {
     appearance?: WindowAppearance;
     minimizeToTray?: boolean;
     confirmBeforeClose?: boolean;
+    backgroundImagePath?: string;
+    backgroundOpacity?: number;
   };
 }
 
@@ -398,8 +401,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     backgroundColor: "#0b2740",
     foregroundColor: "#d8eaff",
     fontSize: 14,
-    lineHeight: 1.2,
-    backgroundImagePath: ""
+    lineHeight: 1.2
   },
   backup: {
     remotePath: "",
@@ -412,6 +414,8 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   window: {
     appearance: "system",
     minimizeToTray: false,
-    confirmBeforeClose: true
+    confirmBeforeClose: true,
+    backgroundImagePath: "",
+    backgroundOpacity: 60
   }
 };

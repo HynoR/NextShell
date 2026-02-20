@@ -10,6 +10,7 @@ import {
   Modal,
   Select,
   Skeleton,
+  Slider,
   Space,
   Spin,
   Switch,
@@ -80,8 +81,11 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   );
   const [terminalFontSize, setTerminalFontSize] = useState<number>(preferences.terminal.fontSize);
   const [terminalLineHeight, setTerminalLineHeight] = useState<number>(preferences.terminal.lineHeight);
-  const [terminalBackgroundImagePath, setTerminalBackgroundImagePath] = useState(
-    preferences.terminal.backgroundImagePath
+  const [appBackgroundImagePath, setAppBackgroundImagePath] = useState(
+    preferences.window.backgroundImagePath
+  );
+  const [appBackgroundOpacity, setAppBackgroundOpacity] = useState<number>(
+    preferences.window.backgroundOpacity
   );
   const [windowAppearance, setWindowAppearance] = useState<WindowAppearance>(
     preferences.window.appearance
@@ -139,7 +143,8 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     );
     setTerminalFontSize(preferences.terminal.fontSize);
     setTerminalLineHeight(preferences.terminal.lineHeight);
-    setTerminalBackgroundImagePath(preferences.terminal.backgroundImagePath);
+    setAppBackgroundImagePath(preferences.window.backgroundImagePath);
+    setAppBackgroundOpacity(preferences.window.backgroundOpacity);
     setBackupRemotePath(preferences.backup.remotePath);
     setRclonePath(preferences.backup.rclonePath);
     setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
@@ -305,6 +310,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     const normalizedEditorCommand = editorCommand.trim();
     const normalizedTerminalBackgroundColor = terminalBackgroundColor.trim();
     const normalizedTerminalForegroundColor = terminalForegroundColor.trim();
+    const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
 
     if (!normalizedUploadDir || !normalizedDownloadDir || !normalizedEditorCommand) {
       message.warning("路径和编辑器命令不能为空。");
@@ -331,6 +337,11 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
       return;
     }
 
+    if (!Number.isInteger(appBackgroundOpacity) || appBackgroundOpacity < 30 || appBackgroundOpacity > 80) {
+      message.warning("整体透明度需为 30% - 80% 的整数。");
+      return;
+    }
+
     setSaving(true);
     try {
       await updatePreferences({
@@ -348,8 +359,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           backgroundColor: normalizedTerminalBackgroundColor,
           foregroundColor: normalizedTerminalForegroundColor,
           fontSize: terminalFontSize,
-          lineHeight: terminalLineHeight,
-          backgroundImagePath: terminalBackgroundImagePath
+          lineHeight: terminalLineHeight
         },
         backup: {
           remotePath: backupRemotePath.trim(),
@@ -361,7 +371,9 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         window: {
           appearance: windowAppearance,
           minimizeToTray,
-          confirmBeforeClose
+          confirmBeforeClose,
+          backgroundImagePath: normalizedAppBackgroundImagePath,
+          backgroundOpacity: appBackgroundOpacity
         }
       });
 
@@ -515,14 +527,14 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         <Divider />
 
         <Typography.Title level={5}>终端主题</Typography.Title>
-        <Typography.Text type="secondary">设置终端背景图片、颜色和排版参数。</Typography.Text>
+        <Typography.Text type="secondary">设置 APP 背景图片，以及终端颜色和排版参数。</Typography.Text>
 
         <div className="flex flex-col gap-2 mt-1.5">
-          <Typography.Text>终端背景图片</Typography.Text>
+          <Typography.Text>APP 背景图片</Typography.Text>
           <div className="flex gap-2 items-center">
             <Input
               style={{ flex: 1 }}
-              value={terminalBackgroundImagePath}
+              value={appBackgroundImagePath}
               disabled={loading}
               readOnly
               placeholder="未设置（点击右侧按钮选择图片）"
@@ -532,11 +544,11 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
                 void (async () => {
                   try {
                     const result = await window.nextshell.dialog.openFiles({
-                      title: "选择终端背景图片",
+                      title: "选择 APP 背景图片",
                       multi: false
                     });
                     if (!result.canceled && result.filePaths[0]) {
-                      setTerminalBackgroundImagePath(result.filePaths[0]);
+                      setAppBackgroundImagePath(result.filePaths[0]);
                     }
                   } catch {
                     message.error("打开文件选择器失败");
@@ -546,40 +558,75 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
             >
               选择图片
             </Button>
-            {terminalBackgroundImagePath && (
+            {appBackgroundImagePath && (
               <Button
                 danger
-                onClick={() => setTerminalBackgroundImagePath("")}
+                onClick={() => setAppBackgroundImagePath("")}
               >
                 清除
               </Button>
             )}
           </div>
-          {terminalBackgroundImagePath && (
+          {appBackgroundImagePath && (
             <div
               style={{
                 height: 80,
                 borderRadius: 6,
                 overflow: "hidden",
-                backgroundImage: `url("nextshell-asset://local${terminalBackgroundImagePath}")`,
+                backgroundImage: `url("nextshell-asset://local${appBackgroundImagePath}")`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
                 border: "1px solid rgba(255,255,255,0.1)"
               }}
             />
           )}
-          {terminalBackgroundImagePath && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              已设置背景图片，背景颜色设置将被禁用。
-            </Typography.Text>
-          )}
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            背景图作用于整个应用界面，不会锁定终端背景颜色设置。
+          </Typography.Text>
+        </div>
+
+        <div className="flex flex-col gap-2 mt-1.5">
+          <Typography.Text>整体透明度</Typography.Text>
+          <div className="flex gap-3 items-center">
+            <Slider
+              min={30}
+              max={80}
+              step={1}
+              disabled={loading || !appBackgroundImagePath}
+              style={{ flex: 1, margin: 0 }}
+              value={appBackgroundOpacity}
+              onChange={(value) =>
+                setAppBackgroundOpacity(
+                  typeof value === "number" ? value : preferences.window.backgroundOpacity
+                )
+              }
+            />
+            <div className="flex items-center gap-1">
+              <InputNumber
+                min={30}
+                max={80}
+                precision={0}
+                disabled={loading || !appBackgroundImagePath}
+                value={appBackgroundOpacity}
+                onChange={(value) =>
+                  setAppBackgroundOpacity(
+                    typeof value === "number" ? value : preferences.window.backgroundOpacity
+                  )
+                }
+              />
+              <span>%</span>
+            </div>
+          </div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            可调范围 30%-80%，默认 60%。
+          </Typography.Text>
         </div>
 
         <div className="flex flex-col gap-2 mt-1.5">
           <Typography.Text>主题预设</Typography.Text>
           <Select
             value={terminalThemePreset}
-            disabled={loading || !!terminalBackgroundImagePath}
+            disabled={loading}
             options={[
               ...TERMINAL_THEME_PRESETS.map((item) => ({ label: item.label, value: item.value })),
               { label: "自定义", value: CUSTOM_THEME_PRESET }
@@ -602,14 +649,14 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
             <Input
               style={{ flex: 1 }}
               value={terminalBackgroundColor}
-              disabled={loading || !!terminalBackgroundImagePath}
+              disabled={loading}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
               placeholder="#0b2740"
             />
             <input
               className="settings-color-input"
               type="color"
-              disabled={loading || !!terminalBackgroundImagePath}
+              disabled={loading}
               value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#0b2740"}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
             />

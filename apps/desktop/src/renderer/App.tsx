@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
@@ -41,10 +41,13 @@ export const App = () => {
 
   const [appReady, setAppReady] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
+  const [managerFocusConnectionId, setManagerFocusConnectionId] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [transferPanelCollapsed, setTransferPanelCollapsed] = useState(false);
 
   const initializePreferences = usePreferencesStore((state) => state.initialize);
+  const appBackgroundImagePath = usePreferencesStore((state) => state.preferences.window.backgroundImagePath);
+  const appBackgroundOpacity = usePreferencesStore((state) => state.preferences.window.backgroundOpacity);
   const applyTransferEvent = useTransferQueueStore((state) => state.applyEvent);
   const transferTasks = useTransferQueueStore((state) => state.tasks);
   const enqueueTransferTask = useTransferQueueStore((state) => state.enqueueTask);
@@ -283,89 +286,137 @@ export const App = () => {
     }
   }, []);
 
+  const handleTreeQuickSaveConnection = useCallback(
+    async (payload: ConnectionUpsertInput) => {
+      await window.nextshell.connection.upsert(payload);
+      await loadConnections();
+    },
+    [loadConnections]
+  );
+
+  const handleOpenManager = useCallback(() => {
+    setManagerFocusConnectionId(undefined);
+    setManagerOpen(true);
+  }, []);
+
+  const handleOpenManagerForConnection = useCallback((connectionId: string) => {
+    setManagerFocusConnectionId(connectionId);
+    setManagerOpen(true);
+  }, []);
+
   const isConnecting = activeConnectionId ? connectingIds.has(activeConnectionId) : false;
+  const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
+  const hasAppBackgroundImage = normalizedAppBackgroundImagePath.length > 0;
+
+  const appShellStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!hasAppBackgroundImage) {
+      return undefined;
+    }
+    return {
+      "--app-background-opacity": String(appBackgroundOpacity)
+    } as CSSProperties;
+  }, [appBackgroundOpacity, hasAppBackgroundImage]);
 
   if (!appReady) {
     return <AppSkeleton />;
   }
 
   return (
-    <>
-      <WorkspaceLayout
-        connections={connections}
-        sshKeys={sshKeys}
-        sessions={sessions}
-        activeConnectionId={activeConnectionId}
-        activeSessionId={activeSessionId}
-        activeConnection={activeConnection}
-        activeSession={activeSession}
-        activeSessionConnection={activeSessionConnection}
-        activeTerminalSession={activeTerminalSession}
-        activeTerminalConnection={activeTerminalConnection}
-        terminalSessionIds={terminalSessionIds}
-        isActiveConnectionTerminalConnected={isActiveConnectionTerminalConnected}
-        monitor={monitor}
-        transferTasks={transferTasks}
-        transferPanelCollapsed={transferPanelCollapsed}
-        bottomTab={bottomTab}
-        authPromptState={authPromptState}
-        MAX_SESSION_OPEN_ATTEMPTS={MAX_SESSION_OPEN_ATTEMPTS}
-        onLoadConnections={() => void loadConnections()}
-        onOpenManager={() => setManagerOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onActivateConnection={activateConnection}
-        onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}
-        onTreeConnect={(connectionId) => void startSession(connectionId)}
-        onCloseSession={handleCloseSession}
-        onReconnectSession={handleReconnectSession}
-        onRenameSession={handleRenameSession}
-        onOpenProcessManager={handleOpenProcessManager}
-        onOpenNetworkMonitor={handleOpenNetworkMonitor}
-        onCloseMonitorTab={handleCloseMonitorTab}
-        onSetActiveSession={setActiveSession}
-        onSetActiveConnection={setActiveConnection}
-        onReorderSession={reorderSession}
-        onSelectNetworkInterface={handleSelectSystemNetworkInterface}
-        onRetryTransfer={(taskId) => void handleRetryTransferTask(taskId)}
-        onClearFinishedTransfers={clearFinishedTransfers}
-        onOpenLocalFile={(task) => void handleOpenTransferLocalFile(task.localPath)}
-        onTransferPanelToggle={() => setTransferPanelCollapsed((v) => !v)}
-        onSetBottomTab={(tab) => {
-          if (
-            tab === "commands" ||
-            tab === "files" ||
-            tab === "connections" ||
-            tab === "live-edit" ||
-            tab === "disk" ||
-            tab === "about"
-          ) {
-            setBottomTab(tab);
-          }
-        }}
-        onAuthPromptCancel={handleAuthPromptCancel}
-        onAuthPromptSubmit={handleAuthPromptSubmit}
-      />
+    <div
+      className={hasAppBackgroundImage ? "app-shell app-shell--with-wallpaper" : "app-shell"}
+      style={appShellStyle}
+    >
+      {hasAppBackgroundImage ? (
+        <div
+          className="app-wallpaper-layer"
+          style={{
+            backgroundImage: `url("nextshell-asset://local${normalizedAppBackgroundImagePath}")`
+          }}
+        />
+      ) : null}
+      <div className="app-shell-content">
+        <WorkspaceLayout
+          connections={connections}
+          sshKeys={sshKeys}
+          sessions={sessions}
+          activeConnectionId={activeConnectionId}
+          activeSessionId={activeSessionId}
+          activeConnection={activeConnection}
+          activeSession={activeSession}
+          activeSessionConnection={activeSessionConnection}
+          activeTerminalSession={activeTerminalSession}
+          activeTerminalConnection={activeTerminalConnection}
+          terminalSessionIds={terminalSessionIds}
+          isActiveConnectionTerminalConnected={isActiveConnectionTerminalConnected}
+          monitor={monitor}
+          transferTasks={transferTasks}
+          transferPanelCollapsed={transferPanelCollapsed}
+          bottomTab={bottomTab}
+          authPromptState={authPromptState}
+          MAX_SESSION_OPEN_ATTEMPTS={MAX_SESSION_OPEN_ATTEMPTS}
+          onLoadConnections={() => void loadConnections()}
+          onOpenManager={handleOpenManager}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onActivateConnection={activateConnection}
+          onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}
+          onTreeConnect={(connectionId) => void startSession(connectionId)}
+          onTreeQuickSaveConnection={handleTreeQuickSaveConnection}
+          onTreeEditServer={handleOpenManagerForConnection}
+          onCloseSession={handleCloseSession}
+          onReconnectSession={handleReconnectSession}
+          onRenameSession={handleRenameSession}
+          onOpenProcessManager={handleOpenProcessManager}
+          onOpenNetworkMonitor={handleOpenNetworkMonitor}
+          onCloseMonitorTab={handleCloseMonitorTab}
+          onSetActiveSession={setActiveSession}
+          onSetActiveConnection={setActiveConnection}
+          onReorderSession={reorderSession}
+          onSelectNetworkInterface={handleSelectSystemNetworkInterface}
+          onRetryTransfer={(taskId) => void handleRetryTransferTask(taskId)}
+          onClearFinishedTransfers={clearFinishedTransfers}
+          onOpenLocalFile={(task) => void handleOpenTransferLocalFile(task.localPath)}
+          onTransferPanelToggle={() => setTransferPanelCollapsed((v) => !v)}
+          onSetBottomTab={(tab) => {
+            if (
+              tab === "commands" ||
+              tab === "files" ||
+              tab === "connections" ||
+              tab === "live-edit" ||
+              tab === "disk" ||
+              tab === "about"
+            ) {
+              setBottomTab(tab);
+            }
+          }}
+          onAuthPromptCancel={handleAuthPromptCancel}
+          onAuthPromptSubmit={handleAuthPromptSubmit}
+        />
 
-      <ConnectionManagerModal
-        open={managerOpen}
-        connections={connections}
-        sshKeys={sshKeys}
-        proxies={proxies}
-        onClose={() => setManagerOpen(false)}
-        onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
-        onConnectConnection={async (connectionId: string) => {
-          await startSession(connectionId);
-        }}
-        onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
-        onConnectionsImported={loadConnections}
-        onReloadSshKeys={loadSshKeys}
-        onReloadProxies={loadProxies}
-      />
+        <ConnectionManagerModal
+          open={managerOpen}
+          focusConnectionId={managerFocusConnectionId}
+          connections={connections}
+          sshKeys={sshKeys}
+          proxies={proxies}
+          onClose={() => {
+            setManagerOpen(false);
+            setManagerFocusConnectionId(undefined);
+          }}
+          onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
+          onConnectConnection={async (connectionId: string) => {
+            await startSession(connectionId);
+          }}
+          onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
+          onConnectionsImported={loadConnections}
+          onReloadSshKeys={loadSshKeys}
+          onReloadProxies={loadProxies}
+        />
 
-      <SettingsCenterDrawer
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
-    </>
+        <SettingsCenterDrawer
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
+      </div>
+    </div>
   );
 };

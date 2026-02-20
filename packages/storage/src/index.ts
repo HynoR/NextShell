@@ -278,6 +278,14 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
       return fallback;
     }
 
+    const legacyBackgroundImagePath = ((): string | undefined => {
+      const legacyTerminal = (parsed as { terminal?: { backgroundImagePath?: unknown } }).terminal;
+      if (typeof legacyTerminal?.backgroundImagePath === "string") {
+        return legacyTerminal.backgroundImagePath;
+      }
+      return undefined;
+    })();
+
     return {
       transfer: {
         uploadDefaultDir:
@@ -328,11 +336,7 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.terminal.lineHeight >= 1 &&
           parsed.terminal.lineHeight <= 2
             ? parsed.terminal.lineHeight
-            : fallback.terminal.lineHeight,
-        backgroundImagePath:
-          typeof parsed.terminal?.backgroundImagePath === "string"
-            ? parsed.terminal.backgroundImagePath
-            : fallback.terminal.backgroundImagePath
+            : fallback.terminal.lineHeight
       },
       backup: {
         remotePath:
@@ -376,7 +380,18 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
         confirmBeforeClose:
           typeof parsed.window?.confirmBeforeClose === "boolean"
             ? parsed.window.confirmBeforeClose
-            : fallback.window.confirmBeforeClose
+            : fallback.window.confirmBeforeClose,
+        backgroundImagePath:
+          typeof parsed.window?.backgroundImagePath === "string"
+            ? parsed.window.backgroundImagePath
+            : (legacyBackgroundImagePath ?? fallback.window.backgroundImagePath),
+        backgroundOpacity:
+          typeof parsed.window?.backgroundOpacity === "number" &&
+          Number.isFinite(parsed.window.backgroundOpacity) &&
+          Math.round(parsed.window.backgroundOpacity) >= 30 &&
+          Math.round(parsed.window.backgroundOpacity) <= 80
+            ? Math.round(parsed.window.backgroundOpacity)
+            : fallback.window.backgroundOpacity
       }
     };
   } catch {

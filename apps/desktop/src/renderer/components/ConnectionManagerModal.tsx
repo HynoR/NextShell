@@ -15,6 +15,7 @@ interface ImportPreviewBatch {
 
 interface ConnectionManagerModalProps {
   open: boolean;
+  focusConnectionId?: string;
   connections: ConnectionProfile[];
   sshKeys: SshKeyProfile[];
   proxies: ProxyProfile[];
@@ -242,6 +243,7 @@ const DEFAULT_VALUES = {
 
 export const ConnectionManagerModal = ({
   open,
+  focusConnectionId,
   connections,
   sshKeys,
   proxies,
@@ -279,6 +281,7 @@ export const ConnectionManagerModal = ({
     form.setFieldsValue(DEFAULT_VALUES);
     setSelectedConnectionId(undefined);
     setSelectedExportIds(new Set());
+    setExpanded(new Set(["root"]));
     setMode("idle");
     setKeyword("");
     setActiveTab("connections");
@@ -374,10 +377,27 @@ export const ConnectionManagerModal = ({
   const handleSelect = useCallback((connectionId: string) => {
     const connection = connections.find((c) => c.id === connectionId);
     if (!connection) return;
+    const expandedKeys = new Set<string>(["root"]);
+    const segments: string[] = [];
+    for (const part of connection.groupPath) {
+      segments.push(part);
+      expandedKeys.add(`mgr-group:${segments.join("/")}`);
+    }
+    setExpanded(expandedKeys);
     setSelectedConnectionId(connectionId);
     applyConnectionToForm(connection);
     setMode("edit");
   }, [connections, applyConnectionToForm]);
+
+  useEffect(() => {
+    if (!open || !focusConnectionId) {
+      return;
+    }
+
+    setActiveTab("connections");
+    setKeyword("");
+    handleSelect(focusConnectionId);
+  }, [focusConnectionId, handleSelect, open]);
 
   const handleReset = useCallback(() => {
     if (selectedConnection) {

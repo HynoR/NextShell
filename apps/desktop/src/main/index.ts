@@ -20,7 +20,7 @@ import {
   resolveWindowsTitleBarOverlay
 } from "./window-theme";
 
-// Must be called before app is ready — register local asset protocol for background images
+// Must be called before app is ready — register local asset protocol for app background images
 protocol.registerSchemesAsPrivileged([
   { scheme: "nextshell-asset", privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
 ]);
@@ -161,7 +161,7 @@ app.whenReady().then(async () => {
     keytarServiceName: "NextShell"
   });
 
-  // Serve local image files under nextshell-asset:// for terminal background images
+  // Serve local image files under nextshell-asset:// for app background images
   protocol.handle("nextshell-asset", (request) => {
     const url = new URL(request.url);
     const filePath = decodeURIComponent(url.pathname);

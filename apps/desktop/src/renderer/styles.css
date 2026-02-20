@@ -2,11 +2,17 @@
 
 /* ── Design Tokens ───────────────────────────────────────── */
 :root {
-  --bg-base:      #0d1117;
-  --bg-surface:   #161c27;
-  --bg-elevated:  #1d2435;
-  --bg-hover:     #232d40;
-  --bg-active:    #2a3548;
+  --bg-base-solid:      #0d1117;
+  --bg-surface-solid:   #161c27;
+  --bg-elevated-solid:  #1d2435;
+  --bg-hover-solid:     #232d40;
+  --bg-active-solid:    #2a3548;
+
+  --bg-base:      var(--bg-base-solid);
+  --bg-surface:   var(--bg-surface-solid);
+  --bg-elevated:  var(--bg-elevated-solid);
+  --bg-hover:     var(--bg-hover-solid);
+  --bg-active:    var(--bg-active-solid);
 
   --border-dim:   rgba(255, 255, 255, 0.05);
   --border:       rgba(255, 255, 255, 0.09);
@@ -30,6 +36,8 @@
   --r-sm: 4px;
   --r-md: 8px;
   --r-lg: 12px;
+
+  --app-background-opacity: 60;
 }
 
 :root[data-theme="dark"] {
@@ -39,11 +47,17 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg-base:      #eef2f8;
-  --bg-surface:   #f7f9fc;
-  --bg-elevated:  #ffffff;
-  --bg-hover:     #f0f4fa;
-  --bg-active:    #e8eef8;
+  --bg-base-solid:      #eef2f8;
+  --bg-surface-solid:   #f7f9fc;
+  --bg-elevated-solid:  #ffffff;
+  --bg-hover-solid:     #f0f4fa;
+  --bg-active-solid:    #e8eef8;
+
+  --bg-base:      var(--bg-base-solid);
+  --bg-surface:   var(--bg-surface-solid);
+  --bg-elevated:  var(--bg-elevated-solid);
+  --bg-hover:     var(--bg-hover-solid);
+  --bg-active:    var(--bg-active-solid);
 
   --border-dim:   rgba(14, 31, 53, 0.05);
   --border:       rgba(14, 31, 53, 0.14);
@@ -70,6 +84,45 @@ body {
   background: var(--bg-base);
   color: var(--t1);
   -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.app-shell-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.app-wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: calc(var(--app-background-opacity, 60) / 100);
+  pointer-events: none;
+}
+
+.app-shell--with-wallpaper {
+  --bg-base: color-mix(in srgb, var(--bg-base-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-surface: color-mix(in srgb, var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-elevated: color-mix(in srgb, var(--bg-elevated-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-hover: color-mix(in srgb, var(--bg-hover-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-active: color-mix(in srgb, var(--bg-active-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
 }
 
 /* ── Titlebar ────────────────────────────────────────────── */
@@ -1316,6 +1369,73 @@ body {
   opacity: 0.5;
 }
 
+/* Connection tree context menu */
+.ct-ctx-menu {
+  position: fixed;
+  z-index: 10010;
+  min-width: 172px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  user-select: none;
+}
+
+.ct-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: 12.5px;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.08s, color 0.08s;
+}
+
+.ct-ctx-item:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.ct-ctx-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ct-ctx-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.ct-ctx-icon i {
+  line-height: 1;
+}
+
+.ct-ctx-divider {
+  height: 1px;
+  background: var(--border-dim);
+  margin: 3px 4px;
+}
+
+.ct-ctx-connection-hint {
+  padding: 4px 10px 2px;
+  font-size: 10px;
+  color: var(--t3);
+  font-family: var(--mono);
+  border-top: 1px solid var(--border-dim);
+  margin-top: 2px;
+}
+
 /* ── Terminal shell ──────────────────────────────────────── */
 .terminal-shell {
   height: 100%;
@@ -1324,6 +1444,10 @@ body {
   flex-direction: column;
   background: #0b1829;
   overflow: hidden;
+}
+
+.app-shell--with-wallpaper .terminal-shell {
+  background: color-mix(in srgb, #0b1829 calc(var(--app-background-opacity, 60) * 1%), transparent);
 }
 
 /* ── Session tabs ────────────────────────────────────────── */
@@ -1336,6 +1460,10 @@ body {
   min-height: 36px;
   overflow-x: auto;
   flex-shrink: 0;
+}
+
+.app-shell--with-wallpaper .session-tabs {
+  background: color-mix(in srgb, #0d1822 calc(var(--app-background-opacity, 60) * 1%), transparent);
 }
 
 .session-tabs::-webkit-scrollbar { display: none; }

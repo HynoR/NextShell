@@ -304,8 +304,7 @@ export const appPreferencesSchema = z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
     foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
-    lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight),
-    backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.terminal.backgroundImagePath)
+    lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
   backup: z.object({
     remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
@@ -318,7 +317,9 @@ export const appPreferencesSchema = z.object({
   window: z.object({
     appearance: windowAppearanceSchema.default(DEFAULT_APP_PREFERENCES.window.appearance),
     minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
-    confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose)
+    confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose),
+    backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.window.backgroundImagePath),
+    backgroundOpacity: z.coerce.number().int().min(30).max(80).default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity)
   }).default(DEFAULT_APP_PREFERENCES.window)
 }).default(DEFAULT_APP_PREFERENCES);
 
@@ -337,8 +338,7 @@ export const appPreferencesPatchSchema = z.object({
     backgroundColor: terminalColorSchema.optional(),
     foregroundColor: terminalColorSchema.optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
-    lineHeight: z.coerce.number().min(1).max(2).optional(),
-    backgroundImagePath: z.string().optional()
+    lineHeight: z.coerce.number().min(1).max(2).optional()
   }).optional(),
   backup: z.object({
     remotePath: z.string().optional(),
@@ -351,7 +351,9 @@ export const appPreferencesPatchSchema = z.object({
   window: z.object({
     appearance: windowAppearanceSchema.optional(),
     minimizeToTray: z.boolean().optional(),
-    confirmBeforeClose: z.boolean().optional()
+    confirmBeforeClose: z.boolean().optional(),
+    backgroundImagePath: z.string().optional(),
+    backgroundOpacity: z.coerce.number().int().min(30).max(80).optional()
   }).optional()
 });
 

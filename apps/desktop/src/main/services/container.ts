@@ -640,6 +640,17 @@ const mergePreferences = (
     return value as number;
   };
 
+  const normalizeBackgroundOpacity = (value: number | undefined, fallback: number): number => {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    const rounded = Math.round(value as number);
+    if (rounded < 30 || rounded > 80) {
+      return fallback;
+    }
+    return rounded;
+  };
+
   return {
     transfer: {
       uploadDefaultDir:
@@ -671,10 +682,7 @@ const mergePreferences = (
       lineHeight: normalizeTerminalLineHeight(
         patch.terminal?.lineHeight,
         current.terminal.lineHeight
-      ),
-      backgroundImagePath: patch.terminal?.backgroundImagePath !== undefined
-        ? patch.terminal.backgroundImagePath
-        : current.terminal.backgroundImagePath
+      )
     },
     backup: {
       remotePath: patch.backup?.remotePath !== undefined
@@ -700,7 +708,14 @@ const mergePreferences = (
         current.window.appearance
       ),
       minimizeToTray: patch.window?.minimizeToTray ?? current.window.minimizeToTray,
-      confirmBeforeClose: patch.window?.confirmBeforeClose ?? current.window.confirmBeforeClose
+      confirmBeforeClose: patch.window?.confirmBeforeClose ?? current.window.confirmBeforeClose,
+      backgroundImagePath: patch.window?.backgroundImagePath !== undefined
+        ? patch.window.backgroundImagePath.trim()
+        : current.window.backgroundImagePath,
+      backgroundOpacity: normalizeBackgroundOpacity(
+        patch.window?.backgroundOpacity,
+        current.window.backgroundOpacity
+      )
     }
   };
 };
