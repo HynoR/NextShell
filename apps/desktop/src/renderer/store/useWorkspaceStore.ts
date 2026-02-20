@@ -4,13 +4,17 @@ import type {
   MonitorSnapshot,
   NetworkSnapshot,
   ProcessSnapshot,
-  SessionDescriptor
+  SessionDescriptor,
+  SshKeyProfile,
+  ProxyProfile
 } from "@nextshell/core";
 
 type BottomTab = "connections" | "files" | "live-edit" | "commands";
 
 interface WorkspaceState {
   connections: ConnectionProfile[];
+  sshKeys: SshKeyProfile[];
+  proxies: ProxyProfile[];
   sessions: SessionDescriptor[];
   activeConnectionId?: string;
   activeSessionId?: string;
@@ -19,6 +23,8 @@ interface WorkspaceState {
   networkSnapshots: Record<string, NetworkSnapshot>;
   bottomTab: BottomTab;
   setConnections: (connections: ConnectionProfile[]) => void;
+  setSshKeys: (keys: SshKeyProfile[]) => void;
+  setProxies: (proxies: ProxyProfile[]) => void;
   setActiveConnection: (connectionId?: string) => void;
   upsertSession: (session: SessionDescriptor) => void;
   setSessionStatus: (sessionId: string, status: SessionDescriptor["status"]) => void;
@@ -35,11 +41,15 @@ interface WorkspaceState {
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   connections: [],
+  sshKeys: [],
+  proxies: [],
   sessions: [],
   bottomTab: "connections",
   processSnapshots: {},
   networkSnapshots: {},
   setConnections: (connections) => set({ connections }),
+  setSshKeys: (sshKeys) => set({ sshKeys }),
+  setProxies: (proxies) => set({ proxies }),
   setActiveConnection: (activeConnectionId) => set({ activeConnectionId }),
   upsertSession: (session) =>
     set((state) => {

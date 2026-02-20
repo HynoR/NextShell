@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { message, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
-import type { ConnectionProfile, SessionDescriptor, SessionType } from "@nextshell/core";
+import type { ConnectionProfile, SessionDescriptor, SessionType, SshKeyProfile } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { CommandInputBar } from "./CommandInputBar";
@@ -30,6 +30,7 @@ const isTerminalSession = (session: SessionDescriptor): boolean =>
 
 interface WorkspaceLayoutProps {
   connections: ConnectionProfile[];
+  sshKeys: SshKeyProfile[];
   sessions: SessionDescriptor[];
   activeConnectionId?: string;
   activeSessionId?: string;
@@ -74,6 +75,7 @@ interface WorkspaceLayoutProps {
 
 export const WorkspaceLayout = ({
   connections,
+  sshKeys,
   sessions,
   activeConnectionId,
   activeSessionId,
@@ -480,6 +482,7 @@ export const WorkspaceLayout = ({
         initialUsername={authPromptState?.initialUsername}
         defaultAuthType={authPromptState?.defaultAuthType ?? "password"}
         hasExistingPrivateKey={authPromptState?.hasExistingPrivateKey ?? false}
+        sshKeys={sshKeys}
         onCancel={onAuthPromptCancel}
         onSubmit={onAuthPromptSubmit}
       />

@@ -59,5 +59,11 @@ export const IPCChannel = {
   BackupPasswordStatus: "nextshell:backup:password:status",
   TemplateParamsList: "nextshell:template-params:list",
   TemplateParamsUpsert: "nextshell:template-params:upsert",
-  TemplateParamsClear: "nextshell:template-params:clear"
+  TemplateParamsClear: "nextshell:template-params:clear",
+  SshKeyList: "nextshell:ssh-key:list",
+  SshKeyUpsert: "nextshell:ssh-key:upsert",
+  SshKeyRemove: "nextshell:ssh-key:remove",
+  ProxyList: "nextshell:proxy:list",
+  ProxyUpsert: "nextshell:proxy:upsert",
+  ProxyRemove: "nextshell:proxy:remove"
 } as const;

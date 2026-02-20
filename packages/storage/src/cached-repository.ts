@@ -27,10 +27,12 @@ import type {
   ConnectionProfile,
   MasterKeyMeta,
   MigrationRecord,
-  SavedCommand
+  ProxyProfile,
+  SavedCommand,
+  SshKeyProfile
 } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
-import type { ConnectionRepository, AppendAuditLogInput } from "./index";
+import type { ConnectionRepository, AppendAuditLogInput, SshKeyRepository, ProxyRepository } from "./index";
 
 // ── Tuning constants ────────────────────────────────────────────────────────
 /** 审计日志批量写入间隔 (ms) */
@@ -416,5 +418,117 @@ export class CachedConnectionRepository implements ConnectionRepository {
     if (this.prefTimer) clearTimeout(this.prefTimer);
     if (this.auditTimer) clearInterval(this.auditTimer);
     this.inner.close();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CachedSshKeyRepository – 全量内存缓存，write-through
+// ═══════════════════════════════════════════════════════════════════════════
+
+export class CachedSshKeyRepository implements SshKeyRepository {
+  private readonly inner: SshKeyRepository;
+  private cache: SshKeyProfile[] | undefined;
+  private byId: Map<string, SshKeyProfile> | undefined;
+
+  constructor(inner: SshKeyRepository) {
+    this.inner = inner;
+  }
+
+  private ensure(): void {
+    if (!this.cache) {
+      this.cache = this.inner.list();
+      this.byId = new Map(this.cache.map((k) => [k.id, k]));
+    }
+  }
+
+  list(): SshKeyProfile[] {
+    this.ensure();
+    return [...this.cache!].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getById(id: string): SshKeyProfile | undefined {
+    this.ensure();
+    return this.byId!.get(id);
+  }
+
+  save(key: SshKeyProfile): void {
+    this.inner.save(key);
+    if (this.cache && this.byId) {
+      const idx = this.cache.findIndex((k) => k.id === key.id);
+      if (idx >= 0) {
+        this.cache[idx] = key;
+      } else {
+        this.cache.push(key);
+      }
+      this.byId.set(key.id, key);
+    }
+  }
+
+  remove(id: string): void {
+    this.inner.remove(id);
+    if (this.cache) {
+      this.cache = this.cache.filter((k) => k.id !== id);
+      this.byId?.delete(id);
+    }
+  }
+
+  getReferencingConnectionIds(keyId: string): string[] {
+    return this.inner.getReferencingConnectionIds(keyId);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CachedProxyRepository – 全量内存缓存，write-through
+// ═══════════════════════════════════════════════════════════════════════════
+
+export class CachedProxyRepository implements ProxyRepository {
+  private readonly inner: ProxyRepository;
+  private cache: ProxyProfile[] | undefined;
+  private byId: Map<string, ProxyProfile> | undefined;
+
+  constructor(inner: ProxyRepository) {
+    this.inner = inner;
+  }
+
+  private ensure(): void {
+    if (!this.cache) {
+      this.cache = this.inner.list();
+      this.byId = new Map(this.cache.map((p) => [p.id, p]));
+    }
+  }
+
+  list(): ProxyProfile[] {
+    this.ensure();
+    return [...this.cache!].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getById(id: string): ProxyProfile | undefined {
+    this.ensure();
+    return this.byId!.get(id);
+  }
+
+  save(proxy: ProxyProfile): void {
+    this.inner.save(proxy);
+    if (this.cache && this.byId) {
+      const idx = this.cache.findIndex((p) => p.id === proxy.id);
+      if (idx >= 0) {
+        this.cache[idx] = proxy;
+      } else {
+        this.cache.push(proxy);
+      }
+      this.byId.set(proxy.id, proxy);
+    }
+  }
+
+  remove(id: string): void {
+    this.inner.remove(id);
+    if (this.cache) {
+      this.cache = this.cache.filter((p) => p.id !== id);
+      this.byId?.delete(id);
+    }
+  }
+
+  getReferencingConnectionIds(proxyId: string): string[] {
+    return this.inner.getReferencingConnectionIds(proxyId);
   }
 }

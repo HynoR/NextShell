@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type Database from "better-sqlite3";
 
-export { CachedConnectionRepository } from "./cached-repository";
+export { CachedConnectionRepository, CachedSshKeyRepository, CachedProxyRepository } from "./cached-repository";
 import type {
   AppPreferences,
   AuditLogRecord,
@@ -13,7 +13,9 @@ import type {
   ConnectionProfile,
   MasterKeyMeta,
   MigrationRecord,
-  SavedCommand
+  ProxyProfile,
+  SavedCommand,
+  SshKeyProfile
 } from "../../core/src/index";
 import { DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
@@ -32,15 +34,10 @@ interface ConnectionRow {
   username: string;
   auth_type: ConnectionProfile["authType"];
   credential_ref: string | null;
-  private_key_path: string | null;
-  private_key_ref: string | null;
+  ssh_key_id: string | null;
   host_fingerprint: string | null;
   strict_host_key_checking: number;
-  proxy_type: "none" | "socks4" | "socks5" | null;
-  proxy_host: string | null;
-  proxy_port: number | null;
-  proxy_username: string | null;
-  proxy_credential_ref: string | null;
+  proxy_id: string | null;
   terminal_encoding: "utf-8" | "gb18030" | "gbk" | "big5" | null;
   backspace_mode: "ascii-backspace" | "ascii-delete" | null;
   delete_mode: "vt220-delete" | "ascii-delete" | "ascii-backspace" | null;
@@ -52,6 +49,27 @@ interface ConnectionRow {
   created_at: string;
   updated_at: string;
   last_connected_at: string | null;
+}
+
+interface SshKeyRow {
+  id: string;
+  name: string;
+  key_content_ref: string;
+  passphrase_ref: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProxyRow {
+  id: string;
+  name: string;
+  proxy_type: "socks4" | "socks5";
+  host: string;
+  port: number;
+  username: string | null;
+  credential_ref: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface MigrationRow {
@@ -153,15 +171,10 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     username: row.username,
     authType: row.auth_type,
     credentialRef: row.credential_ref ?? undefined,
-    privateKeyPath: row.private_key_path ?? undefined,
-    privateKeyRef: row.private_key_ref ?? undefined,
+    sshKeyId: row.ssh_key_id ?? undefined,
     hostFingerprint: row.host_fingerprint ?? undefined,
     strictHostKeyChecking: row.strict_host_key_checking === 1,
-    proxyType: row.proxy_type === "socks4" || row.proxy_type === "socks5" ? row.proxy_type : "none",
-    proxyHost: row.proxy_host ?? undefined,
-    proxyPort: row.proxy_port ?? undefined,
-    proxyUsername: row.proxy_username ?? undefined,
-    proxyCredentialRef: row.proxy_credential_ref ?? undefined,
+    proxyId: row.proxy_id ?? undefined,
     terminalEncoding:
       row.terminal_encoding === "gb18030" ||
       row.terminal_encoding === "gbk" ||
@@ -183,6 +196,27 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     lastConnectedAt: row.last_connected_at ?? undefined
   };
 };
+
+const rowToSshKey = (row: SshKeyRow): SshKeyProfile => ({
+  id: row.id,
+  name: row.name,
+  keyContentRef: row.key_content_ref,
+  passphraseRef: row.passphrase_ref ?? undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+});
+
+const rowToProxy = (row: ProxyRow): ProxyProfile => ({
+  id: row.id,
+  name: row.name,
+  proxyType: row.proxy_type,
+  host: row.host,
+  port: row.port,
+  username: row.username ?? undefined,
+  credentialRef: row.credential_ref ?? undefined,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+});
 
 const rowToMigration = (row: MigrationRow): MigrationRecord => {
   return {
@@ -563,8 +597,59 @@ const migrations: MigrationDefinition[] = [
       // The actual generation + insertion happens at runtime in container.ts on first launch.
       // This migration is a no-op placeholder for version tracking.
     }
+  },
+  {
+    version: 13,
+    name: "restructure_keys_and_proxies",
+    apply: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS ssh_keys (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          key_content_ref TEXT NOT NULL,
+          passphrase_ref TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ssh_keys_name ON ssh_keys(name);
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS proxies (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL UNIQUE,
+          proxy_type TEXT NOT NULL,
+          host TEXT NOT NULL,
+          port INTEGER NOT NULL,
+          username TEXT,
+          credential_ref TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_proxies_name ON proxies(name);
+      `);
+
+      ensureColumn(db, "connections", "ssh_key_id", "ssh_key_id TEXT");
+      ensureColumn(db, "connections", "proxy_id", "proxy_id TEXT");
+    }
   }
 ];
+
+export interface SshKeyRepository {
+  list: () => SshKeyProfile[];
+  getById: (id: string) => SshKeyProfile | undefined;
+  save: (key: SshKeyProfile) => void;
+  remove: (id: string) => void;
+  getReferencingConnectionIds: (keyId: string) => string[];
+}
+
+export interface ProxyRepository {
+  list: () => ProxyProfile[];
+  getById: (id: string) => ProxyProfile | undefined;
+  save: (proxy: ProxyProfile) => void;
+  remove: (id: string) => void;
+  getReferencingConnectionIds: (proxyId: string) => string[];
+}
 
 export interface ConnectionRepository {
   list: (query: ConnectionListQuery) => ConnectionProfile[];
@@ -695,15 +780,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             username,
             auth_type,
             credential_ref,
-            private_key_path,
-            private_key_ref,
+            ssh_key_id,
             host_fingerprint,
             strict_host_key_checking,
-            proxy_type,
-            proxy_host,
-            proxy_port,
-            proxy_username,
-            proxy_credential_ref,
+            proxy_id,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -746,15 +826,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             username,
             auth_type,
             credential_ref,
-            private_key_path,
-            private_key_ref,
+            ssh_key_id,
             host_fingerprint,
             strict_host_key_checking,
-            proxy_type,
-            proxy_host,
-            proxy_port,
-            proxy_username,
-            proxy_credential_ref,
+            proxy_id,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -774,15 +849,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             @username,
             @auth_type,
             @credential_ref,
-            @private_key_path,
-            @private_key_ref,
+            @ssh_key_id,
             @host_fingerprint,
             @strict_host_key_checking,
-            @proxy_type,
-            @proxy_host,
-            @proxy_port,
-            @proxy_username,
-            @proxy_credential_ref,
+            @proxy_id,
             @terminal_encoding,
             @backspace_mode,
             @delete_mode,
@@ -802,15 +872,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             username = excluded.username,
             auth_type = excluded.auth_type,
             credential_ref = excluded.credential_ref,
-            private_key_path = excluded.private_key_path,
-            private_key_ref = excluded.private_key_ref,
+            ssh_key_id = excluded.ssh_key_id,
             host_fingerprint = excluded.host_fingerprint,
             strict_host_key_checking = excluded.strict_host_key_checking,
-            proxy_type = excluded.proxy_type,
-            proxy_host = excluded.proxy_host,
-            proxy_port = excluded.proxy_port,
-            proxy_username = excluded.proxy_username,
-            proxy_credential_ref = excluded.proxy_credential_ref,
+            proxy_id = excluded.proxy_id,
             terminal_encoding = excluded.terminal_encoding,
             backspace_mode = excluded.backspace_mode,
             delete_mode = excluded.delete_mode,
@@ -832,15 +897,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         username: connection.username,
         auth_type: connection.authType,
         credential_ref: connection.credentialRef ?? null,
-        private_key_path: connection.privateKeyPath ?? null,
-        private_key_ref: connection.privateKeyRef ?? null,
+        ssh_key_id: connection.sshKeyId ?? null,
         host_fingerprint: connection.hostFingerprint ?? null,
         strict_host_key_checking: connection.strictHostKeyChecking ? 1 : 0,
-        proxy_type: connection.proxyType,
-        proxy_host: connection.proxyHost ?? null,
-        proxy_port: connection.proxyPort ?? null,
-        proxy_username: connection.proxyUsername ?? null,
-        proxy_credential_ref: connection.proxyCredentialRef ?? null,
+        proxy_id: connection.proxyId ?? null,
         terminal_encoding: connection.terminalEncoding,
         backspace_mode: connection.backspaceMode,
         delete_mode: connection.deleteMode,
@@ -871,15 +931,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             username,
             auth_type,
             credential_ref,
-            private_key_path,
-            private_key_ref,
+            ssh_key_id,
             host_fingerprint,
             strict_host_key_checking,
-            proxy_type,
-            proxy_host,
-            proxy_port,
-            proxy_username,
-            proxy_credential_ref,
+            proxy_id,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -1287,8 +1342,123 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     return this.resolvedDbPath;
   }
 
+  /** Expose the underlying database for sibling repositories. */
+  getDb(): Database.Database {
+    return this.db;
+  }
+
   close(): void {
     this.db.close();
+  }
+}
+
+// ─── SQLiteSshKeyRepository ─────────────────────────────────────────────────
+
+export class SQLiteSshKeyRepository implements SshKeyRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  list(): SshKeyProfile[] {
+    const rows = this.db.prepare(
+      "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at FROM ssh_keys ORDER BY name ASC"
+    ).all() as SshKeyRow[];
+    return rows.map(rowToSshKey);
+  }
+
+  getById(id: string): SshKeyProfile | undefined {
+    const row = this.db.prepare(
+      "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at FROM ssh_keys WHERE id = ?"
+    ).get(id) as SshKeyRow | undefined;
+    return row ? rowToSshKey(row) : undefined;
+  }
+
+  save(key: SshKeyProfile): void {
+    this.db.prepare(
+      `
+        INSERT INTO ssh_keys (id, name, key_content_ref, passphrase_ref, created_at, updated_at)
+        VALUES (@id, @name, @key_content_ref, @passphrase_ref, @created_at, @updated_at)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          key_content_ref = excluded.key_content_ref,
+          passphrase_ref = excluded.passphrase_ref,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      id: key.id,
+      name: key.name,
+      key_content_ref: key.keyContentRef,
+      passphrase_ref: key.passphraseRef ?? null,
+      created_at: key.createdAt,
+      updated_at: key.updatedAt
+    });
+  }
+
+  remove(id: string): void {
+    this.db.prepare("DELETE FROM ssh_keys WHERE id = ?").run(id);
+  }
+
+  getReferencingConnectionIds(keyId: string): string[] {
+    const rows = this.db.prepare(
+      "SELECT id FROM connections WHERE ssh_key_id = ?"
+    ).all(keyId) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
+  }
+}
+
+// ─── SQLiteProxyRepository ──────────────────────────────────────────────────
+
+export class SQLiteProxyRepository implements ProxyRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  list(): ProxyProfile[] {
+    const rows = this.db.prepare(
+      "SELECT id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at FROM proxies ORDER BY name ASC"
+    ).all() as ProxyRow[];
+    return rows.map(rowToProxy);
+  }
+
+  getById(id: string): ProxyProfile | undefined {
+    const row = this.db.prepare(
+      "SELECT id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at FROM proxies WHERE id = ?"
+    ).get(id) as ProxyRow | undefined;
+    return row ? rowToProxy(row) : undefined;
+  }
+
+  save(proxy: ProxyProfile): void {
+    this.db.prepare(
+      `
+        INSERT INTO proxies (id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at)
+        VALUES (@id, @name, @proxy_type, @host, @port, @username, @credential_ref, @created_at, @updated_at)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          proxy_type = excluded.proxy_type,
+          host = excluded.host,
+          port = excluded.port,
+          username = excluded.username,
+          credential_ref = excluded.credential_ref,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      id: proxy.id,
+      name: proxy.name,
+      proxy_type: proxy.proxyType,
+      host: proxy.host,
+      port: proxy.port,
+      username: proxy.username ?? null,
+      credential_ref: proxy.credentialRef ?? null,
+      created_at: proxy.createdAt,
+      updated_at: proxy.updatedAt
+    });
+  }
+
+  remove(id: string): void {
+    this.db.prepare("DELETE FROM proxies WHERE id = ?").run(id);
+  }
+
+  getReferencingConnectionIds(proxyId: string): string[] {
+    const rows = this.db.prepare(
+      "SELECT id FROM connections WHERE proxy_id = ?"
+    ).all(proxyId) as Array<{ id: string }>;
+    return rows.map((r) => r.id);
   }
 }
 

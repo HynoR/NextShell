@@ -276,7 +276,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
       <Drawer
         title={detailPid ? `进程详情 · PID ${detailPid}` : "进程详情"}
         placement="right"
-        width={460}
+        size={460}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
       >

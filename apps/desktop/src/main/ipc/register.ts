@@ -54,7 +54,13 @@ import {
   backupPasswordStatusSchema,
   templateParamsListSchema,
   templateParamsUpsertSchema,
-  templateParamsClearSchema
+  templateParamsClearSchema,
+  sshKeyListSchema,
+  sshKeyUpsertSchema,
+  sshKeyRemoveSchema,
+  proxyListSchema,
+  proxyUpsertSchema,
+  proxyRemoveSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -375,5 +381,39 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.TemplateParamsClear, (_event, payload) => {
     const input = parsePayload(templateParamsClearSchema, payload, "模板参数清除");
     return services.clearTemplateParams(input);
+  });
+
+  // ─── SSH Keys ─────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.SshKeyList, (_event, payload) => {
+    parsePayload(sshKeyListSchema, payload ?? {}, "密钥列表");
+    return services.listSshKeys();
+  });
+
+  ipcMain.handle(IPCChannel.SshKeyUpsert, (_event, payload) => {
+    const input = parsePayload(sshKeyUpsertSchema, payload, "密钥保存");
+    return services.upsertSshKey(input);
+  });
+
+  ipcMain.handle(IPCChannel.SshKeyRemove, (_event, payload) => {
+    const input = parsePayload(sshKeyRemoveSchema, payload, "密钥删除");
+    return services.removeSshKey(input);
+  });
+
+  // ─── Proxies ──────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.ProxyList, (_event, payload) => {
+    parsePayload(proxyListSchema, payload ?? {}, "代理列表");
+    return services.listProxies();
+  });
+
+  ipcMain.handle(IPCChannel.ProxyUpsert, (_event, payload) => {
+    const input = parsePayload(proxyUpsertSchema, payload, "代理保存");
+    return services.upsertProxy(input);
+  });
+
+  ipcMain.handle(IPCChannel.ProxyRemove, (_event, payload) => {
+    const input = parsePayload(proxyRemoveSchema, payload, "代理删除");
+    return services.removeProxy(input);
   });
 };

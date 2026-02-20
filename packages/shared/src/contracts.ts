@@ -31,7 +31,7 @@ const trimAndFilterStringArray = (value: unknown): unknown => {
 };
 
 export const authTypeSchema = z.enum(["password", "privateKey", "agent"]);
-export const proxyTypeSchema = z.enum(["none", "socks4", "socks5"]);
+export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
@@ -52,15 +52,10 @@ export const connectionUpsertSchema = z.object({
   username: z.preprocess(trimToString, z.string()),
   authType: authTypeSchema.default("password"),
   password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  privateKeyPath: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  sshKeyId: z.string().uuid().optional(),
   hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   strictHostKeyChecking: z.boolean().default(false),
-  proxyType: proxyTypeSchema.default("none"),
-  proxyHost: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  proxyPort: z.coerce.number().int().min(1).max(65535).optional(),
-  proxyUsername: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  proxyPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  proxyId: z.string().uuid().optional(),
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
@@ -70,29 +65,11 @@ export const connectionUpsertSchema = z.object({
   favorite: z.boolean().default(false),
   monitorSession: z.boolean().default(false)
 }).superRefine((value, ctx) => {
-  if (value.proxyType !== "none") {
-    if (!value.proxyHost) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "proxyHost is required when proxyType is enabled",
-        path: ["proxyHost"]
-      });
-    }
-
-    if (value.proxyPort === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "proxyPort is required when proxyType is enabled",
-        path: ["proxyPort"]
-      });
-    }
-  }
-
-  if (value.proxyType === "socks4" && value.proxyPassword) {
+  if (value.authType === "privateKey" && !value.sshKeyId) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "proxyPassword is not supported for socks4",
-      path: ["proxyPassword"]
+      message: "sshKeyId is required when authType is privateKey",
+      path: ["sshKeyId"]
     });
   }
 });
@@ -105,7 +82,8 @@ export const sessionAuthOverrideSchema = z.object({
   username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   authType: z.enum(["password", "privateKey"]),
   password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  privateKeyPath: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  sshKeyId: z.string().uuid().optional(),
+  /** Temporary key content for retry (not persisted as entity) */
   privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 }).superRefine((value, ctx) => {
@@ -435,6 +413,49 @@ export const templateParamsClearSchema = z.object({
   commandId: z.string().uuid()
 });
 
+// ─── SSH Key Management ─────────────────────────────────────────────────────
+
+export const sshKeyListSchema = z.object({});
+
+export const sshKeyUpsertSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1),
+  keyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+});
+
+export const sshKeyRemoveSchema = z.object({
+  id: z.string().uuid(),
+  force: z.boolean().default(false)
+});
+
+// ─── Proxy Management ───────────────────────────────────────────────────────
+
+export const proxyListSchema = z.object({});
+
+export const proxyUpsertSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1),
+  proxyType: proxyTypeSchema,
+  host: z.string().trim().min(1),
+  port: z.coerce.number().int().min(1).max(65535),
+  username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  password: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+}).superRefine((value, ctx) => {
+  if (value.proxyType === "socks4" && value.password) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "SOCKS4 does not support password authentication",
+      path: ["password"]
+    });
+  }
+});
+
+export const proxyRemoveSchema = z.object({
+  id: z.string().uuid(),
+  force: z.boolean().default(false)
+});
+
 export type ConnectionListQueryInput = z.infer<typeof connectionListQuerySchema>;
 export type ConnectionUpsertInput = z.infer<typeof connectionUpsertSchema>;
 export type ConnectionRemoveInput = z.infer<typeof connectionRemoveSchema>;
@@ -495,3 +516,9 @@ export type BackupPasswordStatusInput = z.infer<typeof backupPasswordStatusSchem
 export type TemplateParamsListInput = z.infer<typeof templateParamsListSchema>;
 export type TemplateParamsUpsertInput = z.infer<typeof templateParamsUpsertSchema>;
 export type TemplateParamsClearInput = z.infer<typeof templateParamsClearSchema>;
+export type SshKeyListInput = z.infer<typeof sshKeyListSchema>;
+export type SshKeyUpsertInput = z.infer<typeof sshKeyUpsertSchema>;
+export type SshKeyRemoveInput = z.infer<typeof sshKeyRemoveSchema>;
+export type ProxyListInput = z.infer<typeof proxyListSchema>;
+export type ProxyUpsertInput = z.infer<typeof proxyUpsertSchema>;
+export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;

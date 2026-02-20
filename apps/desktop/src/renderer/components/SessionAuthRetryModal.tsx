@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Form, Input, Modal, Select, Typography, message } from "antd";
+import type { SshKeyProfile } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
 
 interface SessionAuthRetryModalProps {
@@ -9,6 +10,7 @@ interface SessionAuthRetryModalProps {
   initialUsername?: string;
   defaultAuthType: SessionAuthOverrideInput["authType"];
   hasExistingPrivateKey: boolean;
+  sshKeys: SshKeyProfile[];
   onCancel: () => void;
   onSubmit: (payload: SessionAuthOverrideInput) => Promise<void>;
 }
@@ -17,7 +19,7 @@ interface SessionAuthFormValues {
   username?: string;
   authType: SessionAuthOverrideInput["authType"];
   password?: string;
-  privateKeyPath?: string;
+  sshKeyId?: string;
   privateKeyContent?: string;
   passphrase?: string;
 }
@@ -38,6 +40,7 @@ export const SessionAuthRetryModal = ({
   initialUsername,
   defaultAuthType,
   hasExistingPrivateKey,
+  sshKeys,
   onCancel,
   onSubmit
 }: SessionAuthRetryModalProps) => {
@@ -68,7 +71,7 @@ export const SessionAuthRetryModal = ({
 
     if (authType === "password") {
       form.setFieldsValue({
-        privateKeyPath: undefined,
+        sshKeyId: undefined,
         privateKeyContent: undefined,
         passphrase: undefined
       });
@@ -110,7 +113,6 @@ export const SessionAuthRetryModal = ({
           const authTypeValue = values.authType ?? defaultAuthType;
           const username = sanitizeOptionalText(values.username) ?? normalizedInitialUsername;
           const password = sanitizeOptionalText(values.password);
-          const privateKeyPath = sanitizeOptionalText(values.privateKeyPath);
           const privateKeyContent = sanitizeOptionalText(values.privateKeyContent);
           const passphrase = sanitizeOptionalText(values.passphrase);
 
@@ -124,8 +126,8 @@ export const SessionAuthRetryModal = ({
             return;
           }
 
-          if (authTypeValue === "privateKey" && !hasExistingPrivateKey && !privateKeyPath && !privateKeyContent) {
-            message.error("请提供私钥路径或私钥内容。");
+          if (authTypeValue === "privateKey" && !hasExistingPrivateKey && !values.sshKeyId && !privateKeyContent) {
+            message.error("请选择密钥或粘贴私钥内容。");
             return;
           }
 
@@ -135,7 +137,7 @@ export const SessionAuthRetryModal = ({
               username,
               authType: authTypeValue,
               password: authTypeValue === "password" ? password : undefined,
-              privateKeyPath: authTypeValue === "privateKey" ? privateKeyPath : undefined,
+              sshKeyId: authTypeValue === "privateKey" ? values.sshKeyId : undefined,
               privateKeyContent: authTypeValue === "privateKey" ? privateKeyContent : undefined,
               passphrase: authTypeValue === "privateKey" ? passphrase : undefined
             });
@@ -171,10 +173,19 @@ export const SessionAuthRetryModal = ({
 
         {authType === "privateKey" ? (
           <>
-            <Form.Item label="私钥路径（可选）" name="privateKeyPath">
-              <Input placeholder="~/.ssh/id_ed25519" />
+            <Form.Item label="选择密钥" name="sshKeyId">
+              <Select
+                placeholder="选择已有密钥..."
+                allowClear
+                options={sshKeys.map((k) => ({ label: k.name, value: k.id }))}
+                notFoundContent={
+                  <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                    暂无密钥
+                  </div>
+                }
+              />
             </Form.Item>
-            <Form.Item label="私钥内容（可选）" name="privateKeyContent">
+            <Form.Item label="或直接粘贴私钥内容" name="privateKeyContent">
               <Input.TextArea
                 rows={4}
                 placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}

@@ -13,9 +13,11 @@ import type {
   NetworkSnapshot,
   ProcessDetailSnapshot,
   ProcessSnapshot,
+  ProxyProfile,
   RemoteFileEntry,
   SavedCommand,
-  SessionDescriptor
+  SessionDescriptor,
+  SshKeyProfile
 } from "../../core/src/index";
 import type {
   AppPreferences,
@@ -50,6 +52,9 @@ import type {
   MonitorSystemSelectInterfaceInput,
   MonitorSystemStopInput,
   MonitorSnapshotInput,
+  ProxyListInput,
+  ProxyRemoveInput,
+  ProxyUpsertInput,
   SavedCommandListInput,
   SavedCommandRemoveInput,
   SavedCommandUpsertInput,
@@ -71,6 +76,9 @@ import type {
   SftpRenameInput,
   SftpTransferStatusEvent,
   SftpUploadInput,
+  SshKeyListInput,
+  SshKeyRemoveInput,
+  SshKeyUpsertInput,
   TemplateParamsListInput,
   TemplateParamsUpsertInput,
   TemplateParamsClearInput
@@ -169,5 +177,15 @@ export interface NextShellApi {
     list: (payload?: TemplateParamsListInput) => Promise<CommandTemplateParam[]>;
     upsert: (payload: TemplateParamsUpsertInput) => Promise<{ ok: true }>;
     clear: (payload: TemplateParamsClearInput) => Promise<{ ok: true }>;
+  };
+  sshKey: {
+    list: (payload?: SshKeyListInput) => Promise<SshKeyProfile[]>;
+    upsert: (payload: SshKeyUpsertInput) => Promise<SshKeyProfile>;
+    remove: (payload: SshKeyRemoveInput) => Promise<{ ok: true }>;
+  };
+  proxy: {
+    list: (payload?: ProxyListInput) => Promise<ProxyProfile[]>;
+    upsert: (payload: ProxyUpsertInput) => Promise<ProxyProfile>;
+    remove: (payload: ProxyRemoveInput) => Promise<{ ok: true }>;
   };
 }

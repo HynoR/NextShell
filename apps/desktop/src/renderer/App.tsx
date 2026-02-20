@@ -19,11 +19,16 @@ const isTerminalSession = (session: SessionDescriptor): boolean =>
 export const App = () => {
   const {
     connections,
+    sshKeys,
+    proxies,
     activeConnectionId,
     sessions,
     activeSessionId,
     monitor,
     bottomTab,
+    setConnections,
+    setSshKeys,
+    setProxies,
     setActiveConnection,
     upsertSession,
     removeSession,
@@ -49,6 +54,26 @@ export const App = () => {
   const clearFinishedTransfers = useTransferQueueStore((state) => state.clearFinished);
 
   const { loadConnections, handleConnectionSaved, handleConnectionRemoved } = useConnectionManager();
+
+  const loadSshKeys = useCallback(async () => {
+    try {
+      const list = await window.nextshell.sshKey.list({});
+      setSshKeys(list);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "加载密钥失败";
+      message.error(reason);
+    }
+  }, [setSshKeys]);
+
+  const loadProxies = useCallback(async () => {
+    try {
+      const list = await window.nextshell.proxy.list({});
+      setProxies(list);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "加载代理失败";
+      message.error(reason);
+    }
+  }, [setProxies]);
 
   const {
     connectingIds,
@@ -143,10 +168,10 @@ export const App = () => {
 
   // Initialize app
   useEffect(() => {
-    Promise.all([loadConnections(), initializePreferences()]).finally(() => {
+    Promise.all([loadConnections(), loadSshKeys(), loadProxies(), initializePreferences()]).finally(() => {
       setAppReady(true);
     });
-  }, [loadConnections, initializePreferences]);
+  }, [loadConnections, loadSshKeys, loadProxies, initializePreferences]);
 
   // Transfer status events
   useEffect(() => {
@@ -268,6 +293,7 @@ export const App = () => {
     <>
       <WorkspaceLayout
         connections={connections}
+        sshKeys={sshKeys}
         sessions={sessions}
         activeConnectionId={activeConnectionId}
         activeSessionId={activeSessionId}
@@ -317,9 +343,13 @@ export const App = () => {
       <ConnectionManagerModal
         open={managerOpen}
         connections={connections}
+        sshKeys={sshKeys}
+        proxies={proxies}
         onClose={() => setManagerOpen(false)}
         onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
         onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
+        onReloadSshKeys={loadSshKeys}
+        onReloadProxies={loadProxies}
       />
 
       <SettingsCenterDrawer

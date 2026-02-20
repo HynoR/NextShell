@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Form, Input, InputNumber, Modal, Select, Switch, Tooltip, message } from "antd";
-import type { ConnectionProfile } from "@nextshell/core";
+import type { ConnectionProfile, SshKeyProfile, ProxyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
+import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
+import { ProxyManagerPanel } from "./ProxyManagerPanel";
+
+type ManagerTab = "connections" | "keys" | "proxies";
 
 interface ConnectionManagerModalProps {
   open: boolean;
   connections: ConnectionProfile[];
+  sshKeys: SshKeyProfile[];
+  proxies: ProxyProfile[];
   onClose: () => void;
   onConnectionSaved: (payload: ConnectionUpsertInput) => Promise<void>;
   onConnectionRemoved: (connectionId: string) => Promise<void>;
+  onReloadSshKeys: () => Promise<void>;
+  onReloadProxies: () => Promise<void>;
 }
 
 const sanitizeOptionalText = (value: string | undefined): string | undefined => {
@@ -186,7 +194,6 @@ const MgrTreeGroup = ({
 const DEFAULT_VALUES = {
   port: 22,
   authType: "password" as const,
-  proxyType: "none" as const,
   strictHostKeyChecking: false,
   terminalEncoding: "utf-8" as const,
   backspaceMode: "ascii-backspace" as const,
@@ -202,10 +209,15 @@ const DEFAULT_VALUES = {
 export const ConnectionManagerModal = ({
   open,
   connections,
+  sshKeys,
+  proxies,
   onClose,
   onConnectionSaved,
-  onConnectionRemoved
+  onConnectionRemoved,
+  onReloadSshKeys,
+  onReloadProxies
 }: ConnectionManagerModalProps) => {
+  const [activeTab, setActiveTab] = useState<ManagerTab>("connections");
   const [mode, setMode] = useState<"idle" | "new" | "edit">("idle");
   const [keyword, setKeyword] = useState("");
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>();
@@ -213,7 +225,6 @@ export const ConnectionManagerModal = ({
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
-  const proxyType = Form.useWatch("proxyType", form);
 
   const tree = useMemo(
     () => buildManagerTree(connections, keyword),
@@ -227,6 +238,7 @@ export const ConnectionManagerModal = ({
     setSelectedConnectionId(undefined);
     setMode("idle");
     setKeyword("");
+    setActiveTab("connections");
   }, [form, open]);
 
   // Auto-expand all groups when keyword is set
@@ -250,40 +262,19 @@ export const ConnectionManagerModal = ({
     if (authType === "agent") {
       form.setFieldsValue({
         password: undefined,
-        privateKeyPath: undefined,
-        privateKeyContent: undefined
+        sshKeyId: undefined
       });
       return;
     }
 
     if (authType === "password") {
-      form.setFieldsValue({
-        privateKeyPath: undefined,
-        privateKeyContent: undefined
-      });
+      form.setFieldValue("sshKeyId", undefined);
       return;
     }
 
+    // privateKey — clear password
     form.setFieldValue("password", undefined);
   }, [authType, form, open]);
-
-  useEffect(() => {
-    if (!open || !proxyType) return;
-
-    if (proxyType === "none") {
-      form.setFieldsValue({
-        proxyHost: undefined,
-        proxyPort: undefined,
-        proxyUsername: undefined,
-        proxyPassword: undefined
-      });
-      return;
-    }
-
-    if (proxyType === "socks4") {
-      form.setFieldValue("proxyPassword", undefined);
-    }
-  }, [form, open, proxyType]);
 
   const selectedConnection = useMemo(
     () => connections.find((c) => c.id === selectedConnectionId),
@@ -298,13 +289,10 @@ export const ConnectionManagerModal = ({
       port: connection.port,
       username: connection.username,
       authType: connection.authType,
-      privateKeyPath: connection.privateKeyPath,
+      sshKeyId: connection.sshKeyId,
       hostFingerprint: connection.hostFingerprint,
       strictHostKeyChecking: connection.strictHostKeyChecking,
-      proxyType: connection.proxyType,
-      proxyHost: connection.proxyHost,
-      proxyPort: connection.proxyPort,
-      proxyUsername: connection.proxyUsername,
+      proxyId: connection.proxyId,
       terminalEncoding: connection.terminalEncoding,
       backspaceMode: connection.backspaceMode,
       deleteMode: connection.deleteMode,
@@ -313,8 +301,7 @@ export const ConnectionManagerModal = ({
       notes: connection.notes,
       favorite: connection.favorite,
       monitorSession: connection.monitorSession,
-      password: undefined,
-      proxyPassword: undefined
+      password: undefined
     });
   }, [form]);
 
@@ -388,7 +375,37 @@ export const ConnectionManagerModal = ({
       title={<span className="mgr-modal-title">连接管理器</span>}
       destroyOnHidden
     >
-      <div className={mode !== "idle" ? "grid grid-cols-[230px_1fr] h-[580px] overflow-hidden" : "h-[580px] overflow-hidden"}>
+      {/* ── Tab bar ───────────────────────────── */}
+      <div className="mgr-tab-bar">
+        <button
+          type="button"
+          className={`mgr-tab${activeTab === "connections" ? " mgr-tab--active" : ""}`}
+          onClick={() => setActiveTab("connections")}
+        >
+          <i className="ri-server-line" aria-hidden="true" />
+          连接
+        </button>
+        <button
+          type="button"
+          className={`mgr-tab${activeTab === "keys" ? " mgr-tab--active" : ""}`}
+          onClick={() => setActiveTab("keys")}
+        >
+          <i className="ri-key-2-line" aria-hidden="true" />
+          密钥
+        </button>
+        <button
+          type="button"
+          className={`mgr-tab${activeTab === "proxies" ? " mgr-tab--active" : ""}`}
+          onClick={() => setActiveTab("proxies")}
+        >
+          <i className="ri-shield-line" aria-hidden="true" />
+          代理
+        </button>
+      </div>
+
+      {/* ── Connections tab ───────────────────── */}
+      {activeTab === "connections" && (
+      <div className={mode !== "idle" ? "grid grid-cols-[230px_1fr] h-[540px] overflow-hidden" : "h-[540px] overflow-hidden"}>
 
         {/* ── Sidebar ─────────────────────────── */}
         <div className={`flex flex-col bg-[var(--bg-elevated)] overflow-hidden${mode !== "idle" ? " border-r border-[var(--border)]" : ""}`}>
@@ -555,17 +572,7 @@ export const ConnectionManagerModal = ({
               initialValues={DEFAULT_VALUES}
               onFinish={async (values) => {
                 const password = sanitizeOptionalText(values.password);
-                const privateKeyPath = sanitizeOptionalText(values.privateKeyPath);
-                const privateKeyContent = sanitizeOptionalText(values.privateKeyContent);
                 const hostFingerprint = sanitizeOptionalText(values.hostFingerprint);
-                const selectedProxyType = values.proxyType ?? "none";
-                const proxyHost = sanitizeOptionalText(values.proxyHost);
-                const proxyPort =
-                  values.proxyPort === undefined || values.proxyPort === null
-                    ? undefined
-                    : Number(values.proxyPort);
-                const proxyUsername = sanitizeOptionalText(values.proxyUsername);
-                const proxyPassword = sanitizeOptionalText(values.proxyPassword);
                 const groupPath = sanitizeTextArray(values.groupPath);
                 const tags = sanitizeTextArray(values.tags);
                 const notes = sanitizeOptionalText(values.notes);
@@ -574,13 +581,8 @@ export const ConnectionManagerModal = ({
                 const backspaceMode = values.backspaceMode ?? "ascii-backspace";
                 const deleteMode = values.deleteMode ?? "vt220-delete";
 
-                if (
-                  values.authType === "privateKey" &&
-                  !privateKeyPath &&
-                  !privateKeyContent &&
-                  !selectedConnection?.privateKeyRef
-                ) {
-                  message.error("私钥认证需要提供私钥路径或导入私钥内容。");
+                if (values.authType === "privateKey" && !values.sshKeyId) {
+                  message.error("私钥认证需要选择一个 SSH 密钥。");
                   return;
                 }
 
@@ -594,28 +596,6 @@ export const ConnectionManagerModal = ({
                   return;
                 }
 
-                if (selectedProxyType !== "none") {
-                  if (!proxyHost) {
-                    message.error("启用代理时必须填写代理地址。");
-                    return;
-                  }
-
-                  if (!Number.isInteger(proxyPort) || (proxyPort ?? 0) < 1 || (proxyPort ?? 0) > 65535) {
-                    message.error("代理端口必须是 1-65535 的整数。");
-                    return;
-                  }
-                }
-
-                if (selectedProxyType === "socks4" && proxyPassword) {
-                  message.error("SOCKS4 不支持代理密码。");
-                  return;
-                }
-
-                if (selectedProxyType === "socks5" && proxyPassword && !proxyUsername) {
-                  message.error("设置 SOCKS5 代理密码时必须填写代理用户名。");
-                  return;
-                }
-
                 setSaving(true);
                 try {
                   const payload: ConnectionUpsertInput = {
@@ -626,15 +606,10 @@ export const ConnectionManagerModal = ({
                     username: (values.username ?? "").trim(),
                     authType: values.authType,
                     password,
-                    privateKeyPath: values.authType === "privateKey" ? privateKeyPath : undefined,
-                    privateKeyContent: values.authType === "privateKey" ? privateKeyContent : undefined,
+                    sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined,
                     hostFingerprint,
                     strictHostKeyChecking: values.strictHostKeyChecking ?? false,
-                    proxyType: selectedProxyType,
-                    proxyHost: selectedProxyType === "none" ? undefined : proxyHost,
-                    proxyPort: selectedProxyType === "none" ? undefined : proxyPort,
-                    proxyUsername: selectedProxyType === "none" ? undefined : proxyUsername,
-                    proxyPassword: selectedProxyType === "socks5" ? proxyPassword : undefined,
+                    proxyId: values.proxyId,
                     terminalEncoding,
                     backspaceMode,
                     deleteMode,
@@ -649,9 +624,7 @@ export const ConnectionManagerModal = ({
                   setSelectedConnectionId(payload.id);
                   setMode("edit");
                   form.setFieldsValue({
-                    password: undefined,
-                    privateKeyContent: undefined,
-                    proxyPassword: undefined
+                    password: undefined
                   });
                 } catch (error) {
                   const reason = error instanceof Error ? error.message : "保存失败";
@@ -715,97 +688,54 @@ export const ConnectionManagerModal = ({
               </div>
 
               {authType === "privateKey" ? (
-                <>
-                  <Form.Item
-                    label="私钥路径（可选）"
-                    name="privateKeyPath"
-                    preserve={false}
-                  >
-                    <Input
-                      placeholder="~/.ssh/id_ed25519"
-                      className="mgr-mono-input"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    label="导入私钥内容（可选，保存为加密引用）"
-                    name="privateKeyContent"
-                    preserve={false}
-                  >
-                    <Input.TextArea
-                      rows={4}
-                      placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
-                      className="mgr-mono-input"
-                    />
-                  </Form.Item>
-                </>
+                <Form.Item
+                  label="SSH 密钥"
+                  name="sshKeyId"
+                  rules={[{ required: true, message: "请选择一个 SSH 密钥" }]}
+                >
+                  <Select
+                    placeholder="选择密钥..."
+                    allowClear
+                    options={sshKeys.map((k) => ({ label: k.name, value: k.id }))}
+                    notFoundContent={
+                      <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                        暂无密钥，请先在「密钥管理」中添加
+                      </div>
+                    }
+                  />
+                </Form.Item>
               ) : null}
 
-              {authType === "password" || authType === "privateKey" ? (
+              {authType === "password" ? (
                 <Form.Item
-                  label={authType === "password" ? "密码" : "私钥 Passphrase"}
+                  label="密码"
                   name="password"
                   preserve={false}
                 >
-                  <Input.Password placeholder={authType === "password" ? "输入密码（留空则不更新）" : "输入 Passphrase（可选）"} />
+                  <Input.Password placeholder="输入密码（留空则不更新）" />
                 </Form.Item>
               ) : null}
 
               <div className="mgr-section-label mgr-section-gap">网络代理</div>
 
               <Form.Item
-                label="代理类型"
-                name="proxyType"
+                label="代理"
+                name="proxyId"
               >
                 <Select
-                  options={[
-                    { label: "直连", value: "none" },
-                    { label: "SOCKS4", value: "socks4" },
-                    { label: "SOCKS5", value: "socks5" }
-                  ]}
+                  placeholder="直连（不使用代理）"
+                  allowClear
+                  options={proxies.map((p) => ({
+                    label: `${p.name} (${p.proxyType.toUpperCase()} ${p.host}:${p.port})`,
+                    value: p.id
+                  }))}
+                  notFoundContent={
+                    <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                      暂无代理，请先在「代理管理」中添加
+                    </div>
+                  }
                 />
               </Form.Item>
-
-              {proxyType !== "none" ? (
-                <>
-                  <div className="flex gap-3 items-start">
-                    <Form.Item
-                      label="代理地址"
-                      name="proxyHost"
-                      className="flex-1"
-                    >
-                      <Input placeholder="127.0.0.1" className="mgr-mono-input" />
-                    </Form.Item>
-                    <Form.Item
-                      label="代理端口"
-                      name="proxyPort"
-                      className="w-[90px] shrink-0"
-                    >
-                      <InputNumber min={1} max={65535} precision={0} placeholder="1080" style={{ width: "100%" }} />
-                    </Form.Item>
-                  </div>
-
-                  <div className="flex gap-3 items-start">
-                    <Form.Item
-                      label={proxyType === "socks4" ? "代理 User ID（可选）" : "代理用户名（可选）"}
-                      name="proxyUsername"
-                      className="flex-1"
-                    >
-                      <Input placeholder={proxyType === "socks4" ? "可选 userId" : "可选用户名"} />
-                    </Form.Item>
-                    {proxyType === "socks5" ? (
-                      <Form.Item
-                        label="代理密码（可选）"
-                        name="proxyPassword"
-                        className="flex-1"
-                      >
-                        <Input.Password placeholder="留空则不更新" />
-                      </Form.Item>
-                    ) : null}
-                  </div>
-
-                  <div className="mgr-form-subtitle">修改代理设置后，需重连 SSH 会话才会生效。</div>
-                </>
-              ) : null}
 
               {/* Section: 分组 & 标签 */}
               <div className="mgr-section-label mgr-section-gap">分组 & 标签</div>
@@ -926,6 +856,17 @@ export const ConnectionManagerModal = ({
           </div>
         )}
       </div>
+      )}
+
+      {/* ── SSH Keys tab ─────────────────────── */}
+      {activeTab === "keys" && (
+        <SshKeyManagerPanel sshKeys={sshKeys} onReload={onReloadSshKeys} />
+      )}
+
+      {/* ── Proxies tab ──────────────────────── */}
+      {activeTab === "proxies" && (
+        <ProxyManagerPanel proxies={proxies} onReload={onReloadProxies} />
+      )}
     </Modal>
   );
 };

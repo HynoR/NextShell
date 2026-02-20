@@ -155,10 +155,9 @@ export function useSessionLifecycle() {
             const currentConnection = findConnection();
             const nextInitialUsername = authOverride?.username ?? currentConnection?.username;
             const hasExistingPrivateKey = Boolean(
-              currentConnection?.privateKeyPath ||
-              currentConnection?.privateKeyRef ||
+              currentConnection?.sshKeyId ||
               (authOverride?.authType === "privateKey" &&
-                (authOverride.privateKeyPath || authOverride.privateKeyContent))
+                (authOverride.sshKeyId || authOverride.privateKeyContent))
             );
             const nextAuthType = authOverride?.authType ?? resolveDefaultAuthType(currentConnection);
 
@@ -179,7 +178,7 @@ export function useSessionLifecycle() {
               nextAuthOverride.authType === "privateKey" && authOverride?.authType === "privateKey"
                 ? {
                     ...nextAuthOverride,
-                    privateKeyPath: nextAuthOverride.privateKeyPath ?? authOverride.privateKeyPath,
+                    sshKeyId: nextAuthOverride.sshKeyId ?? authOverride.sshKeyId,
                     privateKeyContent: nextAuthOverride.privateKeyContent ?? authOverride.privateKeyContent
                   }
                 : nextAuthOverride;

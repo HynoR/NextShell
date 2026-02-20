@@ -28,11 +28,13 @@ import type {
   NetworkSnapshot,
   ProcessDetailSnapshot,
   ProcessSnapshot,
+  ProxyProfile,
   RemoteFileEntry,
   RestoreConflictPolicy,
   SavedCommand,
   SessionDescriptor,
   SessionStatus,
+  SshKeyProfile,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
 import {
@@ -60,7 +62,11 @@ import type {
   TemplateParamsListInput,
   TemplateParamsClearInput,
   TemplateParamsUpsertInput,
-  SftpEditSessionInfo
+  SftpEditSessionInfo,
+  SshKeyUpsertInput,
+  SshKeyRemoveInput,
+  ProxyUpsertInput,
+  ProxyRemoveInput
 } from "../../../../../packages/shared/src/index";
 import { IPCChannel, AUTH_REQUIRED_PREFIX } from "../../../../../packages/shared/src/index";
 import {
@@ -70,7 +76,14 @@ import {
   createMasterKeyMeta,
   verifyMasterPassword
 } from "../../../../../packages/security/src/index";
-import { SQLiteConnectionRepository, CachedConnectionRepository } from "../../../../../packages/storage/src/index";
+import {
+  SQLiteConnectionRepository,
+  CachedConnectionRepository,
+  SQLiteSshKeyRepository,
+  CachedSshKeyRepository,
+  SQLiteProxyRepository,
+  CachedProxyRepository
+} from "../../../../../packages/storage/src/index";
 import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
 import { logger } from "../logger";
@@ -148,6 +161,12 @@ export interface ServiceContainer {
   listConnections: (query: ConnectionListQuery) => ConnectionProfile[];
   upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   removeConnection: (id: string) => Promise<{ ok: true }>;
+  listSshKeys: () => SshKeyProfile[];
+  upsertSshKey: (input: SshKeyUpsertInput) => Promise<SshKeyProfile>;
+  removeSshKey: (input: SshKeyRemoveInput) => Promise<{ ok: true }>;
+  listProxies: () => ProxyProfile[];
+  upsertProxy: (input: ProxyUpsertInput) => Promise<ProxyProfile>;
+  removeProxy: (input: ProxyRemoveInput) => Promise<{ ok: true }>;
   getAppPreferences: () => AppPreferences;
   updateAppPreferences: (patch: SettingsUpdateInput) => AppPreferences;
   openFilesDialog: (
@@ -816,6 +835,10 @@ export const createServiceContainer = (
   const connections = new CachedConnectionRepository(rawRepo);
   connections.seedIfEmpty([]);
 
+  // ─── Sibling repositories (share same SQLite DB) ──────────────────────────
+  const sshKeyRepo = new CachedSshKeyRepository(new SQLiteSshKeyRepository(rawRepo.getDb()));
+  const proxyRepo = new CachedProxyRepository(new SQLiteProxyRepository(rawRepo.getDb()));
+
   // ─── Device Key (always-on local credential encryption) ────────────────────
   let deviceKeyHex = connections.getDeviceKey();
   if (!deviceKeyHex) {
@@ -871,26 +894,32 @@ export const createServiceContainer = (
     profile: ConnectionProfile,
     authOverride?: SessionAuthOverrideInput
   ): Promise<SshConnectOptions> => {
-    const proxySecret = profile.proxyCredentialRef
-      ? await vault.readCredential(profile.proxyCredentialRef)
-      : undefined;
+    // ── Proxy resolution ──────────────────────────────────────────────────
+    let proxy: SshConnectOptions["proxy"];
+    if (profile.proxyId) {
+      const proxyProfile = proxyRepo.getById(profile.proxyId);
+      if (!proxyProfile) {
+        throw new Error("Referenced proxy profile not found. Please update the connection.");
+      }
 
-    const proxy =
-      profile.proxyType === "none"
-        ? undefined
-        : {
-            type: profile.proxyType,
-            host: profile.proxyHost ?? "",
-            port: profile.proxyPort ?? 0,
-            username: profile.proxyUsername,
-            password:
-              profile.proxyType === "socks5" && profile.proxyUsername
-                ? proxySecret
-                : undefined
-          };
+      const proxySecret = proxyProfile.credentialRef
+        ? await vault.readCredential(proxyProfile.credentialRef)
+        : undefined;
 
-    if (proxy && (!proxy.host || proxy.port <= 0)) {
-      throw new Error("Proxy host and port are required when proxy is enabled.");
+      proxy = {
+        type: proxyProfile.proxyType,
+        host: proxyProfile.host,
+        port: proxyProfile.port,
+        username: proxyProfile.username,
+        password:
+          proxyProfile.proxyType === "socks5" && proxyProfile.username
+            ? proxySecret
+            : undefined
+      };
+
+      if (!proxy.host || proxy.port <= 0) {
+        throw new Error("Proxy host and port are required when proxy is enabled.");
+      }
     }
 
     const username = authOverride?.username?.trim() || profile.username.trim();
@@ -932,33 +961,38 @@ export const createServiceContainer = (
     }
 
     if (effectiveAuthType === "privateKey") {
-      const importedPrivateKey = profile.privateKeyRef
-        ? await vault.readCredential(profile.privateKeyRef)
-        : undefined;
-      const privateKey =
-        authOverride?.authType === "privateKey"
-          ? authOverride.privateKeyContent ?? importedPrivateKey
-          : importedPrivateKey;
-      const privateKeyPath =
-        authOverride?.authType === "privateKey"
-          ? authOverride.privateKeyPath ?? profile.privateKeyPath
-          : profile.privateKeyPath;
-      const passphrase =
-        authOverride?.authType === "privateKey"
-          ? authOverride.passphrase ?? (profile.authType === "privateKey" ? secret : undefined)
-          : profile.authType === "privateKey"
-            ? secret
-            : undefined;
+      // Resolve SSH key entity
+      const effectiveKeyId = authOverride?.sshKeyId ?? profile.sshKeyId;
+      let privateKey: string | undefined;
+      let passphrase: string | undefined;
 
-      if (!privateKeyPath && !privateKey) {
-        throw new Error("Private key auth requires private key path or imported key.");
+      if (authOverride?.privateKeyContent) {
+        // Temporary key content for retry (not persisted as entity)
+        privateKey = authOverride.privateKeyContent;
+        passphrase = authOverride.passphrase;
+      } else if (effectiveKeyId) {
+        const keyProfile = sshKeyRepo.getById(effectiveKeyId);
+        if (!keyProfile) {
+          throw new Error("Referenced SSH key not found. Please update the connection.");
+        }
+        privateKey = await vault.readCredential(keyProfile.keyContentRef);
+        if (keyProfile.passphraseRef) {
+          passphrase = await vault.readCredential(keyProfile.passphraseRef);
+        }
+        // Allow override passphrase (e.g. retry with different passphrase)
+        if (authOverride?.passphrase) {
+          passphrase = authOverride.passphrase;
+        }
+      }
+
+      if (!privateKey) {
+        throw new Error("Private key auth requires an SSH key. Please select a key.");
       }
 
       return {
         ...base,
         authType: "privateKey",
         privateKey,
-        privateKeyPath,
         passphrase
       };
     }
@@ -1589,76 +1623,42 @@ export const createServiceContainer = (
     const authTypeChanged = Boolean(current && current.authType !== input.authType);
     const shouldDropPreviousCredential = input.authType === "agent" || authTypeChanged;
 
-    if (
-      input.authType === "privateKey" &&
-      !input.privateKeyPath &&
-      !input.privateKeyContent &&
-      !current?.privateKeyRef
-    ) {
-      throw new Error("Private key auth requires private key path or imported key.");
+    if (input.authType === "privateKey" && !input.sshKeyId) {
+      throw new Error("Private key auth requires selecting an SSH key.");
     }
 
-    if (input.proxyType === "socks5" && input.proxyPassword && !input.proxyUsername) {
-      throw new Error("Proxy username is required when setting SOCKS5 proxy password.");
+    // Validate referenced entities exist
+    if (input.sshKeyId) {
+      const keyProfile = sshKeyRepo.getById(input.sshKeyId);
+      if (!keyProfile) {
+        throw new Error("Referenced SSH key not found.");
+      }
+    }
+    if (input.proxyId) {
+      const proxyProfile = proxyRepo.getById(input.proxyId);
+      if (!proxyProfile) {
+        throw new Error("Referenced proxy not found.");
+      }
     }
 
     const normalizedUsername = input.username.trim();
 
     let credentialRef = current?.credentialRef;
-    let privateKeyRef = current?.privateKeyRef;
-    let proxyCredentialRef = current?.proxyCredentialRef;
 
     if (shouldDropPreviousCredential && current?.credentialRef) {
       await vault.deleteCredential(current.credentialRef);
       credentialRef = undefined;
     }
 
-    if (input.authType !== "privateKey" && current?.privateKeyRef) {
-      await vault.deleteCredential(current.privateKeyRef);
-      privateKeyRef = undefined;
-    }
-
     if (input.authType === "password") {
       if (input.password) {
         credentialRef = await vault.storeCredential(`conn-${id}`, input.password);
       }
-    } else if (input.authType === "privateKey") {
-      if (input.password) {
-        credentialRef = await vault.storeCredential(`conn-${id}`, input.password);
-      } else if (isNew || authTypeChanged) {
+    } else {
+      // privateKey / agent: no password credential on the connection
+      if (credentialRef && (isNew || authTypeChanged)) {
         credentialRef = undefined;
       }
-
-      if (input.privateKeyContent) {
-        privateKeyRef = await vault.storeCredential(`conn-key-${id}`, input.privateKeyContent);
-      }
-    } else {
-      credentialRef = undefined;
-    }
-
-    const normalizedProxyType = input.proxyType;
-    const normalizedProxyHost =
-      normalizedProxyType === "none" ? undefined : input.proxyHost;
-    const normalizedProxyPort =
-      normalizedProxyType === "none" ? undefined : input.proxyPort;
-    const normalizedProxyUsername =
-      normalizedProxyType === "none" ? undefined : input.proxyUsername;
-
-    const proxyTypeChanged = Boolean(current && current.proxyType !== normalizedProxyType);
-    const proxyUsernameChanged = Boolean(current && current.proxyUsername !== normalizedProxyUsername);
-    const shouldDropProxyCredential =
-      normalizedProxyType !== "socks5" ||
-      !normalizedProxyUsername ||
-      proxyTypeChanged ||
-      proxyUsernameChanged;
-
-    if (shouldDropProxyCredential && current?.proxyCredentialRef) {
-      await vault.deleteCredential(current.proxyCredentialRef);
-      proxyCredentialRef = undefined;
-    }
-
-    if (normalizedProxyType === "socks5" && normalizedProxyUsername && input.proxyPassword) {
-      proxyCredentialRef = await vault.storeCredential(`conn-${id}-proxy`, input.proxyPassword);
     }
 
     const profile: ConnectionProfile = {
@@ -1668,19 +1668,11 @@ export const createServiceContainer = (
       port: input.port,
       username: normalizedUsername,
       authType: input.authType,
-      credentialRef,
-      privateKeyRef: input.authType === "privateKey" ? privateKeyRef : undefined,
-      privateKeyPath: input.authType === "privateKey" ? input.privateKeyPath : undefined,
+      credentialRef: input.authType === "password" ? credentialRef : undefined,
+      sshKeyId: input.authType === "privateKey" ? input.sshKeyId : undefined,
       hostFingerprint: input.hostFingerprint,
       strictHostKeyChecking: input.strictHostKeyChecking,
-      proxyType: normalizedProxyType,
-      proxyHost: normalizedProxyHost,
-      proxyPort: normalizedProxyPort,
-      proxyUsername: normalizedProxyUsername,
-      proxyCredentialRef:
-        normalizedProxyType === "socks5" && normalizedProxyUsername
-          ? proxyCredentialRef
-          : undefined,
+      proxyId: input.proxyId,
       terminalEncoding: input.terminalEncoding,
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
@@ -1708,8 +1700,8 @@ export const createServiceContainer = (
       metadata: {
         authType: profile.authType,
         strictHostKeyChecking: profile.strictHostKeyChecking,
-        hasImportedPrivateKey: Boolean(profile.privateKeyRef),
-        proxyType: profile.proxyType,
+        hasSshKey: Boolean(profile.sshKeyId),
+        hasProxy: Boolean(profile.proxyId),
         terminalEncoding: profile.terminalEncoding,
         backspaceMode: profile.backspaceMode,
         deleteMode: profile.deleteMode
@@ -1723,6 +1715,28 @@ export const createServiceContainer = (
     authOverride: SessionAuthOverrideInput
   ): Promise<string | undefined> => {
     const latest = getConnectionOrThrow(connectionId);
+
+    // If the override supplies a raw private key, import it as a new SshKeyProfile first
+    let effectiveSshKeyId = authOverride.sshKeyId ?? latest.sshKeyId;
+    if (authOverride.authType === "privateKey" && authOverride.privateKeyContent) {
+      const keyId = randomUUID();
+      const keyContentRef = await vault.storeCredential(`sshkey-${keyId}`, authOverride.privateKeyContent);
+      let passphraseRef: string | undefined;
+      if (authOverride.passphrase) {
+        passphraseRef = await vault.storeCredential(`sshkey-${keyId}-pass`, authOverride.passphrase);
+      }
+      const now = new Date().toISOString();
+      sshKeyRepo.save({
+        id: keyId,
+        name: `${latest.name}-retried-${now}`,
+        keyContentRef,
+        passphraseRef,
+        createdAt: now,
+        updatedAt: now,
+      });
+      effectiveSshKeyId = keyId;
+    }
+
     const payload: ConnectionUpsertInput = {
       id: latest.id,
       name: latest.name,
@@ -1730,18 +1744,11 @@ export const createServiceContainer = (
       port: latest.port,
       username: authOverride.username?.trim() || latest.username,
       authType: authOverride.authType,
-      password: authOverride.authType === "password" ? authOverride.password : authOverride.passphrase,
-      privateKeyPath:
-        authOverride.authType === "privateKey"
-          ? authOverride.privateKeyPath ?? latest.privateKeyPath
-          : undefined,
-      privateKeyContent: authOverride.authType === "privateKey" ? authOverride.privateKeyContent : undefined,
+      password: authOverride.authType === "password" ? authOverride.password : undefined,
+      sshKeyId: authOverride.authType === "privateKey" ? effectiveSshKeyId : undefined,
       hostFingerprint: latest.hostFingerprint,
       strictHostKeyChecking: latest.strictHostKeyChecking,
-      proxyType: latest.proxyType,
-      proxyHost: latest.proxyHost,
-      proxyPort: latest.proxyPort,
-      proxyUsername: latest.proxyUsername,
+      proxyId: latest.proxyId,
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
@@ -1795,6 +1802,128 @@ export const createServiceContainer = (
     await client.close();
   };
 
+  // ── SSH Key CRUD ────────────────────────────────────────────────
+  const listSshKeys = (): SshKeyProfile[] => sshKeyRepo.list();
+
+  const upsertSshKey = async (input: SshKeyUpsertInput): Promise<SshKeyProfile> => {
+    const now = new Date().toISOString();
+    const id = input.id ?? randomUUID();
+    const current = sshKeyRepo.getById(id);
+
+    // Store key content in vault
+    let keyContentRef = current?.keyContentRef;
+    if (input.keyContent) {
+      if (current?.keyContentRef) {
+        await vault.deleteCredential(current.keyContentRef);
+      }
+      keyContentRef = await vault.storeCredential(`sshkey-${id}`, input.keyContent);
+    }
+    if (!keyContentRef) {
+      throw new Error("SSH key content is required.");
+    }
+
+    // Store passphrase in vault (optional)
+    let passphraseRef = current?.passphraseRef;
+    if (input.passphrase !== undefined) {
+      if (current?.passphraseRef) {
+        await vault.deleteCredential(current.passphraseRef);
+        passphraseRef = undefined;
+      }
+      if (input.passphrase) {
+        passphraseRef = await vault.storeCredential(`sshkey-${id}-pass`, input.passphrase);
+      }
+    }
+
+    const profile: SshKeyProfile = {
+      id,
+      name: input.name,
+      keyContentRef,
+      passphraseRef,
+      createdAt: current?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    sshKeyRepo.save(profile);
+    return profile;
+  };
+
+  const removeSshKey = async (input: SshKeyRemoveInput): Promise<{ ok: true }> => {
+    const profile = sshKeyRepo.getById(input.id);
+    if (!profile) {
+      throw new Error("SSH key not found.");
+    }
+
+    const refs = sshKeyRepo.getReferencingConnectionIds(input.id);
+    if (refs.length > 0) {
+      throw new Error(`该密钥仍被 ${refs.length} 个连接引用，无法删除。`);
+    }
+
+    if (profile.keyContentRef) {
+      await vault.deleteCredential(profile.keyContentRef);
+    }
+    if (profile.passphraseRef) {
+      await vault.deleteCredential(profile.passphraseRef);
+    }
+
+    sshKeyRepo.remove(input.id);
+    return { ok: true };
+  };
+
+  // ── Proxy CRUD ──────────────────────────────────────────────────
+  const listProxies = (): ProxyProfile[] => proxyRepo.list();
+
+  const upsertProxy = async (input: ProxyUpsertInput): Promise<ProxyProfile> => {
+    const now = new Date().toISOString();
+    const id = input.id ?? randomUUID();
+    const current = proxyRepo.getById(id);
+
+    // Store proxy credential in vault (optional)
+    let credentialRef = current?.credentialRef;
+    if (input.password !== undefined) {
+      if (current?.credentialRef) {
+        await vault.deleteCredential(current.credentialRef);
+        credentialRef = undefined;
+      }
+      if (input.password) {
+        credentialRef = await vault.storeCredential(`proxy-${id}`, input.password);
+      }
+    }
+
+    const profile: ProxyProfile = {
+      id,
+      name: input.name,
+      proxyType: input.proxyType,
+      host: input.host,
+      port: input.port,
+      username: input.username,
+      credentialRef,
+      createdAt: current?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    proxyRepo.save(profile);
+    return profile;
+  };
+
+  const removeProxy = async (input: ProxyRemoveInput): Promise<{ ok: true }> => {
+    const profile = proxyRepo.getById(input.id);
+    if (!profile) {
+      throw new Error("Proxy not found.");
+    }
+
+    const refs = proxyRepo.getReferencingConnectionIds(input.id);
+    if (refs.length > 0) {
+      throw new Error(`该代理仍被 ${refs.length} 个连接引用，无法删除。`);
+    }
+
+    if (profile.credentialRef) {
+      await vault.deleteCredential(profile.credentialRef);
+    }
+
+    proxyRepo.remove(input.id);
+    return { ok: true };
+  };
+
   const removeConnection = async (id: string): Promise<{ ok: true }> => {
     const sessions = Array.from(activeSessions.values()).filter(
       (session) => session.connectionId === id
@@ -1815,12 +1944,6 @@ export const createServiceContainer = (
     const connection = connections.getById(id);
     if (connection?.credentialRef) {
       await vault.deleteCredential(connection.credentialRef);
-    }
-    if (connection?.privateKeyRef) {
-      await vault.deleteCredential(connection.privateKeyRef);
-    }
-    if (connection?.proxyCredentialRef) {
-      await vault.deleteCredential(connection.proxyCredentialRef);
     }
 
     await closeConnectionIfIdle(id);
@@ -3513,6 +3636,12 @@ export const createServiceContainer = (
     listConnections,
     upsertConnection,
     removeConnection,
+    listSshKeys,
+    upsertSshKey,
+    removeSshKey,
+    listProxies,
+    upsertProxy,
+    removeProxy,
     getAppPreferences,
     updateAppPreferences,
     openFilesDialog,

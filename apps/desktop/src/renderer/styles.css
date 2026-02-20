@@ -2803,8 +2803,110 @@ body {
 .mgr-mono-input { font-family: var(--mono) !important; font-size: 12px !important; }
 .mgr-textarea { resize: none !important; }
 
+/* Import-from-file inline button inside Form.Item label */
+.mgr-key-label { display: flex; align-items: center; gap: 6px; }
+.mgr-import-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--color-primary, #4f8ef7);
+  background: transparent;
+  border: 1px solid var(--color-primary, #4f8ef7);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+.mgr-import-file-btn:hover { opacity: 1; }
+.mgr-import-file-btn .ri-folder-open-line { font-size: 13px; }
+
 /* Modal title */
 .mgr-modal-title { font-size: 13px; font-weight: 600; }
+
+/* Tab bar */
+.mgr-tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.mgr-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t3);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mgr-tab:hover { color: var(--t1); }
+
+.mgr-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.mgr-tab i { font-size: 14px; }
+
+/* Flat list for keys/proxies sidebar */
+.mgr-flat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 6px;
+}
+
+.mgr-flat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  color: var(--t2);
+  transition: background 0.12s, color 0.12s;
+  width: 100%;
+}
+
+.mgr-flat-item:hover { background: var(--bg-active); }
+.mgr-flat-item--selected { background: var(--bg-active); color: var(--t1); font-weight: 500; }
+
+.mgr-flat-item i {
+  font-size: 14px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.mgr-flat-item--selected i { color: var(--accent); }
+
+.mgr-flat-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgr-flat-item-meta {
+  font-size: 10px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
 
 /* ── Process table ───────────────────────────────────────── */
 .process-table .ant-table-cell {

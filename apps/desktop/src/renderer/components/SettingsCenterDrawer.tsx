@@ -362,7 +362,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
       open={open}
       onClose={onClose}
       title="设置中心"
-      width={520}
+      size={520}
       extra={(
         <Space>
           <Button onClick={onClose}>取消</Button>

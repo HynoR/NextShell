@@ -162,6 +162,16 @@ const api: NextShellApi = {
     list: (payload) => ipcRenderer.invoke(IPCChannel.TemplateParamsList, payload ?? {}),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.TemplateParamsUpsert, payload),
     clear: (payload) => ipcRenderer.invoke(IPCChannel.TemplateParamsClear, payload)
+  },
+  sshKey: {
+    list: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyList, payload ?? {}),
+    upsert: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyUpsert, payload),
+    remove: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyRemove, payload)
+  },
+  proxy: {
+    list: (payload) => ipcRenderer.invoke(IPCChannel.ProxyList, payload ?? {}),
+    upsert: (payload) => ipcRenderer.invoke(IPCChannel.ProxyUpsert, payload),
+    remove: (payload) => ipcRenderer.invoke(IPCChannel.ProxyRemove, payload)
   }
 };
 

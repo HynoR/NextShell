@@ -1,8 +1,34 @@
 export type AuthType = "password" | "privateKey" | "agent";
-export type ProxyType = "none" | "socks4" | "socks5";
+export type ProxyType = "socks4" | "socks5";
 export type TerminalEncoding = "utf-8" | "gb18030" | "gbk" | "big5";
 export type BackspaceMode = "ascii-backspace" | "ascii-delete";
 export type DeleteMode = "vt220-delete" | "ascii-delete" | "ascii-backspace";
+
+/** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
+export interface SshKeyProfile {
+  id: string;
+  name: string;
+  /** 加密存储的密钥内容引用 (secret://sshkey-{id}) */
+  keyContentRef: string;
+  /** 加密存储的 passphrase 引用 (secret://sshkey-{id}-pass)，可选 */
+  passphraseRef?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 代理实体 — 独立于服务器连接，可被多个连接引用 */
+export interface ProxyProfile {
+  id: string;
+  name: string;
+  proxyType: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  /** 加密存储的代理密码引用 (secret://proxy-{id})，仅 SOCKS5 */
+  credentialRef?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface ConnectionProfile {
   id: string;
@@ -11,16 +37,14 @@ export interface ConnectionProfile {
   port: number;
   username: string;
   authType: AuthType;
+  /** 密码认证时的密码引用 (secret://conn-{id}) */
   credentialRef?: string;
-  privateKeyPath?: string;
-  privateKeyRef?: string;
+  /** 私钥认证时引用的密钥实体 ID */
+  sshKeyId?: string;
   hostFingerprint?: string;
   strictHostKeyChecking: boolean;
-  proxyType: ProxyType;
-  proxyHost?: string;
-  proxyPort?: number;
-  proxyUsername?: string;
-  proxyCredentialRef?: string;
+  /** 引用的代理实体 ID */
+  proxyId?: string;
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
