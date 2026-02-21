@@ -12,13 +12,13 @@ import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionTreePanel } from "./ConnectionTreePanel";
-import { DiskMonitorPane } from "./DiskMonitorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
 import { SessionAuthRetryModal } from "./SessionAuthRetryModal";
 import { SystemInfoPanel } from "./SystemInfoPanel";
+import { SystemStaticInfoPane } from "./SystemStaticInfoPane";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { TransferQueuePanel } from "./TransferQueuePanel";
 import { AboutPane } from "./AboutPane";
@@ -47,6 +47,7 @@ interface WorkspaceLayoutProps {
   activeSessionConnection?: ConnectionProfile;
   activeTerminalSession?: SessionDescriptor;
   activeTerminalConnection?: ConnectionProfile;
+  activeConnectionConnectedTerminalSessionId?: string;
   terminalSessionIds: string[];
   isActiveConnectionTerminalConnected: boolean;
   monitor?: import("@nextshell/core").MonitorSnapshot;
@@ -93,6 +94,7 @@ export const WorkspaceLayout = ({
   activeSessionConnection,
   activeTerminalSession,
   activeTerminalConnection,
+  activeConnectionConnectedTerminalSessionId,
   terminalSessionIds,
   isActiveConnectionTerminalConnected,
   monitor,
@@ -569,13 +571,14 @@ export const WorkspaceLayout = ({
                           ),
                         },
                         {
-                          key: "disk",
-                          label: "磁盘",
+                          key: "system-info",
+                          label: "系统信息",
                           children: (
-                            <DiskMonitorPane
+                            <SystemStaticInfoPane
                               connection={activeConnection}
                               connected={isActiveConnectionTerminalConnected}
-                              active={bottomTab === "disk"}
+                              active={bottomTab === "system-info"}
+                              connectedTerminalSessionId={activeConnectionConnectedTerminalSessionId}
                               onOpenSettings={onOpenSettings}
                             />
                           ),

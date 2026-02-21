@@ -119,6 +119,17 @@ export const App = () => {
     [activeConnectionId, sessions]
   );
 
+  const activeConnectionConnectedTerminalSessionId = useMemo(
+    () =>
+      sessions.find(
+        (session) =>
+          session.connectionId === activeConnectionId &&
+          session.type === "terminal" &&
+          session.status === "connected"
+      )?.id,
+    [activeConnectionId, sessions]
+  );
+
   const [lastActiveTerminalSessionId, setLastActiveTerminalSessionId] = useState<string>();
 
   useEffect(() => {
@@ -346,6 +357,7 @@ export const App = () => {
           activeSessionConnection={activeSessionConnection}
           activeTerminalSession={activeTerminalSession}
           activeTerminalConnection={activeTerminalConnection}
+          activeConnectionConnectedTerminalSessionId={activeConnectionConnectedTerminalSessionId}
           terminalSessionIds={terminalSessionIds}
           isActiveConnectionTerminalConnected={isActiveConnectionTerminalConnected}
           monitor={monitor}
@@ -382,7 +394,7 @@ export const App = () => {
               tab === "files" ||
               tab === "connections" ||
               tab === "live-edit" ||
-              tab === "disk" ||
+              tab === "system-info" ||
               tab === "about"
             ) {
               setBottomTab(tab);

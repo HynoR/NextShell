@@ -2174,7 +2174,9 @@ body {
   height: 100%;
 }
 
-.fe-table-wrap .ant-table {
+.fe-table-wrap .ant-table,
+.fe-table-wrap .ant-table-container,
+.fe-table-wrap .ant-table-body {
   background: transparent !important;
   font-size: 12px;
 }
@@ -2195,6 +2197,7 @@ body {
   border-bottom: 1px solid var(--border-dim) !important;
   font-size: 12px;
   color: var(--t1);
+  background: var(--bg-base) !important;
 }
 
 .fe-table-wrap .ant-table-tbody > tr.ant-table-row:hover > td {
@@ -4459,6 +4462,78 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.system-static-card {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-static-group-switch {
+  display: flex;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-surface);
+}
+
+.system-static-group-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--t2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.system-static-group-btn:hover {
+  color: var(--t1);
+  border-color: var(--border-mid);
+  background: var(--bg-hover);
+}
+
+.system-static-group-btn.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+}
+
+.system-static-group-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.system-static-basic-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.system-static-basic-grid > div {
+  flex: 1 1 calc(50% - 10px);
+  min-width: 240px;
+}
+
+.system-static-empty {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.system-static-section {
+  min-height: 0;
 }
 
 .disk-table .ant-table {

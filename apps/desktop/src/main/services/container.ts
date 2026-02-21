@@ -39,6 +39,7 @@ import type {
   SavedCommand,
   SessionDescriptor,
   SessionStatus,
+  SystemInfoSnapshot,
   SshKeyProfile,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
@@ -115,6 +116,13 @@ import {
 import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
 import { logger } from "../logger";
 import { applyAppearanceToAllWindows } from "../window-theme";
+import {
+  parseCpuInfo,
+  parseFilesystemEntries,
+  parseMeminfoTotals,
+  parseNetworkInterfaceTotals,
+  parseOsReleaseName
+} from "./system-info-parser";
 
 interface ActiveSession {
   descriptor: SessionDescriptor;
@@ -228,6 +236,7 @@ export interface ServiceContainer {
   resizeSession: (sessionId: string, cols: number, rows: number) => { ok: true };
   closeSession: (sessionId: string) => Promise<{ ok: true }>;
   getMonitorSnapshot: (connectionId: string) => Promise<MonitorSnapshot>;
+  getSystemInfoSnapshot: (connectionId: string) => Promise<SystemInfoSnapshot>;
   startSystemMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
   stopSystemMonitor: (connectionId: string) => { ok: true };
   selectSystemNetworkInterface: (connectionId: string, networkInterface: string) => Promise<{ ok: true }>;
@@ -301,6 +310,15 @@ const MONITOR_CPU_TOP_COMMAND =
 const MONITOR_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
 const MONITOR_FREE_COMMAND = "free -k 2>/dev/null";
 const MONITOR_DISK_COMMAND = "df -kP / 2>/dev/null | tail -n 1";
+const MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND = "cat /etc/os-release 2>/dev/null";
+const MONITOR_SYSTEM_INFO_HOSTNAME_COMMAND = "hostname 2>/dev/null";
+const MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND = "uname -s 2>/dev/null";
+const MONITOR_SYSTEM_INFO_KERNEL_VERSION_COMMAND = "uname -r 2>/dev/null";
+const MONITOR_SYSTEM_INFO_ARCH_COMMAND = "uname -m 2>/dev/null";
+const MONITOR_SYSTEM_INFO_CPUINFO_COMMAND = "cat /proc/cpuinfo 2>/dev/null";
+const MONITOR_SYSTEM_INFO_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
+const MONITOR_SYSTEM_INFO_NET_DEV_COMMAND = "cat /proc/net/dev 2>/dev/null";
+const MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND = "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
 const MONITOR_NET_INTERFACES_COMMAND = "ls -1 /sys/class/net 2>/dev/null | grep -v '^lo$'";
 const MONITOR_NET_DEFAULT_INTERFACE_COMMAND =
   "ip route show default 2>/dev/null | awk 'NR==1 {for (i=1;i<=NF;i++) if ($i==\"dev\") {print $(i+1); exit}}'";
@@ -3007,6 +3025,47 @@ export const createServiceContainer = (
     return probeMonitorSnapshot(connectionId);
   };
 
+  const assertSystemInfoLinuxHost = async (connectionId: string): Promise<void> => {
+    const raw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
+    const platform = raw.trim().split(/\s+/)[0] ?? "";
+    if (platform !== "Linux") {
+      throw new Error("系统信息标签页当前仅支持 Linux 主机");
+    }
+  };
+
+  const getSystemInfoSnapshot = async (connectionId: string): Promise<SystemInfoSnapshot> => {
+    assertMonitorEnabled(connectionId);
+    assertVisibleTerminalAlive(connectionId);
+    await ensureMonitorRuntime(connectionId);
+    await assertSystemInfoLinuxHost(connectionId);
+
+    const osReleaseRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND);
+    const hostnameRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_HOSTNAME_COMMAND);
+    const kernelNameRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
+    const kernelVersionRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_VERSION_COMMAND);
+    const architectureRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_ARCH_COMMAND);
+    const cpuInfoRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_CPUINFO_COMMAND);
+    const memInfoRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_MEMINFO_COMMAND);
+    const netDevRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_NET_DEV_COMMAND);
+    const filesystemsRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND);
+
+    const totals = parseMeminfoTotals(memInfoRaw);
+    return {
+      connectionId,
+      hostname: hostnameRaw.trim() || "unknown",
+      osName: parseOsReleaseName(osReleaseRaw),
+      kernelName: kernelNameRaw.trim() || "Linux",
+      kernelVersion: kernelVersionRaw.trim() || "unknown",
+      architecture: architectureRaw.trim() || "unknown",
+      cpu: parseCpuInfo(cpuInfoRaw),
+      memoryTotalKb: totals.memoryTotalKb,
+      swapTotalKb: totals.swapTotalKb,
+      networkInterfaces: parseNetworkInterfaceTotals(netDevRaw),
+      filesystems: parseFilesystemEntries(filesystemsRaw),
+      capturedAt: new Date().toISOString()
+    };
+  };
+
   const execCommand = async (
     connectionId: string,
     command: string
@@ -4255,6 +4314,7 @@ export const createServiceContainer = (
     resizeSession,
     closeSession,
     getMonitorSnapshot,
+    getSystemInfoSnapshot,
     startSystemMonitor,
     stopSystemMonitor,
     selectSystemNetworkInterface,

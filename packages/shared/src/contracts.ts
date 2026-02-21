@@ -133,6 +133,10 @@ export const monitorSnapshotSchema = z.object({
   connectionId: z.string().uuid()
 });
 
+export const monitorSystemInfoSnapshotSchema = z.object({
+  connectionId: z.string().uuid()
+});
+
 export const monitorSystemStartSchema = z.object({
   connectionId: z.string().uuid()
 });
@@ -524,6 +528,7 @@ export type SessionCloseInput = z.infer<typeof sessionCloseSchema>;
 export type SessionDataEvent = z.infer<typeof sessionDataEventSchema>;
 export type SessionStatusEvent = z.infer<typeof sessionStatusEventSchema>;
 export type MonitorSnapshotInput = z.infer<typeof monitorSnapshotSchema>;
+export type MonitorSystemInfoSnapshotInput = z.infer<typeof monitorSystemInfoSnapshotSchema>;
 export type MonitorSystemStartInput = z.infer<typeof monitorSystemStartSchema>;
 export type MonitorSystemStopInput = z.infer<typeof monitorSystemStopSchema>;
 export type MonitorSystemSelectInterfaceInput = z.infer<typeof monitorSystemSelectInterfaceSchema>;

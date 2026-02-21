@@ -145,6 +145,43 @@ export interface NetworkSnapshot {
   capturedAt: string;
 }
 
+export interface SystemCpuInfo {
+  modelName: string;
+  coreCount: number;
+  frequencyMhz?: number;
+  cacheSize?: string;
+  bogoMips?: number;
+}
+
+export interface SystemNetworkInterfaceTotal {
+  name: string;
+  rxBytes: number;
+  txBytes: number;
+}
+
+export interface SystemFilesystemEntry {
+  filesystem: string;
+  totalKb: number;
+  usedKb: number;
+  availableKb: number;
+  mountPoint: string;
+}
+
+export interface SystemInfoSnapshot {
+  connectionId: string;
+  hostname: string;
+  osName: string;
+  kernelName: string;
+  kernelVersion: string;
+  architecture: string;
+  cpu: SystemCpuInfo;
+  memoryTotalKb: number;
+  swapTotalKb: number;
+  networkInterfaces: SystemNetworkInterfaceTotal[];
+  filesystems: SystemFilesystemEntry[];
+  capturedAt: string;
+}
+
 export interface MonitorSnapshot {
   connectionId: string;
   uptimeHours: number;

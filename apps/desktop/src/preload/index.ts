@@ -55,6 +55,7 @@ const api: NextShellApi = {
   },
   monitor: {
     snapshot: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSnapshot, payload),
+    getSystemInfoSnapshot: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemInfoSnapshot, payload),
     startSystem: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemStart, payload),
     stopSystem: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemStop, payload),
     selectSystemInterface: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemSelectInterface, payload),

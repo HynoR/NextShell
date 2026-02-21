@@ -4,11 +4,17 @@ import type { ColumnsType } from "antd/es/table";
 import type { CommandExecutionResult, ConnectionProfile } from "@nextshell/core";
 import { TableSkeleton } from "./LoadingSkeletons";
 import { formatDiskSize, parseDfOutput, type DiskUsageEntry } from "../utils/diskUsage";
+import {
+  buildSystemDiskCacheKey,
+  getSharedDiskSnapshot,
+  setSharedDiskSnapshot
+} from "../utils/systemDiskSharedCache";
 
 interface DiskMonitorPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
   active: boolean;
+  connectedTerminalSessionId?: string;
   onOpenSettings?: () => void;
 }
 
@@ -37,9 +43,16 @@ interface DiskCacheSnapshot {
   errorText?: string;
 }
 
-export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings }: DiskMonitorPaneProps) => {
+export const DiskMonitorPane = ({
+  connection,
+  connected,
+  active,
+  connectedTerminalSessionId,
+  onOpenSettings
+}: DiskMonitorPaneProps) => {
   const connectionId = connection?.id;
   const monitorEnabled = Boolean(connection?.monitorSession);
+  const cacheKey = buildSystemDiskCacheKey(connectionId, connectedTerminalSessionId);
 
   const [rows, setRows] = useState<DiskUsageEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,27 +64,38 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
   const cacheRef = useRef<Record<string, DiskCacheSnapshot>>({});
 
   useEffect(() => {
-    if (!connectionId) {
+    if (!cacheKey) {
       setRows([]);
       setLastUpdatedAt(undefined);
       setErrorText(undefined);
       return;
     }
 
-    const cached = cacheRef.current[connectionId];
-    setRows(cached?.rows ?? []);
-    setLastUpdatedAt(cached?.lastUpdatedAt);
-    setErrorText(cached?.errorText);
-  }, [connectionId]);
+    const localCached = cacheRef.current[cacheKey];
+    const sharedCached = getSharedDiskSnapshot(cacheKey);
+    const resolvedRows = localCached?.rows ?? sharedCached?.rows ?? [];
+    const resolvedUpdatedAt = localCached?.lastUpdatedAt ?? sharedCached?.lastUpdatedAt;
+
+    setRows(resolvedRows);
+    setLastUpdatedAt(resolvedUpdatedAt);
+    setErrorText(localCached?.errorText);
+
+    if (resolvedUpdatedAt) {
+      const parsed = Date.parse(resolvedUpdatedAt);
+      if (Number.isFinite(parsed)) {
+        lastAttemptRef.current[cacheKey] = parsed;
+      }
+    }
+  }, [cacheKey]);
 
   const fetchDiskData = useCallback(
     async (silent: boolean, trigger: "enter" | "manual" | "auto") => {
-      if (!connectionId) {
+      if (!connectionId || !cacheKey) {
         return;
       }
 
       const now = Date.now();
-      const lastAttemptAt = lastAttemptRef.current[connectionId] ?? 0;
+      const lastAttemptAt = lastAttemptRef.current[cacheKey] ?? 0;
       const elapsed = now - lastAttemptAt;
       if (elapsed < REFRESH_INTERVAL_MS) {
         if (trigger === "manual") {
@@ -81,7 +105,7 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
         return;
       }
 
-      lastAttemptRef.current[connectionId] = now;
+      lastAttemptRef.current[cacheKey] = now;
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
 
@@ -110,11 +134,15 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
         const updatedAt = new Date().toISOString();
         setLastUpdatedAt(updatedAt);
         setErrorText(undefined);
-        cacheRef.current[connectionId] = {
+        cacheRef.current[cacheKey] = {
           rows: parsed,
           lastUpdatedAt: updatedAt,
           errorText: undefined
         };
+        setSharedDiskSnapshot(cacheKey, {
+          rows: parsed,
+          lastUpdatedAt: updatedAt
+        });
       } catch (error) {
         if (requestIdRef.current !== requestId) {
           return;
@@ -122,8 +150,8 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
 
         const reason = error instanceof Error ? error.message : "读取磁盘信息失败";
         setErrorText(reason);
-        const previous = cacheRef.current[connectionId];
-        cacheRef.current[connectionId] = {
+        const previous = cacheRef.current[cacheKey] ?? getSharedDiskSnapshot(cacheKey);
+        cacheRef.current[cacheKey] = {
           rows: previous?.rows ?? [],
           lastUpdatedAt: previous?.lastUpdatedAt,
           errorText: reason
@@ -138,11 +166,11 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
         }
       }
     },
-    [connectionId]
+    [cacheKey, connectionId]
   );
 
   useEffect(() => {
-    if (!active || !connectionId || !monitorEnabled || !connected) {
+    if (!active || !cacheKey || !connectionId || !monitorEnabled || !connected || !connectedTerminalSessionId) {
       requestIdRef.current += 1;
       setLoading(false);
       setRefreshing(false);
@@ -158,7 +186,7 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
       requestIdRef.current += 1;
       window.clearInterval(timer);
     };
-  }, [active, connected, connectionId, fetchDiskData, monitorEnabled]);
+  }, [active, cacheKey, connected, connectedTerminalSessionId, connectionId, fetchDiskData, monitorEnabled]);
 
   const columns = useMemo<ColumnsType<DiskUsageEntry>>(
     () => [
@@ -223,7 +251,7 @@ export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings 
     );
   }
 
-  if (!connected) {
+  if (!connected || !connectedTerminalSessionId) {
     return (
       <Typography.Text className="text-[var(--t3)]">
         当前连接未建立会话，请双击左侧服务器建立 SSH 连接后查看磁盘。

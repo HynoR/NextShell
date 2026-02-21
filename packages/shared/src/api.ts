@@ -19,6 +19,7 @@ import type {
   RemoteFileEntry,
   SavedCommand,
   SessionDescriptor,
+  SystemInfoSnapshot,
   SshKeyProfile
 } from "../../core/src/index";
 import type {
@@ -56,6 +57,7 @@ import type {
   MonitorProcessDetailInput,
   MonitorProcessStartInput,
   MonitorProcessStopInput,
+  MonitorSystemInfoSnapshotInput,
   MonitorSystemStartInput,
   MonitorSystemSelectInterfaceInput,
   MonitorSystemStopInput,
@@ -123,6 +125,7 @@ export interface NextShellApi {
   };
   monitor: {
     snapshot: (payload: MonitorSnapshotInput) => Promise<MonitorSnapshot>;
+    getSystemInfoSnapshot: (payload: MonitorSystemInfoSnapshotInput) => Promise<SystemInfoSnapshot>;
     startSystem: (payload: MonitorSystemStartInput) => Promise<{ ok: true }>;
     stopSystem: (payload: MonitorSystemStopInput) => Promise<{ ok: true }>;
     selectSystemInterface: (payload: MonitorSystemSelectInterfaceInput) => Promise<{ ok: true }>;

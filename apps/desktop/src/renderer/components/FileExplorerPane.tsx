@@ -1165,7 +1165,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings }: File
 
         {/* file table */}
         <div
-          className="flex-1 min-h-0 overflow-auto"
+          className="fe-table-wrap flex-1 min-h-0 overflow-auto"
           onContextMenu={(e) => e.stopPropagation()}
         >
           <Table
