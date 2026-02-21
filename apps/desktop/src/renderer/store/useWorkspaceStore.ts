@@ -11,6 +11,18 @@ import type {
 
 export type BottomTab = "connections" | "files" | "live-edit" | "commands" | "system-info" | "about";
 
+export interface NetworkPoint {
+  inMbps: number;
+  outMbps: number;
+  capturedAt: string;
+}
+
+const NETWORK_RATE_HISTORY_CAP = 50;
+
+function networkRateHistoryKey(connectionId: string, iface: string): string {
+  return `${connectionId}:${iface}`;
+}
+
 interface WorkspaceState {
   connections: ConnectionProfile[];
   sshKeys: SshKeyProfile[];
@@ -21,6 +33,7 @@ interface WorkspaceState {
   monitor?: MonitorSnapshot;
   processSnapshots: Record<string, ProcessSnapshot>;
   networkSnapshots: Record<string, NetworkSnapshot>;
+  networkRateHistory: Record<string, NetworkPoint[]>;
   bottomTab: BottomTab;
   setConnections: (connections: ConnectionProfile[]) => void;
   setSshKeys: (keys: SshKeyProfile[]) => void;
@@ -36,6 +49,8 @@ interface WorkspaceState {
   setMonitor: (snapshot?: MonitorSnapshot) => void;
   setProcessSnapshot: (connectionId: string, snapshot: ProcessSnapshot) => void;
   setNetworkSnapshot: (connectionId: string, snapshot: NetworkSnapshot) => void;
+  appendNetworkRate: (connectionId: string, iface: string, point: NetworkPoint) => void;
+  clearNetworkRateHistory: (connectionId: string) => void;
   setBottomTab: (tab: BottomTab) => void;
 }
 
@@ -47,6 +62,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   bottomTab: "connections",
   processSnapshots: {},
   networkSnapshots: {},
+  networkRateHistory: {},
   setConnections: (connections) => set({ connections }),
   setSshKeys: (sshKeys) => set({ sshKeys }),
   setProxies: (proxies) => set({ proxies }),
@@ -93,12 +109,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           ? state.sessions.find((session) => session.id === state.activeSessionId)
           : undefined;
 
+      const prefix = `${connectionId}:`;
+      const networkRateHistory = { ...state.networkRateHistory };
+      for (const key of Object.keys(networkRateHistory)) {
+        if (key.startsWith(prefix)) {
+          delete networkRateHistory[key];
+        }
+      }
+
       return {
         sessions,
         activeSessionId:
           activeSession?.connectionId === connectionId ? undefined : state.activeSessionId,
         activeConnectionId:
-          state.activeConnectionId === connectionId ? undefined : state.activeConnectionId
+          state.activeConnectionId === connectionId ? undefined : state.activeConnectionId,
+        networkRateHistory
       };
     }),
   reorderSession: (sourceSessionId, targetSessionId) =>
@@ -140,6 +165,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       networkSnapshots: { ...state.networkSnapshots, [connectionId]: snapshot }
     })),
+  appendNetworkRate: (connectionId, iface, point) =>
+    set((state) => {
+      const key = networkRateHistoryKey(connectionId, iface);
+      const existing = state.networkRateHistory[key] ?? [];
+      const latest = existing[existing.length - 1];
+      let merged: NetworkPoint[];
+      if (latest?.capturedAt === point.capturedAt) {
+        merged = [...existing.slice(0, -1), point];
+      } else {
+        merged = [...existing, point];
+      }
+      const trimmed = merged.slice(-NETWORK_RATE_HISTORY_CAP);
+      return {
+        networkRateHistory: { ...state.networkRateHistory, [key]: trimmed }
+      };
+    }),
+  clearNetworkRateHistory: (connectionId) =>
+    set((state) => {
+      const prefix = `${connectionId}:`;
+      const networkRateHistory = { ...state.networkRateHistory };
+      for (const key of Object.keys(networkRateHistory)) {
+        if (key.startsWith(prefix)) {
+          delete networkRateHistory[key];
+        }
+      }
+      return { networkRateHistory };
+    }),
   setBottomTab: (tab) =>
     set({
       bottomTab:

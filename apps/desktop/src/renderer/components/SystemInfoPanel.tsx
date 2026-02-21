@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MonitorSnapshot } from "@nextshell/core";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
 
 interface SystemInfoPanelProps {
   monitorSessionEnabled?: boolean;
@@ -11,13 +12,6 @@ interface SystemInfoPanelProps {
   monitorActionsDisabled?: boolean;
 }
 
-interface NetworkPoint {
-  inMbps: number;
-  outMbps: number;
-  capturedAt: string;
-}
-
-const MAX_NETWORK_POINTS = 28;
 const NETWORK_CHART_HEIGHT = 84;
 
 const barClass = (pct: number) => {
@@ -71,7 +65,7 @@ export const SystemInfoPanel = ({
   monitorActionsDisabled
 }: SystemInfoPanelProps) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [networkHistory, setNetworkHistory] = useState<Record<string, NetworkPoint[]>>({});
+  const networkRateHistory = useWorkspaceStore((s) => s.networkRateHistory);
 
   useEffect(() => {
     if (!hasVisibleTerminal && collapsed) {
@@ -90,36 +84,10 @@ export const SystemInfoPanel = ({
     return [snapshot.networkInterface];
   }, [snapshot]);
 
-  useEffect(() => {
-    if (!snapshot || !snapshot.networkInterface) {
-      return;
-    }
-
-    setNetworkHistory((previous) => {
-      const next = { ...previous };
-      const key = snapshot.networkInterface;
-      const existing = next[key] ?? [];
-      const point: NetworkPoint = {
-        inMbps: snapshot.networkInMbps,
-        outMbps: snapshot.networkOutMbps,
-        capturedAt: snapshot.capturedAt
-      };
-
-      const latest = existing[existing.length - 1];
-      let merged = existing;
-      if (latest?.capturedAt === point.capturedAt) {
-        merged = [...existing.slice(0, -1), point];
-      } else {
-        merged = [...existing, point];
-      }
-      next[key] = merged.slice(-MAX_NETWORK_POINTS);
-      return next;
-    });
-  }, [snapshot]);
-
-  const chartPoints = snapshot?.networkInterface
-    ? (networkHistory[snapshot.networkInterface] ?? [])
-    : [];
+  const chartPoints =
+    snapshot?.connectionId && snapshot?.networkInterface
+      ? (networkRateHistory[`${snapshot.connectionId}:${snapshot.networkInterface}`] ?? [])
+      : [];
   const chartMax = Math.max(1, ...chartPoints.map((point) => Math.max(point.inMbps, point.outMbps)));
 
   if (!monitorSessionEnabled) {

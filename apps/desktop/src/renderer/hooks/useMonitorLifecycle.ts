@@ -9,17 +9,24 @@ export function useMonitorLifecycle(
   isActiveConnectionTerminalConnected: boolean,
   sessions: SessionDescriptor[]
 ) {
-  const { setMonitor, removeSession } = useWorkspaceStore();
+  const { setMonitor, appendNetworkRate, removeSession } = useWorkspaceStore();
 
   // Receive system monitor snapshots
   useEffect(() => {
     const unsubscribe = window.nextshell.monitor.onSystemData((snapshot) => {
       if (snapshot.connectionId === activeConnectionId) {
         setMonitor(snapshot);
+        if (snapshot.networkInterface) {
+          appendNetworkRate(snapshot.connectionId, snapshot.networkInterface, {
+            inMbps: snapshot.networkInMbps,
+            outMbps: snapshot.networkOutMbps,
+            capturedAt: snapshot.capturedAt
+          });
+        }
       }
     });
     return () => { unsubscribe(); };
-  }, [activeConnectionId, setMonitor]);
+  }, [activeConnectionId, setMonitor, appendNetworkRate]);
 
   // Start/stop system monitor when connection or terminal status changes
   useEffect(() => {
