@@ -290,8 +290,8 @@ export interface AppPreferences {
   terminal: {
     backgroundColor: string;
     foregroundColor: string;
-    /** 为 false 时终端背景透明，在设置背景图时继承整体透明度 */
-    useBackgroundColor: boolean;
+    /** 终端背景不透明度 0-100，100 为完全不透明，0 为完全透明 */
+    backgroundOpacity: number;
     fontSize: number;
     lineHeight: number;
   };
@@ -330,7 +330,7 @@ export interface AppPreferencesPatch {
   terminal?: {
     backgroundColor?: string;
     foregroundColor?: string;
-    useBackgroundColor?: boolean;
+    backgroundOpacity?: number;
     fontSize?: number;
     lineHeight?: number;
   };
@@ -443,7 +443,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   terminal: {
     backgroundColor: "#0b2740",
     foregroundColor: "#d8eaff",
-    useBackgroundColor: true,
+    backgroundOpacity: 100,
     fontSize: 14,
     lineHeight: 1.2
   },

@@ -46,6 +46,14 @@ const DEFAULT_TERMINAL_OPTIONS: FrozenTerminalOptions = {
   deleteMode: "vt220-delete"
 };
 
+const buildTerminalBg = (hex: string, opacity: number): string => {
+  if (opacity >= 100) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${(opacity / 100).toFixed(2)})`;
+};
+
 const sequenceByBackspaceMode = (
   mode: ConnectionProfile["backspaceMode"]
 ): string => {
@@ -242,13 +250,14 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
-    const terminalBg =
-      terminalPreferences.useBackgroundColor !== false
-        ? terminalPreferences.backgroundColor
-        : "transparent";
+    // Use the snapshot taken at mount time so the renderer choice is fixed for the
+    // lifetime of this process. Changing the setting requires a restart.
+    const terminalBg = buildTerminalBg(
+      terminalPreferences.backgroundColor,
+      terminalPreferences.backgroundOpacity
+    );
     const terminal = new Terminal({
       cursorBlink: true,
-      allowTransparency: true,
       fontSize: terminalPreferences.fontSize,
       lineHeight: terminalPreferences.lineHeight,
       fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
@@ -267,6 +276,8 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     terminal.loadAddon(searchAddon);
     terminal.loadAddon(clipboardAddon);
 
+    // Always use WebGL renderer — rgba() backgrounds with opacity < 1 are rendered
+    // correctly by WebGL without requiring allowTransparency.
     try {
       const webglAddon = new WebglAddon();
       terminal.loadAddon(webglAddon);
@@ -430,10 +441,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
-    const terminalBg =
-      terminalPreferences.useBackgroundColor !== false
-        ? terminalPreferences.backgroundColor
-        : "transparent";
+    const terminalBg = buildTerminalBg(
+      terminalPreferences.backgroundColor,
+      terminalPreferences.backgroundOpacity
+    );
     terminal.options.theme = {
       ...terminal.options.theme,
       background: terminalBg,
@@ -456,7 +467,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }));
   }, [
     terminalPreferences.backgroundColor,
-    terminalPreferences.useBackgroundColor,
+    terminalPreferences.backgroundOpacity,
     terminalPreferences.foregroundColor,
     terminalPreferences.fontSize,
     terminalPreferences.lineHeight

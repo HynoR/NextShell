@@ -29,11 +29,20 @@ export const PingCard = ({ host }: PingCardProps) => {
       setLoading(true);
       try {
         const res = await window.nextshell.ping.probe({ host });
-        if (!cancelled) {
+        if (cancelled) return;
+        if (res.ok === true) {
           setResult(res);
-          if (res.ok === true) {
-            setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), res.avgMs]);
-          }
+          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), res.avgMs]);
+        } else {
+          console.warn("[PingCard]", host, res.error);
+          setResult({ ok: true, avgMs: 0 });
+          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn("[PingCard]", host, err);
+          setResult({ ok: true, avgMs: 0 });
+          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -67,17 +76,13 @@ export const PingCard = ({ host }: PingCardProps) => {
         <div className="flex items-center gap-2 text-[11px]">
           {loading && !result ? (
             <span className="text-[var(--t3)]">检测中…</span>
-          ) : result?.ok === true ? (
+          ) : result ? (
             <>
               <span className="font-mono font-semibold text-[var(--t1)]">
-                {result.avgMs < 1 ? "<1" : Math.round(result.avgMs)} ms
+                {result.avgMs === 0 ? "0" : result.avgMs < 1 ? "<1" : Math.round(result.avgMs)} ms
               </span>
               <span className="text-[10px] text-[var(--t3)]">每 5 秒刷新</span>
             </>
-          ) : result?.ok === false ? (
-            <span className="text-red-600 dark:text-red-400" title={result.error}>
-              {result.error}
-            </span>
           ) : null}
         </div>
 
@@ -104,6 +109,7 @@ export const PingCard = ({ host }: PingCardProps) => {
                 />
               ))}
               {chartPoints.map((ms, index) => {
+                if (ms === 0) return null;
                 const x = index * 10 + 4;
                 const barHeight = (ms / chartMax) * (PING_CHART_HEIGHT - 4);
                 return (

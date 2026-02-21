@@ -86,8 +86,8 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   );
   const [terminalFontSize, setTerminalFontSize] = useState<number>(preferences.terminal.fontSize);
   const [terminalLineHeight, setTerminalLineHeight] = useState<number>(preferences.terminal.lineHeight);
-  const [terminalUseBackgroundColor, setTerminalUseBackgroundColor] = useState<boolean>(
-    preferences.terminal.useBackgroundColor
+  const [terminalBackgroundOpacity, setTerminalBackgroundOpacity] = useState<number>(
+    preferences.terminal.backgroundOpacity
   );
   const [appBackgroundImagePath, setAppBackgroundImagePath] = useState(
     preferences.window.backgroundImagePath
@@ -152,7 +152,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     );
     setTerminalFontSize(preferences.terminal.fontSize);
     setTerminalLineHeight(preferences.terminal.lineHeight);
-    setTerminalUseBackgroundColor(preferences.terminal.useBackgroundColor);
+    setTerminalBackgroundOpacity(preferences.terminal.backgroundOpacity);
     setAppBackgroundImagePath(preferences.window.backgroundImagePath);
     setAppBackgroundOpacity(preferences.window.backgroundOpacity);
     setBackupRemotePath(preferences.backup.remotePath);
@@ -374,7 +374,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         terminal: {
           backgroundColor: normalizedTerminalBackgroundColor,
           foregroundColor: normalizedTerminalForegroundColor,
-          useBackgroundColor: terminalUseBackgroundColor,
+          backgroundOpacity: terminalBackgroundOpacity,
           fontSize: terminalFontSize,
           lineHeight: terminalLineHeight
         },
@@ -674,13 +674,37 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         </div>
 
         {appBackgroundImagePath ? (
-          <div className="settings-switch-row mt-1.5">
-            <span>使用透明终端背景（继承整体透明度）</span>
-            <Switch
-              checked={!terminalUseBackgroundColor}
-              disabled={loading}
-              onChange={(checked) => setTerminalUseBackgroundColor(!checked)}
-            />
+          <div className="flex flex-col gap-2 mt-1.5">
+            <Typography.Text>终端背景透明度</Typography.Text>
+            <div className="flex gap-3 items-center">
+              <Slider
+                min={0}
+                max={100}
+                step={5}
+                disabled={loading}
+                style={{ flex: 1, margin: 0 }}
+                value={terminalBackgroundOpacity}
+                onChange={(value) =>
+                  setTerminalBackgroundOpacity(typeof value === "number" ? value : preferences.terminal.backgroundOpacity)
+                }
+              />
+              <div className="flex items-center gap-1">
+                <InputNumber
+                  min={0}
+                  max={100}
+                  precision={0}
+                  disabled={loading}
+                  value={terminalBackgroundOpacity}
+                  onChange={(value) =>
+                    setTerminalBackgroundOpacity(typeof value === "number" ? value : preferences.terminal.backgroundOpacity)
+                  }
+                />
+                <span>%</span>
+              </div>
+            </div>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              0 = 完全透明，100 = 完全不透明。调整后实时生效，无需重启。
+            </Typography.Text>
           </div>
         ) : null}
 
@@ -690,23 +714,18 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
             <Input
               style={{ flex: 1 }}
               value={terminalBackgroundColor}
-              disabled={loading || !terminalUseBackgroundColor}
+              disabled={loading}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
               placeholder="#0b2740"
             />
             <input
               className="settings-color-input"
               type="color"
-              disabled={loading || !terminalUseBackgroundColor}
+              disabled={loading}
               value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#0b2740"}
               onChange={(event) => setTerminalBackgroundColor(event.target.value)}
             />
           </div>
-          {!terminalUseBackgroundColor && appBackgroundImagePath ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              已使用透明背景，继承「整体透明度」设置。
-            </Typography.Text>
-          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 mt-1.5">

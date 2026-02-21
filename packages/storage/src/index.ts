@@ -328,10 +328,20 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           /^#[0-9a-fA-F]{6}$/.test(parsed.terminal.foregroundColor.trim())
             ? parsed.terminal.foregroundColor.trim()
             : fallback.terminal.foregroundColor,
-        useBackgroundColor:
-          typeof parsed.terminal?.useBackgroundColor === "boolean"
-            ? parsed.terminal.useBackgroundColor
-            : fallback.terminal.useBackgroundColor,
+        backgroundOpacity: (() => {
+          const raw = parsed.terminal as Record<string, unknown> | undefined;
+          if (typeof raw?.backgroundOpacity === "number" &&
+            Number.isInteger(raw.backgroundOpacity) &&
+            raw.backgroundOpacity >= 0 &&
+            raw.backgroundOpacity <= 100) {
+            return raw.backgroundOpacity;
+          }
+          // Legacy migration: useBackgroundColor: false → 50, true → 100
+          if (typeof raw?.useBackgroundColor === "boolean") {
+            return raw.useBackgroundColor ? 100 : 50;
+          }
+          return fallback.terminal.backgroundOpacity;
+        })(),
         fontSize:
           typeof parsed.terminal?.fontSize === "number" &&
           Number.isInteger(parsed.terminal.fontSize) &&
