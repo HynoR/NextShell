@@ -1,21 +1,42 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Tag, Tooltip, message } from "antd";
-import type { UpdateCheckResult } from "@nextshell/shared";
+import type { DebugLogEntry, UpdateCheckResult } from "@nextshell/shared";
 
 const appVersion = __APP_VERSION__;
 const githubRepo = __GITHUB_REPO__;
 const normalizedRepo = githubRepo.trim();
 const hasRepo = normalizedRepo.length > 0;
 
-// Fallback example values shown when no repo is configured
 const displayRepo = hasRepo ? normalizedRepo : "owner/repo";
 const displayRepoUrl = `https://github.com/${displayRepo}`;
 const licenseUrl = `https://github.com/${displayRepo}/blob/main/LICENSE`;
+
+const DEBUG_MAX_ENTRIES = 300;
+
+const formatTimestamp = (ts: number): string => {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${hh}:${mm}:${ss}.${ms}`;
+};
+
+const truncateCommand = (cmd: string, maxLen = 80): string => {
+  return cmd.length > maxLen ? `${cmd.slice(0, maxLen)}…` : cmd;
+};
 
 export const AboutPane = () => {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const releaseUrl = result?.hasUpdate ? result.releaseUrl : null;
+
+  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const logBoxRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef(autoScroll);
+  autoScrollRef.current = autoScroll;
 
   const handleOpenLink = useCallback(async (url: string) => {
     const openResult = await window.nextshell.dialog.openPath({ path: url, revealInFolder: false });
@@ -41,6 +62,51 @@ export const AboutPane = () => {
     } finally {
       setChecking(false);
     }
+  }, []);
+
+  const handleToggleDebug = useCallback(async () => {
+    if (debugEnabled) {
+      await window.nextshell.debug.disableLog();
+      setDebugEnabled(false);
+    } else {
+      setDebugLogs([]);
+      await window.nextshell.debug.enableLog();
+      setDebugEnabled(true);
+    }
+  }, [debugEnabled]);
+
+  const handleClearLogs = useCallback(() => {
+    setDebugLogs([]);
+  }, []);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+
+    const unsub = window.nextshell.debug.onLogEvent((entry) => {
+      setDebugLogs((prev) => {
+        const next = prev.length >= DEBUG_MAX_ENTRIES
+          ? [...prev.slice(-(DEBUG_MAX_ENTRIES - 1)), entry]
+          : [...prev, entry];
+        return next;
+      });
+    });
+
+    return () => {
+      unsub();
+    };
+  }, [debugEnabled]);
+
+  useEffect(() => {
+    if (autoScrollRef.current && logBoxRef.current) {
+      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+    }
+  }, [debugLogs]);
+
+  const handleLogScroll = useCallback(() => {
+    const el = logBoxRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    setAutoScroll(atBottom);
   }, []);
 
   return (
@@ -160,7 +226,90 @@ export const AboutPane = () => {
             检查更新
           </Button>
         </Tooltip>
+        <Tooltip title={debugEnabled ? "关闭后台 Shell 日志监听" : "开启后台 Shell 日志监听，实时查看数据采集命令执行情况"}>
+          <Button
+            type={debugEnabled ? "default" : "dashed"}
+            danger={debugEnabled}
+            icon={<i className={debugEnabled ? "ri-stop-circle-line" : "ri-bug-line"} aria-hidden="true" />}
+            onClick={() => void handleToggleDebug()}
+          >
+            {debugEnabled ? "停止 Debug" : "Debug 日志"}
+          </Button>
+        </Tooltip>
       </div>
+
+      {debugEnabled && (
+        <div className="about-debug-section">
+          <div className="about-debug-header">
+            <span className="about-debug-title">
+              <i className="ri-terminal-line" aria-hidden="true" />
+              Hidden Shell 执行日志
+              <Tag color="processing" style={{ marginLeft: 8 }}>实时</Tag>
+              <span className="about-debug-count">{debugLogs.length} 条</span>
+            </span>
+            <div className="about-debug-actions">
+              <Tooltip title={autoScroll ? "已开启自动滚动" : "点击启用自动滚动"}>
+                <button
+                  className={`about-debug-icon-btn ${autoScroll ? "active" : ""}`}
+                  onClick={() => {
+                    setAutoScroll(true);
+                    if (logBoxRef.current) {
+                      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
+                    }
+                  }}
+                  aria-label="自动滚动"
+                >
+                  <i className="ri-arrow-down-double-line" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip title="清空日志">
+                <button
+                  className="about-debug-icon-btn"
+                  onClick={handleClearLogs}
+                  aria-label="清空日志"
+                >
+                  <i className="ri-delete-bin-line" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+          <div
+            className="about-debug-log-box"
+            ref={logBoxRef}
+            onScroll={handleLogScroll}
+          >
+            {debugLogs.length === 0 ? (
+              <div className="about-debug-empty">
+                等待 Hidden Shell 命令执行…
+              </div>
+            ) : (
+              debugLogs.map((entry) => (
+                <div key={entry.id} className={`about-debug-entry ${entry.ok ? "ok" : "fail"}`}>
+                  <div className="about-debug-entry-header">
+                    <span className="about-debug-time">{formatTimestamp(entry.timestamp)}</span>
+                    <span className={`about-debug-badge ${entry.ok ? "ok" : "fail"}`}>
+                      {entry.ok ? "OK" : `ERR ${entry.exitCode}`}
+                    </span>
+                    <span className="about-debug-duration">{entry.durationMs}ms</span>
+                    <span className="about-debug-conn" title={entry.connectionId}>
+                      {entry.connectionId.slice(0, 8)}
+                    </span>
+                  </div>
+                  <div className="about-debug-cmd" title={entry.command}>
+                    <i className="ri-terminal-line" aria-hidden="true" />
+                    {truncateCommand(entry.command)}
+                  </div>
+                  {entry.error ? (
+                    <div className="about-debug-error">{entry.error}</div>
+                  ) : entry.stdout ? (
+                    <pre className="about-debug-stdout">{entry.stdout}</pre>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

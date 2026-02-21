@@ -356,6 +356,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
   const [pathHistory, setPathHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const skipHistoryRef = useRef(false);
+  const pathNameRef = useRef(pathName);
 
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -365,6 +366,13 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
     preferences.remoteEdit.defaultEditorCommand
   );
   const pendingEditRef = useRef<RemoteFileEntry | null>(null);
+
+  const [followCwd, setFollowCwd] = useState(false);
+  const followCwdLastRef = useRef<string | null>(null);
+  const followCwdDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
+  const navigateRef = useRef<(p: string) => void>(() => {});
 
   const selectedEntries = useMemo(() => {
     const selected = new Set(selectedPaths);
@@ -451,6 +459,10 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
     },
     [pushHistory]
   );
+
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
 
   const goBack = useCallback(() => {
     if (historyIndex <= 0) return;
@@ -554,8 +566,59 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
   }, [connection?.id, connected, initTree]);
 
   useEffect(() => {
+    pathNameRef.current = pathName;
+  }, [pathName]);
+
+  useEffect(() => {
     setPathInput(pathName);
   }, [pathName]);
+
+  useEffect(() => {
+    if (!connection || !connected) setFollowCwd(false);
+  }, [connection?.id, connected]);
+
+  useEffect(() => {
+    if (!followCwd || !connection || !connected) {
+      if (followCwdDebounceRef.current) {
+        clearTimeout(followCwdDebounceRef.current);
+        followCwdDebounceRef.current = undefined;
+      }
+      followCwdLastRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const connId = connection.id;
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        const result = await window.nextshell.session.getCwd({ connectionId: connId });
+        if (cancelled) return;
+        if (!result?.cwd) return;
+        const normalized = normalizeRemotePath(result.cwd);
+        if (normalized === followCwdLastRef.current) return;
+        followCwdLastRef.current = normalized;
+        if (followCwdDebounceRef.current) clearTimeout(followCwdDebounceRef.current);
+        followCwdDebounceRef.current = setTimeout(() => {
+          followCwdDebounceRef.current = undefined;
+          if (!cancelled && pathNameRef.current !== normalized) {
+            navigateRef.current(normalized);
+          }
+        }, 3000);
+      } catch {
+        // ignore
+      }
+    };
+    void tick();
+    const interval = setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      if (followCwdDebounceRef.current) {
+        clearTimeout(followCwdDebounceRef.current);
+        followCwdDebounceRef.current = undefined;
+      }
+    };
+  }, [followCwd, connection?.id, connected]);
 
   useEffect(() => {
     setEditorModalValue(preferences.remoteEdit.defaultEditorCommand);
@@ -1104,6 +1167,25 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
               <i className="ri-settings-3-line" aria-hidden="true" />
             </button>
             <span className="w-px h-4 bg-[var(--border)] mx-[3px] shrink-0" />
+            <button
+              className={`fe-icon-btn${followCwd ? " active" : ""}`}
+              title="跟随终端目录（3 秒防抖）"
+              onClick={() => {
+                setFollowCwd((v) => {
+                  const next = !v;
+                  if (next) {
+                    followCwdLastRef.current = null;
+                    message.info({ content: "已启用跟随终端目录", duration: 2 });
+                  } else {
+                    message.info({ content: "已关闭跟随终端目录", duration: 2 });
+                  }
+                  return next;
+                });
+              }}
+              disabled={!connection || !connected}
+            >
+              <i className="ri-terminal-line" aria-hidden="true" />
+            </button>
             <button className="fe-icon-btn" title="刷新" onClick={() => void loadFiles()} disabled={busy}><i className="ri-refresh-line" aria-hidden="true" /></button>
             <button className="fe-icon-btn" title="后退" onClick={goBack} disabled={historyIndex <= 0}><i className="ri-arrow-left-s-line" aria-hidden="true" /></button>
             <button className="fe-icon-btn" title="前进" onClick={goForward} disabled={historyIndex >= pathHistory.length - 1}><i className="ri-arrow-right-s-line" aria-hidden="true" /></button>

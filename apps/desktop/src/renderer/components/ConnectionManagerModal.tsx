@@ -5,6 +5,7 @@ import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX, type ConnectionUpsertInput } f
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
+import { formatDateTime, formatRelativeTime } from "../utils/formatTime";
 
 type ManagerTab = "connections" | "keys" | "proxies";
 
@@ -1074,11 +1075,34 @@ export const ConnectionManagerModal = ({
                   {mode === "new" ? "新建连接" : (selectedConnection?.name ?? "编辑连接")}
                 </div>
                 {mode === "edit" && selectedConnection ? (
-                  <div className="mgr-form-subtitle">
-                    {selectedConnection.username.trim()
-                      ? `${selectedConnection.username}@${selectedConnection.host}:${selectedConnection.port}`
-                      : `${selectedConnection.host}:${selectedConnection.port}`}
-                  </div>
+                  <>
+                    <div className="mgr-form-subtitle">
+                      {selectedConnection.username.trim()
+                        ? `${selectedConnection.username}@${selectedConnection.host}:${selectedConnection.port}`
+                        : `${selectedConnection.host}:${selectedConnection.port}`}
+                    </div>
+                    <div className="mgr-form-meta">
+                      <span
+                        className="mgr-form-meta-item"
+                        title={`修改时间：${formatDateTime(selectedConnection.updatedAt)}`}
+                      >
+                        <i className="ri-edit-2-line" aria-hidden="true" />
+                        {formatRelativeTime(selectedConnection.updatedAt)}
+                      </span>
+                      <span className="mgr-form-meta-sep">·</span>
+                      <span
+                        className="mgr-form-meta-item"
+                        title={selectedConnection.lastConnectedAt
+                          ? `上次连接：${formatDateTime(selectedConnection.lastConnectedAt)}`
+                          : "从未连接"}
+                      >
+                        <i className="ri-plug-line" aria-hidden="true" />
+                        {selectedConnection.lastConnectedAt
+                          ? formatRelativeTime(selectedConnection.lastConnectedAt)
+                          : "从未连接"}
+                      </span>
+                    </div>
+                  </>
                 ) : (
                   <div className="mgr-form-subtitle">填写以下信息后点击保存</div>
                 )}

@@ -36,6 +36,7 @@ import {
   settingsGetSchema,
   settingsUpdateSchema,
   sessionCloseSchema,
+  sessionGetCwdSchema,
   sftpDeleteSchema,
   sftpDownloadSchema,
   sftpMkdirSchema,
@@ -189,6 +190,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.SessionClose, (_event, payload) => {
     const input = parsePayload(sessionCloseSchema, payload, "会话关闭");
     return services.closeSession(input.sessionId);
+  });
+
+  ipcMain.handle(IPCChannel.SessionGetCwd, (_event, payload) => {
+    const input = parsePayload(sessionGetCwdSchema, payload, "获取终端工作目录");
+    return services.getSessionCwd(input.connectionId);
   });
 
   ipcMain.handle(IPCChannel.MonitorSnapshot, (_event, payload) => {
@@ -471,5 +477,15 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.UpdateCheck, async (_event, payload) => {
     parsePayload(updateCheckSchema, payload ?? {}, "检查更新");
     return services.checkForUpdate();
+  });
+
+  // ─── Debug Log ────────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.DebugLogEnable, (event) => {
+    return services.enableDebugLog(event.sender);
+  });
+
+  ipcMain.handle(IPCChannel.DebugLogDisable, (event) => {
+    return services.disableDebugLog(event.sender);
   });
 };

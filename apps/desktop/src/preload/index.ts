@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  DebugLogEntry,
   SessionDataEvent,
   SessionStatusEvent,
   SftpEditStatusEvent,
@@ -32,6 +33,7 @@ const api: NextShellApi = {
     write: (payload) => ipcRenderer.invoke(IPCChannel.SessionWrite, payload),
     resize: (payload) => ipcRenderer.invoke(IPCChannel.SessionResize, payload),
     close: (payload) => ipcRenderer.invoke(IPCChannel.SessionClose, payload),
+    getCwd: (payload) => ipcRenderer.invoke(IPCChannel.SessionGetCwd, payload),
     onData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: SessionDataEvent) => {
         listener(payload);
@@ -184,6 +186,19 @@ const api: NextShellApi = {
   },
   about: {
     checkUpdate: () => ipcRenderer.invoke(IPCChannel.UpdateCheck, {})
+  },
+  debug: {
+    enableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogEnable, {}),
+    disableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogDisable, {}),
+    onLogEvent: (listener: (entry: DebugLogEntry) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: DebugLogEntry) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.DebugLogEvent, handler);
+      return () => {
+        ipcRenderer.off(IPCChannel.DebugLogEvent, handler);
+      };
+    }
   },
   platform: process.platform,
   ui: {

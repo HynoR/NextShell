@@ -51,6 +51,7 @@ import {
   type SshShellChannel
 } from "../../../../../packages/ssh/src/index";
 import type {
+  DebugLogEntry,
   DialogOpenDirectoryInput,
   DialogOpenFilesInput,
   DialogOpenPathInput,
@@ -241,6 +242,7 @@ export interface ServiceContainer {
   stopSystemMonitor: (connectionId: string) => { ok: true };
   selectSystemNetworkInterface: (connectionId: string, networkInterface: string) => Promise<{ ok: true }>;
   execCommand: (connectionId: string, command: string) => Promise<CommandExecutionResult>;
+  getSessionCwd: (connectionId: string) => Promise<{ cwd: string } | null>;
   execBatchCommand: (input: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   listAuditLogs: (limit: number) => AuditLogRecord[];
   listMigrations: () => MigrationRecord[];
@@ -301,6 +303,8 @@ export interface ServiceContainer {
   listTemplateParams: (input?: TemplateParamsListInput) => CommandTemplateParam[];
   upsertTemplateParams: (input: TemplateParamsUpsertInput) => { ok: true };
   clearTemplateParams: (input: TemplateParamsClearInput) => { ok: true };
+  enableDebugLog: (sender: WebContents) => { ok: true };
+  disableDebugLog: (sender: WebContents) => { ok: true };
   dispose: () => Promise<void>;
 }
 
@@ -712,6 +716,7 @@ const mergePreferences = (
         patch.terminal?.foregroundColor,
         current.terminal.foregroundColor
       ),
+      useBackgroundColor: patch.terminal?.useBackgroundColor ?? current.terminal.useBackgroundColor,
       fontSize: normalizeTerminalFontSize(
         patch.terminal?.fontSize,
         current.terminal.fontSize
@@ -2861,12 +2866,48 @@ export const createServiceContainer = (
     };
   };
 
+  const debugSenders = new Set<WebContents>();
+
+  const enableDebugLog = (sender: WebContents): { ok: true } => {
+    debugSenders.add(sender);
+    return { ok: true };
+  };
+
+  const disableDebugLog = (sender: WebContents): { ok: true } => {
+    debugSenders.delete(sender);
+    return { ok: true };
+  };
+
+  const emitDebugLog = (entry: DebugLogEntry): void => {
+    for (const sender of debugSenders) {
+      if (sender.isDestroyed()) {
+        debugSenders.delete(sender);
+      } else {
+        sender.send(IPCChannel.DebugLogEvent, entry);
+      }
+    }
+  };
+
   const runMonitorCommand = async (
     connectionId: string,
     command: string
   ): Promise<string> => {
+    const startTime = Date.now();
     try {
       const { stdout, exitCode } = await execInMonitorShell(connectionId, command);
+      const durationMs = Date.now() - startTime;
+      if (debugSenders.size > 0) {
+        emitDebugLog({
+          id: randomUUID(),
+          timestamp: startTime,
+          connectionId,
+          command,
+          stdout: stdout.slice(0, 4096),
+          exitCode,
+          durationMs,
+          ok: exitCode === 0
+        });
+      }
       if (exitCode !== 0) {
         logger.debug("[SystemMonitor] command non-zero exit", {
           connectionId,
@@ -2877,10 +2918,25 @@ export const createServiceContainer = (
       }
       return stdout;
     } catch (error) {
+      const durationMs = Date.now() - startTime;
+      const reason = normalizeError(error);
+      if (debugSenders.size > 0) {
+        emitDebugLog({
+          id: randomUUID(),
+          timestamp: startTime,
+          connectionId,
+          command,
+          stdout: "",
+          exitCode: -1,
+          durationMs,
+          ok: false,
+          error: reason
+        });
+      }
       logger.debug("[SystemMonitor] command execution failed", {
         connectionId,
         command,
-        reason: normalizeError(error)
+        reason
       });
       return "";
     }
@@ -3099,6 +3155,28 @@ export const createServiceContainer = (
     });
 
     return execution;
+  };
+
+  /** Get terminal shell CWD via /proc (Linux). No audit log. Returns null if unavailable. */
+  const getSessionCwd = async (
+    connectionId: string
+  ): Promise<{ cwd: string } | null> => {
+    getConnectionOrThrow(connectionId);
+    const connection = await ensureConnection(connectionId);
+    const cmd = [
+      'target_pid=$(ps -o pid= --ppid $PPID 2>/dev/null | tr -d " " | grep -v "^$$$" | tail -1)',
+      '[ -n "$target_pid" ] && readlink /proc/$target_pid/cwd 2>/dev/null'
+    ].join("; ");
+    try {
+      const result = await connection.exec(cmd);
+      const cwd = result.stdout.trim();
+      if (!cwd || !cwd.startsWith("/")) {
+        return null;
+      }
+      return { cwd };
+    } catch {
+      return null;
+    }
   };
 
   const executeCommandWithRetry = async (
@@ -4341,6 +4419,7 @@ export const createServiceContainer = (
     stopSystemMonitor,
     selectSystemNetworkInterface,
     execCommand,
+    getSessionCwd,
     execBatchCommand,
     listAuditLogs,
     listMigrations,
@@ -4380,6 +4459,8 @@ export const createServiceContainer = (
     listTemplateParams,
     upsertTemplateParams,
     clearTemplateParams,
+    enableDebugLog,
+    disableDebugLog,
     dispose
   };
 };

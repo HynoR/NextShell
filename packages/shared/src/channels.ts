@@ -8,6 +8,7 @@ export const IPCChannel = {
   SessionClose: "nextshell:session:close",
   SessionData: "nextshell:session:data",
   SessionStatus: "nextshell:session:status",
+  SessionGetCwd: "nextshell:session:get-cwd",
   MonitorSnapshot: "nextshell:monitor:snapshot",
   MonitorSystemInfoSnapshot: "nextshell:monitor:system-info:snapshot",
   MonitorSystemStart: "nextshell:monitor:system:start",
@@ -74,5 +75,8 @@ export const IPCChannel = {
   ConnectionImportPreview: "nextshell:connection:import:preview",
   ConnectionImportFinalShellPreview: "nextshell:connection:import:finalshell:preview",
   ConnectionImportExecute: "nextshell:connection:import:execute",
-  UpdateCheck: "nextshell:update:check"
+  UpdateCheck: "nextshell:update:check",
+  DebugLogEnable: "nextshell:debug:log:enable",
+  DebugLogDisable: "nextshell:debug:log:disable",
+  DebugLogEvent: "nextshell:debug:log:event"
 } as const;

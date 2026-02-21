@@ -118,6 +118,10 @@ export const sessionCloseSchema = z.object({
   sessionId: z.string().uuid()
 });
 
+export const sessionGetCwdSchema = z.object({
+  connectionId: z.string().uuid()
+});
+
 export const sessionDataEventSchema = z.object({
   sessionId: z.string().uuid(),
   data: z.string()
@@ -320,6 +324,7 @@ export const appPreferencesSchema = z.object({
   terminal: z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
     foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
+    useBackgroundColor: z.boolean().default(DEFAULT_APP_PREFERENCES.terminal.useBackgroundColor),
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
     lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
@@ -355,6 +360,7 @@ export const appPreferencesPatchSchema = z.object({
   terminal: z.object({
     backgroundColor: terminalColorSchema.optional(),
     foregroundColor: terminalColorSchema.optional(),
+    useBackgroundColor: z.boolean().optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
     lineHeight: z.coerce.number().min(1).max(2).optional()
   }).optional(),
@@ -539,6 +545,7 @@ export type SessionAuthOverrideInput = NonNullable<SessionOpenInput["authOverrid
 export type SessionWriteInput = z.infer<typeof sessionWriteSchema>;
 export type SessionResizeInput = z.infer<typeof sessionResizeSchema>;
 export type SessionCloseInput = z.infer<typeof sessionCloseSchema>;
+export type SessionGetCwdInput = z.infer<typeof sessionGetCwdSchema>;
 export type SessionDataEvent = z.infer<typeof sessionDataEventSchema>;
 export type SessionStatusEvent = z.infer<typeof sessionStatusEventSchema>;
 export type MonitorSnapshotInput = z.infer<typeof monitorSnapshotSchema>;
@@ -624,6 +631,18 @@ export interface ConnectionExportBatchResult {
 
 export const updateCheckSchema = z.object({});
 export type UpdateCheckInput = z.infer<typeof updateCheckSchema>;
+
+export interface DebugLogEntry {
+  id: string;
+  timestamp: number;
+  connectionId: string;
+  command: string;
+  stdout: string;
+  exitCode: number;
+  durationMs: number;
+  ok: boolean;
+  error?: string;
+}
 
 export interface UpdateCheckResult {
   currentVersion: string;

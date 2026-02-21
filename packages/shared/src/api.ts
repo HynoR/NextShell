@@ -26,6 +26,7 @@ import type {
   AppPreferences,
   AppPreferencesPatchInput,
   AuditListInput,
+  DebugLogEntry,
   BackupListInput,
   BackupPasswordClearRememberedInput,
   BackupPasswordSetInput,
@@ -70,6 +71,7 @@ import type {
   SavedCommandUpsertInput,
   SessionCloseInput,
   SessionDataEvent,
+  SessionGetCwdInput,
   SessionOpenInput,
   SessionResizeInput,
   SessionStatusEvent,
@@ -122,6 +124,7 @@ export interface NextShellApi {
     write: (payload: SessionWriteInput) => Promise<{ ok: true }>;
     resize: (payload: SessionResizeInput) => Promise<{ ok: true }>;
     close: (payload: SessionCloseInput) => Promise<{ ok: true }>;
+    getCwd: (payload: SessionGetCwdInput) => Promise<{ cwd: string } | null>;
     onData: (listener: (event: SessionDataEvent) => void) => SessionEventUnsubscribe;
     onStatus: (listener: (event: SessionStatusEvent) => void) => SessionEventUnsubscribe;
   };
@@ -218,5 +221,10 @@ export interface NextShellApi {
   };
   about: {
     checkUpdate: () => Promise<UpdateCheckResult>;
+  };
+  debug: {
+    enableLog: () => Promise<{ ok: true }>;
+    disableLog: () => Promise<{ ok: true }>;
+    onLogEvent: (listener: (entry: DebugLogEntry) => void) => SessionEventUnsubscribe;
   };
 }

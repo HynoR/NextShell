@@ -3,6 +3,7 @@ import { App as AntdApp, Form, Input, Modal, Select, message } from "antd";
 import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { promptModal } from "../utils/promptModal";
+import { formatDateTime, formatRelativeTime } from "../utils/formatTime";
 
 interface ConnectionTreePanelProps {
   connections: ConnectionProfile[];
@@ -389,6 +390,26 @@ const ConnectionContextMenu = ({
       </button>
       <div className="ct-ctx-connection-hint">
         {connection.host}:{connection.port}
+      </div>
+      <div className="ct-ctx-time-row">
+        <span
+          className="ct-ctx-time-item"
+          title={`修改时间：${formatDateTime(connection.updatedAt)}`}
+        >
+          <i className="ri-edit-2-line" aria-hidden="true" />
+          {formatRelativeTime(connection.updatedAt)}
+        </span>
+        <span
+          className="ct-ctx-time-item"
+          title={connection.lastConnectedAt
+            ? `上次连接：${formatDateTime(connection.lastConnectedAt)}`
+            : "从未连接"}
+        >
+          <i className="ri-plug-line" aria-hidden="true" />
+          {connection.lastConnectedAt
+            ? formatRelativeTime(connection.lastConnectedAt)
+            : "从未连接"}
+        </span>
       </div>
     </div>
   );

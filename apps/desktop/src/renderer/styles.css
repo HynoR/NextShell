@@ -1444,6 +1444,26 @@ body {
   margin-top: 2px;
 }
 
+.ct-ctx-time-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 10px 5px;
+}
+
+.ct-ctx-time-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--t3);
+  flex: 1;
+}
+
+.ct-ctx-time-item i {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
 /* ── Terminal shell ──────────────────────────────────────── */
 .terminal-shell {
   height: 100%;
@@ -2147,6 +2167,12 @@ body {
   color: var(--err);
   border-color: rgba(248, 113, 113, 0.3);
   background: rgba(248, 113, 113, 0.08);
+}
+
+.fe-icon-btn.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
 }
 
 .fe-path-input {
@@ -3358,6 +3384,32 @@ body {
   margin-top: 2px;
 }
 
+.mgr-form-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.mgr-form-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--t3);
+  cursor: default;
+}
+
+.mgr-form-meta-item i {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
+.mgr-form-meta-sep {
+  font-size: 10px;
+  color: var(--border);
+}
+
 .mgr-ssh-badge {
   font-size: 9.5px;
   font-weight: 700;
@@ -4391,6 +4443,218 @@ body {
   color: var(--t3);
   opacity: 0.45;
   font-style: italic;
+}
+
+/* ── About Pane — Debug Log ──────────────────────────────────── */
+
+.about-debug-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.about-debug-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.about-debug-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2);
+  letter-spacing: 0.3px;
+}
+
+.about-debug-title i {
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.about-debug-count {
+  color: var(--t3);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.about-debug-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.about-debug-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--t3);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s, color 0.15s;
+  padding: 0;
+}
+
+.about-debug-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+
+.about-debug-icon-btn.active {
+  color: var(--accent);
+}
+
+.about-debug-log-box {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--font-mono, "JetBrains Mono", "Fira Code", ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  min-height: 200px;
+  max-height: 360px;
+  padding: 6px 0;
+}
+
+.about-debug-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 160px;
+  color: var(--t3);
+  font-size: 12px;
+  font-style: italic;
+  font-family: inherit;
+}
+
+.about-debug-entry {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.about-debug-entry:last-child {
+  border-bottom: none;
+}
+
+.about-debug-entry:hover {
+  background: var(--bg-hover);
+}
+
+.about-debug-entry.fail .about-debug-cmd {
+  color: var(--error, #ff4d4f);
+  opacity: 0.85;
+}
+
+.about-debug-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.about-debug-time {
+  color: var(--t3);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.about-debug-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
+}
+
+.about-debug-badge.ok {
+  background: rgba(82, 196, 26, 0.15);
+  color: #52c41a;
+}
+
+.about-debug-badge.fail {
+  background: rgba(255, 77, 79, 0.15);
+  color: #ff4d4f;
+}
+
+.about-debug-duration {
+  color: var(--t3);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.about-debug-conn {
+  color: var(--t3);
+  font-size: 10px;
+  opacity: 0.6;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.about-debug-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--t1);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.about-debug-cmd i {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.about-debug-stdout {
+  margin: 4px 0 0 16px;
+  padding: 4px 8px;
+  background: var(--bg-elevated, var(--bg-surface));
+  border-left: 2px solid var(--border);
+  color: var(--t2);
+  font-size: 10.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow: hidden;
+  max-height: 120px;
+  overflow-y: auto;
+  border-radius: 0 4px 4px 0;
+}
+
+.about-debug-error {
+  margin: 4px 0 0 16px;
+  padding: 4px 8px;
+  background: rgba(255, 77, 79, 0.08);
+  border-left: 2px solid #ff4d4f;
+  color: #ff4d4f;
+  font-size: 10.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-radius: 0 4px 4px 0;
 }
 
 /* ── Disk Monitor Pane ─────────────────────────────────────────── */
