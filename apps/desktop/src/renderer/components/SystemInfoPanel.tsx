@@ -26,18 +26,6 @@ const summaryLine = (snapshot: MonitorSnapshot): string => {
   return `CPU ${snapshot.cpuPercent.toFixed(0)}% / MEM ${snapshot.memoryPercent.toFixed(0)}%`;
 };
 
-const formatUptime = (uptimeHours: number): string => {
-  const totalHours = Math.max(0, Math.floor(uptimeHours));
-  const days = Math.floor(totalHours / 24);
-  const hours = totalHours % 24;
-
-  if (days > 0) {
-    return `运行 ${days} 天 ${hours} 小时`;
-  }
-
-  return `运行 ${hours} 小时`;
-};
-
 const formatLoad = (snapshot: MonitorSnapshot): string => {
   return `负载 ${snapshot.loadAverage.map((value) => value.toFixed(2)).join(", ")}`;
 };
@@ -176,10 +164,6 @@ export const SystemInfoPanel = ({
           ) : snapshot ? (
             <div className="flex flex-col gap-3 py-1">
               <div className="flex flex-col gap-2 px-1 mb-1">
-                <div className="flex items-center gap-2 text-[11px] text-[var(--t2)] font-medium bg-[var(--bg-elevated)] px-2.5 py-1.5 rounded-md border border-[var(--border-dim)] shadow-sm">
-                  <i className="ri-timer-line text-[var(--t3)]" />
-                  {formatUptime(snapshot.uptimeHours)}
-                </div>
                 <div className="flex items-center gap-2 text-[11px] text-[var(--t2)] font-mono bg-[var(--bg-elevated)] px-2.5 py-1.5 rounded-md border border-[var(--border-dim)] shadow-sm">
                   <i className="ri-dashboard-3-line text-[var(--t3)]" />
                   {formatLoad(snapshot)}

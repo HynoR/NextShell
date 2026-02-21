@@ -159,7 +159,7 @@ interface SystemMonitorRuntime {
   connection: SshConnection;
   shellChannel: SshShellChannel;
   commandQueue: Promise<void>;
-  systemTimer?: ReturnType<typeof setTimeout>;
+  pollTimer?: ReturnType<typeof setTimeout>;
   systemTimerActive?: boolean;
   cachedSnapshot?: MonitorSnapshot;
   cachedSnapshotAt?: number;
@@ -200,7 +200,6 @@ interface AdhocSessionRuntime {
 type MonitorRuntime = SystemMonitorRuntime;
 
 interface MonitorProbeResult {
-  uptimeSeconds: number;
   loadAverage: [number, number, number];
   cpuTotal?: number;
   cpuIdle?: number;
@@ -355,7 +354,12 @@ const MONITOR_NET_DEFAULT_INTERFACE_COMMAND =
   "ip route show default 2>/dev/null | awk 'NR==1 {for (i=1;i<=NF;i++) if ($i==\"dev\") {print $(i+1); exit}}'";
 const MONITOR_SYSTEM_PROCESS_COMMAND =
   "ps -eo pid=,comm=,%cpu=,rss= --sort=-%cpu 2>/dev/null | head -n 5";
-const MONITOR_SYSTEM_INTERVAL_MS = 5000;
+/** 网卡网速采样间隔：1 秒 */
+const MONITOR_NET_SPEED_INTERVAL_MS = 1000;
+/** CPU / 内存 / swap 采样间隔：3 秒 */
+const MONITOR_CPU_MEM_SWAP_INTERVAL_MS = 3000;
+/** 磁盘采样间隔：10 秒 */
+const MONITOR_DISK_INTERVAL_MS = 10000;
 const MONITOR_NETWORK_INTERVAL_MS = 5000;
 const ADHOC_IDLE_TIMEOUT_MS = 30_000;
 const MONITOR_MAX_CONSECUTIVE_FAILURES = 3;
@@ -1049,7 +1053,6 @@ const parseMonitorProcesses = (raw: string): MonitorProcess[] => {
 };
 
 const parseMonitorProbe = (samples: {
-  uptime: string;
   loadAverage: string;
   cpuStat: string;
   cpuTop: string;
@@ -1074,7 +1077,6 @@ const parseMonitorProbe = (samples: {
   const cpuTotals = parseCpuTotals(samples.cpuStat);
 
   return {
-    uptimeSeconds: parseUptimeSeconds(samples.uptime),
     loadAverage: parseLoadAverage(samples.loadAverage),
     cpuTotal: cpuTotals.cpuTotal,
     cpuIdle: cpuTotals.cpuIdle,
@@ -1102,8 +1104,6 @@ const parseMonitorProbe = (samples: {
 const buildSystemProbeCommand = (networkInterface: string): string => {
   const normalized = normalizeNetworkInterfaceName(networkInterface) || "eth0";
   return [
-    "echo '---NS_UPTIME---'",
-    MONITOR_UPTIME_COMMAND,
     "echo '---NS_LOADAVG---'",
     MONITOR_LOADAVG_COMMAND,
     "echo '---NS_CPUSTAT---'",
@@ -1126,6 +1126,44 @@ const buildSystemProbeCommand = (networkInterface: string): string => {
     MONITOR_SYSTEM_PROCESS_COMMAND,
     "echo '---NS_PROBE_END---'"
   ].join("; ");
+};
+
+/**
+ * Build a dynamic compound command: always collects network counters (1s),
+ * optionally includes CPU/mem/swap (3s) and disk (10s) sections.
+ */
+const buildDynamicProbeCommand = (
+  networkInterface: string,
+  collectCpuMemSwap: boolean,
+  collectDisk: boolean
+): string => {
+  const normalized = normalizeNetworkInterfaceName(networkInterface) || "eth0";
+  const parts: string[] = [];
+
+  if (collectCpuMemSwap) {
+    parts.push(
+      "echo '---NS_LOADAVG---'", MONITOR_LOADAVG_COMMAND,
+      "echo '---NS_CPUSTAT---'", MONITOR_CPU_STAT_COMMAND,
+      "echo '---NS_CPUTOP---'", MONITOR_CPU_TOP_COMMAND,
+      "echo '---NS_MEMINFO---'", MONITOR_MEMINFO_COMMAND,
+      "echo '---NS_FREE---'", MONITOR_FREE_COMMAND,
+      "echo '---NS_PROCESSES---'", MONITOR_SYSTEM_PROCESS_COMMAND
+    );
+  }
+
+  if (collectDisk) {
+    parts.push("echo '---NS_DISK---'", MONITOR_DISK_COMMAND);
+  }
+
+  parts.push(
+    "echo '---NS_NETIFACES---'", MONITOR_NET_INTERFACES_COMMAND,
+    "echo '---NS_NETDEFAULT---'", MONITOR_NET_DEFAULT_INTERFACE_COMMAND,
+    "echo '---NS_NETCOUNTERS---'",
+    `cat /sys/class/net/${normalized}/statistics/rx_bytes 2>/dev/null; cat /sys/class/net/${normalized}/statistics/tx_bytes 2>/dev/null`,
+    "echo '---NS_PROBE_END---'"
+  );
+
+  return parts.join("; ");
 };
 
 /** Parse a compound probe output back into named sections. */
@@ -1160,6 +1198,8 @@ const parseCompoundOutput = (stdout: string): Map<string, string> => {
  */
 const buildSystemInfoCommand = (): string => {
   return [
+    "echo '---NS_UPTIME---'",
+    MONITOR_UPTIME_COMMAND,
     "echo '---NS_OSRELEASE---'",
     MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND,
     "echo '---NS_HOSTNAME---'",
@@ -1485,9 +1525,9 @@ export const createServiceContainer = (
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      if (runtime.systemTimer) {
-        clearTimeout(runtime.systemTimer);
-        runtime.systemTimer = undefined;
+      if (runtime.pollTimer) {
+        clearTimeout(runtime.pollTimer);
+        runtime.pollTimer = undefined;
       }
       runtime.systemTimerActive = false;
       systemMonitorRuntimes.delete(connectionId);
@@ -1685,7 +1725,7 @@ export const createServiceContainer = (
       connection.onClose(() => {
         if (runtime.disposed) return;
         runtime.disposed = true;
-        if (runtime.systemTimer) { clearTimeout(runtime.systemTimer); runtime.systemTimer = undefined; }
+        if (runtime.pollTimer) { clearTimeout(runtime.pollTimer); runtime.pollTimer = undefined; }
         runtime.systemTimerActive = false;
         systemMonitorRuntimes.delete(connectionId);
         systemMonitorPromises.delete(connectionId);
@@ -1699,7 +1739,7 @@ export const createServiceContainer = (
       shellChannel.on("close", () => {
         if (runtime.disposed) return;
         runtime.disposed = true;
-        if (runtime.systemTimer) { clearTimeout(runtime.systemTimer); runtime.systemTimer = undefined; }
+        if (runtime.pollTimer) { clearTimeout(runtime.pollTimer); runtime.pollTimer = undefined; }
         runtime.systemTimerActive = false;
         systemMonitorRuntimes.delete(connectionId);
         systemMonitorPromises.delete(connectionId);
@@ -3246,7 +3286,6 @@ export const createServiceContainer = (
 
     return {
       connectionId,
-      uptimeHours: Math.max(0, Math.floor(probe.uptimeSeconds / 3600)),
       loadAverage: probe.loadAverage,
       cpuPercent: Number(cpuPercent.toFixed(2)),
       memoryPercent: Number(memoryPercent.toFixed(2)),
@@ -3417,7 +3456,6 @@ export const createServiceContainer = (
     }
 
     const probe = parseMonitorProbe({
-      uptime: sections.get("UPTIME") ?? "",
       loadAverage: sections.get("LOADAVG") ?? "",
       cpuStat: sections.get("CPUSTAT") ?? "",
       cpuTop: sections.get("CPUTOP") ?? "",
@@ -3441,43 +3479,211 @@ export const createServiceContainer = (
     assertVisibleTerminalAlive(connectionId);
     const runtime = await ensureSystemMonitorRuntime(connectionId);
 
-    // Already running?
     if (runtime.systemTimerActive) {
       return { ok: true };
     }
     runtime.systemTimerActive = true;
 
+    // ── Local delta state (isolated from monitorStates to avoid cross-contamination) ──
+    let tickCount = 0;
+    let networkInterface = "eth0";
+    let networkInterfaceOptions: string[] = [];
+    let interfaceResolved = false;
+
+    // Network delta (updated every tick = 1s)
+    let prevNetRx: number | undefined;
+    let prevNetTx: number | undefined;
+    let prevNetSampledAt: number | undefined;
+    let cachedNetInMbps = 0;
+    let cachedNetOutMbps = 0;
+
+    // CPU delta (updated every 3 ticks = 3s)
+    let prevCpuTotal: number | undefined;
+    let prevCpuIdle: number | undefined;
+    let cachedCpuPercent = 0;
+
+    // Cached values for fields that update at slower rates
+    let cachedLoadAvg: [number, number, number] = [0, 0, 0];
+    let cachedMemory = { memTotalKb: 0, memAvailableKb: 0, swapTotalKb: 0, swapFreeKb: 0 };
+    let cachedDisk = { diskTotalKb: 0, diskUsedKb: 0 };
+    let cachedProcesses: MonitorProcess[] = [];
+
+    const readInterfaceSelection = () => {
+      const state = monitorStates.get(connectionId);
+      if (state?.selectedNetworkInterface) {
+        networkInterface = state.selectedNetworkInterface;
+        networkInterfaceOptions = state.networkInterfaceOptions ?? [networkInterface];
+        interfaceResolved = true;
+      }
+    };
+    readInterfaceSelection();
+
+    const emitSnapshot = () => {
+      if (sender.isDestroyed()) {
+        runtime.systemTimerActive = false;
+        return;
+      }
+      const memoryUsedKb = Math.max(0, cachedMemory.memTotalKb - cachedMemory.memAvailableKb);
+      const swapUsedKb = Math.max(0, cachedMemory.swapTotalKb - cachedMemory.swapFreeKb);
+      const memoryPercent = cachedMemory.memTotalKb > 0 ? (memoryUsedKb / cachedMemory.memTotalKb) * 100 : 0;
+      const swapPercent = cachedMemory.swapTotalKb > 0 ? (swapUsedKb / cachedMemory.swapTotalKb) * 100 : 0;
+      const diskPercent = cachedDisk.diskTotalKb > 0 ? (cachedDisk.diskUsedKb / cachedDisk.diskTotalKb) * 100 : 0;
+
+      const snapshot: MonitorSnapshot = {
+        connectionId,
+        loadAverage: cachedLoadAvg,
+        cpuPercent: Number(cachedCpuPercent.toFixed(2)),
+        memoryPercent: Number(memoryPercent.toFixed(2)),
+        memoryUsedMb: Number((memoryUsedKb / 1024).toFixed(2)),
+        memoryTotalMb: Number((cachedMemory.memTotalKb / 1024).toFixed(2)),
+        swapPercent: Number(swapPercent.toFixed(2)),
+        swapUsedMb: Number((swapUsedKb / 1024).toFixed(2)),
+        swapTotalMb: Number((cachedMemory.swapTotalKb / 1024).toFixed(2)),
+        diskPercent: Number(diskPercent.toFixed(2)),
+        diskUsedGb: Number((cachedDisk.diskUsedKb / (1024 * 1024)).toFixed(2)),
+        diskTotalGb: Number((cachedDisk.diskTotalKb / (1024 * 1024)).toFixed(2)),
+        networkInMbps: Number(Math.max(0, cachedNetInMbps).toFixed(2)),
+        networkOutMbps: Number(Math.max(0, cachedNetOutMbps).toFixed(2)),
+        networkInterface,
+        networkInterfaceOptions,
+        processes: cachedProcesses,
+        capturedAt: new Date().toISOString()
+      };
+      sender.send(IPCChannel.MonitorSystemData, snapshot);
+    };
+
+    const resolveInterfaceFromSections = (sections: Map<string, string>) => {
+      const netIfacesRaw = sections.get("NETIFACES") ?? "";
+      const parsedOptions = parseNetworkInterfaceList(netIfacesRaw);
+      if (parsedOptions.length > 0) {
+        networkInterfaceOptions = parsedOptions;
+      }
+      if (!interfaceResolved) {
+        const defaultIfaceRaw = sections.get("NETDEFAULT") ?? "";
+        const defaultIface = normalizeNetworkInterfaceName(defaultIfaceRaw.split(/\r?\n/)[0] ?? "");
+        if (defaultIface && networkInterfaceOptions.includes(defaultIface)) {
+          networkInterface = defaultIface;
+        } else if (networkInterfaceOptions.length > 0) {
+          networkInterface = networkInterfaceOptions[0]!;
+        }
+        interfaceResolved = true;
+      }
+    };
+
+    const updateNetFromSections = (sections: Map<string, string>) => {
+      const counters = parseNetworkCounters(sections.get("NETCOUNTERS") ?? "");
+      const now = Date.now();
+      if (prevNetRx !== undefined && prevNetTx !== undefined && prevNetSampledAt !== undefined) {
+        const elapsed = (now - prevNetSampledAt) / 1000;
+        if (elapsed > 0) {
+          cachedNetInMbps = ((counters.rxBytes - prevNetRx) * 8) / (elapsed * 1e6);
+          cachedNetOutMbps = ((counters.txBytes - prevNetTx) * 8) / (elapsed * 1e6);
+        }
+      }
+      prevNetRx = counters.rxBytes;
+      prevNetTx = counters.txBytes;
+      prevNetSampledAt = now;
+
+      const currentState = monitorStates.get(connectionId);
+      monitorStates.set(connectionId, {
+        ...currentState,
+        netRxBytes: counters.rxBytes,
+        netTxBytes: counters.txBytes,
+        selectedNetworkInterface: networkInterface,
+        networkInterfaceOptions,
+        sampledAt: now
+      });
+    };
+
+    const updateCpuMemSwapFromSections = (sections: Map<string, string>) => {
+      const cpuTotals = parseCpuTotals(sections.get("CPUSTAT") ?? "");
+      if (
+        prevCpuTotal !== undefined && prevCpuIdle !== undefined &&
+        cpuTotals.cpuTotal !== undefined && cpuTotals.cpuIdle !== undefined
+      ) {
+        const deltaTotal = cpuTotals.cpuTotal - prevCpuTotal;
+        const deltaIdle = cpuTotals.cpuIdle - prevCpuIdle;
+        if (deltaTotal > 0) {
+          cachedCpuPercent = ((deltaTotal - deltaIdle) / deltaTotal) * 100;
+        }
+      } else {
+        cachedCpuPercent = parseCpuPercentFromTop(sections.get("CPUTOP") ?? "") ?? 0;
+      }
+      prevCpuTotal = cpuTotals.cpuTotal;
+      prevCpuIdle = cpuTotals.cpuIdle;
+
+      const currentState = monitorStates.get(connectionId);
+      monitorStates.set(connectionId, {
+        ...currentState,
+        cpuTotal: cpuTotals.cpuTotal,
+        cpuIdle: cpuTotals.cpuIdle
+      });
+
+      const memory = parseMemoryFromMeminfo(sections.get("MEMINFO") ?? "") ??
+        parseMemoryFromFree(sections.get("FREE") ?? "");
+      if (memory) {
+        cachedMemory = memory;
+      }
+
+      cachedLoadAvg = parseLoadAverage(sections.get("LOADAVG") ?? "");
+      cachedProcesses = parseMonitorProcesses(sections.get("PROCESSES") ?? "");
+    };
+
+    const updateDiskFromSections = (sections: Map<string, string>) => {
+      cachedDisk = parseDiskUsage(sections.get("DISK") ?? "");
+    };
+
+    // ── Initial full probe (warm up all cached values & establish baselines) ──
+    try {
+      const initCmd = buildDynamicProbeCommand(networkInterface, true, true);
+      const raw = await runMonitorCommand(connectionId, initCmd);
+      const sections = parseCompoundOutput(raw);
+
+      resolveInterfaceFromSections(sections);
+      updateNetFromSections(sections);
+      updateCpuMemSwapFromSections(sections);
+      updateDiskFromSections(sections);
+      emitSnapshot();
+    } catch (error) {
+      logger.warn("[SystemMonitor] initial probe failed", { connectionId, reason: normalizeError(error) });
+      runtime.systemTimerActive = false;
+      return { ok: true };
+    }
+
+    // ── Tick-based poll: single 1s timer, counters decide what to collect ──
     const scheduleNext = () => {
       if (runtime.disposed || !runtime.systemTimerActive) return;
-      runtime.systemTimer = setTimeout(() => void poll(), MONITOR_SYSTEM_INTERVAL_MS);
+      runtime.pollTimer = setTimeout(() => void poll(), MONITOR_NET_SPEED_INTERVAL_MS);
     };
 
     const poll = async () => {
       if (runtime.disposed || !runtime.systemTimerActive) return;
+      tickCount++;
+      readInterfaceSelection();
+
+      const collectCpuMemSwap = tickCount % 3 === 0;
+      const collectDisk = tickCount % 10 === 0;
 
       try {
-        const snapshot = await probeMonitorSnapshot(connectionId);
-        if (!sender.isDestroyed()) {
-          sender.send(IPCChannel.MonitorSystemData, snapshot);
-        } else {
-          // Sender gone — stop polling
-          runtime.systemTimerActive = false;
-          return;
-        }
+        const cmd = buildDynamicProbeCommand(networkInterface, collectCpuMemSwap, collectDisk);
+        const raw = await runMonitorCommand(connectionId, cmd);
+        const sections = parseCompoundOutput(raw);
+
+        resolveInterfaceFromSections(sections);
+        updateNetFromSections(sections);
+        if (collectCpuMemSwap) updateCpuMemSwapFromSections(sections);
+        if (collectDisk) updateDiskFromSections(sections);
+
+        emitSnapshot();
       } catch (error) {
-        logger.warn("[SystemMonitor] poll failed", {
-          connectionId,
-          reason: normalizeError(error)
-        });
+        logger.warn("[SystemMonitor] poll failed", { connectionId, reason: normalizeError(error) });
       }
 
-      // Schedule next poll only AFTER the current one completes (setTimeout, not setInterval)
       scheduleNext();
     };
 
-    // Fire first poll immediately, then chain via setTimeout
-    void poll();
-    logger.info("[SystemMonitor] started", { connectionId });
+    scheduleNext();
+    logger.info("[SystemMonitor] started (net 1s, cpu/mem/swap 3s, disk 10s)", { connectionId });
     return { ok: true };
   };
 
@@ -3485,9 +3691,9 @@ export const createServiceContainer = (
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.systemTimerActive = false;
-      if (runtime.systemTimer) {
-        clearTimeout(runtime.systemTimer);
-        runtime.systemTimer = undefined;
+      if (runtime.pollTimer) {
+        clearTimeout(runtime.pollTimer);
+        runtime.pollTimer = undefined;
       }
       logger.info("[SystemMonitor] stopped", { connectionId });
     }
@@ -3569,6 +3775,7 @@ export const createServiceContainer = (
       swapTotalKb: totals.swapTotalKb,
       networkInterfaces: parseNetworkInterfaceTotals(sections.get("NETDEV") ?? ""),
       filesystems: parseFilesystemEntries(sections.get("FILESYSTEMS") ?? ""),
+      uptimeSeconds: parseUptimeSeconds(sections.get("UPTIME") ?? ""),
       capturedAt: new Date().toISOString()
     };
   };

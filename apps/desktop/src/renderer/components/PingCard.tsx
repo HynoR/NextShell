@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const PING_INTERVAL_MS = 5000;
+const PING_INTERVAL_MS = 1000;
 const PING_CHART_HEIGHT = 84;
 const PING_HISTORY_CAP = 50;
 
@@ -133,7 +133,7 @@ export const PingCard = ({ host }: PingCardProps) => {
                 <span className="font-mono font-semibold text-[var(--t1)]">
                   {result.avgMs === 0 ? "0" : result.avgMs < 1 ? "<1" : Math.round(result.avgMs)} ms
                 </span>
-                <span className="text-[10px] text-[var(--t3)]">每 5 秒刷新</span>
+                <span className="text-[10px] text-[var(--t3)]">每 1 秒刷新</span>
               </>
             ) : (
               <span className="text-[var(--t3)]">展开后启用 Ping，折叠不停止</span>

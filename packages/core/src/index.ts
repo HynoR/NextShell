@@ -185,12 +185,12 @@ export interface SystemInfoSnapshot {
   swapTotalKb: number;
   networkInterfaces: SystemNetworkInterfaceTotal[];
   filesystems: SystemFilesystemEntry[];
+  uptimeSeconds: number;
   capturedAt: string;
 }
 
 export interface MonitorSnapshot {
   connectionId: string;
-  uptimeHours: number;
   loadAverage: [number, number, number];
   cpuPercent: number;
   memoryPercent: number;

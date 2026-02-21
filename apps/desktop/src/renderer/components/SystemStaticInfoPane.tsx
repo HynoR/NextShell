@@ -29,6 +29,16 @@ type SystemInfoGroup = "basic" | "network" | "disk";
 
 const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
+const formatUptimeSeconds = (seconds: number): string => {
+  const total = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days} 天 ${hours} 小时`;
+  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
+  return `${minutes} 分钟`;
+};
+
 const formatRefreshTime = (iso?: string): string => {
   if (!iso) {
     return "--:--:--";
@@ -346,6 +356,10 @@ export const SystemStaticInfoPane = ({
             <div className="system-static-group-content">
               {activeGroup === "basic" ? (
                 <div className="system-static-basic-grid">
+                  <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
+                    <div className="text-[var(--t3)]">运行时长</div>
+                    <div className="font-medium text-[var(--t1)]">{formatUptimeSeconds(snapshot.uptimeSeconds)}</div>
+                  </div>
                   <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
                     <div className="text-[var(--t3)]">主机名</div>
                     <div className="font-medium text-[var(--t1)]">{snapshot.hostname}</div>
