@@ -4974,3 +4974,138 @@ body {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ── Light theme: session tabs & command input bar ───────── */
+:root[data-theme="light"] .session-tabs {
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+:root[data-theme="light"] .app-shell--with-wallpaper .session-tabs {
+  background: color-mix(in srgb, var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+}
+
+:root[data-theme="light"] .session-tab {
+  color: var(--t2);
+  border-right: 1px solid var(--border-dim);
+}
+
+:root[data-theme="light"] .session-tab:hover {
+  color: var(--t1);
+  background: var(--bg-hover);
+}
+
+:root[data-theme="light"] .session-tab.active {
+  color: var(--t1);
+  background: var(--accent-dim);
+}
+
+:root[data-theme="light"] .tab-drag {
+  color: var(--t3);
+}
+
+:root[data-theme="light"] .tab-close {
+  color: var(--t3);
+}
+
+:root[data-theme="light"] .cib-bar {
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+}
+
+:root[data-theme="light"] .cib-history-toggle {
+  color: var(--t3);
+  border-right: 1px solid var(--border-dim);
+}
+
+:root[data-theme="light"] .cib-history-toggle:hover {
+  color: var(--accent);
+  background: var(--accent-glow);
+}
+
+:root[data-theme="light"] .cib-history-toggle.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+:root[data-theme="light"] .cib-input {
+  color: var(--t1);
+}
+
+:root[data-theme="light"] .cib-input::placeholder {
+  color: var(--t3);
+}
+
+:root[data-theme="light"] .cib-search-btn {
+  color: var(--t3);
+  border: 1px solid var(--border-dim);
+  background: var(--bg-hover);
+}
+
+:root[data-theme="light"] .cib-search-btn:hover:not(.disabled),
+:root[data-theme="light"] .cib-search-btn.active {
+  color: var(--accent);
+  border-color: rgba(23, 104, 214, 0.35);
+  background: var(--accent-dim);
+}
+
+:root[data-theme="light"] .cib-panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 -6px 24px rgba(14, 31, 53, 0.12);
+}
+
+:root[data-theme="light"] .cib-panel-header {
+  border-bottom: 1px solid var(--border-dim);
+}
+
+:root[data-theme="light"] .cib-panel-mode {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+
+:root[data-theme="light"] .cib-panel-mode:hover:not(:disabled),
+:root[data-theme="light"] .cib-panel-mode.active {
+  color: var(--accent);
+  border-color: rgba(23, 104, 214, 0.32);
+  background: var(--accent-dim);
+}
+
+:root[data-theme="light"] .cib-panel-count {
+  background: var(--bg-hover);
+  color: var(--t2);
+}
+
+:root[data-theme="light"] .cib-clear-btn {
+  border: 1px solid var(--border);
+}
+
+:root[data-theme="light"] .cib-panel-list::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+}
+
+:root[data-theme="light"] .cib-search-action-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+
+:root[data-theme="light"] .cib-search-action-btn:hover:not(:disabled) {
+  color: var(--t1);
+  border-color: rgba(23, 104, 214, 0.35);
+  background: var(--accent-dim);
+}
+
+:root[data-theme="light"] .cib-send-btn {
+  border: 1px solid rgba(23, 104, 214, 0.3);
+  background: rgba(23, 104, 214, 0.1);
+}
+
+:root[data-theme="light"] .cib-send-btn:hover:not(.disabled) {
+  background: rgba(23, 104, 214, 0.18);
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .editor-toolbar-save-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--t1);
+}

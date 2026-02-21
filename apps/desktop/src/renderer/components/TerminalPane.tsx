@@ -3,7 +3,8 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useRef
+  useRef,
+  useState
 } from "react";
 import { App as AntdApp } from "antd";
 import { Terminal } from "@xterm/xterm";
@@ -146,6 +147,8 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   const onRequestSearchModeRef = useRef<TerminalPaneProps["onRequestSearchMode"]>(onRequestSearchMode);
   const findNextRef = useRef<() => void>(() => {});
   const findPreviousRef = useRef<() => void>(() => {});
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     onRequestSearchModeRef.current = onRequestSearchMode;
@@ -199,6 +202,98 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     findNextRef.current = findNext;
     findPreviousRef.current = findPrevious;
   }, [findNext, findPrevious]);
+
+  // Context menu outside-click and Escape dismissal
+  useEffect(() => {
+    if (!ctxMenu) {
+      return;
+    }
+
+    const handleMouseDown = (e: MouseEvent) => {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
+        setCtxMenu(null);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setCtxMenu(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [ctxMenu]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const menuWidth = 200;
+    const menuHeight = 200;
+    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+    setCtxMenu({ x, y });
+  }, []);
+
+  const handleCtxCopy = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) {
+      return;
+    }
+    const selection = terminal.getSelection();
+    if (selection) {
+      void navigator.clipboard.writeText(selection);
+    }
+    setCtxMenu(null);
+  }, []);
+
+  const handleCtxPaste = useCallback(() => {
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) {
+      return;
+    }
+    runSessionAction(
+      navigator.clipboard.readText().then((text) => {
+        if (!text) {
+          return;
+        }
+        return window.nextshell.session.write({ sessionId, data: text });
+      })
+    );
+    setCtxMenu(null);
+  }, []);
+
+  const handleCtxPasteSelection = useCallback(() => {
+    const terminal = terminalRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!terminal || !sessionId) {
+      return;
+    }
+    const selection = terminal.getSelection();
+    if (selection) {
+      void navigator.clipboard.writeText(selection);
+      runSessionAction(
+        window.nextshell.session.write({ sessionId, data: selection })
+      );
+    }
+    setCtxMenu(null);
+  }, []);
+
+  const handleCtxClear = useCallback(() => {
+    const terminal = terminalRef.current;
+    const sessionId = sessionIdRef.current;
+    if (!terminal) {
+      return;
+    }
+    terminal.reset();
+    if (sessionId) {
+      bufferBySessionRef.current.set(sessionId, createEmptyBuffer());
+    }
+    setCtxMenu(null);
+  }, []);
 
   useImperativeHandle(
     ref,
@@ -558,9 +653,60 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }
   }, [appendSessionOutput, connection, replaySessionOutput, session]);
 
+  const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
+  const hasSession = !!sessionIdRef.current;
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 py-1.5 px-1" ref={containerRef} />
+      <div
+        className="flex-1 min-h-0 py-1.5 px-1"
+        ref={containerRef}
+        onContextMenu={handleContextMenu}
+      />
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="fe-ctx-menu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button
+            type="button"
+            className="fe-ctx-item"
+            disabled={!hasSelection}
+            onClick={handleCtxCopy}
+          >
+            <span className="fe-ctx-icon"><i className="ri-file-copy-line" /></span>
+            复制选中内容
+          </button>
+          <button
+            type="button"
+            className="fe-ctx-item"
+            disabled={!hasSession}
+            onClick={handleCtxPaste}
+          >
+            <span className="fe-ctx-icon"><i className="ri-clipboard-line" /></span>
+            粘贴
+          </button>
+          <button
+            type="button"
+            className="fe-ctx-item"
+            disabled={!hasSelection || !hasSession}
+            onClick={handleCtxPasteSelection}
+          >
+            <span className="fe-ctx-icon"><i className="ri-file-copy-2-line" /></span>
+            粘贴选中
+          </button>
+          <div className="fe-ctx-divider" />
+          <button
+            type="button"
+            className="fe-ctx-item fe-ctx-danger"
+            onClick={handleCtxClear}
+          >
+            <span className="fe-ctx-icon"><i className="ri-delete-bin-line" /></span>
+            清空界面
+          </button>
+        </div>
+      )}
     </div>
   );
 });
