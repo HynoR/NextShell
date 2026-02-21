@@ -478,9 +478,19 @@ export const connectionExportSchema = z.object({
   encryptionPassword: z.preprocess(trimToOptionalString, z.string().min(6).optional())
 });
 
+export const connectionExportBatchSchema = z.object({
+  connectionIds: z.array(z.string().uuid()).min(1),
+  directoryPath: z.string().min(1),
+  encryptionPassword: z.preprocess(trimToOptionalString, z.string().min(6).optional())
+});
+
 export const connectionImportPreviewSchema = z.object({
   filePath: z.string().min(1),
   decryptionPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+});
+
+export const connectionImportFinalShellPreviewSchema = z.object({
+  filePath: z.string().min(1)
 });
 
 export const connectionImportExecuteSchema = z.object({
@@ -570,8 +580,26 @@ export type ProxyListInput = z.infer<typeof proxyListSchema>;
 export type ProxyUpsertInput = z.infer<typeof proxyUpsertSchema>;
 export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;
 export type ConnectionExportInput = z.infer<typeof connectionExportSchema>;
+export type ConnectionExportBatchInput = z.infer<typeof connectionExportBatchSchema>;
 export type ConnectionImportPreviewInput = z.infer<typeof connectionImportPreviewSchema>;
+export type ConnectionImportFinalShellPreviewInput = z.infer<typeof connectionImportFinalShellPreviewSchema>;
 export type ConnectionImportExecuteInput = z.infer<typeof connectionImportExecuteSchema>;
+
+export interface ConnectionExportBatchFileItem {
+  connectionId: string;
+  filePath: string;
+  fileName: string;
+}
+
+export interface ConnectionExportBatchResult {
+  total: number;
+  exported: number;
+  failed: number;
+  encrypted: boolean;
+  directoryPath: string;
+  files: ConnectionExportBatchFileItem[];
+  errors: string[];
+}
 
 export const updateCheckSchema = z.object({});
 export type UpdateCheckInput = z.infer<typeof updateCheckSchema>;

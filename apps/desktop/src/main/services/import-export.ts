@@ -15,7 +15,7 @@ export const isNextShellFormat = (data: unknown): data is ConnectionExportFile =
   return (data as Record<string, unknown>)["format"] === "nextshell-connections";
 };
 
-interface CompetitorEntry {
+interface FinalShellEntry {
   name?: string;
   host?: string;
   port?: number;
@@ -27,14 +27,14 @@ interface CompetitorEntry {
   backspace_key_sequence?: number;
 }
 
-export const isCompetitorFormat = (data: unknown): boolean => {
+export const isFinalShellFormat = (data: unknown): boolean => {
   if (Array.isArray(data)) {
-    return data.length > 0 && isCompetitorEntry(data[0]);
+    return data.length > 0 && isFinalShellEntry(data[0]);
   }
-  return isCompetitorEntry(data);
+  return isFinalShellEntry(data);
 };
 
-const isCompetitorEntry = (data: unknown): boolean => {
+const isFinalShellEntry = (data: unknown): boolean => {
   if (typeof data !== "object" || data === null) return false;
   const record = data as Record<string, unknown>;
   return "authentication_type" in record && "user_name" in record;
@@ -64,7 +64,7 @@ export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImpo
 
 // ─── FinalShell compatibility parser ─────────────────────────────────────────
 
-export const mapCompetitorEncoding = (encoding: string | undefined): TerminalEncoding => {
+export const mapFinalShellEncoding = (encoding: string | undefined): TerminalEncoding => {
   if (!encoding) return "utf-8";
   const lower = encoding.toLowerCase().replace(/[-_\s]/g, "");
   if (lower === "utf8") return "utf-8";
@@ -74,17 +74,17 @@ export const mapCompetitorEncoding = (encoding: string | undefined): TerminalEnc
   return "utf-8";
 };
 
-const mapCompetitorBackspace = (seq: number | undefined): BackspaceMode => {
+const mapFinalShellBackspace = (seq: number | undefined): BackspaceMode => {
   return seq === 2 ? "ascii-delete" : "ascii-backspace";
 };
 
-const mapCompetitorAuthType = (_authType: number | undefined): AuthType => {
+const mapFinalShellAuthType = (_authType: number | undefined): AuthType => {
   // authentication_type 2 → password; others default to password as well
   // since we can't decrypt their keys either
   return "password";
 };
 
-const parseOneFinalShellEntry = (entry: CompetitorEntry): ConnectionImportEntry => {
+const parseOneFinalShellEntry = (entry: FinalShellEntry): ConnectionImportEntry => {
   const host = entry.host ?? "unknown";
   const port = entry.port ?? 22;
   const name = entry.name || `${host}:${port}`;
@@ -95,22 +95,22 @@ const parseOneFinalShellEntry = (entry: CompetitorEntry): ConnectionImportEntry 
     host,
     port,
     username: entry.user_name ?? "",
-    authType: mapCompetitorAuthType(entry.authentication_type),
+    authType: mapFinalShellAuthType(entry.authentication_type),
     ...(decryptedPassword !== undefined
       ? { password: decryptedPassword }
       : { passwordUnavailable: true }),
     groupPath: ["导入"],
     tags: [],
     favorite: false,
-    terminalEncoding: mapCompetitorEncoding(entry.terminal_encoding),
-    backspaceMode: mapCompetitorBackspace(entry.backspace_key_sequence),
+    terminalEncoding: mapFinalShellEncoding(entry.terminal_encoding),
+    backspaceMode: mapFinalShellBackspace(entry.backspace_key_sequence),
     deleteMode: "vt220-delete" as DeleteMode,
     monitorSession: false,
-    sourceFormat: "competitor"
+    sourceFormat: "finalshell"
   };
 };
 
-export const parseCompetitorImport = (data: unknown): ConnectionImportEntry[] => {
-  const entries: CompetitorEntry[] = Array.isArray(data) ? data : [data as CompetitorEntry];
-  return entries.filter(isCompetitorEntry).map(parseOneFinalShellEntry);
+export const parseFinalShellImport = (data: unknown): ConnectionImportEntry[] => {
+  const entries: FinalShellEntry[] = Array.isArray(data) ? data : [data as FinalShellEntry];
+  return entries.filter(isFinalShellEntry).map(parseOneFinalShellEntry);
 };

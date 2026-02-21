@@ -11,6 +11,8 @@ import {
   commandHistoryPushSchema,
   commandHistoryRemoveSchema,
   connectionExportSchema,
+  connectionExportBatchSchema,
+  connectionImportFinalShellPreviewSchema,
   connectionImportPreviewSchema,
   connectionImportExecuteSchema,
   connectionListQuerySchema,
@@ -121,9 +123,19 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.exportConnections(event.sender, input);
   });
 
+  ipcMain.handle(IPCChannel.ConnectionExportBatch, (_event, payload) => {
+    const input = parsePayload(connectionExportBatchSchema, payload, "连接批量导出");
+    return services.exportConnectionsBatch(input);
+  });
+
   ipcMain.handle(IPCChannel.ConnectionImportPreview, (_event, payload) => {
     const input = parsePayload(connectionImportPreviewSchema, payload, "连接导入预览");
     return services.importConnectionsPreview(input);
+  });
+
+  ipcMain.handle(IPCChannel.ConnectionImportFinalShellPreview, (_event, payload) => {
+    const input = parsePayload(connectionImportFinalShellPreviewSchema, payload, "FinalShell 导入预览");
+    return services.importFinalShellConnectionsPreview(input);
   });
 
   ipcMain.handle(IPCChannel.ConnectionImportExecute, (_event, payload) => {

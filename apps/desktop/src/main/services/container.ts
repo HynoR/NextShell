@@ -55,6 +55,9 @@ import type {
   DialogOpenPathInput,
   CommandBatchExecInput,
   ConnectionExportInput,
+  ConnectionExportBatchInput,
+  ConnectionExportBatchResult,
+  ConnectionImportFinalShellPreviewInput,
   ConnectionImportPreviewInput,
   ConnectionImportExecuteInput,
   ConnectionUpsertInput,
@@ -100,15 +103,16 @@ import {
 import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
 import {
+  isFinalShellFormat,
   isNextShellFormat,
-  isCompetitorFormat,
+  parseFinalShellImport,
   parseNextShellImport,
-  parseCompetitorImport
 } from "./import-export";
 import {
   decryptConnectionExportPayload,
   encryptConnectionExportPayload
 } from "./connection-export-crypto";
+import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
 import { logger } from "../logger";
 import { applyAppearanceToAllWindows } from "../window-theme";
 
@@ -189,7 +193,9 @@ export interface ServiceContainer {
     sender: WebContents,
     input: ConnectionExportInput
   ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+  exportConnectionsBatch: (input: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
   importConnectionsPreview: (input: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
+  importFinalShellConnectionsPreview: (input: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
   importConnectionsExecute: (input: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   listSshKeys: () => SshKeyProfile[];
   upsertSshKey: (input: SshKeyUpsertInput) => Promise<SshKeyProfile>;
@@ -2320,6 +2326,39 @@ export const createServiceContainer = (
     return JSON.parse(normalizedText);
   };
 
+  const parseJsonPayloadText = (rawText: string): unknown => {
+    const normalizedText = trimBomAndWhitespace(rawText);
+    return JSON.parse(normalizedText);
+  };
+
+  const buildExportedConnection = async (conn: ConnectionProfile): Promise<ExportedConnection> => {
+    let password: string | undefined;
+    if (conn.authType === "password" && conn.credentialRef) {
+      try {
+        password = await vault.readCredential(conn.credentialRef);
+      } catch {
+        // If we can't read the credential, export without password
+      }
+    }
+
+    return {
+      name: conn.name,
+      host: conn.host,
+      port: conn.port,
+      username: conn.username,
+      authType: conn.authType,
+      password,
+      groupPath: conn.groupPath,
+      tags: conn.tags,
+      notes: conn.notes,
+      favorite: conn.favorite,
+      terminalEncoding: conn.terminalEncoding,
+      backspaceMode: conn.backspaceMode,
+      deleteMode: conn.deleteMode,
+      monitorSession: conn.monitorSession
+    };
+  };
+
   const exportConnections = async (
     sender: WebContents,
     input: ConnectionExportInput
@@ -2344,31 +2383,7 @@ export const createServiceContainer = (
 
     const exportedConnections: ExportedConnection[] = [];
     for (const conn of filtered) {
-      let password: string | undefined;
-      if (conn.authType === "password" && conn.credentialRef) {
-        try {
-          password = await vault.readCredential(conn.credentialRef);
-        } catch {
-          // If we can't read the credential, export without password
-        }
-      }
-
-      exportedConnections.push({
-        name: conn.name,
-        host: conn.host,
-        port: conn.port,
-        username: conn.username,
-        authType: conn.authType,
-        password,
-        groupPath: conn.groupPath,
-        tags: conn.tags,
-        notes: conn.notes,
-        favorite: conn.favorite,
-        terminalEncoding: conn.terminalEncoding,
-        backspaceMode: conn.backspaceMode,
-        deleteMode: conn.deleteMode,
-        monitorSession: conn.monitorSession
-      });
+      exportedConnections.push(await buildExportedConnection(conn));
     }
 
     const exportFile: ConnectionExportFile = {
@@ -2399,6 +2414,29 @@ export const createServiceContainer = (
     return { ok: true, filePath: result.filePath };
   };
 
+  const exportConnectionsBatch = async (
+    input: ConnectionExportBatchInput
+  ): Promise<ConnectionExportBatchResult> => {
+    const allConnections = connections.list({});
+    const idSet = new Set(input.connectionIds);
+    const filtered = allConnections.filter((conn) => idSet.has(conn.id));
+    const result = await exportConnectionsBatchToDirectory({
+      connections: filtered,
+      directoryPath: input.directoryPath,
+      encryptionPassword: input.encryptionPassword,
+      buildExportedConnection
+    });
+
+    connections.appendAuditLog({
+      action: "connection.export.batch",
+      level: "info",
+      message: `Batch exported ${result.exported}/${result.total} connections`,
+      metadata: { ...result }
+    });
+
+    return result;
+  };
+
   const importConnectionsPreview = async (
     input: ConnectionImportPreviewInput
   ): Promise<ConnectionImportEntry[]> => {
@@ -2409,11 +2447,20 @@ export const createServiceContainer = (
       return parseNextShellImport(data);
     }
 
-    if (isCompetitorFormat(data)) {
-      return parseCompetitorImport(data);
+    throw new Error("该文件不是 NextShell 导出格式，请使用“导入 FinalShell 文件”按钮导入 FinalShell 配置");
+  };
+
+  const importFinalShellConnectionsPreview = async (
+    input: ConnectionImportFinalShellPreviewInput
+  ): Promise<ConnectionImportEntry[]> => {
+    const raw = fs.readFileSync(input.filePath, "utf-8");
+    const data = parseJsonPayloadText(raw);
+
+    if (!isFinalShellFormat(data)) {
+      throw new Error("该文件不是 FinalShell 配置格式");
     }
 
-    throw new Error("无法识别的导入文件格式");
+    return parseFinalShellImport(data);
   };
 
   const importConnectionsExecute = async (
@@ -4187,7 +4234,9 @@ export const createServiceContainer = (
     upsertConnection,
     removeConnection,
     exportConnections,
+    exportConnectionsBatch,
     importConnectionsPreview,
+    importFinalShellConnectionsPreview,
     importConnectionsExecute,
     listSshKeys,
     upsertSshKey,

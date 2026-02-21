@@ -372,7 +372,7 @@ export interface ConnectionExportFile {
 
 export interface ConnectionImportEntry extends ExportedConnection {
   passwordUnavailable?: boolean;
-  sourceFormat: "nextshell" | "competitor";
+  sourceFormat: "nextshell" | "finalshell";
 }
 
 export type ImportConflictPolicy = "skip" | "overwrite" | "duplicate";

@@ -619,7 +619,7 @@ export const ConnectionManagerModal = ({
     });
   }, [modal]);
 
-  const runExport = useCallback(
+  const runSingleExport = useCallback(
     async (exportIds: string[]): Promise<void> => {
       if (exportIds.length === 0) return;
 
@@ -655,8 +655,8 @@ export const ConnectionManagerModal = ({
 
   const handleExportAll = useCallback(async () => {
     if (connections.length === 0) return;
-    await runExport(connections.map((connection) => connection.id));
-  }, [connections, runExport]);
+    await runSingleExport(connections.map((connection) => connection.id));
+  }, [connections, runSingleExport]);
 
   const handleToggleExportSelect = useCallback((connectionId: string) => {
     setSelectedExportIds((prev) => {
@@ -676,8 +676,58 @@ export const ConnectionManagerModal = ({
       .map((connection) => connection.id)
       .filter((id) => selectedExportIds.has(id));
     if (exportIds.length === 0) return;
-    await runExport(exportIds);
-  }, [connections, runExport, selectedExportIds]);
+
+    const mode = await promptExportMode();
+    if (!mode) return;
+
+    let encryptionPassword: string | undefined;
+    if (mode === "encrypted") {
+      const password = await promptExportEncryptionPassword();
+      if (!password) return;
+      encryptionPassword = password;
+    }
+
+    const directory = await window.nextshell.dialog.openDirectory({
+      title: "选择导出目录"
+    });
+    if (directory.canceled || !directory.filePath) {
+      return;
+    }
+
+    try {
+      const result = await window.nextshell.connection.exportBatch({
+        connectionIds: exportIds,
+        directoryPath: directory.filePath,
+        encryptionPassword
+      });
+
+      if (result.failed === 0) {
+        if (mode === "encrypted") {
+          message.success(`已加密导出 ${result.exported} 个连接到目录：${result.directoryPath}`);
+        } else {
+          message.success(`已导出 ${result.exported} 个连接到目录：${result.directoryPath}`);
+        }
+        return;
+      }
+
+      if (result.exported > 0) {
+        message.warning(`已导出 ${result.exported}/${result.total}，失败 ${result.failed}`);
+      } else {
+        message.error(`导出失败：共 ${result.failed} 个连接导出失败`);
+      }
+
+      const maxWarnings = 5;
+      result.errors.slice(0, maxWarnings).forEach((errorText) => {
+        message.warning(errorText);
+      });
+      if (result.errors.length > maxWarnings) {
+        message.warning(`其余 ${result.errors.length - maxWarnings} 项导出失败`);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "未知错误";
+      message.error(`导出失败：${reason}`);
+    }
+  }, [connections, promptExportEncryptionPassword, promptExportMode, selectedExportIds]);
 
   const resetImportFlow = useCallback(() => {
     setImportModalOpen(false);
@@ -735,12 +785,12 @@ export const ConnectionManagerModal = ({
     [modal]
   );
 
-  const handleImport = useCallback(async () => {
+  const loadImportPreviewQueue = useCallback(async (source: "nextshell" | "finalshell") => {
     if (importingPreview) return;
     try {
       setImportingPreview(true);
       const dialogResult = await window.nextshell.dialog.openFiles({
-        title: "选择导入文件",
+        title: source === "nextshell" ? "选择 NextShell 导入文件" : "选择 FinalShell 配置文件",
         multi: true
       });
       if (dialogResult.canceled || dialogResult.filePaths.length === 0) return;
@@ -750,40 +800,57 @@ export const ConnectionManagerModal = ({
 
       for (const filePath of dialogResult.filePaths) {
         const fileName = getFileName(filePath);
-        let decryptionPassword: string | undefined;
-        let handled = false;
+        if (source === "nextshell") {
+          let decryptionPassword: string | undefined;
+          let handled = false;
 
-        while (!handled) {
-          try {
-            const entries = await window.nextshell.connection.importPreview({
-              filePath,
-              decryptionPassword
-            });
-            if (entries.length === 0) {
-              warnings.push(`${fileName}：文件中没有可导入的连接`);
-            } else {
-              queue.push({ fileName, entries });
-            }
-            handled = true;
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : "未知错误";
-            if (reason.startsWith(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX)) {
-              const promptText =
-                reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim()
-                || "该导入文件已加密，请输入密码";
-              const inputPassword = await promptImportDecryptionPassword(fileName, promptText);
-              if (!inputPassword) {
-                warnings.push(`${fileName}：用户取消解密，已跳过该文件`);
-                handled = true;
+          while (!handled) {
+            try {
+              const entries = await window.nextshell.connection.importPreview({
+                filePath,
+                decryptionPassword
+              });
+              if (entries.length === 0) {
+                warnings.push(`${fileName}：文件中没有可导入的连接`);
+              } else {
+                queue.push({ fileName, entries });
+              }
+              handled = true;
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : "未知错误";
+              if (reason.startsWith(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX)) {
+                const promptText =
+                  reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim()
+                  || "该导入文件已加密，请输入密码";
+                const inputPassword = await promptImportDecryptionPassword(fileName, promptText);
+                if (!inputPassword) {
+                  warnings.push(`${fileName}：用户取消解密，已跳过该文件`);
+                  handled = true;
+                  continue;
+                }
+                decryptionPassword = inputPassword;
                 continue;
               }
-              decryptionPassword = inputPassword;
-              continue;
-            }
 
-            warnings.push(`${fileName}：${reason}`);
-            handled = true;
+              warnings.push(`${fileName}：${reason}`);
+              handled = true;
+            }
           }
+          continue;
+        }
+
+        try {
+          const entries = await window.nextshell.connection.importFinalShellPreview({
+            filePath
+          });
+          if (entries.length === 0) {
+            warnings.push(`${fileName}：文件中没有可导入的连接`);
+          } else {
+            queue.push({ fileName, entries });
+          }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "未知错误";
+          warnings.push(`${fileName}：${reason}`);
         }
       }
 
@@ -794,7 +861,11 @@ export const ConnectionManagerModal = ({
       }
 
       if (queue.length === 0) {
-        message.warning("未找到可导入的连接文件");
+        message.warning(
+          source === "nextshell"
+            ? "未找到可导入的 NextShell 连接文件"
+            : "未找到可导入的 FinalShell 连接文件"
+        );
         return;
       }
 
@@ -811,6 +882,14 @@ export const ConnectionManagerModal = ({
       setImportingPreview(false);
     }
   }, [getFileName, importingPreview, promptImportDecryptionPassword]);
+
+  const handleImportNextShell = useCallback(async () => {
+    await loadImportPreviewQueue("nextshell");
+  }, [loadImportPreviewQueue]);
+
+  const handleImportFinalShell = useCallback(async () => {
+    await loadImportPreviewQueue("finalshell");
+  }, [loadImportPreviewQueue]);
 
   const handleImportBatchImported = useCallback(async () => {
     await onConnectionsImported();
@@ -949,9 +1028,19 @@ export const ConnectionManagerModal = ({
               {selectedExportCount > 0 ? ` · 已选 ${selectedExportCount}` : ""}
             </span>
             <div className="mgr-sidebar-footer-actions">
-              <Tooltip title="导入连接">
-                <button type="button" className="mgr-action-btn" onClick={handleImport} disabled={importingPreview}>
+              <Tooltip title="导入 NextShell 文件">
+                <button type="button" className="mgr-action-btn" onClick={handleImportNextShell} disabled={importingPreview}>
                   <i className={importingPreview ? "ri-loader-4-line ri-spin" : "ri-upload-2-line"} />
+                </button>
+              </Tooltip>
+              <Tooltip title="导入 FinalShell 文件">
+                <button
+                  type="button"
+                  className="mgr-action-btn"
+                  onClick={handleImportFinalShell}
+                  disabled={importingPreview}
+                >
+                  <i className="ri-file-upload-line" />
                 </button>
               </Tooltip>
               <Tooltip title="导出选中连接">

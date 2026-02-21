@@ -72,8 +72,8 @@ export const ConnectionImportModal = ({
         if (record.passwordUnavailable) {
           tags.push(<Tag key="pw" color="red">密码缺失</Tag>);
         }
-        if (record.sourceFormat === "competitor") {
-          tags.push(<Tag key="src" color="blue">第三方</Tag>);
+        if (record.sourceFormat === "finalshell") {
+          tags.push(<Tag key="src" color="blue">FinalShell</Tag>);
         }
         if (tags.length === 0) {
           tags.push(<Tag key="new" color="green">新建</Tag>);

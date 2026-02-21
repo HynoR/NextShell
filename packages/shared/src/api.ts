@@ -39,7 +39,10 @@ import type {
   CommandHistoryPushInput,
   CommandHistoryRemoveInput,
   ConnectionExportInput,
+  ConnectionExportBatchInput,
+  ConnectionExportBatchResult,
   ConnectionImportExecuteInput,
+  ConnectionImportFinalShellPreviewInput,
   ConnectionImportPreviewInput,
   ConnectionRemoveInput,
   ConnectionUpsertInput,
@@ -105,7 +108,9 @@ export interface NextShellApi {
     upsert: (payload: ConnectionUpsertInput) => Promise<ConnectionProfile>;
     remove: (payload: ConnectionRemoveInput) => Promise<{ ok: true }>;
     exportToFile: (payload: ConnectionExportInput) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+    exportBatch: (payload: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
     importPreview: (payload: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
+    importFinalShellPreview: (payload: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
     importExecute: (payload: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   };
   session: {
