@@ -27,6 +27,7 @@
     "antd": "^6.3.0",
     "better-sqlite3": "^12.6.2",
     "chokidar": "^5.0.0",
+    "crypto-js": "^4.2.0",
     "electron-log": "^5.4.3",
     "iconv-lite": "^0.7.0",
     "keytar": "^7.9.0",
@@ -38,6 +39,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@types/crypto-js": "^4.2.2",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

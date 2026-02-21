@@ -12,6 +12,12 @@ import "./styles.css";
 // Expose current OS platform as a CSS data attribute so layout can adapt
 // without JS conditionals (e.g. macOS traffic-lights vs Windows overlay)
 document.documentElement.dataset.platform = window.nextshell.platform;
+if (window.nextshell.platform === "win32") {
+  document.documentElement.style.setProperty(
+    "--window-titlebar-safe-top",
+    `${window.nextshell.ui.titlebarSafeTop}px`
+  );
+}
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 
 const DARK_THEME_CONFIG = {

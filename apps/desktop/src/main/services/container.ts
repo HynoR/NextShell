@@ -55,6 +55,7 @@ import type {
   DialogOpenPathInput,
   CommandBatchExecInput,
   ConnectionExportInput,
+  ConnectionImportPreviewInput,
   ConnectionImportExecuteInput,
   ConnectionUpsertInput,
   MonitorProcessKillInput,
@@ -75,7 +76,11 @@ import type {
   ProxyUpsertInput,
   ProxyRemoveInput
 } from "../../../../../packages/shared/src/index";
-import { IPCChannel, AUTH_REQUIRED_PREFIX } from "../../../../../packages/shared/src/index";
+import {
+  IPCChannel,
+  AUTH_REQUIRED_PREFIX,
+  CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX
+} from "../../../../../packages/shared/src/index";
 import type { UpdateCheckResult } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
@@ -100,6 +105,10 @@ import {
   parseNextShellImport,
   parseCompetitorImport
 } from "./import-export";
+import {
+  decryptConnectionExportPayload,
+  encryptConnectionExportPayload
+} from "./connection-export-crypto";
 import { logger } from "../logger";
 import { applyAppearanceToAllWindows } from "../window-theme";
 
@@ -180,7 +189,7 @@ export interface ServiceContainer {
     sender: WebContents,
     input: ConnectionExportInput
   ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
-  importConnectionsPreview: (filePath: string) => Promise<ConnectionImportEntry[]>;
+  importConnectionsPreview: (input: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
   importConnectionsExecute: (input: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   listSshKeys: () => SshKeyProfile[];
   upsertSshKey: (input: SshKeyUpsertInput) => Promise<SshKeyProfile>;
@@ -2270,6 +2279,47 @@ export const createServiceContainer = (
 
   // ── Connection Import/Export ────────────────────────────────────────────
 
+  const ENCRYPTED_EXPORT_PREFIX = "b64##";
+  const trimBomAndWhitespace = (value: string): string => value.replace(/^\uFEFF/, "").trim();
+
+  const parseImportPayloadText = (
+    rawText: string,
+    decryptionPassword?: string
+  ): unknown => {
+    const normalizedText = trimBomAndWhitespace(rawText);
+    const encryptedPrefix = ENCRYPTED_EXPORT_PREFIX;
+
+    if (normalizedText.startsWith(encryptedPrefix)) {
+      if (!decryptionPassword) {
+        throw new Error(
+          `${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}该导入文件已加密，请输入密码`
+        );
+      }
+
+      const encryptedB64 = normalizedText.slice(encryptedPrefix.length).trim();
+      if (!encryptedB64) {
+        throw new Error("导入文件加密内容为空");
+      }
+
+      let decryptedText: string;
+      try {
+        decryptedText = decryptConnectionExportPayload(encryptedB64, decryptionPassword);
+      } catch {
+        throw new Error(
+          `${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}密码错误或文件损坏，请重试`
+        );
+      }
+
+      try {
+        return JSON.parse(decryptedText);
+      } catch {
+        throw new Error("解密成功，但文件内容不是合法 JSON");
+      }
+    }
+
+    return JSON.parse(normalizedText);
+  };
+
   const exportConnections = async (
     sender: WebContents,
     input: ConnectionExportInput
@@ -2327,22 +2377,33 @@ export const createServiceContainer = (
       exportedAt: new Date().toISOString(),
       connections: exportedConnections
     };
+    const plainJson = JSON.stringify(exportFile, null, 2);
+    const encryptionPassword = input.encryptionPassword;
+    const encrypted = typeof encryptionPassword === "string";
+    const fileContent = encrypted
+      ? `${ENCRYPTED_EXPORT_PREFIX}${encryptConnectionExportPayload(
+          plainJson,
+          encryptionPassword
+        )}`
+      : plainJson;
 
-    fs.writeFileSync(result.filePath, JSON.stringify(exportFile, null, 2), "utf-8");
+    fs.writeFileSync(result.filePath, fileContent, "utf-8");
 
     connections.appendAuditLog({
       action: "connection.export",
       level: "info",
       message: `Exported ${exportedConnections.length} connections`,
-      metadata: { filePath: result.filePath, count: exportedConnections.length }
+      metadata: { filePath: result.filePath, count: exportedConnections.length, encrypted }
     });
 
     return { ok: true, filePath: result.filePath };
   };
 
-  const importConnectionsPreview = async (filePath: string): Promise<ConnectionImportEntry[]> => {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const data: unknown = JSON.parse(raw);
+  const importConnectionsPreview = async (
+    input: ConnectionImportPreviewInput
+  ): Promise<ConnectionImportEntry[]> => {
+    const raw = fs.readFileSync(input.filePath, "utf-8");
+    const data = parseImportPayloadText(raw, input.decryptionPassword);
 
     if (isNextShellFormat(data)) {
       return parseNextShellImport(data);

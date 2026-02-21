@@ -575,6 +575,7 @@ export const WorkspaceLayout = ({
                             <DiskMonitorPane
                               connection={activeConnection}
                               connected={isActiveConnectionTerminalConnected}
+                              active={bottomTab === "disk"}
                               onOpenSettings={onOpenSettings}
                             />
                           ),

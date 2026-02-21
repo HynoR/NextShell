@@ -95,6 +95,11 @@ export type SessionEventUnsubscribe = () => void;
 export interface NextShellApi {
   /** Current OS platform, set synchronously from process.platform in the preload. */
   platform: string;
+  /** UI layout constants published by preload for renderer-safe spacing. */
+  ui: {
+    /** Safe top inset for native title bar overlay interactions on Windows. */
+    titlebarSafeTop: number;
+  };
   connection: {
     list: (query: ConnectionListQuery) => Promise<ConnectionProfile[]>;
     upsert: (payload: ConnectionUpsertInput) => Promise<ConnectionProfile>;

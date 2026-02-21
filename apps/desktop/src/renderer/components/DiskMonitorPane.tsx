@@ -8,11 +8,12 @@ import { formatDiskSize, parseDfOutput, type DiskUsageEntry } from "../utils/dis
 interface DiskMonitorPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
+  active: boolean;
   onOpenSettings?: () => void;
 }
 
 const DF_COMMAND = "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
-const REFRESH_INTERVAL_MS = 10000;
+const REFRESH_INTERVAL_MS = 60000;
 
 const formatRefreshTime = (iso?: string): string => {
   if (!iso) {
@@ -30,7 +31,13 @@ const toFailureReason = (result: CommandExecutionResult): string => {
   return `命令执行失败，退出码 ${result.exitCode}`;
 };
 
-export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskMonitorPaneProps) => {
+interface DiskCacheSnapshot {
+  rows: DiskUsageEntry[];
+  lastUpdatedAt?: string;
+  errorText?: string;
+}
+
+export const DiskMonitorPane = ({ connection, connected, active, onOpenSettings }: DiskMonitorPaneProps) => {
   const connectionId = connection?.id;
   const monitorEnabled = Boolean(connection?.monitorSession);
 
@@ -40,13 +47,41 @@ export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskM
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string>();
   const [errorText, setErrorText] = useState<string>();
   const requestIdRef = useRef(0);
+  const lastAttemptRef = useRef<Record<string, number>>({});
+  const cacheRef = useRef<Record<string, DiskCacheSnapshot>>({});
+
+  useEffect(() => {
+    if (!connectionId) {
+      setRows([]);
+      setLastUpdatedAt(undefined);
+      setErrorText(undefined);
+      return;
+    }
+
+    const cached = cacheRef.current[connectionId];
+    setRows(cached?.rows ?? []);
+    setLastUpdatedAt(cached?.lastUpdatedAt);
+    setErrorText(cached?.errorText);
+  }, [connectionId]);
 
   const fetchDiskData = useCallback(
-    async (silent: boolean) => {
+    async (silent: boolean, trigger: "enter" | "manual" | "auto") => {
       if (!connectionId) {
         return;
       }
 
+      const now = Date.now();
+      const lastAttemptAt = lastAttemptRef.current[connectionId] ?? 0;
+      const elapsed = now - lastAttemptAt;
+      if (elapsed < REFRESH_INTERVAL_MS) {
+        if (trigger === "manual") {
+          const waitSec = Math.ceil((REFRESH_INTERVAL_MS - elapsed) / 1000);
+          message.info(`磁盘数据每 60 秒更新一次，请 ${waitSec} 秒后重试`);
+        }
+        return;
+      }
+
+      lastAttemptRef.current[connectionId] = now;
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
 
@@ -72,8 +107,14 @@ export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskM
 
         const parsed = parseDfOutput(result.stdout);
         setRows(parsed);
-        setLastUpdatedAt(new Date().toISOString());
+        const updatedAt = new Date().toISOString();
+        setLastUpdatedAt(updatedAt);
         setErrorText(undefined);
+        cacheRef.current[connectionId] = {
+          rows: parsed,
+          lastUpdatedAt: updatedAt,
+          errorText: undefined
+        };
       } catch (error) {
         if (requestIdRef.current !== requestId) {
           return;
@@ -81,6 +122,12 @@ export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskM
 
         const reason = error instanceof Error ? error.message : "读取磁盘信息失败";
         setErrorText(reason);
+        const previous = cacheRef.current[connectionId];
+        cacheRef.current[connectionId] = {
+          rows: previous?.rows ?? [],
+          lastUpdatedAt: previous?.lastUpdatedAt,
+          errorText: reason
+        };
         if (!silent) {
           message.error(reason);
         }
@@ -95,26 +142,23 @@ export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskM
   );
 
   useEffect(() => {
-    if (!connectionId || !monitorEnabled || !connected) {
+    if (!active || !connectionId || !monitorEnabled || !connected) {
       requestIdRef.current += 1;
-      setRows([]);
       setLoading(false);
       setRefreshing(false);
-      setErrorText(undefined);
-      setLastUpdatedAt(undefined);
       return;
     }
 
-    void fetchDiskData(false);
+    void fetchDiskData(false, "enter");
     const timer = window.setInterval(() => {
-      void fetchDiskData(true);
-    }, REFRESH_INTERVAL_MS);
+      void fetchDiskData(true, "auto");
+    }, 1000);
 
     return () => {
       requestIdRef.current += 1;
       window.clearInterval(timer);
     };
-  }, [connected, connectionId, fetchDiskData, monitorEnabled]);
+  }, [active, connected, connectionId, fetchDiskData, monitorEnabled]);
 
   const columns = useMemo<ColumnsType<DiskUsageEntry>>(
     () => [
@@ -193,7 +237,7 @@ export const DiskMonitorPane = ({ connection, connected, onOpenSettings }: DiskM
         <button
           type="button"
           className="disk-refresh-btn"
-          onClick={() => void fetchDiskData(false)}
+          onClick={() => void fetchDiskData(false, "manual")}
           disabled={loading || refreshing}
           title="刷新磁盘信息"
         >

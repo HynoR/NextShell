@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Form, Input, InputNumber, Modal, Select, Switch, Tooltip, message } from "antd";
+import { App as AntdApp, Form, Input, InputNumber, Modal, Radio, Select, Switch, Tooltip, message } from "antd";
 import type { ConnectionProfile, ConnectionImportEntry, SshKeyProfile, ProxyProfile } from "@nextshell/core";
-import type { ConnectionUpsertInput } from "@nextshell/shared";
+import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX, type ConnectionUpsertInput } from "@nextshell/shared";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
@@ -255,6 +255,7 @@ export const ConnectionManagerModal = ({
   onReloadSshKeys,
   onReloadProxies
 }: ConnectionManagerModalProps) => {
+  const { modal } = AntdApp.useApp();
   const [activeTab, setActiveTab] = useState<ManagerTab>("connections");
   const [mode, setMode] = useState<"idle" | "new" | "edit">("idle");
   const [keyword, setKeyword] = useState("");
@@ -538,21 +539,124 @@ export const ConnectionManagerModal = ({
     });
   }, []);
 
+  const promptExportMode = useCallback((): Promise<"plain" | "encrypted" | null> => {
+    return new Promise((resolve) => {
+      let mode: "plain" | "encrypted" = "plain";
+      let settled = false;
+      const settle = (value: "plain" | "encrypted" | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      modal.confirm({
+        title: "导出选项",
+        okText: "继续",
+        cancelText: "取消",
+        content: (
+          <Radio.Group
+            defaultValue="plain"
+            onChange={(event) => {
+              mode = event.target.value;
+            }}
+          >
+            <Radio value="plain">普通导出（JSON）</Radio>
+            <Radio value="encrypted">加密导出（AES + b64##）</Radio>
+          </Radio.Group>
+        ),
+        onOk: () => settle(mode),
+        onCancel: () => settle(null)
+      });
+    });
+  }, [modal]);
+
+  const promptExportEncryptionPassword = useCallback((): Promise<string | null> => {
+    return new Promise((resolve) => {
+      let password = "";
+      let confirmPassword = "";
+      let settled = false;
+      const settle = (value: string | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      modal.confirm({
+        title: "输入导出加密密码",
+        okText: "确认",
+        cancelText: "取消",
+        content: (
+          <div style={{ display: "grid", gap: 8 }}>
+            <Input.Password
+              placeholder="请输入密码（至少 6 位）"
+              onChange={(event) => {
+                password = event.target.value;
+              }}
+            />
+            <Input.Password
+              placeholder="请再次输入密码"
+              onChange={(event) => {
+                confirmPassword = event.target.value;
+              }}
+            />
+          </div>
+        ),
+        onOk: async () => {
+          const trimmedPassword = password.trim();
+          const trimmedConfirm = confirmPassword.trim();
+          if (trimmedPassword.length < 6) {
+            message.warning("导出加密密码至少需要 6 个字符。");
+            throw new Error("invalid-export-password-length");
+          }
+          if (trimmedPassword !== trimmedConfirm) {
+            message.warning("两次输入的密码不一致。");
+            throw new Error("invalid-export-password-confirm");
+          }
+          settle(trimmedPassword);
+        },
+        onCancel: () => settle(null)
+      });
+    });
+  }, [modal]);
+
+  const runExport = useCallback(
+    async (exportIds: string[]): Promise<void> => {
+      if (exportIds.length === 0) return;
+
+      const mode = await promptExportMode();
+      if (!mode) return;
+
+      let encryptionPassword: string | undefined;
+      if (mode === "encrypted") {
+        const password = await promptExportEncryptionPassword();
+        if (!password) return;
+        encryptionPassword = password;
+      }
+
+      try {
+        const result = await window.nextshell.connection.exportToFile({
+          connectionIds: exportIds,
+          encryptionPassword
+        });
+        if (result.ok) {
+          if (mode === "encrypted") {
+            message.success(`已加密导出 ${exportIds.length} 个连接`);
+          } else {
+            message.success(`已导出 ${exportIds.length} 个连接`);
+          }
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "未知错误";
+        message.error(`导出失败：${reason}`);
+      }
+    },
+    [promptExportEncryptionPassword, promptExportMode]
+  );
+
   const handleExportAll = useCallback(async () => {
     if (connections.length === 0) return;
-    const exportIds = connections.map((connection) => connection.id);
-    try {
-      const result = await window.nextshell.connection.exportToFile({
-        connectionIds: exportIds
-      });
-      if (result.ok) {
-        message.success(`已导出 ${exportIds.length} 个连接`);
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`导出失败：${reason}`);
-    }
-  }, [connections]);
+    await runExport(connections.map((connection) => connection.id));
+  }, [connections, runExport]);
 
   const handleToggleExportSelect = useCallback((connectionId: string) => {
     setSelectedExportIds((prev) => {
@@ -572,19 +676,8 @@ export const ConnectionManagerModal = ({
       .map((connection) => connection.id)
       .filter((id) => selectedExportIds.has(id));
     if (exportIds.length === 0) return;
-
-    try {
-      const result = await window.nextshell.connection.exportToFile({
-        connectionIds: exportIds
-      });
-      if (result.ok) {
-        message.success(`已导出 ${exportIds.length} 个连接`);
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`导出失败：${reason}`);
-    }
-  }, [connections, selectedExportIds]);
+    await runExport(exportIds);
+  }, [connections, runExport, selectedExportIds]);
 
   const resetImportFlow = useCallback(() => {
     setImportModalOpen(false);
@@ -601,6 +694,47 @@ export const ConnectionManagerModal = ({
     return normalized.slice(splitIndex + 1);
   }, []);
 
+  const promptImportDecryptionPassword = useCallback(
+    (fileName: string, promptText: string): Promise<string | null> => {
+      return new Promise((resolve) => {
+        let password = "";
+        let settled = false;
+        const settle = (value: string | null): void => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
+
+        modal.confirm({
+          title: `${fileName} 需要解密密码`,
+          okText: "解密",
+          cancelText: "跳过该文件",
+          content: (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, color: "var(--t3)" }}>{promptText}</div>
+              <Input.Password
+                placeholder="请输入导入密码"
+                onChange={(event) => {
+                  password = event.target.value;
+                }}
+              />
+            </div>
+          ),
+          onOk: async () => {
+            const trimmed = password.trim();
+            if (!trimmed) {
+              message.warning("请输入解密密码。");
+              throw new Error("empty-import-password");
+            }
+            settle(trimmed);
+          },
+          onCancel: () => settle(null)
+        });
+      });
+    },
+    [modal]
+  );
+
   const handleImport = useCallback(async () => {
     if (importingPreview) return;
     try {
@@ -611,29 +745,47 @@ export const ConnectionManagerModal = ({
       });
       if (dialogResult.canceled || dialogResult.filePaths.length === 0) return;
 
-      const previewResults = await Promise.all(dialogResult.filePaths.map(async (filePath) => {
-        const fileName = getFileName(filePath);
-        try {
-          const entries = await window.nextshell.connection.importPreview({ filePath });
-          if (entries.length === 0) {
-            return { fileName, warning: `${fileName}：文件中没有可导入的连接` as string };
-          }
-          return { fileName, entries } as { fileName: string; entries: ConnectionImportEntry[] };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : "未知错误";
-          return { fileName, warning: `${fileName}：${reason}` as string };
-        }
-      }));
-
       const queue: ImportPreviewBatch[] = [];
       const warnings: string[] = [];
-      previewResults.forEach((item) => {
-        if ("warning" in item) {
-          warnings.push(item.warning);
-          return;
+
+      for (const filePath of dialogResult.filePaths) {
+        const fileName = getFileName(filePath);
+        let decryptionPassword: string | undefined;
+        let handled = false;
+
+        while (!handled) {
+          try {
+            const entries = await window.nextshell.connection.importPreview({
+              filePath,
+              decryptionPassword
+            });
+            if (entries.length === 0) {
+              warnings.push(`${fileName}：文件中没有可导入的连接`);
+            } else {
+              queue.push({ fileName, entries });
+            }
+            handled = true;
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : "未知错误";
+            if (reason.startsWith(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX)) {
+              const promptText =
+                reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim()
+                || "该导入文件已加密，请输入密码";
+              const inputPassword = await promptImportDecryptionPassword(fileName, promptText);
+              if (!inputPassword) {
+                warnings.push(`${fileName}：用户取消解密，已跳过该文件`);
+                handled = true;
+                continue;
+              }
+              decryptionPassword = inputPassword;
+              continue;
+            }
+
+            warnings.push(`${fileName}：${reason}`);
+            handled = true;
+          }
         }
-        queue.push({ fileName: item.fileName, entries: item.entries });
-      });
+      }
 
       if (warnings.length > 0) {
         warnings.forEach((item) => {
@@ -650,7 +802,7 @@ export const ConnectionManagerModal = ({
       setImportQueueIndex(0);
       setImportModalOpen(true);
       if (queue.length > 1) {
-        message.info(`已加载 ${queue.length} 个 JSON，将按文件逐个导入`);
+        message.info(`已加载 ${queue.length} 个文件，将按文件逐个导入`);
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
@@ -658,7 +810,7 @@ export const ConnectionManagerModal = ({
     } finally {
       setImportingPreview(false);
     }
-  }, [getFileName, importingPreview]);
+  }, [getFileName, importingPreview, promptImportDecryptionPassword]);
 
   const handleImportBatchImported = useCallback(async () => {
     await onConnectionsImported();

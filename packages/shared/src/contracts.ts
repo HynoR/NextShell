@@ -474,11 +474,13 @@ export const proxyRemoveSchema = z.object({
 // ─── Connection Import/Export ────────────────────────────────────────────────
 
 export const connectionExportSchema = z.object({
-  connectionIds: z.array(z.string().uuid()).min(1)
+  connectionIds: z.array(z.string().uuid()).min(1),
+  encryptionPassword: z.preprocess(trimToOptionalString, z.string().min(6).optional())
 });
 
 export const connectionImportPreviewSchema = z.object({
-  filePath: z.string().min(1)
+  filePath: z.string().min(1),
+  decryptionPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 });
 
 export const connectionImportExecuteSchema = z.object({

@@ -6,6 +6,7 @@ import type {
   DeleteMode,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
+import { decryptFinalShellPassword } from "./finalshell/decrypt-password";
 
 // ─── Format detection ────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImpo
   }));
 };
 
-// ─── Competitor format parser ────────────────────────────────────────────────
+// ─── FinalShell compatibility parser ─────────────────────────────────────────
 
 export const mapCompetitorEncoding = (encoding: string | undefined): TerminalEncoding => {
   if (!encoding) return "utf-8";
@@ -83,10 +84,11 @@ const mapCompetitorAuthType = (_authType: number | undefined): AuthType => {
   return "password";
 };
 
-const parseOneCompetitorEntry = (entry: CompetitorEntry): ConnectionImportEntry => {
+const parseOneFinalShellEntry = (entry: CompetitorEntry): ConnectionImportEntry => {
   const host = entry.host ?? "unknown";
   const port = entry.port ?? 22;
   const name = entry.name || `${host}:${port}`;
+  const decryptedPassword = decryptFinalShellPassword(entry.password);
 
   return {
     name,
@@ -94,8 +96,9 @@ const parseOneCompetitorEntry = (entry: CompetitorEntry): ConnectionImportEntry 
     port,
     username: entry.user_name ?? "",
     authType: mapCompetitorAuthType(entry.authentication_type),
-    // Competitor passwords are encrypted with their own scheme — always ignore
-    passwordUnavailable: true,
+    ...(decryptedPassword !== undefined
+      ? { password: decryptedPassword }
+      : { passwordUnavailable: true }),
     groupPath: ["导入"],
     tags: [],
     favorite: false,
@@ -109,5 +112,5 @@ const parseOneCompetitorEntry = (entry: CompetitorEntry): ConnectionImportEntry 
 
 export const parseCompetitorImport = (data: unknown): ConnectionImportEntry[] => {
   const entries: CompetitorEntry[] = Array.isArray(data) ? data : [data as CompetitorEntry];
-  return entries.filter(isCompetitorEntry).map(parseOneCompetitorEntry);
+  return entries.filter(isCompetitorEntry).map(parseOneFinalShellEntry);
 };

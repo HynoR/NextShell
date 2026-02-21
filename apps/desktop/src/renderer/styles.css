@@ -38,6 +38,8 @@
   --r-lg: 12px;
 
   --app-background-opacity: 60;
+  /* Keep in sync with apps/desktop/src/main/window-theme.ts via src/shared/window-ui.ts. */
+  --window-titlebar-safe-top: 44px;
 }
 
 :root[data-theme="dark"] {
@@ -131,7 +133,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
+  height: var(--window-titlebar-safe-top);
   padding: 0 14px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
@@ -147,6 +149,12 @@ body {
 /* Windows: leave room for titleBarOverlay min/max/close on the right */
 [data-platform="win32"] .shell-header {
   padding-right: 142px;
+}
+
+/* Windows: keep native titlebar controls clickable when any portal Drawer is open. */
+[data-platform="win32"] .ant-drawer:not(.ant-drawer-inline) {
+  top: var(--window-titlebar-safe-top);
+  height: calc(100% - var(--window-titlebar-safe-top));
 }
 
 .titlebar-brand {

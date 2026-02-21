@@ -14,6 +14,7 @@ import {
   IPCChannel,
   type NextShellApi
 } from "../../../../packages/shared/src/index";
+import { WINDOWS_TITLEBAR_SAFE_TOP } from "../shared/window-ui";
 
 const api: NextShellApi = {
   connection: {
@@ -179,7 +180,10 @@ const api: NextShellApi = {
   about: {
     checkUpdate: () => ipcRenderer.invoke(IPCChannel.UpdateCheck, {})
   },
-  platform: process.platform
+  platform: process.platform,
+  ui: {
+    titlebarSafeTop: WINDOWS_TITLEBAR_SAFE_TOP
+  }
 };
 
 contextBridge.exposeInMainWorld("nextshell", api);

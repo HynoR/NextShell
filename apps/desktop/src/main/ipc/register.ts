@@ -123,7 +123,7 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
 
   ipcMain.handle(IPCChannel.ConnectionImportPreview, (_event, payload) => {
     const input = parsePayload(connectionImportPreviewSchema, payload, "连接导入预览");
-    return services.importConnectionsPreview(input.filePath);
+    return services.importConnectionsPreview(input);
   });
 
   ipcMain.handle(IPCChannel.ConnectionImportExecute, (_event, payload) => {

@@ -1,24 +1,23 @@
 import { BrowserWindow, nativeTheme } from "electron";
 import type { BrowserWindowConstructorOptions } from "electron";
 import type { WindowAppearance } from "../../../../packages/core/src/index";
+import { WINDOWS_TITLEBAR_SAFE_TOP } from "../shared/window-ui";
 
 type TitleBarOverlayOptions = Exclude<
   BrowserWindowConstructorOptions["titleBarOverlay"],
   boolean | undefined
 >;
 
-const WINDOWS_TITLEBAR_OVERLAY_HEIGHT = 44;
-
 const WINDOWS_OVERLAY_LIGHT: TitleBarOverlayOptions = {
   color: "#f7f9fc",
   symbolColor: "#122033",
-  height: WINDOWS_TITLEBAR_OVERLAY_HEIGHT
+  height: WINDOWS_TITLEBAR_SAFE_TOP
 };
 
 const WINDOWS_OVERLAY_DARK: TitleBarOverlayOptions = {
   color: "#161c27",
   symbolColor: "#dde4f0",
-  height: WINDOWS_TITLEBAR_OVERLAY_HEIGHT
+  height: WINDOWS_TITLEBAR_SAFE_TOP
 };
 
 const WINDOW_BACKGROUND_LIGHT = "#eef2f8";
