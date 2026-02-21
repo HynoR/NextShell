@@ -12,6 +12,7 @@ import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionTreePanel } from "./ConnectionTreePanel";
+import { EditorPane } from "./EditorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
@@ -31,6 +32,7 @@ const SESSION_TYPE_ICON: Record<SessionType, string> = {
   terminal: "ri-terminal-line",
   processManager: "ri-cpu-line",
   networkMonitor: "ri-global-line",
+  editor: "ri-file-code-line",
 };
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
@@ -70,6 +72,7 @@ interface WorkspaceLayoutProps {
   onOpenProcessManager: (connectionId: string) => void;
   onOpenNetworkMonitor: (connectionId: string) => void;
   onCloseMonitorTab: (sessionId: string) => void;
+  onOpenEditorTab: (connectionId: string, remotePath: string) => Promise<void>;
   onSetActiveSession: (sessionId?: string) => void;
   onSetActiveConnection: (connectionId?: string) => void;
   onReorderSession: (sourceId: string, targetId: string) => void;
@@ -117,6 +120,7 @@ export const WorkspaceLayout = ({
   onOpenProcessManager,
   onOpenNetworkMonitor,
   onCloseMonitorTab,
+  onOpenEditorTab,
   onSetActiveSession,
   onSetActiveConnection,
   onReorderSession,
@@ -441,7 +445,8 @@ export const WorkspaceLayout = ({
                     <div
                       className={
                         activeSession?.type === "processManager" ||
-                        activeSession?.type === "networkMonitor"
+                        activeSession?.type === "networkMonitor" ||
+                        activeSession?.type === "editor"
                           ? "hidden"
                           : "flex-1 min-h-0 flex flex-col"
                       }
@@ -471,6 +476,9 @@ export const WorkspaceLayout = ({
                     ) : null}
                     {activeSession?.type === "networkMonitor" ? (
                       <NetworkMonitorPane session={activeSession} />
+                    ) : null}
+                    {activeSession?.type === "editor" ? (
+                      <EditorPane session={activeSession} />
                     ) : null}
                   </div>
                 </Panel>
@@ -550,6 +558,7 @@ export const WorkspaceLayout = ({
                               connection={activeConnection}
                               connected={isActiveConnectionTerminalConnected}
                               onOpenSettings={onOpenSettings}
+                              onOpenEditorTab={onOpenEditorTab}
                             />
                           ),
                         },

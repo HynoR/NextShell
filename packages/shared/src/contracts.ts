@@ -272,6 +272,18 @@ export const sftpEditOpenSchema = z.object({
   editorCommand: z.string().min(1)
 });
 
+export const sftpEditOpenBuiltinSchema = z.object({
+  connectionId: z.string().uuid(),
+  remotePath: z.string().min(1)
+});
+
+export const sftpEditSaveBuiltinSchema = z.object({
+  editId: z.string().uuid(),
+  connectionId: z.string().uuid(),
+  remotePath: z.string().min(1),
+  content: z.string()
+});
+
 export const sftpEditStopSchema = z.object({
   editId: z.string().uuid()
 });
@@ -299,7 +311,8 @@ export const appPreferencesSchema = z.object({
     downloadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.downloadDefaultDir)
   }).default(DEFAULT_APP_PREFERENCES.transfer),
   remoteEdit: z.object({
-    defaultEditorCommand: z.string().min(1).default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand)
+    defaultEditorCommand: z.string().min(1).default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand),
+    editorMode: z.enum(["builtin", "external"]).default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
   }).default(DEFAULT_APP_PREFERENCES.remoteEdit),
   commandCenter: z.object({
     rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams)
@@ -333,7 +346,8 @@ export const appPreferencesPatchSchema = z.object({
     downloadDefaultDir: z.string().min(1).optional()
   }).optional(),
   remoteEdit: z.object({
-    defaultEditorCommand: z.string().min(1).optional()
+    defaultEditorCommand: z.string().min(1).optional(),
+    editorMode: z.enum(["builtin", "external"]).optional()
   }).optional(),
   commandCenter: z.object({
     rememberTemplateParams: z.boolean().optional()
@@ -557,6 +571,8 @@ export type SavedCommandListInput = z.infer<typeof savedCommandListSchema>;
 export type SavedCommandUpsertInput = z.infer<typeof savedCommandUpsertSchema>;
 export type SavedCommandRemoveInput = z.infer<typeof savedCommandRemoveSchema>;
 export type SftpEditOpenInput = z.infer<typeof sftpEditOpenSchema>;
+export type SftpEditOpenBuiltinInput = z.infer<typeof sftpEditOpenBuiltinSchema>;
+export type SftpEditSaveBuiltinInput = z.infer<typeof sftpEditSaveBuiltinSchema>;
 export type SftpEditStopInput = z.infer<typeof sftpEditStopSchema>;
 export type SftpEditStatusEvent = z.infer<typeof sftpEditStatusEventSchema>;
 export type SftpEditSessionInfo = z.infer<typeof sftpEditSessionInfoSchema>;

@@ -193,6 +193,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
           <button
             type="button"
             className="pm-action-btn"
+            aria-label="查看该端口连接详情"
             onClick={() => handleOpenListenerDetail(record)}
           >
             <i className="ri-information-line" aria-hidden="true" />
@@ -273,7 +274,8 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
             className="nm-table"
             locale={{ emptyText: initialLoading ? <TableSkeleton rows={5} columns={4} /> : "暂无监听数据" }}
             onRow={(record) => ({
-              className: getListenerKey(record) === selectedListenerKey ? "nm-row-selected" : ""
+              className: getListenerKey(record) === selectedListenerKey ? "nm-row-selected" : "",
+              onClick: () => handleOpenListenerDetail(record)
             })}
           />
         </div>
@@ -283,7 +285,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
         {!selectedListener ? (
           <div className="nm-detail-placeholder">
             <i className="ri-cursor-line text-[20px] opacity-60" aria-hidden="true" />
-            <span>点击上方监听项的详情按钮后，开始轮询该端口连接。</span>
+            <span>点击上方监听项查看该端口的连接详情。</span>
           </div>
         ) : (
           <>

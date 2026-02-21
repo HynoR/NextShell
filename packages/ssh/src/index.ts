@@ -630,6 +630,29 @@ export class SshConnection {
     });
   }
 
+  async readFileContent(remotePath: string): Promise<Buffer> {
+    return this.withSftp(async (sftp) => {
+      return new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        const stream = sftp.createReadStream(remotePath);
+        stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+        stream.on("end", () => resolve(Buffer.concat(chunks)));
+        stream.on("error", reject);
+      });
+    });
+  }
+
+  async writeFileContent(remotePath: string, content: Buffer): Promise<void> {
+    return this.withSftp(async (sftp) => {
+      return new Promise<void>((resolve, reject) => {
+        const stream = sftp.createWriteStream(remotePath);
+        stream.on("close", () => resolve());
+        stream.on("error", reject);
+        stream.end(content);
+      });
+    });
+  }
+
   async close(): Promise<void> {
     if (this.closed) {
       return;

@@ -65,7 +65,7 @@ export interface ConnectionListQuery {
 }
 
 export type SessionStatus = "connecting" | "connected" | "disconnected" | "failed";
-export type SessionType = "terminal" | "processManager" | "networkMonitor";
+export type SessionType = "terminal" | "processManager" | "networkMonitor" | "editor";
 
 export interface SessionDescriptor {
   id: string;
@@ -282,6 +282,7 @@ export interface AppPreferences {
   };
   remoteEdit: {
     defaultEditorCommand: string;
+    editorMode: "builtin" | "external";
   };
   commandCenter: {
     rememberTemplateParams: boolean;
@@ -319,6 +320,7 @@ export interface AppPreferencesPatch {
   };
   remoteEdit?: {
     defaultEditorCommand?: string;
+    editorMode?: "builtin" | "external";
   };
   commandCenter?: {
     rememberTemplateParams?: boolean;
@@ -429,7 +431,8 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     downloadDefaultDir: "~/Downloads"
   },
   remoteEdit: {
-    defaultEditorCommand: "code"
+    defaultEditorCommand: "code",
+    editorMode: "builtin"
   },
   commandCenter: {
     rememberTemplateParams: true

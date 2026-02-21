@@ -304,7 +304,12 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.remoteEdit?.defaultEditorCommand === "string" &&
           parsed.remoteEdit.defaultEditorCommand.trim().length > 0
             ? parsed.remoteEdit.defaultEditorCommand.trim()
-            : fallback.remoteEdit.defaultEditorCommand
+            : fallback.remoteEdit.defaultEditorCommand,
+        editorMode:
+          parsed.remoteEdit?.editorMode === "builtin" ||
+          parsed.remoteEdit?.editorMode === "external"
+            ? parsed.remoteEdit.editorMode
+            : fallback.remoteEdit.editorMode
       },
       commandCenter: {
         rememberTemplateParams:

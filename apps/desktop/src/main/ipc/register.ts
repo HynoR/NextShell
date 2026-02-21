@@ -51,6 +51,8 @@ import {
   savedCommandUpsertSchema,
   sftpEditOpenSchema,
   sftpEditStopSchema,
+  sftpEditOpenBuiltinSchema,
+  sftpEditSaveBuiltinSchema,
   backupListSchema,
   backupRunSchema,
   backupRestoreSchema,
@@ -329,6 +331,16 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.SftpEditList, (_event, payload) => {
     parsePayload(z.object({}), payload ?? {}, "编辑列表");
     return services.listRemoteEdits();
+  });
+
+  ipcMain.handle(IPCChannel.SftpEditOpenBuiltin, (event, payload) => {
+    const input = parsePayload(sftpEditOpenBuiltinSchema, payload, "内置编辑打开");
+    return services.openBuiltinEdit(input.connectionId, input.remotePath, event.sender);
+  });
+
+  ipcMain.handle(IPCChannel.SftpEditSaveBuiltin, (_event, payload) => {
+    const input = parsePayload(sftpEditSaveBuiltinSchema, payload, "内置编辑保存");
+    return services.saveBuiltinEdit(input.editId, input.connectionId, input.remotePath, input.content);
   });
 
   ipcMain.handle(IPCChannel.MonitorProcessStart, (event, payload) => {

@@ -167,6 +167,7 @@ export const ConnectionImportModal = ({
         size="small"
         pagination={false}
         scroll={{ y: 360 }}
+        className="app-table"
       />
     </Modal>
   );

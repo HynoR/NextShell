@@ -9,6 +9,7 @@ import { AppSkeleton } from "./components/LoadingSkeletons";
 import { useConnectionManager } from "./hooks/useConnectionManager";
 import { useMonitorLifecycle } from "./hooks/useMonitorLifecycle";
 import { useSessionLifecycle } from "./hooks/useSessionLifecycle";
+import { useEditorTabStore } from "./store/useEditorTabStore";
 import { usePreferencesStore } from "./store/usePreferencesStore";
 import { useTransferQueueStore } from "./store/useTransferQueueStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
@@ -57,6 +58,10 @@ export const App = () => {
   const clearFinishedTransfers = useTransferQueueStore((state) => state.clearFinished);
 
   const { loadConnections, handleConnectionSaved, handleConnectionRemoved } = useConnectionManager();
+
+  const editorTabOpenTab = useEditorTabStore((state) => state.openTab);
+  const editorTabCloseTab = useEditorTabStore((state) => state.closeTab);
+  const editorTabFindByRemotePath = useEditorTabStore((state) => state.findByRemotePath);
 
   const loadSshKeys = useCallback(async () => {
     try {
@@ -228,13 +233,59 @@ export const App = () => {
     [openMonitorTab, connections, setActiveSession, setActiveConnection, upsertSession]
   );
 
+  const handleOpenEditorTab = useCallback(
+    async (connectionId: string, remotePath: string) => {
+      const existing = editorTabFindByRemotePath(connectionId, remotePath);
+      if (existing) {
+        setActiveSession(existing.sessionId);
+        setActiveConnection(connectionId);
+        return;
+      }
+
+      try {
+        const result = await window.nextshell.sftp.editOpenBuiltin({ connectionId, remotePath });
+        const fileName = remotePath.split("/").pop() ?? remotePath;
+        const conn = connections.find((c) => c.id === connectionId);
+        const serverLabel = conn?.name ?? conn?.host ?? connectionId.slice(0, 8);
+        const sessionId = `editor-${result.editId}`;
+        const session: SessionDescriptor = {
+          id: sessionId,
+          connectionId,
+          type: "editor",
+          title: `${fileName} [${serverLabel}]`,
+          status: "connected",
+          createdAt: new Date().toISOString(),
+          reconnectable: false
+        };
+        upsertSession(session);
+        editorTabOpenTab({
+          sessionId,
+          connectionId,
+          remotePath,
+          editId: result.editId,
+          initialContent: result.content,
+          dirty: false,
+          saving: false
+        });
+        setActiveSession(sessionId);
+        setActiveConnection(connectionId);
+      } catch (err) {
+        message.error(`打开编辑器失败: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    },
+    [connections, editorTabFindByRemotePath, editorTabOpenTab, setActiveConnection, setActiveSession, upsertSession]
+  );
+
   const handleCloseMonitorTab = useCallback(
     (sessionId: string) => {
       const target = sessions.find((s) => s.id === sessionId);
       if (!target) return;
+      if (target.type === "editor") {
+        editorTabCloseTab(sessionId);
+      }
       removeSession(sessionId);
     },
-    [sessions, removeSession]
+    [sessions, removeSession, editorTabCloseTab]
   );
 
   const handleSelectSystemNetworkInterface = useCallback(
@@ -380,6 +431,7 @@ export const App = () => {
           onOpenProcessManager={handleOpenProcessManager}
           onOpenNetworkMonitor={handleOpenNetworkMonitor}
           onCloseMonitorTab={handleCloseMonitorTab}
+          onOpenEditorTab={handleOpenEditorTab}
           onSetActiveSession={setActiveSession}
           onSetActiveConnection={setActiveConnection}
           onReorderSession={reorderSession}

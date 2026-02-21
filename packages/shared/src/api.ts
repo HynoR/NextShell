@@ -78,6 +78,8 @@ import type {
   SftpDeleteInput,
   SftpDownloadInput,
   SftpEditOpenInput,
+  SftpEditOpenBuiltinInput,
+  SftpEditSaveBuiltinInput,
   SftpEditStatusEvent,
   SftpEditStopInput,
   SftpEditSessionInfo,
@@ -167,6 +169,8 @@ export interface NextShellApi {
     rename: (payload: SftpRenameInput) => Promise<{ ok: true }>;
     remove: (payload: SftpDeleteInput) => Promise<{ ok: true }>;
     editOpen: (payload: SftpEditOpenInput) => Promise<{ editId: string; localPath: string }>;
+    editOpenBuiltin: (payload: SftpEditOpenBuiltinInput) => Promise<{ editId: string; content: string }>;
+    editSaveBuiltin: (payload: SftpEditSaveBuiltinInput) => Promise<{ ok: true }>;
     editStop: (payload: SftpEditStopInput) => Promise<{ ok: true }>;
     editStopAll: () => Promise<{ ok: true }>;
     editList: () => Promise<SftpEditSessionInfo[]>;

@@ -50,6 +50,8 @@ export const IPCChannel = {
   SftpEditStopAll: "nextshell:sftp:edit:stop-all",
   SftpEditList: "nextshell:sftp:edit:list",
   SftpEditStatus: "nextshell:sftp:edit:status",
+  SftpEditOpenBuiltin: "nextshell:sftp:edit:open-builtin",
+  SftpEditSaveBuiltin: "nextshell:sftp:edit:save-builtin",
   SftpTransferStatus: "nextshell:sftp:transfer:status",
   BackupList: "nextshell:backup:list",
   BackupRun: "nextshell:backup:run",

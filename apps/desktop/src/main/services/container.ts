@@ -282,6 +282,8 @@ export interface ServiceContainer {
   stopRemoteEdit: (editId: string) => Promise<{ ok: true }>;
   stopAllRemoteEdits: () => Promise<{ ok: true }>;
   listRemoteEdits: () => SftpEditSessionInfo[];
+  openBuiltinEdit: (connectionId: string, remotePath: string, sender: WebContents) => Promise<{ editId: string; content: string }>;
+  saveBuiltinEdit: (editId: string, connectionId: string, remotePath: string, content: string) => Promise<{ ok: true }>;
   startProcessMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
   stopProcessMonitor: (connectionId: string) => { ok: true };
   getProcessDetail: (connectionId: string, pid: number) => Promise<ProcessDetailSnapshot>;
@@ -693,7 +695,9 @@ const mergePreferences = (
     },
     remoteEdit: {
       defaultEditorCommand:
-        patch.remoteEdit?.defaultEditorCommand?.trim() || current.remoteEdit.defaultEditorCommand
+        patch.remoteEdit?.defaultEditorCommand?.trim() || current.remoteEdit.defaultEditorCommand,
+      editorMode:
+        patch.remoteEdit?.editorMode ?? current.remoteEdit.editorMode
     },
     commandCenter: {
       rememberTemplateParams:
@@ -3498,6 +3502,24 @@ export const createServiceContainer = (
     return remoteEditManager.listSessions();
   };
 
+  const openBuiltinEdit = async (
+    connectionId: string,
+    remotePath: string,
+    sender: WebContents
+  ): Promise<{ editId: string; content: string }> => {
+    return remoteEditManager.openBuiltin(connectionId, remotePath, sender);
+  };
+
+  const saveBuiltinEdit = async (
+    editId: string,
+    connectionId: string,
+    remotePath: string,
+    content: string
+  ): Promise<{ ok: true }> => {
+    await remoteEditManager.saveBuiltin(editId, connectionId, remotePath, content);
+    return { ok: true };
+  };
+
   // ─── Process Monitor ──────────────────────────────────────────────────────
 
   const assertLinuxHost = async (connectionId: string): Promise<void> => {
@@ -4339,6 +4361,8 @@ export const createServiceContainer = (
     stopRemoteEdit,
     stopAllRemoteEdits,
     listRemoteEdits,
+    openBuiltinEdit,
+    saveBuiltinEdit,
     startProcessMonitor,
     stopProcessMonitor,
     getProcessDetail,

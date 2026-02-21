@@ -12,6 +12,7 @@ interface FileExplorerPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
   onOpenSettings?: () => void;
+  onOpenEditorTab?: (connectionId: string, remotePath: string) => Promise<void>;
 }
 
 interface DirTreeNode extends DataNode {
@@ -336,7 +337,7 @@ const ContextMenu = ({
 };
 
 // ── Main component ────────────────────────────────────────
-export const FileExplorerPane = ({ connection, connected, onOpenSettings }: FileExplorerPaneProps) => {
+export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpenEditorTab }: FileExplorerPaneProps) => {
   const { modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
@@ -975,6 +976,11 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings }: File
   };
 
   const handleRemoteEdit = (entry: RemoteFileEntry) => {
+    const editorMode = preferences.remoteEdit.editorMode ?? "builtin";
+    if (editorMode === "builtin" && onOpenEditorTab && connection) {
+      void onOpenEditorTab(connection.id, entry.path);
+      return;
+    }
     const editor = preferences.remoteEdit.defaultEditorCommand?.trim();
     if (!editor) {
       pendingEditRef.current = entry;

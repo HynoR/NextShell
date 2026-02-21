@@ -9,6 +9,7 @@ import {
   InputNumber,
   List,
   Modal,
+  Radio,
   Select,
   Skeleton,
   Slider,
@@ -68,6 +69,9 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
   const [uploadDefaultDir, setUploadDefaultDir] = useState(preferences.transfer.uploadDefaultDir);
   const [downloadDefaultDir, setDownloadDefaultDir] = useState(preferences.transfer.downloadDefaultDir);
   const [editorCommand, setEditorCommand] = useState(preferences.remoteEdit.defaultEditorCommand);
+  const [editorMode, setEditorMode] = useState<"builtin" | "external">(
+    preferences.remoteEdit.editorMode ?? "builtin"
+  );
   const [rememberTemplateParams, setRememberTemplateParams] = useState(
     preferences.commandCenter.rememberTemplateParams
   );
@@ -136,6 +140,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     setUploadDefaultDir(preferences.transfer.uploadDefaultDir);
     setDownloadDefaultDir(preferences.transfer.downloadDefaultDir);
     setEditorCommand(preferences.remoteEdit.defaultEditorCommand);
+    setEditorMode(preferences.remoteEdit.editorMode ?? "builtin");
     setRememberTemplateParams(preferences.commandCenter.rememberTemplateParams);
     setTerminalBackgroundColor(preferences.terminal.backgroundColor);
     setTerminalForegroundColor(preferences.terminal.foregroundColor);
@@ -313,8 +318,13 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
     const normalizedTerminalForegroundColor = terminalForegroundColor.trim();
     const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
 
-    if (!normalizedUploadDir || !normalizedDownloadDir || !normalizedEditorCommand) {
-      message.warning("路径和编辑器命令不能为空。");
+    if (!normalizedUploadDir || !normalizedDownloadDir) {
+      message.warning("路径不能为空。");
+      return;
+    }
+
+    if (editorMode === "external" && !normalizedEditorCommand) {
+      message.warning("外部编辑器模式下编辑器命令不能为空。");
       return;
     }
 
@@ -351,7 +361,8 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
           downloadDefaultDir: normalizedDownloadDir
         },
         remoteEdit: {
-          defaultEditorCommand: normalizedEditorCommand
+          defaultEditorCommand: normalizedEditorCommand,
+          editorMode
         },
         commandCenter: {
           rememberTemplateParams
@@ -489,7 +500,19 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
         <Divider />
 
         <Typography.Title level={5}>远端编辑</Typography.Title>
-        <Typography.Text type="secondary">默认编辑器命令用于打开远端编辑文件。</Typography.Text>
+        <Typography.Text type="secondary">选择编辑模式和默认编辑器命令。</Typography.Text>
+        <div className="flex flex-col gap-2 mt-1.5">
+          <Typography.Text>编辑器模式</Typography.Text>
+          <Radio.Group
+            value={editorMode}
+            onChange={(e) => setEditorMode(e.target.value as "builtin" | "external")}
+            disabled={loading}
+          >
+            <Radio value="builtin">内置编辑器 (Monaco)</Radio>
+            <Radio value="external">外部编辑器</Radio>
+          </Radio.Group>
+        </div>
+        {editorMode === "external" && (
         <div className="flex flex-col gap-2 mt-1.5">
           <Typography.Text>默认编辑器命令</Typography.Text>
           <Input
@@ -511,6 +534,7 @@ export const SettingsCenterDrawer = ({ open, onClose }: SettingsCenterDrawerProp
             ))}
           </Space>
         </div>
+        )}
 
         <Divider />
 

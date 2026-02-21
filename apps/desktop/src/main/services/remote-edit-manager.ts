@@ -57,8 +57,18 @@ export interface RemoteEditManagerDeps {
   getConnection: (connectionId: string) => Promise<SshConnection>;
 }
 
+interface BuiltinEditSession {
+  editId: string;
+  connectionId: string;
+  remotePath: string;
+  sender: WebContents;
+  lastActivityAt: number;
+  senderDestroyedHandler: () => void;
+}
+
 export class RemoteEditManager {
   private readonly sessions = new Map<string, ActiveEditSession>();
+  private readonly builtinSessions = new Map<string, BuiltinEditSession>();
   private readonly deps: RemoteEditManagerDeps;
   private idleTimer?: ReturnType<typeof setInterval>;
 
@@ -166,8 +176,96 @@ export class RemoteEditManager {
     );
   }
 
+  async openBuiltin(
+    connectionId: string,
+    remotePath: string,
+    sender: WebContents
+  ): Promise<{ editId: string; content: string }> {
+    // Check existing external edit sessions
+    const existingExternal = this.findByRemotePath(connectionId, remotePath);
+    if (existingExternal) {
+      const connection = await this.deps.getConnection(connectionId);
+      const buf = await connection.readFileContent(remotePath);
+      return { editId: existingExternal.editId, content: buf.toString("utf-8") };
+    }
+
+    // Check existing builtin sessions
+    for (const session of this.builtinSessions.values()) {
+      if (session.connectionId === connectionId && session.remotePath === remotePath) {
+        const connection = await this.deps.getConnection(connectionId);
+        const buf = await connection.readFileContent(remotePath);
+        return { editId: session.editId, content: buf.toString("utf-8") };
+      }
+    }
+
+    const editId = randomUUID();
+
+    this.sendStatus(sender, {
+      editId,
+      connectionId,
+      remotePath,
+      status: "downloading"
+    });
+
+    const connection = await this.deps.getConnection(connectionId);
+    const buf = await connection.readFileContent(remotePath);
+    const content = buf.toString("utf-8");
+
+    const senderDestroyedHandler = () => {
+      this.builtinSessions.delete(editId);
+    };
+    sender.once("destroyed", senderDestroyedHandler);
+
+    this.builtinSessions.set(editId, {
+      editId,
+      connectionId,
+      remotePath,
+      sender,
+      lastActivityAt: Date.now(),
+      senderDestroyedHandler
+    });
+
+    this.sendStatus(sender, {
+      editId,
+      connectionId,
+      remotePath,
+      status: "editing"
+    });
+
+    logger.info("[RemoteEdit] opened builtin", { editId, connectionId, remotePath });
+    return { editId, content };
+  }
+
+  async saveBuiltin(editId: string, connectionId: string, remotePath: string, content: string): Promise<void> {
+    const session = this.builtinSessions.get(editId);
+
+    if (session) {
+      this.sendStatus(session.sender, {
+        editId,
+        connectionId: session.connectionId,
+        remotePath: session.remotePath,
+        status: "uploading"
+      });
+    }
+
+    const connection = await this.deps.getConnection(connectionId);
+    await connection.writeFileContent(remotePath, Buffer.from(content, "utf-8"));
+
+    if (session) {
+      session.lastActivityAt = Date.now();
+      this.sendStatus(session.sender, {
+        editId,
+        connectionId: session.connectionId,
+        remotePath: session.remotePath,
+        status: "synced"
+      });
+    }
+
+    logger.info("[RemoteEdit] saved builtin", { editId, connectionId, remotePath });
+  }
+
   listSessions(): SftpEditSessionInfo[] {
-    return Array.from(this.sessions.values()).map((s) => ({
+    const external = Array.from(this.sessions.values()).map((s) => ({
       editId: s.editId,
       connectionId: s.connectionId,
       remotePath: s.remotePath,
@@ -175,6 +273,17 @@ export class RemoteEditManager {
       status: s.uploading ? "uploading" as const : "editing" as const,
       lastActivityAt: s.lastActivityAt
     }));
+
+    const builtin = Array.from(this.builtinSessions.values()).map((s) => ({
+      editId: s.editId,
+      connectionId: s.connectionId,
+      remotePath: s.remotePath,
+      localPath: "",
+      status: "editing" as const,
+      lastActivityAt: s.lastActivityAt
+    }));
+
+    return [...external, ...builtin];
   }
 
   async cleanupByConnectionId(connectionId: string): Promise<void> {
@@ -183,6 +292,15 @@ export class RemoteEditManager {
     );
 
     await Promise.all(targets.map((s) => this.cleanup(s, true)));
+
+    for (const [id, session] of this.builtinSessions) {
+      if (session.connectionId === connectionId) {
+        try {
+          session.sender.removeListener("destroyed", session.senderDestroyedHandler);
+        } catch { /* sender may already be destroyed */ }
+        this.builtinSessions.delete(id);
+      }
+    }
   }
 
   async dispose(): Promise<void> {
@@ -194,6 +312,13 @@ export class RemoteEditManager {
     await Promise.all(
       Array.from(this.sessions.values()).map((s) => this.cleanup(s, false))
     );
+
+    for (const [id, session] of this.builtinSessions) {
+      try {
+        session.sender.removeListener("destroyed", session.senderDestroyedHandler);
+      } catch { /* sender may already be destroyed */ }
+      this.builtinSessions.delete(id);
+    }
 
     try {
       await fsp.rm(TEMP_ROOT, { recursive: true, force: true });
