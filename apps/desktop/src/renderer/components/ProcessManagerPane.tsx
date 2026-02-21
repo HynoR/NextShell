@@ -36,8 +36,10 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
 
   // Subscribe to process data events + start monitor on mount
   useEffect(() => {
+    let disposed = false;
+
     const unsub = window.nextshell.monitor.onProcessData((snapshot: ProcessSnapshot) => {
-      if (snapshot.connectionId === connectionId) {
+      if (!disposed && snapshot.connectionId === connectionId) {
         setProcessSnapshot(connectionId, snapshot);
         setInitialLoading(false);
       }
@@ -45,11 +47,13 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
     unsubRef.current = unsub;
 
     void window.nextshell.monitor.startProcess({ connectionId }).catch((err: unknown) => {
+      if (disposed) return;
       const reason = err instanceof Error ? err.message : "启动进程监控失败";
       message.error(reason);
     });
 
     return () => {
+      disposed = true;
       unsub();
       void window.nextshell.monitor.stopProcess({ connectionId }).catch(() => {});
     };

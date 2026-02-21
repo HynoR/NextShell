@@ -170,6 +170,7 @@ interface MonitorRuntime {
   monitorConnection: SshConnection;
   monitorShellChannel: SshShellChannel;
   processTopStream?: ProcessTopStreamRuntime;
+  processTopStarting?: Promise<{ ok: true }>;
   commandQueue: Promise<void>;
   timers: MonitorRuntimeTimers;
   disposed: boolean;
@@ -3808,13 +3809,18 @@ export const createServiceContainer = (
     };
   };
 
-  const startProcessMonitor = async (
+  const startProcessMonitorInner = async (
     connectionId: string,
     sender: WebContents
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
     const runtime = await ensureMonitorRuntime(connectionId);
+
+    if (runtime.disposed) {
+      throw new Error("Monitor runtime already disposed");
+    }
+
     if (runtime.processTopStream && !runtime.processTopStream.disposed) {
       runtime.processTopStream.sender = sender;
       return { ok: true };
@@ -3823,11 +3829,23 @@ export const createServiceContainer = (
     await assertLinuxHost(connectionId);
     await assertTopAvailable(connectionId);
 
+    if (runtime.disposed || (runtime.processTopStream && !runtime.processTopStream.disposed)) {
+      if (runtime.processTopStream) {
+        runtime.processTopStream.sender = sender;
+      }
+      return { ok: true };
+    }
+
     const channel = await runtime.monitorConnection.openShell({
       cols: 200,
       rows: 60,
       term: "dumb"
     });
+
+    if (runtime.disposed) {
+      try { channel.end(); } catch { /* ignore */ }
+      throw new Error("Monitor runtime disposed during startup");
+    }
 
     const stream: ProcessTopStreamRuntime = {
       channel,
@@ -3902,9 +3920,37 @@ export const createServiceContainer = (
     return { ok: true };
   };
 
+  const startProcessMonitor = async (
+    connectionId: string,
+    sender: WebContents
+  ): Promise<{ ok: true }> => {
+    const runtime = monitorRuntimes.get(connectionId);
+    if (runtime?.processTopStarting) {
+      return runtime.processTopStarting.then(() => {
+        if (runtime.processTopStream && !runtime.processTopStream.disposed) {
+          runtime.processTopStream.sender = sender;
+        }
+        return { ok: true } as const;
+      });
+    }
+
+    const promise = startProcessMonitorInner(connectionId, sender);
+    const runtimeAfter = monitorRuntimes.get(connectionId);
+    if (runtimeAfter) {
+      runtimeAfter.processTopStarting = promise;
+      void promise.finally(() => {
+        if (runtimeAfter.processTopStarting === promise) {
+          runtimeAfter.processTopStarting = undefined;
+        }
+      });
+    }
+    return promise;
+  };
+
   const stopProcessMonitor = (connectionId: string): { ok: true } => {
     const runtime = monitorRuntimes.get(connectionId);
     if (runtime) {
+      runtime.processTopStarting = undefined;
       stopProcessTopStream(connectionId, runtime, "manual");
     }
     return { ok: true };
