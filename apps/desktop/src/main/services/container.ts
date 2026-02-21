@@ -148,33 +148,56 @@ interface MonitorState {
   selectedNetworkInterface?: string;
   networkInterfaceOptions?: string[];
   sampledAt?: number;
+  /** Cached after first probe — stable during connection lifetime */
+  isLinuxHost?: boolean;
+  /** Cached after first probe — stable during connection lifetime */
+  hasTopCommand?: boolean;
 }
 
-interface MonitorRuntimeTimers {
-  systemTimer?: ReturnType<typeof setInterval>;
+// ─── Hidden Session ① System Monitor (primary, long-lived) ───────────────
+interface SystemMonitorRuntime {
+  connection: SshConnection;
+  shellChannel: SshShellChannel;
+  commandQueue: Promise<void>;
+  systemTimer?: ReturnType<typeof setTimeout>;
+  systemTimerActive?: boolean;
+  cachedSnapshot?: MonitorSnapshot;
+  cachedSnapshotAt?: number;
+  consecutiveFailures: number;
+  disposed: boolean;
+}
+
+// ─── Hidden Session ② Process Monitor (on-demand, ps-based polling) ─────
+interface ProcessMonitorRuntime {
+  connection: SshConnection;
+  pollTimer?: ReturnType<typeof setTimeout>;
+  pollActive: boolean;
+  sender?: WebContents;
+  starting?: Promise<{ ok: true }>;
+  disposed: boolean;
+}
+
+// ─── Hidden Session ③ Network Monitor (on-demand) ────────────────────────
+interface NetworkMonitorRuntime {
+  connection: SshConnection;
+  shellChannel: SshShellChannel;
+  commandQueue: Promise<void>;
   networkTimer?: ReturnType<typeof setTimeout>;
   networkTimerActive?: boolean;
-}
-
-interface ProcessTopStreamRuntime {
-  channel: SshShellChannel;
-  sender: WebContents;
-  buffer: string;
-  disposed: boolean;
-  dataListener: (chunk: Buffer | string) => void;
-  errorListener: (error: unknown) => void;
-  closeListener: () => void;
-}
-
-interface MonitorRuntime {
-  monitorConnection: SshConnection;
-  monitorShellChannel: SshShellChannel;
-  processTopStream?: ProcessTopStreamRuntime;
-  processTopStarting?: Promise<{ ok: true }>;
-  commandQueue: Promise<void>;
-  timers: MonitorRuntimeTimers;
+  consecutiveFailures: number;
   disposed: boolean;
 }
+
+// ─── Hidden Session ④ Ad-hoc (on-demand, idle auto-destroy) ─────────────
+interface AdhocSessionRuntime {
+  connection: SshConnection;
+  idleTimer?: ReturnType<typeof setTimeout>;
+  lastUsedAt: number;
+  disposed: boolean;
+}
+
+/** @deprecated kept as alias during migration — remove after all refs updated */
+type MonitorRuntime = SystemMonitorRuntime;
 
 interface MonitorProbeResult {
   uptimeSeconds: number;
@@ -334,14 +357,16 @@ const MONITOR_SYSTEM_PROCESS_COMMAND =
   "ps -eo pid=,comm=,%cpu=,rss= --sort=-%cpu 2>/dev/null | head -n 5";
 const MONITOR_SYSTEM_INTERVAL_MS = 5000;
 const MONITOR_NETWORK_INTERVAL_MS = 5000;
+const ADHOC_IDLE_TIMEOUT_MS = 30_000;
+const MONITOR_MAX_CONSECUTIVE_FAILURES = 3;
 const MONITOR_SHELL_READY_MARKER = "__NS_MONITOR_SHELL_READY__";
 const MONITOR_COMMAND_TIMEOUT_MS = 20000;
 const MONITOR_SHELL_READY_TIMEOUT_MS = 8000;
 const MONITOR_MAX_BUFFER_BYTES = 2 * 1024 * 1024;
-const MONITOR_PROCESS_TOP_STREAM_COMMAND = "TERM=dumb LANG=C COLUMNS=512 top -b -d 5";
-const MONITOR_PROCESS_TOP_MAX_ROWS = 200;
+const MONITOR_PROCESS_PS_COMMAND =
+  "LC_ALL=C ps -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,comm --no-headers --sort=-pcpu 2>/dev/null | head -n 200";
+const MONITOR_PROCESS_INTERVAL_MS = 5000;
 const MONITOR_LINUX_CHECK_COMMAND = "uname -s 2>/dev/null";
-const MONITOR_TOP_CHECK_COMMAND = "command -v top >/dev/null 2>&1";
 const SFTP_WARMUP_TIMEOUT_MS = 5000;
 const NETWORK_PROBE_SS =
   "export LANG=en_US.UTF-8 LANGUAGE=en_US LC_ALL=en_US.UTF-8; " +
@@ -1002,9 +1027,17 @@ const parseMonitorProcesses = (raw: string): MonitorProcess[] => {
 
       return {
         pid,
+        ppid: 0,
         command,
         cpuPercent,
-        memoryMb: Number((rssKb / 1024).toFixed(2))
+        memoryPercent: 0,
+        memoryMb: Number((rssKb / 1024).toFixed(2)),
+        user: "-",
+        stat: "-",
+        nice: 0,
+        priority: 0,
+        vszMb: 0,
+        elapsedSeconds: 0
       };
     })
     .filter((item) => item.pid > 0)
@@ -1012,7 +1045,7 @@ const parseMonitorProcesses = (raw: string): MonitorProcess[] => {
 
   return processes.length > 0
     ? processes
-    : [{ pid: 0, command: "n/a", cpuPercent: 0, memoryMb: 0 }];
+    : [{ pid: 0, ppid: 0, command: "n/a", cpuPercent: 0, memoryPercent: 0, memoryMb: 0, user: "-", stat: "-", nice: 0, priority: 0, vszMb: 0, elapsedSeconds: 0 }];
 };
 
 const parseMonitorProbe = (samples: {
@@ -1058,6 +1091,95 @@ const parseMonitorProbe = (samples: {
     netTxBytes: counters.txBytes,
     processes: parseMonitorProcesses(samples.process)
   };
+};
+
+// ─── Compound Command Builders ──────────────────────────────────────────────
+
+/**
+ * Build a single compound shell command that collects all system monitor data
+ * in one exec, using section markers to delimit each piece of output.
+ */
+const buildSystemProbeCommand = (networkInterface: string): string => {
+  const normalized = normalizeNetworkInterfaceName(networkInterface) || "eth0";
+  return [
+    "echo '---NS_UPTIME---'",
+    MONITOR_UPTIME_COMMAND,
+    "echo '---NS_LOADAVG---'",
+    MONITOR_LOADAVG_COMMAND,
+    "echo '---NS_CPUSTAT---'",
+    MONITOR_CPU_STAT_COMMAND,
+    "echo '---NS_CPUTOP---'",
+    MONITOR_CPU_TOP_COMMAND,
+    "echo '---NS_MEMINFO---'",
+    MONITOR_MEMINFO_COMMAND,
+    "echo '---NS_FREE---'",
+    MONITOR_FREE_COMMAND,
+    "echo '---NS_DISK---'",
+    MONITOR_DISK_COMMAND,
+    "echo '---NS_NETIFACES---'",
+    MONITOR_NET_INTERFACES_COMMAND,
+    "echo '---NS_NETDEFAULT---'",
+    MONITOR_NET_DEFAULT_INTERFACE_COMMAND,
+    "echo '---NS_NETCOUNTERS---'",
+    `cat /sys/class/net/${normalized}/statistics/rx_bytes 2>/dev/null; cat /sys/class/net/${normalized}/statistics/tx_bytes 2>/dev/null`,
+    "echo '---NS_PROCESSES---'",
+    MONITOR_SYSTEM_PROCESS_COMMAND,
+    "echo '---NS_PROBE_END---'"
+  ].join("; ");
+};
+
+/** Parse a compound probe output back into named sections. */
+const parseCompoundOutput = (stdout: string): Map<string, string> => {
+  const sections = new Map<string, string>();
+  const lines = stdout.split("\n");
+  let currentSection = "";
+  let currentContent: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^---NS_(\w+)---\r?$/);
+    if (match?.[1]) {
+      if (currentSection) {
+        sections.set(currentSection, currentContent.join("\n"));
+      }
+      currentSection = match[1];
+      currentContent = [];
+    } else {
+      currentContent.push(line);
+    }
+  }
+  if (currentSection) {
+    sections.set(currentSection, currentContent.join("\n"));
+  }
+
+  return sections;
+};
+
+/**
+ * Build a single compound shell command to collect all system info
+ * (hostname, kernel, CPU, memory, filesystems, etc.) in one exec.
+ */
+const buildSystemInfoCommand = (): string => {
+  return [
+    "echo '---NS_OSRELEASE---'",
+    MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND,
+    "echo '---NS_HOSTNAME---'",
+    MONITOR_SYSTEM_INFO_HOSTNAME_COMMAND,
+    "echo '---NS_KERNELNAME---'",
+    MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND,
+    "echo '---NS_KERNELVER---'",
+    MONITOR_SYSTEM_INFO_KERNEL_VERSION_COMMAND,
+    "echo '---NS_ARCH---'",
+    MONITOR_SYSTEM_INFO_ARCH_COMMAND,
+    "echo '---NS_CPUINFO---'",
+    MONITOR_SYSTEM_INFO_CPUINFO_COMMAND,
+    "echo '---NS_MEMINFO---'",
+    MONITOR_SYSTEM_INFO_MEMINFO_COMMAND,
+    "echo '---NS_NETDEV---'",
+    MONITOR_SYSTEM_INFO_NET_DEV_COMMAND,
+    "echo '---NS_FILESYSTEMS---'",
+    MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND,
+    "echo '---NS_SYSINFO_END---'"
+  ].join("; ");
 };
 
 export const createServiceContainer = (
@@ -1113,12 +1235,22 @@ export const createServiceContainer = (
   const activeSessions = new Map<string, ActiveSession>();
   const activeConnections = new Map<string, SshConnection>();
   const connectionPromises = new Map<string, Promise<SshConnection>>();
+  // ─── Hidden Session Maps ──────────────────────────────────────────────
+  const systemMonitorRuntimes = new Map<string, SystemMonitorRuntime>();
+  const systemMonitorPromises = new Map<string, Promise<SystemMonitorRuntime>>();
+  const processMonitorRuntimes = new Map<string, ProcessMonitorRuntime>();
+  const processMonitorPromises = new Map<string, Promise<ProcessMonitorRuntime>>();
+  const networkMonitorRuntimes = new Map<string, NetworkMonitorRuntime>();
+  const networkMonitorPromises = new Map<string, Promise<NetworkMonitorRuntime>>();
+  const adhocSessionRuntimes = new Map<string, AdhocSessionRuntime>();
+  const adhocSessionPromises = new Map<string, Promise<AdhocSessionRuntime>>();
+  const monitorStates = new Map<string, MonitorState>();
+  const networkToolCache = new Map<string, "ss" | "netstat">();
+  // Legacy aliases used by code that hasn't been migrated yet
   const monitorConnections = new Map<string, SshConnection>();
   const monitorConnectionPromises = new Map<string, Promise<SshConnection>>();
   const monitorRuntimePromises = new Map<string, Promise<MonitorRuntime>>();
   const monitorRuntimes = new Map<string, MonitorRuntime>();
-  const monitorStates = new Map<string, MonitorState>();
-  const networkToolCache = new Map<string, "ss" | "netstat">();
 
   const getConnectionOrThrow = (id: string): ConnectionProfile => {
     const connection = connections.getById(id);
@@ -1347,134 +1479,124 @@ export const createServiceContainer = (
     }
   };
 
-  const stopProcessTopStream = (
-    connectionId: string,
-    runtime: MonitorRuntime,
-    reason: "manual" | "runtime_dispose" | "channel_closed" | "channel_error" | "sender_destroyed"
-  ): void => {
-    const stream = runtime.processTopStream;
-    if (!stream) {
-      return;
-    }
+  // ─── Session ① System Monitor: dispose ────────────────────────────────────
 
-    runtime.processTopStream = undefined;
-    stream.disposed = true;
-
-    stream.channel.off("data", stream.dataListener);
-    stream.channel.off("error", stream.errorListener);
-    stream.channel.off("close", stream.closeListener);
-
-    try {
-      stream.channel.end();
-    } catch {
-      // ignore close errors from stale channels
-    }
-
-    logger.info("[ProcessMonitor] stopped", { connectionId, reason });
-  };
-
-  const clearMonitorRuntimeTimers = (connectionId: string, runtime: MonitorRuntime): void => {
-    if (runtime.timers.systemTimer) {
-      clearInterval(runtime.timers.systemTimer);
-      runtime.timers.systemTimer = undefined;
-    }
-    stopProcessTopStream(connectionId, runtime, "runtime_dispose");
-    if (runtime.timers.networkTimer) {
-      clearTimeout(runtime.timers.networkTimer);
-      runtime.timers.networkTimer = undefined;
-      runtime.timers.networkTimerActive = false;
-      logger.info("[NetworkMonitor] stopped", { connectionId });
-    }
-  };
-
-  const disposeMonitorRuntime = async (connectionId: string): Promise<void> => {
-    const runtime = monitorRuntimes.get(connectionId);
+  const disposeSystemMonitorRuntime = async (connectionId: string): Promise<void> => {
+    const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      clearMonitorRuntimeTimers(connectionId, runtime);
-      monitorRuntimes.delete(connectionId);
-    }
+      if (runtime.systemTimer) {
+        clearTimeout(runtime.systemTimer);
+        runtime.systemTimer = undefined;
+      }
+      runtime.systemTimerActive = false;
+      systemMonitorRuntimes.delete(connectionId);
 
+      try { runtime.shellChannel.end(); } catch { /* ignore */ }
+      try { await runtime.connection.close(); } catch (error) {
+        logger.warn("[SystemMonitor] failed to close connection", { connectionId, reason: normalizeError(error) });
+      }
+    }
+    systemMonitorPromises.delete(connectionId);
+
+    // Also clean up legacy maps (code that still references them)
+    monitorRuntimes.delete(connectionId);
     monitorRuntimePromises.delete(connectionId);
-    monitorStates.delete(connectionId);
-    networkToolCache.delete(connectionId);
-
-    if (runtime?.monitorShellChannel) {
-      try {
-        runtime.monitorShellChannel.end();
-      } catch {
-        // ignore close errors from stale channels
-      }
-    }
-
-    const monitorConnection = runtime?.monitorConnection ?? monitorConnections.get(connectionId);
     monitorConnections.delete(connectionId);
-
-    if (monitorConnection) {
-      try {
-        await monitorConnection.close();
-      } catch (error) {
-        logger.warn("[MonitorSession] failed to close monitor connection", {
-          connectionId,
-          reason: normalizeError(error)
-        });
-      }
-    }
+    monitorConnectionPromises.delete(connectionId);
   };
 
-  const establishMonitorConnection = async (
-    connectionId: string,
-    profile: ConnectionProfile
-  ): Promise<SshConnection> => {
-    logger.info("[MonitorSession] connecting hidden SSH", {
-      connectionId,
-      host: profile.host,
-      port: profile.port
-    });
+  // ─── Session ② Process Monitor: dispose ────────────────────────────────────
 
-    const ssh = await SshConnection.connect(await resolveConnectOptions(profile));
-    ssh.onClose(() => {
-      monitorConnections.delete(connectionId);
-      monitorRuntimePromises.delete(connectionId);
-      monitorStates.delete(connectionId);
-      networkToolCache.delete(connectionId);
-
-      const runtime = monitorRuntimes.get(connectionId);
-      if (runtime) {
-        runtime.disposed = true;
-        clearMonitorRuntimeTimers(connectionId, runtime);
-        monitorRuntimes.delete(connectionId);
+  const disposeProcessMonitorRuntime = async (connectionId: string): Promise<void> => {
+    const runtime = processMonitorRuntimes.get(connectionId);
+    if (runtime) {
+      runtime.disposed = true;
+      runtime.pollActive = false;
+      runtime.starting = undefined;
+      if (runtime.pollTimer) {
+        clearTimeout(runtime.pollTimer);
+        runtime.pollTimer = undefined;
       }
+      processMonitorRuntimes.delete(connectionId);
 
-      logger.info("[MonitorSession] hidden SSH disconnected", { connectionId });
-    });
+      try { await runtime.connection.close(); } catch (error) {
+        logger.warn("[ProcessMonitor] failed to close connection", { connectionId, reason: normalizeError(error) });
+      }
+    }
+    processMonitorPromises.delete(connectionId);
+  };
 
-    monitorConnections.set(connectionId, ssh);
-    logger.info("[MonitorSession] hidden SSH connected", { connectionId });
+  // ─── Session ③ Network Monitor: dispose ────────────────────────────────────
+
+  const disposeNetworkMonitorRuntime = async (connectionId: string): Promise<void> => {
+    const runtime = networkMonitorRuntimes.get(connectionId);
+    if (runtime) {
+      runtime.disposed = true;
+      if (runtime.networkTimer) {
+        clearTimeout(runtime.networkTimer);
+        runtime.networkTimer = undefined;
+      }
+      runtime.networkTimerActive = false;
+      networkMonitorRuntimes.delete(connectionId);
+
+      try { runtime.shellChannel.end(); } catch { /* ignore */ }
+      try { await runtime.connection.close(); } catch (error) {
+        logger.warn("[NetworkMonitor] failed to close connection", { connectionId, reason: normalizeError(error) });
+      }
+    }
+    networkMonitorPromises.delete(connectionId);
+  };
+
+  // ─── Session ④ Ad-hoc: dispose ─────────────────────────────────────────────
+
+  const disposeAdhocSession = async (connectionId: string): Promise<void> => {
+    const runtime = adhocSessionRuntimes.get(connectionId);
+    if (runtime) {
+      runtime.disposed = true;
+      if (runtime.idleTimer) {
+        clearTimeout(runtime.idleTimer);
+        runtime.idleTimer = undefined;
+      }
+      adhocSessionRuntimes.delete(connectionId);
+
+      try { await runtime.connection.close(); } catch (error) {
+        logger.warn("[AdhocSession] failed to close connection", { connectionId, reason: normalizeError(error) });
+      }
+    }
+    adhocSessionPromises.delete(connectionId);
+  };
+
+  // ─── Dispose all hidden sessions for a connection ──────────────────────────
+
+  const disposeAllMonitorSessions = async (connectionId: string): Promise<void> => {
+    await Promise.all([
+      disposeSystemMonitorRuntime(connectionId),
+      disposeProcessMonitorRuntime(connectionId),
+      disposeNetworkMonitorRuntime(connectionId),
+      disposeAdhocSession(connectionId)
+    ]);
+    monitorStates.delete(connectionId);
+    networkToolCache.delete(connectionId);
+  };
+
+  /** @deprecated alias — delegates to disposeAllMonitorSessions */
+  const disposeMonitorRuntime = disposeAllMonitorSessions;
+
+  // ─── Generic hidden SSH connection factory ────────────────────────────────
+
+  const establishHiddenConnection = async (
+    connectionId: string,
+    tag: string
+  ): Promise<SshConnection> => {
+    const profile = assertMonitorEnabled(connectionId);
+    logger.info(`[${tag}] connecting hidden SSH`, { connectionId, host: profile.host, port: profile.port });
+    const ssh = await SshConnection.connect(await resolveConnectOptions(profile));
+    logger.info(`[${tag}] hidden SSH connected`, { connectionId });
     return ssh;
   };
 
-  const ensureMonitorConnection = async (connectionId: string): Promise<SshConnection> => {
-    const existing = monitorConnections.get(connectionId);
-    if (existing) {
-      return existing;
-    }
-
-    const pending = monitorConnectionPromises.get(connectionId);
-    if (pending) {
-      return pending;
-    }
-
-    const profile = assertMonitorEnabled(connectionId);
-    const promise = establishMonitorConnection(connectionId, profile);
-    monitorConnectionPromises.set(connectionId, promise);
-
-    try {
-      return await promise;
-    } finally {
-      monitorConnectionPromises.delete(connectionId);
-    }
-  };
+  // ─── Initialize a hidden shell (shared by System & Network sessions) ──────
 
   const initializeMonitorShell = async (
     connectionId: string,
@@ -1534,67 +1656,273 @@ export const createServiceContainer = (
     logger.info("[MonitorSession] hidden shell initialized", { connectionId });
   };
 
-  const ensureMonitorRuntime = async (connectionId: string): Promise<MonitorRuntime> => {
-    const existing = monitorRuntimes.get(connectionId);
+  // ─── Session ① System Monitor: ensure ─────────────────────────────────────
+
+  const ensureSystemMonitorRuntime = async (connectionId: string): Promise<SystemMonitorRuntime> => {
+    const existing = systemMonitorRuntimes.get(connectionId);
     if (existing && !existing.disposed) {
       return existing;
     }
 
-    const pending = monitorRuntimePromises.get(connectionId);
+    const pending = systemMonitorPromises.get(connectionId);
     if (pending) {
       return pending;
     }
 
     const promise = (async () => {
-      const monitorConnection = await ensureMonitorConnection(connectionId);
-      const monitorShellChannel = await monitorConnection.openShell({
-        cols: 120,
-        rows: 40,
-        term: "xterm-256color"
-      });
+      const connection = await establishHiddenConnection(connectionId, "SystemMonitor");
+      const shellChannel = await connection.openShell({ cols: 120, rows: 40, term: "xterm-256color" });
+      await initializeMonitorShell(connectionId, shellChannel);
 
-      await initializeMonitorShell(connectionId, monitorShellChannel);
-
-      const runtime: MonitorRuntime = {
-        monitorConnection,
-        monitorShellChannel,
+      const runtime: SystemMonitorRuntime = {
+        connection,
+        shellChannel,
         commandQueue: Promise.resolve(),
-        timers: {},
+        consecutiveFailures: 0,
         disposed: false
       };
 
-      monitorShellChannel.on("close", () => {
-        if (runtime.disposed) {
-          return;
-        }
+      connection.onClose(() => {
+        if (runtime.disposed) return;
         runtime.disposed = true;
-        clearMonitorRuntimeTimers(connectionId, runtime);
+        if (runtime.systemTimer) { clearTimeout(runtime.systemTimer); runtime.systemTimer = undefined; }
+        runtime.systemTimerActive = false;
+        systemMonitorRuntimes.delete(connectionId);
+        systemMonitorPromises.delete(connectionId);
         monitorRuntimes.delete(connectionId);
-        monitorStates.delete(connectionId);
-        networkToolCache.delete(connectionId);
-        logger.warn("[MonitorSession] hidden shell closed unexpectedly", { connectionId });
+        monitorRuntimePromises.delete(connectionId);
+        monitorConnections.delete(connectionId);
+        monitorConnectionPromises.delete(connectionId);
+        logger.warn("[SystemMonitor] hidden SSH disconnected unexpectedly", { connectionId });
       });
 
+      shellChannel.on("close", () => {
+        if (runtime.disposed) return;
+        runtime.disposed = true;
+        if (runtime.systemTimer) { clearTimeout(runtime.systemTimer); runtime.systemTimer = undefined; }
+        runtime.systemTimerActive = false;
+        systemMonitorRuntimes.delete(connectionId);
+        systemMonitorPromises.delete(connectionId);
+        monitorRuntimes.delete(connectionId);
+        monitorRuntimePromises.delete(connectionId);
+        monitorConnections.delete(connectionId);
+        monitorConnectionPromises.delete(connectionId);
+        // Shell closed — also close the SSH connection to avoid dangling sessions
+        void connection.close().catch(() => {});
+        logger.warn("[SystemMonitor] hidden shell closed, closing SSH connection", { connectionId });
+      });
+
+      systemMonitorRuntimes.set(connectionId, runtime);
+
+      // Also write to legacy map so old code paths still work
       monitorRuntimes.set(connectionId, runtime);
+      monitorConnections.set(connectionId, connection);
 
       if (!hasVisibleTerminalAlive(connectionId)) {
-        await disposeMonitorRuntime(connectionId);
+        await disposeSystemMonitorRuntime(connectionId);
         throw new Error("可见 SSH 会话已关闭，Monitor Session 启动取消。");
       }
 
-      logger.info("[MonitorSession] runtime ready", { connectionId });
+      logger.info("[SystemMonitor] runtime ready", { connectionId });
       return runtime;
     })();
 
-    monitorRuntimePromises.set(connectionId, promise);
-
+    systemMonitorPromises.set(connectionId, promise);
     try {
       return await promise;
     } catch (error) {
-      await disposeMonitorRuntime(connectionId);
+      await disposeSystemMonitorRuntime(connectionId);
       throw error;
     } finally {
-      monitorRuntimePromises.delete(connectionId);
+      systemMonitorPromises.delete(connectionId);
+    }
+  };
+
+  /** @deprecated alias — use ensureSystemMonitorRuntime */
+  const ensureMonitorRuntime = ensureSystemMonitorRuntime;
+
+  // ─── Session ② Process Monitor: ensure ────────────────────────────────────
+
+  const ensureProcessMonitorRuntime = async (connectionId: string): Promise<ProcessMonitorRuntime> => {
+    const existing = processMonitorRuntimes.get(connectionId);
+    if (existing && !existing.disposed) {
+      return existing;
+    }
+
+    const pending = processMonitorPromises.get(connectionId);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = (async () => {
+      const connection = await establishHiddenConnection(connectionId, "ProcessMonitor");
+
+      const runtime: ProcessMonitorRuntime = {
+        connection,
+        pollActive: false,
+        disposed: false
+      };
+
+      connection.onClose(() => {
+        if (runtime.disposed) return;
+        runtime.disposed = true;
+        runtime.pollActive = false;
+        if (runtime.pollTimer) { clearTimeout(runtime.pollTimer); runtime.pollTimer = undefined; }
+        processMonitorRuntimes.delete(connectionId);
+        processMonitorPromises.delete(connectionId);
+        logger.warn("[ProcessMonitor] hidden SSH disconnected unexpectedly", { connectionId });
+      });
+
+      processMonitorRuntimes.set(connectionId, runtime);
+
+      if (!hasVisibleTerminalAlive(connectionId)) {
+        await disposeProcessMonitorRuntime(connectionId);
+        throw new Error("可见 SSH 会话已关闭，Process Monitor 启动取消。");
+      }
+
+      logger.info("[ProcessMonitor] runtime ready", { connectionId });
+      return runtime;
+    })();
+
+    processMonitorPromises.set(connectionId, promise);
+    try {
+      return await promise;
+    } catch (error) {
+      await disposeProcessMonitorRuntime(connectionId);
+      throw error;
+    } finally {
+      processMonitorPromises.delete(connectionId);
+    }
+  };
+
+  // ─── Session ③ Network Monitor: ensure ────────────────────────────────────
+
+  const ensureNetworkMonitorRuntime = async (connectionId: string): Promise<NetworkMonitorRuntime> => {
+    const existing = networkMonitorRuntimes.get(connectionId);
+    if (existing && !existing.disposed) {
+      return existing;
+    }
+
+    const pending = networkMonitorPromises.get(connectionId);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = (async () => {
+      const connection = await establishHiddenConnection(connectionId, "NetworkMonitor");
+      const shellChannel = await connection.openShell({ cols: 120, rows: 40, term: "xterm-256color" });
+      await initializeMonitorShell(connectionId, shellChannel);
+
+      const runtime: NetworkMonitorRuntime = {
+        connection,
+        shellChannel,
+        commandQueue: Promise.resolve(),
+        consecutiveFailures: 0,
+        disposed: false
+      };
+
+      connection.onClose(() => {
+        if (runtime.disposed) return;
+        runtime.disposed = true;
+        if (runtime.networkTimer) { clearTimeout(runtime.networkTimer); runtime.networkTimer = undefined; }
+        runtime.networkTimerActive = false;
+        networkMonitorRuntimes.delete(connectionId);
+        networkMonitorPromises.delete(connectionId);
+        logger.warn("[NetworkMonitor] hidden SSH disconnected unexpectedly", { connectionId });
+      });
+
+      shellChannel.on("close", () => {
+        if (runtime.disposed) return;
+        runtime.disposed = true;
+        if (runtime.networkTimer) { clearTimeout(runtime.networkTimer); runtime.networkTimer = undefined; }
+        runtime.networkTimerActive = false;
+        networkMonitorRuntimes.delete(connectionId);
+        networkMonitorPromises.delete(connectionId);
+        // Shell closed — also close the SSH connection to avoid dangling sessions
+        void connection.close().catch(() => {});
+        logger.warn("[NetworkMonitor] hidden shell closed, closing SSH connection", { connectionId });
+      });
+
+      networkMonitorRuntimes.set(connectionId, runtime);
+
+      if (!hasVisibleTerminalAlive(connectionId)) {
+        await disposeNetworkMonitorRuntime(connectionId);
+        throw new Error("可见 SSH 会话已关闭，Network Monitor 启动取消。");
+      }
+
+      logger.info("[NetworkMonitor] runtime ready", { connectionId });
+      return runtime;
+    })();
+
+    networkMonitorPromises.set(connectionId, promise);
+    try {
+      return await promise;
+    } catch (error) {
+      await disposeNetworkMonitorRuntime(connectionId);
+      throw error;
+    } finally {
+      networkMonitorPromises.delete(connectionId);
+    }
+  };
+
+  // ─── Session ④ Ad-hoc: ensure ─────────────────────────────────────────────
+
+  const resetAdhocIdleTimer = (connectionId: string, runtime: AdhocSessionRuntime): void => {
+    if (runtime.idleTimer) {
+      clearTimeout(runtime.idleTimer);
+    }
+    runtime.lastUsedAt = Date.now();
+    runtime.idleTimer = setTimeout(() => {
+      logger.info("[AdhocSession] idle timeout, disposing", { connectionId });
+      void disposeAdhocSession(connectionId);
+    }, ADHOC_IDLE_TIMEOUT_MS);
+  };
+
+  const ensureAdhocSession = async (connectionId: string): Promise<AdhocSessionRuntime> => {
+    const existing = adhocSessionRuntimes.get(connectionId);
+    if (existing && !existing.disposed) {
+      resetAdhocIdleTimer(connectionId, existing);
+      return existing;
+    }
+
+    const pending = adhocSessionPromises.get(connectionId);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = (async () => {
+      const connection = await establishHiddenConnection(connectionId, "AdhocSession");
+
+      const runtime: AdhocSessionRuntime = {
+        connection,
+        lastUsedAt: Date.now(),
+        disposed: false
+      };
+
+      connection.onClose(() => {
+        if (runtime.disposed) return;
+        runtime.disposed = true;
+        if (runtime.idleTimer) { clearTimeout(runtime.idleTimer); runtime.idleTimer = undefined; }
+        adhocSessionRuntimes.delete(connectionId);
+        adhocSessionPromises.delete(connectionId);
+        logger.info("[AdhocSession] hidden SSH disconnected", { connectionId });
+      });
+
+      adhocSessionRuntimes.set(connectionId, runtime);
+      resetAdhocIdleTimer(connectionId, runtime);
+
+      logger.info("[AdhocSession] runtime ready", { connectionId });
+      return runtime;
+    })();
+
+    adhocSessionPromises.set(connectionId, promise);
+    try {
+      return await promise;
+    } catch (error) {
+      await disposeAdhocSession(connectionId);
+      throw error;
+    } finally {
+      adhocSessionPromises.delete(connectionId);
     }
   };
 
@@ -1602,19 +1930,27 @@ export const createServiceContainer = (
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
 
-  const execInMonitorShell = async (
+  // ─── Shell command execution (for System & Network sessions) ───────────────
+
+  /**
+   * Execute a command in an interactive monitor shell, serialized via its
+   * commandQueue.  Works for either SystemMonitorRuntime or NetworkMonitorRuntime.
+   */
+  const execInShellRuntime = async (
     connectionId: string,
+    shellChannel: SshShellChannel,
+    runtime: { commandQueue: Promise<void>; disposed: boolean; consecutiveFailures: number },
     command: string,
+    tag: string,
     timeoutMs = MONITOR_COMMAND_TIMEOUT_MS
   ): Promise<{ stdout: string; exitCode: number }> => {
-    const runtime = await ensureMonitorRuntime(connectionId);
     if (runtime.disposed) {
-      throw new Error("Monitor Session 后台 shell 不可用。");
+      throw new Error(`${tag} 后台 shell 不可用。`);
     }
 
     const run = async (): Promise<{ stdout: string; exitCode: number }> => {
       if (runtime.disposed) {
-        throw new Error("Monitor Session 后台 shell 已销毁。");
+        throw new Error(`${tag} 后台 shell 已销毁。`);
       }
 
       return new Promise<{ stdout: string; exitCode: number }>((resolve, reject) => {
@@ -1630,8 +1966,8 @@ export const createServiceContainer = (
 
         const cleanup = () => {
           clearTimeout(timeout);
-          runtime.monitorShellChannel.off("data", onChunk);
-          runtime.monitorShellChannel.stderr.off("data", onChunk);
+          shellChannel.off("data", onChunk);
+          shellChannel.stderr.off("data", onChunk);
         };
 
         const fail = (error: Error) => {
@@ -1689,11 +2025,11 @@ export const createServiceContainer = (
         };
 
         const timeout = setTimeout(() => {
-          fail(new Error("Monitor Session 后台命令执行超时。"));
+          fail(new Error(`${tag} 后台命令执行超时。`));
         }, timeoutMs);
 
-        runtime.monitorShellChannel.on("data", onChunk);
-        runtime.monitorShellChannel.stderr.on("data", onChunk);
+        shellChannel.on("data", onChunk);
+        shellChannel.stderr.on("data", onChunk);
 
         const wrappedCommand =
           `printf '%s\\n' '${beginMarker}'; ` +
@@ -1702,7 +2038,7 @@ export const createServiceContainer = (
           `printf '%s%s\\n' '${exitMarkerPrefix}' \"$__NS_CMD_EXIT_CODE\"; ` +
           `printf '%s\\n' '${endMarker}'`;
 
-        runtime.monitorShellChannel.write(`${wrappedCommand}\n`);
+        shellChannel.write(`${wrappedCommand}\n`);
       });
     };
 
@@ -1713,15 +2049,64 @@ export const createServiceContainer = (
     );
 
     try {
-      return await queued;
+      const result = await queued;
+      runtime.consecutiveFailures = 0;
+      return result;
     } catch (error) {
       const reason = normalizeError(error);
-      logger.warn("[MonitorSession] hidden shell command failed", { connectionId, reason });
-      if (reason.includes("超时") || reason.includes("closed")) {
-        await disposeMonitorRuntime(connectionId);
+      logger.warn(`[${tag}] hidden shell command failed`, { connectionId, reason });
+
+      runtime.consecutiveFailures += 1;
+
+      if (reason.includes("closed")) {
+        // Shell channel closed — must dispose this session
+        if (tag === "SystemMonitor") {
+          await disposeSystemMonitorRuntime(connectionId);
+        } else if (tag === "NetworkMonitor") {
+          await disposeNetworkMonitorRuntime(connectionId);
+        }
+      } else if (reason.includes("超时")) {
+        // Timeout — try to interrupt the current command, don't dispose immediately
+        try { shellChannel.write("\x03\n"); } catch { /* ignore */ }
+        logger.warn(`[${tag}] command timed out, sent Ctrl+C`, { connectionId });
+
+        if (runtime.consecutiveFailures >= MONITOR_MAX_CONSECUTIVE_FAILURES) {
+          logger.error(`[${tag}] too many consecutive failures, disposing`, { connectionId });
+          if (tag === "SystemMonitor") {
+            await disposeSystemMonitorRuntime(connectionId);
+          } else if (tag === "NetworkMonitor") {
+            await disposeNetworkMonitorRuntime(connectionId);
+          }
+        }
       }
+
       throw error;
     }
+  };
+
+  /**
+   * Execute a command in the System Monitor shell (Session ①).
+   * This is the primary hidden session for periodic system probes.
+   */
+  const execInMonitorShell = async (
+    connectionId: string,
+    command: string,
+    timeoutMs = MONITOR_COMMAND_TIMEOUT_MS
+  ): Promise<{ stdout: string; exitCode: number }> => {
+    const runtime = await ensureSystemMonitorRuntime(connectionId);
+    return execInShellRuntime(connectionId, runtime.shellChannel, runtime, command, "SystemMonitor", timeoutMs);
+  };
+
+  /**
+   * Execute a command in the Network Monitor shell (Session ③).
+   */
+  const execInNetworkShell = async (
+    connectionId: string,
+    command: string,
+    timeoutMs = MONITOR_COMMAND_TIMEOUT_MS
+  ): Promise<{ stdout: string; exitCode: number }> => {
+    const runtime = await ensureNetworkMonitorRuntime(connectionId);
+    return execInShellRuntime(connectionId, runtime.shellChannel, runtime, command, "NetworkMonitor", timeoutMs);
   };
 
   const warmupSftp = async (
@@ -2990,31 +3375,59 @@ export const createServiceContainer = (
   };
 
   const probeMonitorSnapshot = async (connectionId: string): Promise<MonitorSnapshot> => {
-    const uptime = await runMonitorCommand(connectionId, MONITOR_UPTIME_COMMAND);
-    const loadAverage = await runMonitorCommand(connectionId, MONITOR_LOADAVG_COMMAND);
-    const cpuStat = await runMonitorCommand(connectionId, MONITOR_CPU_STAT_COMMAND);
-    const cpuTop = await runMonitorCommand(connectionId, MONITOR_CPU_TOP_COMMAND);
-    const meminfo = await runMonitorCommand(connectionId, MONITOR_MEMINFO_COMMAND);
-    const free = await runMonitorCommand(connectionId, MONITOR_FREE_COMMAND);
-    const disk = await runMonitorCommand(connectionId, MONITOR_DISK_COMMAND);
-    const netIfacesRaw = await runMonitorCommand(connectionId, MONITOR_NET_INTERFACES_COMMAND);
-    const networkInterfaceOptions = parseNetworkInterfaceList(netIfacesRaw);
-    const networkInterface = await resolveSystemNetworkInterface(connectionId, networkInterfaceOptions);
-    const networkCounters = await runMonitorCommand(connectionId, buildNetCountersCommand(networkInterface));
-    const process = await runMonitorCommand(connectionId, MONITOR_SYSTEM_PROCESS_COMMAND);
+    // Resolve the current network interface first (may be cached in state)
+    const state = monitorStates.get(connectionId);
+    const cachedInterface = state?.selectedNetworkInterface;
+
+    // If we don't have a cached interface, run a lightweight pre-query
+    // to discover interfaces. Otherwise use the compound command directly.
+    let networkInterface: string;
+    let networkInterfaceOptions: string[];
+
+    if (cachedInterface) {
+      networkInterface = cachedInterface;
+      networkInterfaceOptions = state.networkInterfaceOptions ?? [cachedInterface];
+    } else {
+      // For the first call, we need interface list from the probe itself;
+      // use "eth0" as fallback in the compound command, then correct afterward.
+      networkInterface = "eth0";
+      networkInterfaceOptions = [];
+    }
+
+    const compoundCmd = buildSystemProbeCommand(networkInterface);
+    const raw = await runMonitorCommand(connectionId, compoundCmd);
+    const sections = parseCompoundOutput(raw);
+
+    // Parse interface list from compound output
+    const netIfacesRaw = sections.get("NETIFACES") ?? "";
+    const parsedOptions = parseNetworkInterfaceList(netIfacesRaw);
+    if (parsedOptions.length > 0) {
+      networkInterfaceOptions = parsedOptions;
+    }
+
+    // If we didn't have a cached interface, resolve one now from the probe data
+    if (!cachedInterface) {
+      const defaultIfaceRaw = sections.get("NETDEFAULT") ?? "";
+      const defaultIface = normalizeNetworkInterfaceName(defaultIfaceRaw.split(/\r?\n/)[0] ?? "");
+      if (defaultIface && networkInterfaceOptions.includes(defaultIface)) {
+        networkInterface = defaultIface;
+      } else if (networkInterfaceOptions.length > 0) {
+        networkInterface = networkInterfaceOptions[0]!;
+      }
+    }
 
     const probe = parseMonitorProbe({
-      uptime,
-      loadAverage,
-      cpuStat,
-      cpuTop,
-      meminfo,
-      free,
-      disk,
+      uptime: sections.get("UPTIME") ?? "",
+      loadAverage: sections.get("LOADAVG") ?? "",
+      cpuStat: sections.get("CPUSTAT") ?? "",
+      cpuTop: sections.get("CPUTOP") ?? "",
+      meminfo: sections.get("MEMINFO") ?? "",
+      free: sections.get("FREE") ?? "",
+      disk: sections.get("DISK") ?? "",
       networkInterface,
       networkInterfaceOptions,
-      networkCounters,
-      process
+      networkCounters: sections.get("NETCOUNTERS") ?? "",
+      process: sections.get("PROCESSES") ?? ""
     });
 
     return buildMonitorSnapshot(connectionId, probe);
@@ -3026,16 +3439,30 @@ export const createServiceContainer = (
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    const runtime = await ensureMonitorRuntime(connectionId);
-    if (runtime.timers.systemTimer) {
+    const runtime = await ensureSystemMonitorRuntime(connectionId);
+
+    // Already running?
+    if (runtime.systemTimerActive) {
       return { ok: true };
     }
+    runtime.systemTimerActive = true;
+
+    const scheduleNext = () => {
+      if (runtime.disposed || !runtime.systemTimerActive) return;
+      runtime.systemTimer = setTimeout(() => void poll(), MONITOR_SYSTEM_INTERVAL_MS);
+    };
 
     const poll = async () => {
+      if (runtime.disposed || !runtime.systemTimerActive) return;
+
       try {
         const snapshot = await probeMonitorSnapshot(connectionId);
         if (!sender.isDestroyed()) {
           sender.send(IPCChannel.MonitorSystemData, snapshot);
+        } else {
+          // Sender gone — stop polling
+          runtime.systemTimerActive = false;
+          return;
         }
       } catch (error) {
         logger.warn("[SystemMonitor] poll failed", {
@@ -3043,19 +3470,25 @@ export const createServiceContainer = (
           reason: normalizeError(error)
         });
       }
+
+      // Schedule next poll only AFTER the current one completes (setTimeout, not setInterval)
+      scheduleNext();
     };
 
+    // Fire first poll immediately, then chain via setTimeout
     void poll();
-    runtime.timers.systemTimer = setInterval(() => void poll(), MONITOR_SYSTEM_INTERVAL_MS);
     logger.info("[SystemMonitor] started", { connectionId });
     return { ok: true };
   };
 
   const stopSystemMonitor = (connectionId: string): { ok: true } => {
-    const runtime = monitorRuntimes.get(connectionId);
-    if (runtime?.timers.systemTimer) {
-      clearInterval(runtime.timers.systemTimer);
-      runtime.timers.systemTimer = undefined;
+    const runtime = systemMonitorRuntimes.get(connectionId);
+    if (runtime) {
+      runtime.systemTimerActive = false;
+      if (runtime.systemTimer) {
+        clearTimeout(runtime.systemTimer);
+        runtime.systemTimer = undefined;
+      }
       logger.info("[SystemMonitor] stopped", { connectionId });
     }
     return { ok: true };
@@ -3067,7 +3500,7 @@ export const createServiceContainer = (
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
+    await ensureSystemMonitorRuntime(connectionId);
 
     const normalized = normalizeNetworkInterfaceName(networkInterface);
     if (!normalized) {
@@ -3097,13 +3530,15 @@ export const createServiceContainer = (
   const getMonitorSnapshot = async (connectionId: string): Promise<MonitorSnapshot> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
+    await ensureSystemMonitorRuntime(connectionId);
     return probeMonitorSnapshot(connectionId);
   };
 
   const assertSystemInfoLinuxHost = async (connectionId: string): Promise<void> => {
-    const raw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
-    const platform = raw.trim().split(/\s+/)[0] ?? "";
+    // Use ad-hoc session for one-off checks
+    const adhoc = await ensureAdhocSession(connectionId);
+    const result = await adhoc.connection.exec(MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
+    const platform = result.stdout.trim().split(/\s+/)[0] ?? "";
     if (platform !== "Linux") {
       throw new Error("系统信息标签页当前仅支持 Linux 主机");
     }
@@ -3112,32 +3547,28 @@ export const createServiceContainer = (
   const getSystemInfoSnapshot = async (connectionId: string): Promise<SystemInfoSnapshot> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
     await assertSystemInfoLinuxHost(connectionId);
 
-    const osReleaseRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND);
-    const hostnameRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_HOSTNAME_COMMAND);
-    const kernelNameRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
-    const kernelVersionRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_KERNEL_VERSION_COMMAND);
-    const architectureRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_ARCH_COMMAND);
-    const cpuInfoRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_CPUINFO_COMMAND);
-    const memInfoRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_MEMINFO_COMMAND);
-    const netDevRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_NET_DEV_COMMAND);
-    const filesystemsRaw = await runMonitorCommand(connectionId, MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND);
+    // Use ad-hoc session with compound command (9 commands → 1 exec)
+    const adhoc = await ensureAdhocSession(connectionId);
+    const compoundCmd = buildSystemInfoCommand();
+    const result = await adhoc.connection.exec(compoundCmd);
+    const sections = parseCompoundOutput(result.stdout);
 
+    const memInfoRaw = sections.get("MEMINFO") ?? "";
     const totals = parseMeminfoTotals(memInfoRaw);
     return {
       connectionId,
-      hostname: hostnameRaw.trim() || "unknown",
-      osName: parseOsReleaseName(osReleaseRaw),
-      kernelName: kernelNameRaw.trim() || "Linux",
-      kernelVersion: kernelVersionRaw.trim() || "unknown",
-      architecture: architectureRaw.trim() || "unknown",
-      cpu: parseCpuInfo(cpuInfoRaw),
+      hostname: (sections.get("HOSTNAME") ?? "").trim() || "unknown",
+      osName: parseOsReleaseName(sections.get("OSRELEASE") ?? ""),
+      kernelName: (sections.get("KERNELNAME") ?? "").trim() || "Linux",
+      kernelVersion: (sections.get("KERNELVER") ?? "").trim() || "unknown",
+      architecture: (sections.get("ARCH") ?? "").trim() || "unknown",
+      cpu: parseCpuInfo(sections.get("CPUINFO") ?? ""),
       memoryTotalKb: totals.memoryTotalKb,
       swapTotalKb: totals.swapTotalKb,
-      networkInterfaces: parseNetworkInterfaceTotals(netDevRaw),
-      filesystems: parseFilesystemEntries(filesystemsRaw),
+      networkInterfaces: parseNetworkInterfaceTotals(sections.get("NETDEV") ?? ""),
+      filesystems: parseFilesystemEntries(sections.get("FILESYSTEMS") ?? ""),
       capturedAt: new Date().toISOString()
     };
   };
@@ -3617,140 +4048,63 @@ export const createServiceContainer = (
   // ─── Process Monitor ──────────────────────────────────────────────────────
 
   const assertLinuxHost = async (connectionId: string): Promise<void> => {
-    const { stdout, exitCode } = await execInMonitorShell(connectionId, MONITOR_LINUX_CHECK_COMMAND);
-    const platform = stdout.trim().split(/\s+/)[0] ?? "";
-    if (exitCode !== 0 || platform !== "Linux") {
+    // Use ad-hoc session for one-off assertions to avoid blocking System Monitor
+    const adhoc = await ensureAdhocSession(connectionId);
+    const result = await adhoc.connection.exec(MONITOR_LINUX_CHECK_COMMAND);
+    const platform = result.stdout.trim().split(/\s+/)[0] ?? "";
+    if (result.exitCode !== 0 || platform !== "Linux") {
       throw new Error("当前模式仅支持 Linux");
     }
   };
 
-  const assertTopAvailable = async (connectionId: string): Promise<void> => {
-    const { exitCode } = await execInMonitorShell(connectionId, MONITOR_TOP_CHECK_COMMAND);
-    if (exitCode !== 0) {
-      throw new Error("当前主机缺少 top 命令，无法启动任务管理器。");
-    }
-  };
+  // ─── ps output parser ──────────────────────────────────────────────────────
 
-  const parseTopResidentMb = (raw: string): number => {
-    const normalized = raw.trim().toLowerCase().replace(/,/g, "");
-    if (!normalized) {
-      return 0;
-    }
-
-    const match = normalized.match(/^([0-9]*\.?[0-9]+)([kmgt]?)$/);
-    if (!match?.[1]) {
-      return 0;
-    }
-
-    const value = Number.parseFloat(match[1]);
-    if (!Number.isFinite(value)) {
-      return 0;
-    }
-
-    const unit = match[2] ?? "";
-    const multiplierMb =
-      unit === "t"
-        ? 1024 * 1024
-        : unit === "g"
-          ? 1024
-          : unit === "m"
-            ? 1
-            : unit === "k" || unit === ""
-              ? 1 / 1024
-              : 0;
-
-    return Number((value * multiplierMb).toFixed(1));
-  };
-
-  const extractTopFrames = (buffer: string): { frames: string[]; remaining: string } => {
-    const normalized = buffer.replace(/\r/g, "");
-    const starts: number[] = [];
-    const startRegex = /^top - /gm;
-    let match: RegExpExecArray | null = startRegex.exec(normalized);
-
-    while (match) {
-      starts.push(match.index);
-      match = startRegex.exec(normalized);
-    }
-
-    if (starts.length === 0) {
-      return {
-        frames: [],
-        remaining: normalized.slice(-MONITOR_MAX_BUFFER_BYTES)
-      };
-    }
-
-    if (starts.length === 1) {
-      const remaining = normalized.slice(starts[0]);
-      return {
-        frames: [],
-        remaining: remaining.slice(-MONITOR_MAX_BUFFER_BYTES)
-      };
-    }
-
-    const frames: string[] = [];
-    for (let index = 0; index < starts.length - 1; index += 1) {
-      const begin = starts[index];
-      const end = starts[index + 1];
-      if (begin === undefined || end === undefined) {
-        continue;
-      }
-      const frame = normalized.slice(begin, end).trim();
-      if (frame) {
-        frames.push(frame);
-      }
-    }
-
-    const lastStart = starts[starts.length - 1];
-    const remaining = lastStart === undefined
-      ? normalized.slice(-MONITOR_MAX_BUFFER_BYTES)
-      : normalized.slice(lastStart).slice(-MONITOR_MAX_BUFFER_BYTES);
-
-    return { frames, remaining };
-  };
-
-  const parseTopFrame = (connectionId: string, frame: string): ProcessSnapshot => {
-    const lines = frame.split("\n");
-    const headerIndex = lines.findIndex((line) => /^PID\s+USER\b/.test(line.trim()));
-    if (headerIndex < 0) {
-      throw new Error("top 帧缺少进程表头");
-    }
-
+  /**
+   * Parse the output of:
+   *   LC_ALL=C ps -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,comm --no-headers --sort=-pcpu
+   *
+   * Each line has 12+ columns (comm may contain spaces, so we join the tail).
+   */
+  const parsePsOutput = (connectionId: string, stdout: string): ProcessSnapshot => {
+    const lines = stdout.split(/\r?\n/);
     const processes: MonitorProcess[] = [];
 
-    for (let index = headerIndex + 1; index < lines.length; index += 1) {
-      const line = (lines[index] ?? "").trim();
-      if (!line || /^top - /.test(line) || !/^\d+\s+/.test(line)) {
-        continue;
-      }
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || !/^\d/.test(line)) continue;
 
-      const columns = line.split(/\s+/);
-      if (columns.length < 12) {
-        continue;
-      }
+      const cols = line.split(/\s+/);
+      if (cols.length < 12) continue;
 
-      const pid = parseIntSafe(columns[0]);
-      if (pid <= 0) {
-        continue;
-      }
+      const pid = parseIntSafe(cols[0]);
+      if (pid <= 0) continue;
 
-      const user = columns[1] ?? "unknown";
-      const residentRaw = columns[5] ?? "0";
-      const cpuRaw = columns[8] ?? "0";
-      const command = columns.slice(11).join(" ") || columns[11] || "unknown";
+      const ppid = parseIntSafe(cols[1]);
+      const user = cols[2] ?? "unknown";
+      const stat = cols[3] ?? "-";
+      const nice = parseIntSafe(cols[4]);
+      const priority = parseIntSafe(cols[5]);
+      const cpuPercent = parseFloatSafe(cols[6]);
+      const memoryPercent = parseFloatSafe(cols[7]);
+      const rssKb = parseFloatSafe(cols[8]);
+      const vszKb = parseFloatSafe(cols[9]);
+      const etimeSeconds = parseIntSafe(cols[10]);
+      const command = cols.slice(11).join(" ") || "unknown";
 
       processes.push({
         pid,
+        ppid,
         user,
-        command,
-        commandLine: command,
-        cpuPercent: parseFloatSafe(cpuRaw),
-        memoryMb: parseTopResidentMb(residentRaw)
+        stat,
+        nice,
+        priority,
+        cpuPercent: Number(cpuPercent.toFixed(1)),
+        memoryPercent: Number(memoryPercent.toFixed(1)),
+        memoryMb: Number((rssKb / 1024).toFixed(1)),
+        vszMb: Number((vszKb / 1024).toFixed(1)),
+        elapsedSeconds: etimeSeconds,
+        command
       });
-
-      if (processes.length >= MONITOR_PROCESS_TOP_MAX_ROWS) {
-        break;
-      }
     }
 
     return {
@@ -3809,114 +4163,74 @@ export const createServiceContainer = (
     };
   };
 
+  // ─── Process Monitor: ps-based polling ────────────────────────────────────
+
   const startProcessMonitorInner = async (
     connectionId: string,
     sender: WebContents
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    const runtime = await ensureMonitorRuntime(connectionId);
+
+    const runtime = await ensureProcessMonitorRuntime(connectionId);
 
     if (runtime.disposed) {
-      throw new Error("Monitor runtime already disposed");
+      throw new Error("Process Monitor runtime already disposed");
     }
 
-    if (runtime.processTopStream && !runtime.processTopStream.disposed) {
-      runtime.processTopStream.sender = sender;
+    // Already polling — just update the sender
+    if (runtime.pollActive) {
+      runtime.sender = sender;
       return { ok: true };
     }
 
     await assertLinuxHost(connectionId);
-    await assertTopAvailable(connectionId);
-
-    if (runtime.disposed || (runtime.processTopStream && !runtime.processTopStream.disposed)) {
-      if (runtime.processTopStream) {
-        runtime.processTopStream.sender = sender;
-      }
-      return { ok: true };
-    }
-
-    const channel = await runtime.monitorConnection.openShell({
-      cols: 200,
-      rows: 60,
-      term: "dumb"
-    });
 
     if (runtime.disposed) {
-      try { channel.end(); } catch { /* ignore */ }
-      throw new Error("Monitor runtime disposed during startup");
+      throw new Error("Process Monitor runtime disposed during startup");
     }
 
-    const stream: ProcessTopStreamRuntime = {
-      channel,
-      sender,
-      buffer: "",
-      disposed: false,
-      dataListener: () => {},
-      errorListener: () => {},
-      closeListener: () => {}
+    runtime.sender = sender;
+    runtime.pollActive = true;
+
+    const scheduleNext = () => {
+      if (runtime.disposed || !runtime.pollActive) return;
+      runtime.pollTimer = setTimeout(() => void poll(), MONITOR_PROCESS_INTERVAL_MS);
     };
 
-    stream.dataListener = (chunk: Buffer | string) => {
-      if (stream.disposed) {
-        return;
-      }
+    const poll = async () => {
+      if (runtime.disposed || !runtime.pollActive) return;
 
-      stream.buffer += chunk.toString();
-      const { frames, remaining } = extractTopFrames(stream.buffer);
-      stream.buffer = remaining;
+      try {
+        const result = await runtime.connection.exec(MONITOR_PROCESS_PS_COMMAND);
+        if (runtime.disposed || !runtime.pollActive) return;
 
-      for (const frame of frames) {
-        try {
-          const snapshot = parseTopFrame(connectionId, frame);
-          if (!stream.sender.isDestroyed()) {
-            stream.sender.send(IPCChannel.MonitorProcessData, snapshot);
+        if (result.exitCode !== 0) {
+          logger.debug("[ProcessMonitor] ps failed", { connectionId, exitCode: result.exitCode });
+        } else {
+          const snapshot = parsePsOutput(connectionId, result.stdout);
+          if (runtime.sender && !runtime.sender.isDestroyed()) {
+            runtime.sender.send(IPCChannel.MonitorProcessData, snapshot);
           } else {
-            stopProcessTopStream(connectionId, runtime, "sender_destroyed");
+            // Sender gone — stop polling and dispose
+            runtime.pollActive = false;
+            void disposeProcessMonitorRuntime(connectionId);
             return;
           }
-        } catch (error) {
-          logger.debug("[ProcessMonitor] top frame parse failed", {
-            connectionId,
-            reason: normalizeError(error)
-          });
         }
-      }
-    };
-
-    stream.errorListener = (error: unknown) => {
-      if (stream.disposed) {
-        return;
-      }
-
-      logger.warn("[ProcessMonitor] top stream error", {
-        connectionId,
-        reason: normalizeError(error)
-      });
-      stopProcessTopStream(connectionId, runtime, "channel_error");
-    };
-
-    stream.closeListener = () => {
-      if (stream.disposed) {
-        return;
+      } catch (error) {
+        logger.warn("[ProcessMonitor] poll failed", {
+          connectionId,
+          reason: normalizeError(error)
+        });
       }
 
-      logger.warn("[ProcessMonitor] top stream closed unexpectedly", { connectionId });
-      stopProcessTopStream(connectionId, runtime, "channel_closed");
+      scheduleNext();
     };
 
-    channel.on("data", stream.dataListener);
-    channel.on("error", stream.errorListener);
-    channel.on("close", stream.closeListener);
-
-    runtime.processTopStream = stream;
-    channel.write(
-      "unset HISTFILE 2>/dev/null || true; " +
-      "set +o history 2>/dev/null || true; " +
-      `stty -echo 2>/dev/null || true; export PS1=''; export PROMPT_COMMAND=''; ${MONITOR_PROCESS_TOP_STREAM_COMMAND}\n`
-    );
-
-    logger.info("[ProcessMonitor] started", { connectionId });
+    // Fire first poll immediately
+    void poll();
+    logger.info("[ProcessMonitor] started (ps polling)", { connectionId });
     return { ok: true };
   };
 
@@ -3924,23 +4238,23 @@ export const createServiceContainer = (
     connectionId: string,
     sender: WebContents
   ): Promise<{ ok: true }> => {
-    const runtime = monitorRuntimes.get(connectionId);
-    if (runtime?.processTopStarting) {
-      return runtime.processTopStarting.then(() => {
-        if (runtime.processTopStream && !runtime.processTopStream.disposed) {
-          runtime.processTopStream.sender = sender;
+    const runtime = processMonitorRuntimes.get(connectionId);
+    if (runtime?.starting) {
+      return runtime.starting.then(() => {
+        if (runtime.pollActive) {
+          runtime.sender = sender;
         }
         return { ok: true } as const;
       });
     }
 
     const promise = startProcessMonitorInner(connectionId, sender);
-    const runtimeAfter = monitorRuntimes.get(connectionId);
+    const runtimeAfter = processMonitorRuntimes.get(connectionId);
     if (runtimeAfter) {
-      runtimeAfter.processTopStarting = promise;
+      runtimeAfter.starting = promise;
       void promise.finally(() => {
-        if (runtimeAfter.processTopStarting === promise) {
-          runtimeAfter.processTopStarting = undefined;
+        if (runtimeAfter.starting === promise) {
+          runtimeAfter.starting = undefined;
         }
       });
     }
@@ -3948,10 +4262,16 @@ export const createServiceContainer = (
   };
 
   const stopProcessMonitor = (connectionId: string): { ok: true } => {
-    const runtime = monitorRuntimes.get(connectionId);
+    const runtime = processMonitorRuntimes.get(connectionId);
     if (runtime) {
-      runtime.processTopStarting = undefined;
-      stopProcessTopStream(connectionId, runtime, "manual");
+      runtime.starting = undefined;
+      runtime.pollActive = false;
+      if (runtime.pollTimer) {
+        clearTimeout(runtime.pollTimer);
+        runtime.pollTimer = undefined;
+      }
+      // Fully dispose the Process Monitor session to release the SSH connection
+      void disposeProcessMonitorRuntime(connectionId);
     }
     return { ok: true };
   };
@@ -3962,9 +4282,9 @@ export const createServiceContainer = (
   ): Promise<ProcessDetailSnapshot> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
-    await assertLinuxHost(connectionId);
-    await assertTopAvailable(connectionId);
+
+    // Use ad-hoc session for on-demand detail queries
+    const adhoc = await ensureAdhocSession(connectionId);
 
     const normalizedPid = Math.trunc(pid);
     if (normalizedPid < 1) {
@@ -3975,7 +4295,7 @@ export const createServiceContainer = (
       `ps -p ${normalizedPid} -o pid=,ppid=,user=,state=,%cpu=,%mem=,rss=,etime=,comm=`;
     const argsCommand = `ps -p ${normalizedPid} -o args=`;
 
-    const primary = await execInMonitorShell(connectionId, primaryCommand);
+    const primary = await adhoc.connection.exec(primaryCommand);
     if (primary.exitCode !== 0) {
       throw new Error("进程不存在或已结束");
     }
@@ -3985,7 +4305,7 @@ export const createServiceContainer = (
       throw new Error("进程不存在或已结束");
     }
 
-    const args = await execInMonitorShell(connectionId, argsCommand);
+    const args = await adhoc.connection.exec(argsCommand);
     const commandLine = args.exitCode === 0
       ? firstNonEmptyLine(args.stdout) ?? parsed.command
       : parsed.command;
@@ -4004,13 +4324,15 @@ export const createServiceContainer = (
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
+
+    // Use ad-hoc session for kill commands
+    const adhoc = await ensureAdhocSession(connectionId);
     if (signal !== "SIGTERM" && signal !== "SIGKILL") {
       throw new Error("Invalid signal");
     }
-    const { stdout, exitCode } = await execInMonitorShell(connectionId, `kill -${signal} ${pid} 2>&1`);
-    if (exitCode !== 0) {
-      throw new Error(`kill 失败 (exit ${exitCode}): ${stdout.trim() || "unknown error"}`);
+    const result = await adhoc.connection.exec(`kill -${signal} ${pid} 2>&1`);
+    if (result.exitCode !== 0) {
+      throw new Error(`kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`);
     }
     connections.appendAuditLog({
       action: "monitor.process_kill",
@@ -4030,13 +4352,14 @@ export const createServiceContainer = (
       return cached;
     }
 
-    const ssProbe = await execInMonitorShell(connectionId, "command -v ss >/dev/null 2>&1");
+    // Use Network Monitor's own shell (Session ③) for tool detection
+    const ssProbe = await execInNetworkShell(connectionId, "command -v ss >/dev/null 2>&1");
     if (ssProbe.exitCode === 0) {
       networkToolCache.set(connectionId, "ss");
       return "ss";
     }
 
-    const netstatProbe = await execInMonitorShell(connectionId, "command -v netstat >/dev/null 2>&1");
+    const netstatProbe = await execInNetworkShell(connectionId, "command -v netstat >/dev/null 2>&1");
     if (netstatProbe.exitCode === 0) {
       networkToolCache.set(connectionId, "netstat");
       return "netstat";
@@ -4243,28 +4566,30 @@ export const createServiceContainer = (
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    const runtime = await ensureMonitorRuntime(connectionId);
-    if (runtime.timers.networkTimerActive) {
+
+    // Session ③ — own SSH connection + shell for network monitoring
+    const runtime = await ensureNetworkMonitorRuntime(connectionId);
+    if (runtime.networkTimerActive) {
       return { ok: true };
     }
 
     const tool = await detectNetworkTool(connectionId);
-    runtime.timers.networkTimerActive = true;
+    runtime.networkTimerActive = true;
 
     const scheduleNextPoll = () => {
-      if (!runtime.timers.networkTimerActive) {
+      if (runtime.disposed || !runtime.networkTimerActive) {
         return;
       }
-      runtime.timers.networkTimer = setTimeout(() => void poll(), MONITOR_NETWORK_INTERVAL_MS);
+      runtime.networkTimer = setTimeout(() => void poll(), MONITOR_NETWORK_INTERVAL_MS);
     };
 
     const poll = async () => {
-      if (!runtime.timers.networkTimerActive) {
+      if (runtime.disposed || !runtime.networkTimerActive) {
         return;
       }
       try {
         const command = tool === "ss" ? NETWORK_PROBE_SS : NETWORK_PROBE_NETSTAT;
-        const { stdout, exitCode } = await execInMonitorShell(connectionId, command);
+        const { stdout, exitCode } = await execInNetworkShell(connectionId, command);
         if (exitCode !== 0) {
           throw new Error(`网络监控采样失败 (exit ${exitCode})`);
         }
@@ -4277,15 +4602,19 @@ export const createServiceContainer = (
         };
         if (!sender.isDestroyed()) {
           sender.send(IPCChannel.MonitorNetworkData, snapshot);
+        } else {
+          // Sender gone — stop polling
+          runtime.networkTimerActive = false;
+          return;
         }
       } catch (error) {
         logger.warn("[NetworkMonitor] poll failed", {
           connectionId,
           reason: normalizeError(error)
         });
-      } finally {
-        scheduleNextPoll();
       }
+
+      scheduleNextPoll();
     };
 
     void poll();
@@ -4295,13 +4624,15 @@ export const createServiceContainer = (
   };
 
   const stopNetworkMonitor = (connectionId: string): { ok: true } => {
-    const runtime = monitorRuntimes.get(connectionId);
-    if (runtime?.timers.networkTimerActive) {
-      runtime.timers.networkTimerActive = false;
-      if (runtime.timers.networkTimer) {
-        clearTimeout(runtime.timers.networkTimer);
-        runtime.timers.networkTimer = undefined;
+    const runtime = networkMonitorRuntimes.get(connectionId);
+    if (runtime) {
+      runtime.networkTimerActive = false;
+      if (runtime.networkTimer) {
+        clearTimeout(runtime.networkTimer);
+        runtime.networkTimer = undefined;
       }
+      // Fully dispose the Network Monitor session to release the SSH connection
+      void disposeNetworkMonitorRuntime(connectionId);
       logger.info("[NetworkMonitor] stopped", { connectionId });
     }
     return { ok: true };
@@ -4313,12 +4644,12 @@ export const createServiceContainer = (
   ): Promise<NetworkConnection[]> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureMonitorRuntime(connectionId);
+    await ensureNetworkMonitorRuntime(connectionId);
     const tool = await detectNetworkTool(connectionId);
     const command = tool === "ss"
       ? `export LANG=en_US.UTF-8; ss -tnap '( sport = :${port} )' 2>/dev/null`
       : `export LANG=en_US.UTF-8; netstat -tnp 2>/dev/null | awk 'NR>2 {split($4,a,\":\"); p=a[length(a)]; if (p==\"${port}\") print $0}'`;
-    const { stdout, exitCode } = await execInMonitorShell(connectionId, command);
+    const { stdout, exitCode } = await execInNetworkShell(connectionId, command);
     if (exitCode !== 0) {
       throw new Error(`网络连接查询失败 (exit ${exitCode})`);
     }
@@ -4423,14 +4754,19 @@ export const createServiceContainer = (
     // 先同步 flush 所有缓冲写入，避免后续 await 链未跑完就退出导致丢失
     connections.flush();
 
-    const runtimeConnectionIds = new Set([
+    // Dispose all hidden sessions for every connection that has any
+    const allConnectionIds = new Set([
+      ...systemMonitorRuntimes.keys(),
+      ...processMonitorRuntimes.keys(),
+      ...networkMonitorRuntimes.keys(),
+      ...adhocSessionRuntimes.keys(),
       ...monitorRuntimes.keys(),
       ...monitorConnections.keys()
     ]);
 
-    for (const connectionId of runtimeConnectionIds) {
-      await disposeMonitorRuntime(connectionId);
-    }
+    await Promise.all(
+      Array.from(allConnectionIds).map((connectionId) => disposeAllMonitorSessions(connectionId))
+    );
 
     await remoteEditManager.dispose();
 

@@ -80,7 +80,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   );
 
   const handleCopyRow = useCallback((record: MonitorProcess) => {
-    const text = `PID: ${record.pid}  User: ${record.user ?? "-"}  CPU: ${record.cpuPercent}%  MEM: ${record.memoryMb}MB  CMD: ${record.command}`;
+    const text = `PID: ${record.pid}  PPID: ${record.ppid}  User: ${record.user}  CPU: ${record.cpuPercent}%  MEM: ${record.memoryPercent}%  RSS: ${record.memoryMb}MB  STAT: ${record.stat}  CMD: ${record.command}`;
     void navigator.clipboard.writeText(text);
     message.success("已复制到剪贴板");
   }, []);
@@ -116,7 +116,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
         (p) =>
           String(p.pid).includes(lower) ||
           p.command.toLowerCase().includes(lower) ||
-          (p.user ?? "").toLowerCase().includes(lower)
+          p.user.toLowerCase().includes(lower)
       );
     }
 
@@ -129,34 +129,48 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
     return list;
   }, [processSnapshot, search, sortKey]);
 
+  const formatElapsed = (seconds: number): string => {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+    if (seconds < 86400) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      return `${h}h${m}m`;
+    }
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    return `${d}d${h}h`;
+  };
+
   const columns: ColumnsType<MonitorProcess> = [
     {
       title: "PID",
       dataIndex: "pid",
-      width: 80,
+      width: 72,
       sorter: (a, b) => a.pid - b.pid,
       render: (pid: number) => <span className="font-[var(--mono)] text-[11.5px]">{pid}</span>
     },
     {
       title: "用户",
       dataIndex: "user",
-      width: 90,
-      render: (user: string | undefined) => user ?? "-"
+      width: 84,
+      ellipsis: true,
+      render: (user: string) => user
     },
     {
-      title: "内存",
-      dataIndex: "memoryMb",
-      width: 90,
-      sorter: (a, b) => a.memoryMb - b.memoryMb,
-      render: (mb: number) => {
-        if (mb >= 1024) return `${(mb / 1024).toFixed(1)}G`;
-        return `${mb.toFixed(1)}M`;
-      }
+      title: "S",
+      dataIndex: "stat",
+      width: 42,
+      render: (stat: string) => (
+        <Tooltip title={`进程状态: ${stat}`}>
+          <span className="font-[var(--mono)] text-[11px]">{stat}</span>
+        </Tooltip>
+      )
     },
     {
       title: "CPU %",
       dataIndex: "cpuPercent",
-      width: 80,
+      width: 72,
       defaultSortOrder: "descend",
       sorter: (a, b) => a.cpuPercent - b.cpuPercent,
       render: (cpu: number) => (
@@ -166,9 +180,34 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
       )
     },
     {
+      title: "MEM %",
+      dataIndex: "memoryPercent",
+      width: 72,
+      sorter: (a, b) => a.memoryPercent - b.memoryPercent,
+      render: (mem: number) => mem.toFixed(1)
+    },
+    {
+      title: "RSS",
+      dataIndex: "memoryMb",
+      width: 76,
+      sorter: (a, b) => a.memoryMb - b.memoryMb,
+      render: (mb: number) => {
+        if (mb >= 1024) return `${(mb / 1024).toFixed(1)}G`;
+        return `${mb.toFixed(1)}M`;
+      }
+    },
+    {
+      title: "运行",
+      dataIndex: "elapsedSeconds",
+      width: 76,
+      sorter: (a, b) => a.elapsedSeconds - b.elapsedSeconds,
+      render: (s: number) => (
+        <span className="font-[var(--mono)] text-[11px]">{formatElapsed(s)}</span>
+      )
+    },
+    {
       title: "名称",
       dataIndex: "command",
-      width: 220,
       ellipsis: true
     },
     {

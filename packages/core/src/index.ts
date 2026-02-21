@@ -90,11 +90,17 @@ export interface RemoteFileEntry {
 
 export interface MonitorProcess {
   pid: number;
+  ppid: number;
   command: string;
   cpuPercent: number;
+  memoryPercent: number;
   memoryMb: number;
-  user?: string;
-  commandLine?: string;
+  user: string;
+  stat: string;
+  nice: number;
+  priority: number;
+  vszMb: number;
+  elapsedSeconds: number;
 }
 
 export interface ProcessSnapshot {
