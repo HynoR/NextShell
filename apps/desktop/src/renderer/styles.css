@@ -4962,6 +4962,11 @@ body {
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* ── CodeMirror Container ────────────────────────────── */
+.editor-pane-cm .cm-editor {
+  height: 100%;
+}
+
 .ri-spin {
   animation: ri-spin-keyframes 1s linear infinite;
 }

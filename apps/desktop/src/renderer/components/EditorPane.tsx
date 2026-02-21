@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import { monaco } from "../monaco-setup";
-import "../languages/toml";
-import { detectLanguage } from "../utils/detectLanguage";
+import { EditorView, basicSetup } from "codemirror";
+import { EditorState } from "@codemirror/state";
+import { keymap } from "@codemirror/view";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { getLanguageSupport } from "../utils/detectLanguage";
 import { useEditorTabStore } from "../store/useEditorTabStore";
 
 interface EditorPaneProps {
@@ -12,15 +14,15 @@ interface EditorPaneProps {
 
 export const EditorPane = ({ session }: EditorPaneProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
   const tab = useEditorTabStore((s) => s.getTab(session.id));
   const setDirty = useEditorTabStore((s) => s.setDirty);
   const setSaving = useEditorTabStore((s) => s.setSaving);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
 
   const handleSave = useCallback(async () => {
-    if (!tab || !editorRef.current) return;
-    const content = editorRef.current.getValue();
+    if (!tab || !viewRef.current) return;
+    const content = viewRef.current.state.doc.toString();
     setSaving(session.id, true);
     setSaveStatus("saving");
     try {
@@ -44,35 +46,43 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
   useEffect(() => {
     if (!containerRef.current || !tab) return;
 
-    const language = detectLanguage(tab.remotePath);
-    const editor = monaco.editor.create(containerRef.current, {
-      value: tab.initialContent,
-      language,
-      theme: "vs-dark",
-      automaticLayout: true,
-      fontSize: 14,
-      wordWrap: "on",
-      minimap: { enabled: true },
-      scrollBeyondLastLine: false,
-      renderWhitespace: "selection",
-      tabSize: 2,
+    const langSupport = getLanguageSupport(tab.remotePath);
+    const extensions = [
+      basicSetup,
+      oneDark,
+      EditorView.lineWrapping,
+      EditorView.theme({ "&": { fontSize: "14px" } }),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          setDirty(session.id, true);
+          setSaveStatus("unsaved");
+        }
+      }),
+      keymap.of([{
+        key: "Mod-s",
+        preventDefault: true,
+        run: () => {
+          void handleSave();
+          return true;
+        },
+      }]),
+    ];
+
+    if (langSupport) {
+      extensions.push(langSupport);
+    }
+
+    const state = EditorState.create({
+      doc: tab.initialContent,
+      extensions,
     });
 
-    editorRef.current = editor;
-
-    editor.onDidChangeModelContent(() => {
-      setDirty(session.id, true);
-      setSaveStatus("unsaved");
-    });
-
-    // Ctrl/Cmd+S
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      void handleSave();
-    });
+    const view = new EditorView({ state, parent: containerRef.current });
+    viewRef.current = view;
 
     return () => {
-      editor.dispose();
-      editorRef.current = null;
+      view.destroy();
+      viewRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab?.sessionId]);
@@ -105,7 +115,7 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
           保存
         </button>
       </div>
-      <div ref={containerRef} className="flex-1 min-h-0" />
+      <div ref={containerRef} className="flex-1 min-h-0 editor-pane-cm" />
     </div>
   );
 };

@@ -96,7 +96,9 @@ import type {
   TemplateParamsListInput,
   TemplateParamsUpsertInput,
   TemplateParamsClearInput,
-  UpdateCheckResult
+  UpdateCheckResult,
+  PingRequestInput,
+  PingResult
 } from "./contracts";
 
 export type SessionEventUnsubscribe = () => void;
@@ -221,6 +223,9 @@ export interface NextShellApi {
   };
   about: {
     checkUpdate: () => Promise<UpdateCheckResult>;
+  };
+  ping: {
+    probe: (payload: PingRequestInput) => Promise<PingResult>;
   };
   debug: {
     enableLog: () => Promise<{ ok: true }>;

@@ -70,7 +70,8 @@ import {
   proxyListSchema,
   proxyUpsertSchema,
   proxyRemoveSchema,
-  updateCheckSchema
+  updateCheckSchema,
+  pingRequestSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -477,6 +478,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.UpdateCheck, async (_event, payload) => {
     parsePayload(updateCheckSchema, payload ?? {}, "检查更新");
     return services.checkForUpdate();
+  });
+
+  ipcMain.handle(IPCChannel.Ping, async (_event, payload) => {
+    const input = parsePayload(pingRequestSchema, payload, "Ping");
+    return services.pingHost(input.host);
   });
 
   // ─── Debug Log ────────────────────────────────────────────────────────────

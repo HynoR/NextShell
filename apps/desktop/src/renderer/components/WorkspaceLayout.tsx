@@ -18,6 +18,7 @@ import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
 import { SessionAuthRetryModal } from "./SessionAuthRetryModal";
+import { PingCard } from "./PingCard";
 import { SystemInfoPanel } from "./SystemInfoPanel";
 import { SystemStaticInfoPane } from "./SystemStaticInfoPane";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
@@ -292,6 +293,7 @@ export const WorkspaceLayout = ({
                   }
                 />
               ) : null}
+              <PingCard host={activeConnection?.host} />
               <TransferQueuePanel
                 tasks={transferTasks}
                 collapsed={transferPanelCollapsed}

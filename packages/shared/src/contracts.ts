@@ -651,3 +651,12 @@ export interface UpdateCheckResult {
   releaseUrl: string | null;
   error: string | null;
 }
+
+export const pingRequestSchema = z.object({
+  host: z.string().trim().min(1).max(253)
+});
+export type PingRequestInput = z.infer<typeof pingRequestSchema>;
+
+export type PingResult =
+  | { ok: true; avgMs: number }
+  | { ok: false; error: string };

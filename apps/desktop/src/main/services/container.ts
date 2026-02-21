@@ -86,7 +86,7 @@ import {
   AUTH_REQUIRED_PREFIX,
   CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX
 } from "../../../../../packages/shared/src/index";
-import type { UpdateCheckResult } from "../../../../../packages/shared/src/index";
+import type { UpdateCheckResult, PingResult } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
@@ -213,6 +213,7 @@ export interface ServiceContainer {
   upsertProxy: (input: ProxyUpsertInput) => Promise<ProxyProfile>;
   removeProxy: (input: ProxyRemoveInput) => Promise<{ ok: true }>;
   checkForUpdate: () => Promise<UpdateCheckResult>;
+  pingHost: (host: string) => Promise<PingResult>;
   getAppPreferences: () => AppPreferences;
   updateAppPreferences: (patch: SettingsUpdateInput) => AppPreferences;
   openFilesDialog: (
@@ -2273,6 +2274,20 @@ export const createServiceContainer = (
         releaseUrl: null,
         error: error instanceof Error ? error.message : "检查更新失败"
       };
+    }
+  };
+
+  const pingHost = async (host: string): Promise<PingResult> => {
+    try {
+      const ping = await import("ping");
+      const res = await ping.promise.probe(host, { timeout: 3 });
+      if (res.alive && typeof res.time === "number") {
+        return { ok: true, avgMs: res.time };
+      }
+      return { ok: false, error: (res as { output?: string }).output ?? "不可达" };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Ping 失败";
+      return { ok: false, error: message };
     }
   };
 
@@ -4404,6 +4419,7 @@ export const createServiceContainer = (
     upsertProxy,
     removeProxy,
     checkForUpdate,
+    pingHost,
     getAppPreferences,
     updateAppPreferences,
     openFilesDialog,

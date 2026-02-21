@@ -187,6 +187,9 @@ const api: NextShellApi = {
   about: {
     checkUpdate: () => ipcRenderer.invoke(IPCChannel.UpdateCheck, {})
   },
+  ping: {
+    probe: (payload: { host: string }) => ipcRenderer.invoke(IPCChannel.Ping, payload)
+  },
   debug: {
     enableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogEnable, {}),
     disableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogDisable, {}),

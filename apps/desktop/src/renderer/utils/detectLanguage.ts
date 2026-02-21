@@ -1,70 +1,53 @@
-const EXTENSION_MAP: Record<string, string> = {
-  json: "json",
-  jsonc: "json",
-  yaml: "yaml",
-  yml: "yaml",
-  toml: "toml",
-  py: "python",
-  pyw: "python",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
-  js: "javascript",
-  mjs: "javascript",
-  cjs: "javascript",
-  ts: "typescript",
-  mts: "typescript",
-  cts: "typescript",
-  jsx: "javascript",
-  tsx: "typescript",
-  css: "css",
-  scss: "scss",
-  less: "less",
-  html: "html",
-  htm: "html",
-  xml: "xml",
-  svg: "xml",
-  md: "markdown",
-  markdown: "markdown",
-  sql: "sql",
-  go: "go",
-  rs: "rust",
-  java: "java",
-  kt: "kotlin",
-  rb: "ruby",
-  php: "php",
-  lua: "lua",
-  c: "c",
-  h: "c",
-  cpp: "cpp",
-  cc: "cpp",
-  cxx: "cpp",
-  hpp: "cpp",
-  cs: "csharp",
-  swift: "swift",
-  r: "r",
-  pl: "perl",
-  pm: "perl",
-  ini: "ini",
-  conf: "ini",
-  cfg: "ini",
-  properties: "ini",
-  dockerfile: "dockerfile",
-  makefile: "makefile",
-  graphql: "graphql",
-  gql: "graphql",
+import type { LanguageSupport } from "@codemirror/language";
+import { StreamLanguage } from "@codemirror/language";
+import { javascript } from "@codemirror/lang-javascript";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
+import { yaml } from "@codemirror/lang-yaml";
+import { python } from "@codemirror/lang-python";
+import { php } from "@codemirror/lang-php";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+
+type LangFactory = () => LanguageSupport;
+
+const EXTENSION_MAP: Record<string, LangFactory> = {
+  js: () => javascript(),
+  mjs: () => javascript(),
+  cjs: () => javascript(),
+  jsx: () => javascript({ jsx: true }),
+  html: () => html(),
+  htm: () => html(),
+  css: () => css(),
+  json: () => json(),
+  jsonc: () => json(),
+  md: () => markdown(),
+  markdown: () => markdown(),
+  yaml: () => yaml(),
+  yml: () => yaml(),
+  toml: () => StreamLanguage.define(toml) as unknown as LanguageSupport,
+  py: () => python(),
+  pyw: () => python(),
+  sh: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  bash: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  zsh: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  php: () => php(),
 };
 
-export const detectLanguage = (filePath: string): string => {
+export const getLanguageSupport = (filePath: string): LanguageSupport | undefined => {
   const fileName = filePath.split("/").pop() ?? "";
   const lower = fileName.toLowerCase();
 
-  if (lower === "dockerfile" || lower.startsWith("dockerfile.")) return "dockerfile";
-  if (lower === "makefile" || lower === "gnumakefile") return "makefile";
+  if (lower === "makefile" || lower === "gnumakefile") {
+    return StreamLanguage.define(shell) as unknown as LanguageSupport;
+  }
 
   const dotIndex = lower.lastIndexOf(".");
-  if (dotIndex < 0) return "plaintext";
+  if (dotIndex < 0) return undefined;
 
   const ext = lower.slice(dotIndex + 1);
-  return EXTENSION_MAP[ext] ?? "plaintext";
+  const factory = EXTENSION_MAP[ext];
+  return factory?.();
 };
