@@ -345,13 +345,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
-    const terminalBg =
-      terminalPreferences.useBackgroundColor !== false
-        ? terminalPreferences.backgroundColor
-        : "transparent";
+    const terminalBg = terminalPreferences.backgroundColor;
     const terminal = new Terminal({
       cursorBlink: true,
-      allowTransparency: true,
       fontSize: terminalPreferences.fontSize,
       lineHeight: terminalPreferences.lineHeight,
       fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
@@ -533,10 +529,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
-    const terminalBg =
-      terminalPreferences.useBackgroundColor !== false
-        ? terminalPreferences.backgroundColor
-        : "transparent";
+    const terminalBg = terminalPreferences.backgroundColor;
     terminal.options.theme = {
       ...terminal.options.theme,
       background: terminalBg,
@@ -559,7 +552,6 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }));
   }, [
     terminalPreferences.backgroundColor,
-    terminalPreferences.useBackgroundColor,
     terminalPreferences.foregroundColor,
     terminalPreferences.fontSize,
     terminalPreferences.lineHeight

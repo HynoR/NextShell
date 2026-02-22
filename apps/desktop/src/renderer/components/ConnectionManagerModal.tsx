@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, Form, Input, InputNumber, Modal, Radio, Select, Switch, Tooltip, message } from "antd";
 import type { ConnectionProfile, ConnectionImportEntry, SshKeyProfile, ProxyProfile } from "@nextshell/core";
 import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX, type ConnectionUpsertInput } from "@nextshell/shared";
+import { DndContext, DragOverlay, PointerSensor, useSensors, useSensor, useDraggable, useDroppable } from "@dnd-kit/core";
+import type { DragStartEvent, DragEndEvent } from "@dnd-kit/core";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
@@ -54,8 +56,6 @@ const normalizeGroupPath = (value: string | undefined): string => {
 };
 
 type FormTab = "basic" | "auth" | "network" | "advanced";
-
-const DRAG_MIME = "application/x-nextshell-connection-id";
 
 const groupKeyToPath = (key: string): string => {
   if (key === "root") return "/";
@@ -154,37 +154,31 @@ const countMgrLeaves = (node: MgrGroupNode): number => {
 const MgrGroupRow = ({
   node,
   expanded,
-  dragOver,
-  onToggle,
-  onDragOver,
-  onDragLeave,
-  onDrop
+  onToggle
 }: {
   node: MgrGroupNode;
   expanded: boolean;
-  dragOver: boolean;
   onToggle: () => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-}) => (
-  <button
-    type="button"
-    className={`mgr-group-row${dragOver ? " mgr-group-row--drop-target" : ""}`}
-    onClick={onToggle}
-    onDragOver={onDragOver}
-    onDragLeave={onDragLeave}
-    onDrop={onDrop}
-  >
-    <i
-      className={expanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line"}
-      aria-hidden="true"
-    />
-    <i className={dragOver ? "ri-folder-open-line" : "ri-folder-3-line"} aria-hidden="true" />
-    <span className="mgr-group-label">{node.label}</span>
-    <span className="mgr-group-count">{countMgrLeaves(node)}</span>
-  </button>
-);
+}) => {
+  const { isOver, setNodeRef } = useDroppable({ id: node.key });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      className={`mgr-group-row${isOver ? " mgr-group-row--drop-target" : ""}`}
+      onClick={onToggle}
+    >
+      <i
+        className={expanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line"}
+        aria-hidden="true"
+      />
+      <i className={isOver ? "ri-folder-open-line" : "ri-folder-3-line"} aria-hidden="true" />
+      <span className="mgr-group-label">{node.label}</span>
+      <span className="mgr-group-count">{countMgrLeaves(node)}</span>
+    </button>
+  );
+};
 
 const MgrServerRow = ({
   connection,
@@ -199,16 +193,17 @@ const MgrServerRow = ({
   onSelect: () => void;
   onToggleExportSelect: () => void;
 }) => {
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData(DRAG_MIME, connection.id);
-    e.dataTransfer.effectAllowed = "move";
-  };
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: connection.id,
+    data: { connection }
+  });
 
   return (
     <div
-      className={`mgr-server-row${isSelected ? " selected" : ""}`}
-      draggable
-      onDragStart={handleDragStart}
+      ref={setNodeRef}
+      className={`mgr-server-row${isSelected ? " selected" : ""}${isDragging ? " mgr-server-row--dragging" : ""}`}
+      {...attributes}
+      {...listeners}
     >
       <button
         type="button"
@@ -246,12 +241,8 @@ const MgrTreeGroup = ({
   toggleExpanded,
   selectedConnectionId,
   selectedExportIds,
-  dragOverGroupKey,
   onSelect,
-  onToggleExportSelect,
-  onGroupDragOver,
-  onGroupDragLeave,
-  onGroupDrop
+  onToggleExportSelect
 }: {
   node: MgrGroupNode;
   depth: number;
@@ -259,12 +250,8 @@ const MgrTreeGroup = ({
   toggleExpanded: (key: string) => void;
   selectedConnectionId: string | undefined;
   selectedExportIds: Set<string>;
-  dragOverGroupKey: string | undefined;
   onSelect: (id: string) => void;
   onToggleExportSelect: (id: string) => void;
-  onGroupDragOver: (e: React.DragEvent, groupKey: string) => void;
-  onGroupDragLeave: (groupKey: string) => void;
-  onGroupDrop: (e: React.DragEvent, groupKey: string) => void;
 }) => {
   const isExpanded = expanded.has(node.key);
   return (
@@ -273,11 +260,7 @@ const MgrTreeGroup = ({
         <MgrGroupRow
           node={node}
           expanded={isExpanded}
-          dragOver={dragOverGroupKey === node.key}
           onToggle={() => toggleExpanded(node.key)}
-          onDragOver={(e) => onGroupDragOver(e, node.key)}
-          onDragLeave={() => onGroupDragLeave(node.key)}
-          onDrop={(e) => onGroupDrop(e, node.key)}
         />
       )}
       {(depth === 0 || isExpanded) && (
@@ -292,12 +275,8 @@ const MgrTreeGroup = ({
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
                 selectedExportIds={selectedExportIds}
-                dragOverGroupKey={dragOverGroupKey}
                 onSelect={onSelect}
                 onToggleExportSelect={onToggleExportSelect}
-                onGroupDragOver={onGroupDragOver}
-                onGroupDragLeave={onGroupDragLeave}
-                onGroupDrop={onGroupDrop}
               />
             ) : (
               <MgrServerRow
@@ -312,6 +291,20 @@ const MgrTreeGroup = ({
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+/* ── Root drop zone ────────────────────────────────── */
+
+const MgrRootDropZone = ({ children }: { children: React.ReactNode }) => {
+  const { isOver, setNodeRef } = useDroppable({ id: "root" });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`mgr-tree-wrap${isOver ? " mgr-tree-wrap--drop-target" : ""}`}
+    >
+      {children}
     </div>
   );
 };
@@ -635,45 +628,39 @@ export const ConnectionManagerModal = ({
     });
   }, []);
 
-  /* ── Drag-and-drop ─────────────────────── */
-  const [dragOverGroupKey, setDragOverGroupKey] = useState<string>();
-  const dragLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /* ── Drag-and-drop (dnd-kit) ─────────────────────── */
+  const [draggingConnection, setDraggingConnection] = useState<ConnectionProfile | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
-  const handleGroupDragOver = useCallback((e: React.DragEvent, groupKey: string) => {
-    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    clearTimeout(dragLeaveTimerRef.current);
-    setDragOverGroupKey(groupKey);
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const conn = (event.active.data.current as { connection: ConnectionProfile } | undefined)?.connection;
+    if (conn) setDraggingConnection(conn);
   }, []);
 
-  const handleGroupDragLeave = useCallback((_groupKey: string) => {
-    dragLeaveTimerRef.current = setTimeout(() => setDragOverGroupKey(undefined), 80);
-  }, []);
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setDraggingConnection(null);
+    const overId = event.over?.id as string | undefined;
+    if (!overId) return;
 
-  const handleGroupDrop = useCallback(async (e: React.DragEvent, groupKey: string) => {
-    e.preventDefault();
-    setDragOverGroupKey(undefined);
-    const connectionId = e.dataTransfer.getData(DRAG_MIME);
-    if (!connectionId) return;
+    const conn = (event.active.data.current as { connection: ConnectionProfile } | undefined)?.connection;
+    if (!conn) return;
 
-    const connection = connections.find((c) => c.id === connectionId);
-    if (!connection) return;
-
-    const targetPath = groupKeyToPath(groupKey);
-    if (targetPath === connection.groupPath) return;
+    const targetPath = groupKeyToPath(overId);
+    if (targetPath === conn.groupPath) return;
 
     try {
-      await onConnectionSaved(toQuickUpsertInput(connection, { groupPath: targetPath }));
+      await onConnectionSaved(toQuickUpsertInput(conn, { groupPath: targetPath }));
       message.success(`已移动到 ${targetPath}`);
-      if (selectedConnectionId === connectionId) {
+      if (selectedConnectionId === conn.id) {
         form.setFieldValue("groupPath", targetPath);
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : "移动失败";
       message.error(reason);
     }
-  }, [connections, form, onConnectionSaved, selectedConnectionId]);
+  }, [form, onConnectionSaved, selectedConnectionId]);
 
   const promptExportMode = useCallback((): Promise<"plain" | "encrypted" | null> => {
     return new Promise((resolve) => {
@@ -1128,12 +1115,12 @@ export const ConnectionManagerModal = ({
           </div>
 
           {/* Tree */}
-          <div
-            className={`mgr-tree-wrap${dragOverGroupKey === "root" ? " mgr-tree-wrap--drop-target" : ""}`}
-            onDragOver={(e) => handleGroupDragOver(e, "root")}
-            onDragLeave={() => handleGroupDragLeave("root")}
-            onDrop={(e) => void handleGroupDrop(e, "root")}
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragEnd={(e) => void handleDragEnd(e)}
           >
+          <MgrRootDropZone>
             {tree.children.length === 0 ? (
               <div className="mgr-tree-empty">
                 {keyword ? (
@@ -1156,15 +1143,20 @@ export const ConnectionManagerModal = ({
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
                 selectedExportIds={selectedExportIds}
-                dragOverGroupKey={dragOverGroupKey}
                 onSelect={handleSelect}
                 onToggleExportSelect={handleToggleExportSelect}
-                onGroupDragOver={handleGroupDragOver}
-                onGroupDragLeave={handleGroupDragLeave}
-                onGroupDrop={(e, key) => void handleGroupDrop(e, key)}
               />
             )}
-          </div>
+          </MgrRootDropZone>
+          <DragOverlay>
+            {draggingConnection ? (
+              <div className="mgr-drag-overlay">
+                <i className="ri-server-line" aria-hidden="true" />
+                <span>{draggingConnection.name}</span>
+              </div>
+            ) : null}
+          </DragOverlay>
+          </DndContext>
 
           {/* Footer */}
           <div className="mgr-sidebar-footer">

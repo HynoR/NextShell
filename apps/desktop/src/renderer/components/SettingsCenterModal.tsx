@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App as AntdApp,
   Badge,
@@ -384,7 +384,6 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           terminalThemePreset={terminalThemePreset}
           terminalFontSize={preferences.terminal.fontSize}
           terminalLineHeight={preferences.terminal.lineHeight}
-          terminalUseBackgroundColor={preferences.terminal.useBackgroundColor}
           appBackgroundImagePath={appBackgroundImagePath}
           appBackgroundOpacity={preferences.window.backgroundOpacity}
           setTerminalBackgroundColor={setTerminalBackgroundColor}
@@ -665,10 +664,12 @@ const CommandSection = ({
   </SettingsCard>
 );
 
+const TERMINAL_DEBOUNCE_MS = 3000;
+
 const TerminalSection = ({
   loading, terminalBackgroundColor, terminalForegroundColor,
   terminalThemePreset, terminalFontSize, terminalLineHeight,
-  terminalUseBackgroundColor, appBackgroundImagePath, appBackgroundOpacity,
+  appBackgroundImagePath, appBackgroundOpacity,
   setTerminalBackgroundColor, setTerminalForegroundColor,
   setTerminalThemePreset, setAppBackgroundImagePath,
   save, message: msg,
@@ -679,7 +680,6 @@ const TerminalSection = ({
   terminalThemePreset: string;
   terminalFontSize: number;
   terminalLineHeight: number;
-  terminalUseBackgroundColor: boolean;
   appBackgroundImagePath: string;
   appBackgroundOpacity: number;
   setTerminalBackgroundColor: (v: string) => void;
@@ -688,9 +688,53 @@ const TerminalSection = ({
   setAppBackgroundImagePath: (v: string) => void;
   save: (patch: Record<string, unknown>) => void;
   message: ReturnType<typeof AntdApp.useApp>["message"];
-}) => (
+}) => {
+  const pendingRef = useRef<Record<string, Record<string, unknown>>>({});
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const flushPending = useCallback(() => {
+    clearTimeout(timerRef.current);
+    timerRef.current = undefined;
+    const sections = pendingRef.current;
+    if (Object.keys(sections).length > 0) {
+      pendingRef.current = {};
+      const merged: Record<string, unknown> = {};
+      for (const [section, patch] of Object.entries(sections)) {
+        merged[section] = patch;
+      }
+      save(merged);
+    }
+  }, [save]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(timerRef.current);
+      const sections = pendingRef.current;
+      if (Object.keys(sections).length > 0) {
+        const merged: Record<string, unknown> = {};
+        for (const [section, patch] of Object.entries(sections)) {
+          merged[section] = patch;
+        }
+        save(merged);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const debouncedSave = useCallback((section: string, patch: Record<string, unknown>) => {
+    const prev = pendingRef.current[section] ?? {};
+    pendingRef.current[section] = { ...prev, ...patch };
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flushPending, TERMINAL_DEBOUNCE_MS);
+  }, [flushPending]);
+
+  const debouncedSaveTerminal = useCallback((patch: Record<string, unknown>) => {
+    debouncedSave("terminal", patch);
+  }, [debouncedSave]);
+
+  return (
   <>
-    <SettingsCard title="APP 背景" description="设置应用背景图片和透明度">
+    <SettingsCard title="APP 背景" description="设置应用背景图片和透明度（透明度修改后 3 秒生效）">
       <SettingsRow label="背景图片">
         <div className="flex gap-2 items-center">
           <Input
@@ -746,14 +790,14 @@ const TerminalSection = ({
             disabled={loading || !appBackgroundImagePath}
             style={{ flex: 1, margin: 0 }}
             value={appBackgroundOpacity}
-            onChange={(v) => save({ window: { backgroundOpacity: typeof v === "number" ? v : 60 } })}
+            onChange={(v) => debouncedSave("window", { backgroundOpacity: typeof v === "number" ? v : 60 })}
           />
           <div className="flex items-center gap-1">
             <InputNumber
               min={30} max={80} precision={0}
               disabled={loading || !appBackgroundImagePath}
               value={appBackgroundOpacity}
-              onChange={(v) => save({ window: { backgroundOpacity: typeof v === "number" ? v : 60 } })}
+              onChange={(v) => debouncedSave("window", { backgroundOpacity: typeof v === "number" ? v : 60 })}
             />
             <span>%</span>
           </div>
@@ -761,7 +805,7 @@ const TerminalSection = ({
       </SettingsRow>
     </SettingsCard>
 
-    <SettingsCard title="终端颜色" description="选择终端配色主题或自定义颜色">
+    <SettingsCard title="终端颜色" description="选择终端配色主题或自定义颜色（修改后 3 秒生效）">
       <SettingsRow label="主题预设">
         <Select
           style={{ width: "100%" }}
@@ -777,37 +821,25 @@ const TerminalSection = ({
             if (preset) {
               setTerminalBackgroundColor(preset.backgroundColor);
               setTerminalForegroundColor(preset.foregroundColor);
-              save({
-                terminal: {
-                  backgroundColor: preset.backgroundColor,
-                  foregroundColor: preset.foregroundColor,
-                },
+              debouncedSaveTerminal({
+                backgroundColor: preset.backgroundColor,
+                foregroundColor: preset.foregroundColor,
               });
             }
           }}
         />
       </SettingsRow>
 
-      {appBackgroundImagePath && (
-        <SettingsSwitchRow
-          label="使用透明终端背景"
-          hint="继承整体透明度"
-          checked={!terminalUseBackgroundColor}
-          disabled={loading}
-          onChange={(checked) => save({ terminal: { useBackgroundColor: !checked } })}
-        />
-      )}
-
       <SettingsRow label="终端背景颜色">
         <div className="flex gap-2 items-center">
           <Input
             style={{ flex: 1 }}
             value={terminalBackgroundColor}
-            disabled={loading || !terminalUseBackgroundColor}
+            disabled={loading}
             onChange={(e) => setTerminalBackgroundColor(e.target.value)}
             onBlur={() => {
               if (HEX_COLOR_PATTERN.test(terminalBackgroundColor.trim())) {
-                save({ terminal: { backgroundColor: terminalBackgroundColor.trim() } });
+                debouncedSaveTerminal({ backgroundColor: terminalBackgroundColor.trim() });
               }
             }}
             placeholder="#0b2740"
@@ -815,17 +847,14 @@ const TerminalSection = ({
           <input
             className="settings-color-input"
             type="color"
-            disabled={loading || !terminalUseBackgroundColor}
+            disabled={loading}
             value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#0b2740"}
             onChange={(e) => {
               setTerminalBackgroundColor(e.target.value);
-              save({ terminal: { backgroundColor: e.target.value } });
+              debouncedSaveTerminal({ backgroundColor: e.target.value });
             }}
           />
         </div>
-        {!terminalUseBackgroundColor && appBackgroundImagePath && (
-          <div className="stg-note">已使用透明背景，继承「整体透明度」设置。</div>
-        )}
       </SettingsRow>
 
       <SettingsRow label="终端文字颜色">
@@ -837,7 +866,7 @@ const TerminalSection = ({
             onChange={(e) => setTerminalForegroundColor(e.target.value)}
             onBlur={() => {
               if (HEX_COLOR_PATTERN.test(terminalForegroundColor.trim())) {
-                save({ terminal: { foregroundColor: terminalForegroundColor.trim() } });
+                debouncedSaveTerminal({ foregroundColor: terminalForegroundColor.trim() });
               }
             }}
             placeholder="#d8eaff"
@@ -849,14 +878,14 @@ const TerminalSection = ({
             value={HEX_COLOR_PATTERN.test(terminalForegroundColor) ? terminalForegroundColor : "#d8eaff"}
             onChange={(e) => {
               setTerminalForegroundColor(e.target.value);
-              save({ terminal: { foregroundColor: e.target.value } });
+              debouncedSaveTerminal({ foregroundColor: e.target.value });
             }}
           />
         </div>
       </SettingsRow>
     </SettingsCard>
 
-    <SettingsCard title="终端排版" description="字号和行距设置">
+    <SettingsCard title="终端排版" description="字号和行距设置（修改后 3 秒生效）">
       <SettingsRow label="终端字号">
         <InputNumber
           style={{ width: "100%" }}
@@ -865,7 +894,7 @@ const TerminalSection = ({
           disabled={loading}
           onChange={(v) => {
             if (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 24) {
-              save({ terminal: { fontSize: v } });
+              debouncedSaveTerminal({ fontSize: v });
             }
           }}
         />
@@ -878,14 +907,15 @@ const TerminalSection = ({
           disabled={loading}
           onChange={(v) => {
             if (typeof v === "number" && v >= 1 && v <= 2) {
-              save({ terminal: { lineHeight: v } });
+              debouncedSaveTerminal({ lineHeight: v });
             }
           }}
         />
       </SettingsRow>
     </SettingsCard>
   </>
-);
+  );
+};
 
 const BackupSection = ({
   loading, backupRemotePath, rclonePath,

@@ -747,7 +747,6 @@ const mergePreferences = (
         patch.terminal?.foregroundColor,
         current.terminal.foregroundColor
       ),
-      useBackgroundColor: patch.terminal?.useBackgroundColor ?? current.terminal.useBackgroundColor,
       fontSize: normalizeTerminalFontSize(
         patch.terminal?.fontSize,
         current.terminal.fontSize

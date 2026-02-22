@@ -327,7 +327,6 @@ export const appPreferencesSchema = z.object({
   terminal: z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
     foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
-    useBackgroundColor: z.boolean().default(DEFAULT_APP_PREFERENCES.terminal.useBackgroundColor),
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
     lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
@@ -363,7 +362,6 @@ export const appPreferencesPatchSchema = z.object({
   terminal: z.object({
     backgroundColor: terminalColorSchema.optional(),
     foregroundColor: terminalColorSchema.optional(),
-    useBackgroundColor: z.boolean().optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
     lineHeight: z.coerce.number().min(1).max(2).optional()
   }).optional(),

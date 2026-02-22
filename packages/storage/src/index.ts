@@ -341,10 +341,6 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           /^#[0-9a-fA-F]{6}$/.test(parsed.terminal.foregroundColor.trim())
             ? parsed.terminal.foregroundColor.trim()
             : fallback.terminal.foregroundColor,
-        useBackgroundColor:
-          typeof parsed.terminal?.useBackgroundColor === "boolean"
-            ? parsed.terminal.useBackgroundColor
-            : fallback.terminal.useBackgroundColor,
         fontSize:
           typeof parsed.terminal?.fontSize === "number" &&
           Number.isInteger(parsed.terminal.fontSize) &&
