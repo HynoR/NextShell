@@ -6,6 +6,7 @@ import type {
   DeleteMode,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
+import { deobfuscatePassword } from "./connection-export-crypto";
 import { decryptFinalShellPassword } from "./finalshell/decrypt-password";
 
 // ─── Format detection ────────────────────────────────────────────────────────
@@ -43,23 +44,30 @@ const isFinalShellEntry = (data: unknown): boolean => {
 // ─── NextShell format parser ─────────────────────────────────────────────────
 
 export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImportEntry[] => {
-  return data.connections.map((conn) => ({
-    name: conn.name,
-    host: conn.host,
-    port: conn.port,
-    username: conn.username,
-    authType: conn.authType,
-    password: conn.password,
-    groupPath: conn.groupPath,
-    tags: conn.tags,
-    notes: conn.notes,
-    favorite: conn.favorite,
-    terminalEncoding: conn.terminalEncoding,
-    backspaceMode: conn.backspaceMode,
-    deleteMode: conn.deleteMode,
-    monitorSession: conn.monitorSession,
-    sourceFormat: "nextshell"
-  }));
+  const deobfuscate = data.passwordsObfuscated === true;
+  return data.connections.map((conn) => {
+    const password =
+      conn.password !== undefined && deobfuscate
+        ? deobfuscatePassword(conn.password, conn.name, conn.host, conn.port)
+        : conn.password;
+    return {
+      name: conn.name,
+      host: conn.host,
+      port: conn.port,
+      username: conn.username,
+      authType: conn.authType,
+      password,
+      groupPath: conn.groupPath,
+      tags: conn.tags,
+      notes: conn.notes,
+      favorite: conn.favorite,
+      terminalEncoding: conn.terminalEncoding,
+      backspaceMode: conn.backspaceMode,
+      deleteMode: conn.deleteMode,
+      monitorSession: conn.monitorSession,
+      sourceFormat: "nextshell"
+    };
+  });
 };
 
 // ─── FinalShell compatibility parser ─────────────────────────────────────────

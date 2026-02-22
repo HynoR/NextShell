@@ -311,6 +311,28 @@ const MgrRootDropZone = ({ children }: { children: React.ReactNode }) => {
 
 /* ── Constants ──────────────────────────────────────────── */
 
+/** Maps form field names to their containing tab, used to auto-switch on validation error */
+const FIELD_TAB_MAP: Record<string, FormTab> = {
+  name: "basic",
+  host: "basic",
+  port: "basic",
+  groupPath: "basic",
+  tags: "basic",
+  notes: "basic",
+  favorite: "basic",
+  username: "auth",
+  authType: "auth",
+  sshKeyId: "auth",
+  password: "auth",
+  hostFingerprint: "auth",
+  strictHostKeyChecking: "auth",
+  proxyId: "network",
+  monitorSession: "advanced",
+  terminalEncoding: "advanced",
+  backspaceMode: "advanced",
+  deleteMode: "advanced"
+};
+
 const DEFAULT_VALUES = {
   port: 22,
   authType: "password" as const,
@@ -534,23 +556,35 @@ export const ConnectionManagerModal = ({
     const groupPath = normalizeGroupPath(values.groupPath);
     const tags = sanitizeTextArray(values.tags);
     const notes = sanitizeOptionalText(values.notes);
-    const port = Number(values.port);
+    // InputNumber may return null when cleared; coerce safely
+    const rawPort = values.port as unknown as number | null | undefined;
+    const port = rawPort == null ? NaN : Number(rawPort);
     const terminalEncoding = values.terminalEncoding ?? "utf-8";
     const backspaceMode = values.backspaceMode ?? "ascii-backspace";
     const deleteMode = values.deleteMode ?? "vt220-delete";
 
     if (values.authType === "privateKey" && !values.sshKeyId) {
       message.error("私钥认证需要选择一个 SSH 密钥。");
+      setFormTab("auth");
       return undefined;
     }
 
     if (values.strictHostKeyChecking && !hostFingerprint) {
       message.error("启用严格主机校验时必须填写主机指纹。");
+      setFormTab("auth");
       return undefined;
     }
 
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       message.error("端口必须是 1-65535 的整数。");
+      setFormTab("basic");
+      return undefined;
+    }
+
+    const username = (values.username ?? "").trim();
+    if (!username) {
+      message.error("请填写用户名（在「认证」标签页）。");
+      setFormTab("auth");
       return undefined;
     }
 
@@ -561,7 +595,7 @@ export const ConnectionManagerModal = ({
         name: values.name.trim(),
         host: values.host.trim(),
         port,
-        username: (values.username ?? "").trim(),
+        username,
         authType: values.authType,
         password,
         sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined,
@@ -592,7 +626,7 @@ export const ConnectionManagerModal = ({
     } finally {
       setSaving(false);
     }
-  }, [form, onConnectionSaved, selectedConnectionId]);
+  }, [form, onConnectionSaved, selectedConnectionId, setFormTab]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (saving || connectingFromForm) {
@@ -602,7 +636,13 @@ export const ConnectionManagerModal = ({
     let values: ConnectionUpsertInput;
     try {
       values = await form.validateFields();
-    } catch {
+    } catch (errorInfo) {
+      const firstField = String(
+        (errorInfo as { errorFields?: Array<{ name: Array<string | number> }> })
+          ?.errorFields?.[0]?.name?.[0] ?? ""
+      );
+      const errTab = FIELD_TAB_MAP[firstField];
+      if (errTab) setFormTab(errTab);
       return;
     }
 
@@ -617,7 +657,7 @@ export const ConnectionManagerModal = ({
     } finally {
       setConnectingFromForm(false);
     }
-  }, [connectingFromForm, form, onConnectConnection, saveConnection, saving]);
+  }, [connectingFromForm, form, onConnectConnection, saveConnection, saving, setFormTab]);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -1329,6 +1369,11 @@ export const ConnectionManagerModal = ({
               onFinish={async (values) => {
                 await saveConnection(values);
               }}
+              onFinishFailed={({ errorFields }) => {
+                const firstField = String(errorFields[0]?.name?.[0] ?? "");
+                const errTab = FIELD_TAB_MAP[firstField];
+                if (errTab) setFormTab(errTab);
+              }}
             >
               {/* ── Form tab bar ──── */}
               <div className="mgr-form-tab-bar">
@@ -1372,8 +1417,7 @@ export const ConnectionManagerModal = ({
 
               <div className="mgr-form-tab-body">
                 {/* ── Tab: 基本 ──── */}
-                {formTab === "basic" && (
-                  <>
+                <div style={{ display: formTab === "basic" ? "" : "none" }}>
                     <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入连接名称" }]}>
                       <Input placeholder="我的服务器" />
                     </Form.Item>
@@ -1426,16 +1470,15 @@ export const ConnectionManagerModal = ({
                     <Form.Item label="备注" name="notes" className="!mb-0">
                       <Input.TextArea rows={2} placeholder="可选备注信息..." className="mgr-textarea" />
                     </Form.Item>
-                  </>
-                )}
+                </div>
 
                 {/* ── Tab: 认证 ──── */}
-                {formTab === "auth" && (
-                  <>
+                <div style={{ display: formTab === "auth" ? "" : "none" }}>
                     <div className="flex gap-3 items-start">
                       <Form.Item
                         label="用户名"
                         name="username"
+                        rules={[{ required: true, message: "请输入用户名" }]}
                         className="flex-1"
                       >
                         <Input placeholder="root" />
@@ -1504,12 +1547,10 @@ export const ConnectionManagerModal = ({
                         <Switch size="small" />
                       </Form.Item>
                     </div>
-                  </>
-                )}
+                </div>
 
                 {/* ── Tab: 网络 ──── */}
-                {formTab === "network" && (
-                  <>
+                <div style={{ display: formTab === "network" ? "" : "none" }}>
                     <Form.Item
                       label="代理"
                       name="proxyId"
@@ -1528,12 +1569,10 @@ export const ConnectionManagerModal = ({
                         }
                       />
                     </Form.Item>
-                  </>
-                )}
+                </div>
 
                 {/* ── Tab: 高级 ──── */}
-                {formTab === "advanced" && (
-                  <>
+                <div style={{ display: formTab === "advanced" ? "" : "none" }}>
                     <div className="flex gap-3 items-start">
                       <Form.Item
                         label="Monitor Session"
@@ -1593,8 +1632,7 @@ export const ConnectionManagerModal = ({
                     </div>
 
                     <div className="mgr-form-subtitle">终端高级配置保存后需重连会话生效。</div>
-                  </>
-                )}
+                </div>
               </div>
             </Form>
           </div>

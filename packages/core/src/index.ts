@@ -73,6 +73,7 @@ export interface SessionDescriptor {
   connectionId: string;
   title: string;
   status: SessionStatus;
+  reason?: string;
   type: SessionType;
   createdAt: string;
   reconnectable: boolean;
@@ -413,6 +414,12 @@ export interface ConnectionExportFile {
   format: "nextshell-connections";
   version: 1;
   exportedAt: string;
+  /**
+   * When true, each connection's `password` field has been XOR-obfuscated
+   * with SHA256(name+host+port) and encoded as base64 instead of stored
+   * as plaintext. Only set on unencrypted exports.
+   */
+  passwordsObfuscated?: boolean;
   connections: ExportedConnection[];
 }
 

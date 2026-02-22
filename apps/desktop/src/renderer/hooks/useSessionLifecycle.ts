@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { message } from "antd";
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
-import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import {
@@ -10,25 +9,11 @@ import {
   resolveSessionBaseTitle
 } from "../utils/sessionTitle";
 
-const MAX_AUTH_RETRIES = 3;
-
-export interface AuthPromptState {
-  attempt: number;
-  maxAttempts: number;
-  initialUsername?: string;
-  defaultAuthType: SessionAuthOverrideInput["authType"];
-  hasExistingPrivateKey: boolean;
-  failureReason?: string;
-}
-
 const isAuthRequiredFailure = (reason: string): boolean =>
   reason.startsWith(AUTH_REQUIRED_PREFIX);
 
 const stripAuthRequiredPrefix = (reason: string): string =>
   isAuthRequiredFailure(reason) ? reason.slice(AUTH_REQUIRED_PREFIX.length) : reason;
-
-const resolveDefaultAuthType = (connection?: ConnectionProfile): SessionAuthOverrideInput["authType"] =>
-  connection?.authType === "privateKey" ? "privateKey" : "password";
 
 export function useSessionLifecycle() {
   const {
@@ -44,31 +29,7 @@ export function useSessionLifecycle() {
   } = useWorkspaceStore();
 
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
-  const [authPromptState, setAuthPromptState] = useState<AuthPromptState>();
-  const authPromptResolveRef = useRef<((value: SessionAuthOverrideInput | undefined) => void) | undefined>(undefined);
   const sessionIndexByConnectionRef = useRef<Map<string, number>>(new Map());
-
-  const requestAuthOverride = useCallback((state: AuthPromptState) => {
-    return new Promise<SessionAuthOverrideInput | undefined>((resolve) => {
-      authPromptResolveRef.current = resolve;
-      setAuthPromptState(state);
-    });
-  }, []);
-
-  const resolveAuthPrompt = useCallback((value: SessionAuthOverrideInput | undefined) => {
-    const resolve = authPromptResolveRef.current;
-    authPromptResolveRef.current = undefined;
-    setAuthPromptState(undefined);
-    resolve?.(value);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      const resolve = authPromptResolveRef.current;
-      authPromptResolveRef.current = undefined;
-      resolve?.(undefined);
-    };
-  }, []);
 
   useEffect(() => {
     const unsubscribe = window.nextshell.session.onStatus((event) => {
@@ -111,10 +72,6 @@ export function useSessionLifecycle() {
         upsertSession(pendingSession);
         setActiveSession(sessionId);
 
-        // ── 1. First attempt: use stored credentials ──────────────────
-        let authOverride: SessionAuthOverrideInput | undefined;
-        let lastFailureReason: string | undefined;
-
         try {
           const openedSession = await window.nextshell.session.open({
             connectionId,
@@ -123,70 +80,11 @@ export function useSessionLifecycle() {
           return finalizeSession(openedSession, connection, sessionIndex, sessionId);
         } catch (error) {
           const reason = error instanceof Error ? error.message : "Failed to open SSH session";
-          if (!isAuthRequiredFailure(reason)) {
-            setSessionStatus(sessionId, "failed");
-            return undefined;
-          }
-          lastFailureReason = stripAuthRequiredPrefix(reason);
+          const displayReason = isAuthRequiredFailure(reason) ? stripAuthRequiredPrefix(reason) : reason;
+          setSessionStatus(sessionId, "failed", displayReason);
+          message.error(displayReason);
+          return undefined;
         }
-
-        // ── 2. Auth retry loop: up to MAX_AUTH_RETRIES user attempts ──
-        for (let attempt = 1; attempt <= MAX_AUTH_RETRIES; attempt += 1) {
-          const currentConnection = findConnection();
-          const nextInitialUsername = authOverride?.username ?? currentConnection?.username;
-          const hasExistingPrivateKey = Boolean(
-            currentConnection?.sshKeyId ||
-            (authOverride?.authType === "privateKey" &&
-              (authOverride.sshKeyId || authOverride.privateKeyContent))
-          );
-          const nextAuthType = authOverride?.authType ?? resolveDefaultAuthType(currentConnection);
-
-          const nextAuthOverride = await requestAuthOverride({
-            attempt,
-            maxAttempts: MAX_AUTH_RETRIES,
-            initialUsername: nextInitialUsername,
-            defaultAuthType: nextAuthType,
-            hasExistingPrivateKey,
-            failureReason: lastFailureReason
-          });
-
-          if (!nextAuthOverride) {
-            removeSession(sessionId);
-            return undefined;
-          }
-
-          authOverride =
-            nextAuthOverride.authType === "privateKey" && authOverride?.authType === "privateKey"
-              ? {
-                  ...nextAuthOverride,
-                  sshKeyId: nextAuthOverride.sshKeyId ?? authOverride.sshKeyId,
-                  privateKeyContent: nextAuthOverride.privateKeyContent ?? authOverride.privateKeyContent
-                }
-              : nextAuthOverride;
-
-          setSessionStatus(sessionId, "connecting");
-
-          try {
-            const openedSession = await window.nextshell.session.open({
-              connectionId,
-              sessionId,
-              authOverride
-            });
-            return finalizeSession(openedSession, connection, sessionIndex, sessionId);
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : "Failed to open SSH session";
-            if (!isAuthRequiredFailure(reason)) {
-              setSessionStatus(sessionId, "failed");
-              return undefined;
-            }
-            lastFailureReason = stripAuthRequiredPrefix(reason);
-          }
-        }
-
-        // ── 3. Exhausted all retries ──────────────────────────────────
-        setSessionStatus(sessionId, "failed");
-        message.error(lastFailureReason ?? "认证失败，已达最大重试次数。");
-        return undefined;
       } finally {
         setConnectingIds((prev) => {
           const next = new Set(prev);
@@ -222,8 +120,6 @@ export function useSessionLifecycle() {
     [
       connections,
       connectingIds,
-      removeSession,
-      requestAuthOverride,
       setActiveConnection,
       setActiveSession,
       setConnections,
@@ -268,23 +164,11 @@ export function useSessionLifecycle() {
     [removeSession, sessions, setSessionStatus, startSession]
   );
 
-  const handleAuthPromptCancel = useCallback(() => {
-    resolveAuthPrompt(undefined);
-  }, [resolveAuthPrompt]);
-
-  const handleAuthPromptSubmit = useCallback(async (payload: SessionAuthOverrideInput) => {
-    resolveAuthPrompt(payload);
-  }, [resolveAuthPrompt]);
-
   return {
     connectingIds,
-    authPromptState,
     startSession,
     activateConnection,
     handleCloseSession,
-    handleReconnectSession,
-    handleAuthPromptCancel,
-    handleAuthPromptSubmit,
-    MAX_AUTH_RETRIES
+    handleReconnectSession
   };
 }

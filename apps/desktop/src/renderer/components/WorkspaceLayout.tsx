@@ -7,7 +7,7 @@ import type {
   SessionType,
   SshKeyProfile,
 } from "@nextshell/core";
-import type { ConnectionUpsertInput, SessionAuthOverrideInput } from "@nextshell/shared";
+import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
@@ -17,14 +17,12 @@ import { FileExplorerPane } from "./FileExplorerPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
-import { SessionAuthRetryModal } from "./SessionAuthRetryModal";
 import { PingCard } from "./PingCard";
 import { SystemInfoPanel } from "./SystemInfoPanel";
 import { SystemStaticInfoPane } from "./SystemStaticInfoPane";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { TransferQueuePanel } from "./TransferQueuePanel";
 import { AboutPane } from "./AboutPane";
-import type { AuthPromptState } from "../hooks/useSessionLifecycle";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
 import { promptModal } from "../utils/promptModal";
@@ -57,8 +55,6 @@ interface WorkspaceLayoutProps {
   transferTasks: TransferTask[];
   transferPanelCollapsed: boolean;
   bottomTab: string;
-  authPromptState?: AuthPromptState;
-  MAX_AUTH_RETRIES: number;
   onLoadConnections: () => void;
   onOpenManager: () => void;
   onOpenSettings: () => void;
@@ -83,8 +79,6 @@ interface WorkspaceLayoutProps {
   onOpenLocalFile: (task: TransferTask) => void;
   onTransferPanelToggle: () => void;
   onSetBottomTab: (tab: string) => void;
-  onAuthPromptCancel: () => void;
-  onAuthPromptSubmit: (payload: SessionAuthOverrideInput) => Promise<void>;
 }
 
 export const WorkspaceLayout = ({
@@ -105,8 +99,6 @@ export const WorkspaceLayout = ({
   transferTasks,
   transferPanelCollapsed,
   bottomTab,
-  authPromptState,
-  MAX_AUTH_RETRIES,
   onLoadConnections,
   onOpenManager,
   onOpenSettings,
@@ -131,8 +123,6 @@ export const WorkspaceLayout = ({
   onOpenLocalFile,
   onTransferPanelToggle,
   onSetBottomTab,
-  onAuthPromptCancel,
-  onAuthPromptSubmit,
 }: WorkspaceLayoutProps) => {
   const { modal } = AntdApp.useApp();
   const [draggingSessionId, setDraggingSessionId] = useState<string>();
@@ -609,18 +599,6 @@ export const WorkspaceLayout = ({
         </Group>
       </main>
 
-      <SessionAuthRetryModal
-        open={Boolean(authPromptState)}
-        attempt={authPromptState?.attempt ?? 1}
-        maxAttempts={authPromptState?.maxAttempts ?? MAX_AUTH_RETRIES}
-        initialUsername={authPromptState?.initialUsername}
-        defaultAuthType={authPromptState?.defaultAuthType ?? "password"}
-        hasExistingPrivateKey={authPromptState?.hasExistingPrivateKey ?? false}
-        failureReason={authPromptState?.failureReason}
-        sshKeys={sshKeys}
-        onCancel={onAuthPromptCancel}
-        onSubmit={onAuthPromptSubmit}
-      />
     </div>
   );
 };

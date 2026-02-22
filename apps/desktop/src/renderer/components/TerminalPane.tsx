@@ -130,7 +130,7 @@ const formatStatusOutput = (
   if (!msg) {
     return undefined;
   }
-  return `\r\n${msg}\r\n`;
+  return `${msg}\r\n`;
 };
 
 export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
@@ -643,7 +643,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
-    if (session && connection) {
+    if (session && connection && session.status === "connected") {
       fitRef.current?.fit();
       runSessionAction(window.nextshell.session.resize({
         sessionId: session.id,
@@ -666,7 +666,12 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       prevStatus !== undefined &&
       prevStatus !== "failed"
     ) {
-      const output = formatStatusOutput("failed");
+      // Skip if the IPC onStatus event already wrote this failure to the terminal
+      const lastKey = lastStatusKeyBySessionRef.current.get(currentSessionId);
+      if (lastKey?.includes(":failed:")) {
+        return;
+      }
+      const output = formatStatusOutput("failed", session?.reason);
       if (output) {
         appendSessionOutput(currentSessionId, output);
         if (currentSessionId === sessionIdRef.current) {
@@ -674,7 +679,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         }
       }
     }
-  }, [appendSessionOutput, session?.id, session?.status]);
+  }, [appendSessionOutput, session?.id, session?.reason, session?.status]);
 
   const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
   const hasSession = !!sessionIdRef.current;

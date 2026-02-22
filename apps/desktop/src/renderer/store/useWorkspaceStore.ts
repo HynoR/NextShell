@@ -40,7 +40,7 @@ interface WorkspaceState {
   setProxies: (proxies: ProxyProfile[]) => void;
   setActiveConnection: (connectionId?: string) => void;
   upsertSession: (session: SessionDescriptor) => void;
-  setSessionStatus: (sessionId: string, status: SessionDescriptor["status"]) => void;
+  setSessionStatus: (sessionId: string, status: SessionDescriptor["status"], reason?: string) => void;
   removeSession: (sessionId: string) => void;
   removeSessionsByConnection: (connectionId: string) => void;
   reorderSession: (sourceSessionId: string, targetSessionId: string) => void;
@@ -76,10 +76,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
           : [...state.sessions, session]
       };
     }),
-  setSessionStatus: (sessionId, status) =>
+  setSessionStatus: (sessionId, status, reason) =>
     set((state) => ({
       sessions: state.sessions.map((session) =>
-        session.id === sessionId ? { ...session, status } : session
+        session.id === sessionId
+          ? { ...session, status, ...(reason !== undefined ? { reason } : {}) }
+          : session
       )
     })),
   removeSession: (sessionId) =>

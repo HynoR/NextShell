@@ -85,14 +85,10 @@ export const App = () => {
 
   const {
     connectingIds,
-    authPromptState,
     startSession,
     activateConnection,
     handleCloseSession,
-    handleReconnectSession,
-    handleAuthPromptCancel,
-    handleAuthPromptSubmit,
-    MAX_AUTH_RETRIES
+    handleReconnectSession
   } = useSessionLifecycle();
 
   const activeConnection = useMemo(
@@ -415,8 +411,6 @@ export const App = () => {
           transferTasks={transferTasks}
           transferPanelCollapsed={transferPanelCollapsed}
           bottomTab={bottomTab}
-          authPromptState={authPromptState}
-          MAX_AUTH_RETRIES={MAX_AUTH_RETRIES}
           onLoadConnections={() => void loadConnections()}
           onOpenManager={handleOpenManager}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -452,8 +446,6 @@ export const App = () => {
               setBottomTab(tab);
             }
           }}
-          onAuthPromptCancel={handleAuthPromptCancel}
-          onAuthPromptSubmit={handleAuthPromptSubmit}
         />
 
         <ConnectionManagerModal

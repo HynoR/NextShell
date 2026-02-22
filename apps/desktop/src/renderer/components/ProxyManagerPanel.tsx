@@ -202,7 +202,9 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                 return;
               }
 
-              const port = Number(values.port);
+              // InputNumber may return null when cleared; coerce safely
+              const rawPort = values.port as unknown as number | null | undefined;
+              const port = rawPort == null ? NaN : Number(rawPort);
               if (!Number.isInteger(port) || port < 1 || port > 65535) {
                 message.error("代理端口必须是 1-65535 的整数。");
                 return;
@@ -290,6 +292,7 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                   label="密码"
                   name="password"
                   className="flex-1"
+                  preserve={false}
                 >
                   <Input.Password placeholder="留空则不更新" />
                 </Form.Item>

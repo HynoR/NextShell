@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
@@ -53,4 +53,33 @@ export const decryptConnectionExportPayload = (payloadB64: string, password: str
 
   const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   return decrypted.toString("utf8");
+};
+
+// ─── Plain-export password obfuscation (XOR + SHA-256) ────────────────────────
+// Key = SHA256(`${name}\x00${host}\x00${port}`), cycled over password bytes.
+// XOR is self-inverse, so the same function both obfuscates and deobfuscates.
+
+const passwordObfuscationKey = (name: string, host: string, port: number): Buffer =>
+  createHash("sha256")
+    .update(`${name}\x00${host}\x00${port}`)
+    .digest();
+
+export const obfuscatePassword = (password: string, name: string, host: string, port: number): string => {
+  const key = passwordObfuscationKey(name, host, port);
+  const input = Buffer.from(password, "utf8");
+  const output = Buffer.alloc(input.length);
+  for (let i = 0; i < input.length; i++) {
+    output[i] = (input[i] as number) ^ (key[i % 32] as number);
+  }
+  return output.toString("base64");
+};
+
+export const deobfuscatePassword = (obfuscated: string, name: string, host: string, port: number): string => {
+  const key = passwordObfuscationKey(name, host, port);
+  const input = Buffer.from(obfuscated, "base64");
+  const output = Buffer.alloc(input.length);
+  for (let i = 0; i < input.length; i++) {
+    output[i] = (input[i] as number) ^ (key[i % 32] as number);
+  }
+  return output.toString("utf8");
 };

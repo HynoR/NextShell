@@ -112,7 +112,8 @@ import {
 } from "./import-export";
 import {
   decryptConnectionExportPayload,
-  encryptConnectionExportPayload
+  encryptConnectionExportPayload,
+  obfuscatePassword
 } from "./connection-export-crypto";
 import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
 import { logger } from "../logger";
@@ -2854,15 +2855,25 @@ export const createServiceContainer = (
       exportedConnections.push(await buildExportedConnection(conn));
     }
 
+    const encryptionPassword = input.encryptionPassword;
+    const encrypted = typeof encryptionPassword === "string";
+
+    // When not encrypted, XOR-obfuscate passwords so they aren't stored as plaintext.
+    const exportedConnectionsFinal = encrypted
+      ? exportedConnections
+      : exportedConnections.map((c) => ({
+          ...c,
+          password: c.password !== undefined ? obfuscatePassword(c.password, c.name, c.host, c.port) : undefined
+        }));
+
     const exportFile: ConnectionExportFile = {
       format: "nextshell-connections",
       version: 1,
       exportedAt: new Date().toISOString(),
-      connections: exportedConnections
+      ...(encrypted ? {} : { passwordsObfuscated: true }),
+      connections: exportedConnectionsFinal
     };
     const plainJson = JSON.stringify(exportFile, null, 2);
-    const encryptionPassword = input.encryptionPassword;
-    const encrypted = typeof encryptionPassword === "string";
     const fileContent = encrypted
       ? `${ENCRYPTED_EXPORT_PREFIX}${encryptConnectionExportPayload(
           plainJson,
@@ -3199,7 +3210,8 @@ export const createServiceContainer = (
   ): { ok: true } => {
     const active = activeSessions.get(sessionId);
     if (!active) {
-      throw new Error("Session not found");
+      // Session may have already disconnected; silently ignore resize requests
+      return { ok: true };
     }
 
     active.channel.setWindow(rows, cols, 0, 0);

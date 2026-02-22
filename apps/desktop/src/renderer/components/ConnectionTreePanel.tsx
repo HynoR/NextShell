@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { App as AntdApp, Form, Input, Modal, Select, message } from "antd";
+import { App as AntdApp, message } from "antd";
 import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
+import { CredentialEditModal, toConnectionUpsertInput } from "./CredentialEditModal";
 import { promptModal } from "../utils/promptModal";
 import { formatDateTime, formatRelativeTime } from "../utils/formatTime";
 
@@ -15,13 +16,6 @@ interface ConnectionTreePanelProps {
   onConnect: (connectionId: string) => void;
   onQuickSave: (payload: ConnectionUpsertInput) => Promise<void>;
   onOpenManagerForConnection: (connectionId: string) => void;
-}
-
-interface CredentialEditFormValues {
-  username?: string;
-  authType: ConnectionProfile["authType"];
-  password?: string;
-  sshKeyId?: string;
 }
 
 interface ConnectionContextMenuState {
@@ -44,40 +38,6 @@ interface LeafNode {
 }
 
 type TreeNode = GroupNode | LeafNode;
-
-const sanitizeOptionalText = (value: string | undefined): string | undefined => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const toConnectionUpsertInput = (
-  connection: ConnectionProfile,
-  patch: Partial<ConnectionUpsertInput>
-): ConnectionUpsertInput => ({
-  id: connection.id,
-  name: connection.name,
-  host: connection.host,
-  port: connection.port,
-  username: connection.username,
-  authType: connection.authType,
-  sshKeyId: connection.sshKeyId,
-  hostFingerprint: connection.hostFingerprint,
-  strictHostKeyChecking: connection.strictHostKeyChecking,
-  proxyId: connection.proxyId,
-  terminalEncoding: connection.terminalEncoding,
-  backspaceMode: connection.backspaceMode,
-  deleteMode: connection.deleteMode,
-  groupPath: connection.groupPath,
-  tags: connection.tags,
-  notes: connection.notes,
-  favorite: connection.favorite,
-  monitorSession: connection.monitorSession,
-  ...patch
-});
 
 const groupPathToSegments = (groupPath: string): string[] => {
   return groupPath.split("/").filter((s) => s.length > 0);
@@ -436,9 +396,6 @@ export const ConnectionTreePanel = ({
   const [contextMenu, setContextMenu] = useState<ConnectionContextMenuState | null>(null);
   const [editingCredentialConnectionId, setEditingCredentialConnectionId] = useState<string>();
   const [savingName, setSavingName] = useState(false);
-  const [savingCredential, setSavingCredential] = useState(false);
-  const [credentialForm] = Form.useForm<CredentialEditFormValues>();
-  const credentialAuthType = Form.useWatch("authType", credentialForm);
 
   const tree = useMemo(
     () => buildTree(connections, sessions, keyword),
@@ -459,7 +416,7 @@ export const ConnectionTreePanel = ({
         : undefined,
     [connections, editingCredentialConnectionId]
   );
-  const busy = savingName || savingCredential;
+  const busy = savingName;
 
   useEffect(() => {
     if (
@@ -500,27 +457,6 @@ export const ConnectionTreePanel = ({
     }
   }, [keyword, tree]);
 
-  useEffect(() => {
-    if (!editingCredentialConnectionId || !credentialAuthType) {
-      return;
-    }
-
-    if (credentialAuthType === "agent") {
-      credentialForm.setFieldsValue({
-        password: undefined,
-        sshKeyId: undefined
-      });
-      return;
-    }
-
-    if (credentialAuthType === "password") {
-      credentialForm.setFieldValue("sshKeyId", undefined);
-      return;
-    }
-
-    credentialForm.setFieldValue("password", undefined);
-  }, [credentialAuthType, credentialForm, editingCredentialConnectionId]);
-
   const handleServerContextMenu = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>, connectionId: string) => {
       event.preventDefault();
@@ -558,66 +494,10 @@ export const ConnectionTreePanel = ({
 
   const handleOpenCredentialEditor = useCallback(
     (connection: ConnectionProfile) => {
-      credentialForm.resetFields();
-      credentialForm.setFieldsValue({
-        username: connection.username,
-        authType: connection.authType,
-        sshKeyId: connection.authType === "privateKey" ? connection.sshKeyId : undefined,
-        password: undefined
-      });
       setEditingCredentialConnectionId(connection.id);
     },
-    [credentialForm]
+    []
   );
-
-  const handleSaveCredentials = useCallback(async () => {
-    if (!editingCredentialConnection) {
-      return;
-    }
-
-    let values: CredentialEditFormValues;
-    try {
-      values = await credentialForm.validateFields();
-    } catch {
-      return;
-    }
-
-    const username = (values.username ?? "").trim();
-    const password = sanitizeOptionalText(values.password);
-
-    if (values.authType === "privateKey" && !values.sshKeyId) {
-      message.error("私钥认证需要选择一个 SSH 密钥。");
-      return;
-    }
-
-    if (
-      values.authType === "password" &&
-      editingCredentialConnection.authType !== "password" &&
-      !password
-    ) {
-      message.error("切换到密码认证时需要提供密码。");
-      return;
-    }
-
-    setSavingCredential(true);
-    try {
-      await onQuickSave(
-        toConnectionUpsertInput(editingCredentialConnection, {
-          username,
-          authType: values.authType,
-          password: values.authType === "password" ? password : undefined,
-          sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined
-        })
-      );
-      message.success("凭据已更新");
-      setEditingCredentialConnectionId(undefined);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : "更新凭据失败";
-      message.error(reason);
-    } finally {
-      setSavingCredential(false);
-    }
-  }, [credentialForm, editingCredentialConnection, onQuickSave]);
 
   const handleOpenManager = useCallback(
     (connectionId: string) => {
@@ -694,69 +574,13 @@ export const ConnectionTreePanel = ({
         />
       ) : null}
 
-      <Modal
+      <CredentialEditModal
         open={Boolean(editingCredentialConnection)}
-        title={editingCredentialConnection ? `编辑凭据 · ${editingCredentialConnection.name}` : "编辑凭据"}
-        okText="保存"
-        cancelText="取消"
-        confirmLoading={savingCredential}
-        onCancel={() => {
-          if (savingCredential) {
-            return;
-          }
-          setEditingCredentialConnectionId(undefined);
-        }}
-        onOk={() => {
-          void handleSaveCredentials();
-        }}
-        destroyOnHidden
-      >
-        <Form
-          form={credentialForm}
-          layout="vertical"
-          requiredMark={false}
-          onFinish={() => void handleSaveCredentials()}
-        >
-          <Form.Item label="用户名" name="username">
-            <Input placeholder="root" autoFocus />
-          </Form.Item>
-
-          <Form.Item label="认证方式" name="authType" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: "密码", value: "password" },
-                { label: "私钥", value: "privateKey" },
-                { label: "SSH Agent", value: "agent" }
-              ]}
-            />
-          </Form.Item>
-
-          {credentialAuthType === "password" ? (
-            <Form.Item label="密码" name="password">
-              <Input.Password placeholder="输入新密码（留空则不更新）" />
-            </Form.Item>
-          ) : null}
-
-          {credentialAuthType === "privateKey" ? (
-            <Form.Item
-              label="SSH 密钥"
-              name="sshKeyId"
-              rules={[{ required: true, message: "请选择一个 SSH 密钥" }]}
-            >
-              <Select
-                placeholder="选择密钥..."
-                allowClear
-                options={sshKeys.map((key) => ({ label: key.name, value: key.id }))}
-                notFoundContent={
-                  <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
-                    暂无密钥，请先在连接管理器添加
-                  </div>
-                }
-              />
-            </Form.Item>
-          ) : null}
-        </Form>
-      </Modal>
+        connection={editingCredentialConnection}
+        sshKeys={sshKeys}
+        onClose={() => setEditingCredentialConnectionId(undefined)}
+        onSave={onQuickSave}
+      />
     </section>
   );
 };
