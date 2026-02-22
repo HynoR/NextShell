@@ -377,6 +377,9 @@ export const ConnectionManagerModal = ({
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importPreviewQueue, setImportPreviewQueue] = useState<ImportPreviewBatch[]>([]);
   const [importQueueIndex, setImportQueueIndex] = useState(0);
+  const [revealedLoginPassword, setRevealedLoginPassword] = useState<string>();
+  const [revealingLoginPassword, setRevealingLoginPassword] = useState(false);
+  const revealPasswordTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
   const appliedFocusConnectionIdRef = useRef<string | undefined>(undefined);
@@ -401,6 +404,11 @@ export const ConnectionManagerModal = ({
     setImportModalOpen(false);
     setImportPreviewQueue([]);
     setImportQueueIndex(0);
+    setRevealedLoginPassword(undefined);
+    if (revealPasswordTimeoutRef.current) {
+      clearTimeout(revealPasswordTimeoutRef.current);
+      revealPasswordTimeoutRef.current = undefined;
+    }
   }, [form, open]);
 
   // Auto-expand all groups when keyword is set
@@ -442,6 +450,22 @@ export const ConnectionManagerModal = ({
     () => connections.find((c) => c.id === selectedConnectionId),
     [connections, selectedConnectionId]
   );
+
+  useEffect(() => {
+    setRevealedLoginPassword(undefined);
+    if (revealPasswordTimeoutRef.current) {
+      clearTimeout(revealPasswordTimeoutRef.current);
+      revealPasswordTimeoutRef.current = undefined;
+    }
+  }, [authType, selectedConnectionId]);
+
+  useEffect(() => {
+    return () => {
+      if (revealPasswordTimeoutRef.current) {
+        clearTimeout(revealPasswordTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const selectedExportCount = selectedExportIds.size;
   const currentImportBatch = importPreviewQueue[importQueueIndex];
@@ -560,6 +584,8 @@ export const ConnectionManagerModal = ({
     // InputNumber may return null when cleared; coerce safely
     const rawPort = values.port as unknown as number | null | undefined;
     const port = rawPort == null ? NaN : Number(rawPort);
+    const host = values.host.trim();
+    const name = sanitizeOptionalText(values.name) ?? `${host}:${port}`;
     const terminalEncoding = values.terminalEncoding ?? "utf-8";
     const backspaceMode = values.backspaceMode ?? "ascii-backspace";
     const deleteMode = values.deleteMode ?? "vt220-delete";
@@ -582,19 +608,19 @@ export const ConnectionManagerModal = ({
       return undefined;
     }
 
-    const username = (values.username ?? "").trim();
-    if (!username) {
-      message.error("请填写用户名（在「基本」标签页）。");
+    if (!host) {
+      message.error("请填写主机地址（在「基本」标签页）。");
       setFormTab("basic");
       return undefined;
     }
+    const username = (values.username ?? "").trim();
 
     setSaving(true);
     try {
       const payload: ConnectionUpsertInput = {
         id: values.id ?? selectedConnectionId ?? crypto.randomUUID(),
-        name: values.name.trim(),
-        host: values.host.trim(),
+        name,
+        host,
         port,
         username,
         authType: values.authType,
@@ -701,6 +727,15 @@ export const ConnectionManagerModal = ({
     }
   }, [form, onConnectionSaved, selectedConnectionId]);
 
+  const getCachedMasterPassword = useCallback(async (): Promise<string> => {
+    try {
+      const result = await window.nextshell.masterPassword.getCached();
+      return result.password ?? "";
+    } catch {
+      return "";
+    }
+  }, []);
+
   const promptExportMode = useCallback((): Promise<"plain" | "encrypted" | null> => {
     return new Promise((resolve) => {
       let mode: "plain" | "encrypted" = "plain";
@@ -732,10 +767,10 @@ export const ConnectionManagerModal = ({
     });
   }, [modal]);
 
-  const promptExportEncryptionPassword = useCallback((): Promise<string | null> => {
+  const promptExportEncryptionPassword = useCallback((defaultPassword?: string): Promise<string | null> => {
     return new Promise((resolve) => {
-      let password = "";
-      let confirmPassword = "";
+      let password = defaultPassword ?? "";
+      let confirmPassword = defaultPassword ?? "";
       let settled = false;
       const settle = (value: string | null): void => {
         if (settled) return;
@@ -749,14 +784,21 @@ export const ConnectionManagerModal = ({
         cancelText: "取消",
         content: (
           <div style={{ display: "grid", gap: 8 }}>
+            {defaultPassword ? (
+              <div style={{ fontSize: 12, color: "var(--t3)" }}>
+                已自动填充主密码，可按需修改。
+              </div>
+            ) : null}
             <Input.Password
               placeholder="请输入密码（至少 6 位）"
+              defaultValue={defaultPassword}
               onChange={(event) => {
                 password = event.target.value;
               }}
             />
             <Input.Password
               placeholder="请再次输入密码"
+              defaultValue={defaultPassword}
               onChange={(event) => {
                 confirmPassword = event.target.value;
               }}
@@ -790,7 +832,8 @@ export const ConnectionManagerModal = ({
 
       let encryptionPassword: string | undefined;
       if (mode === "encrypted") {
-        const password = await promptExportEncryptionPassword();
+        const defaultPassword = await getCachedMasterPassword();
+        const password = await promptExportEncryptionPassword(defaultPassword);
         if (!password) return;
         encryptionPassword = password;
       }
@@ -811,7 +854,7 @@ export const ConnectionManagerModal = ({
         message.error(`导出失败：${formatErrorMessage(error, "请稍后重试")}`);
       }
     },
-    [promptExportEncryptionPassword, promptExportMode]
+    [getCachedMasterPassword, promptExportEncryptionPassword, promptExportMode]
   );
 
   const handleExportAll = useCallback(async () => {
@@ -843,7 +886,8 @@ export const ConnectionManagerModal = ({
 
     let encryptionPassword: string | undefined;
     if (mode === "encrypted") {
-      const password = await promptExportEncryptionPassword();
+      const defaultPassword = await getCachedMasterPassword();
+      const password = await promptExportEncryptionPassword(defaultPassword);
       if (!password) return;
       encryptionPassword = password;
     }
@@ -887,7 +931,92 @@ export const ConnectionManagerModal = ({
     } catch (error) {
       message.error(`导出失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
-  }, [connections, promptExportEncryptionPassword, promptExportMode, selectedExportIds]);
+  }, [connections, getCachedMasterPassword, promptExportEncryptionPassword, promptExportMode, selectedExportIds]);
+
+  const promptMasterPasswordForReveal = useCallback((defaultPassword?: string): Promise<string | null> => {
+    return new Promise((resolve) => {
+      let password = defaultPassword ?? "";
+      let settled = false;
+      const settle = (value: string | null): void => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      modal.confirm({
+        title: "输入主密码查看登录密码",
+        okText: "查看",
+        cancelText: "取消",
+        content: (
+          <div style={{ display: "grid", gap: 8 }}>
+            {defaultPassword ? (
+              <div style={{ fontSize: 12, color: "var(--t3)" }}>
+                已自动填充主密码，可按需修改。
+              </div>
+            ) : null}
+            <Input.Password
+              placeholder="请输入主密码"
+              defaultValue={defaultPassword}
+              onChange={(event) => {
+                password = event.target.value;
+              }}
+            />
+          </div>
+        ),
+        onOk: async () => {
+          const trimmed = password.trim();
+          if (!trimmed) {
+            message.warning("请输入主密码。");
+            throw new Error("empty-master-password");
+          }
+          settle(trimmed);
+        },
+        onCancel: () => settle(null)
+      });
+    });
+  }, [modal]);
+
+  const handleRevealConnectionPassword = useCallback(async () => {
+    if (!selectedConnection || !selectedConnectionId) {
+      return;
+    }
+    if (selectedConnection.authType !== "password") {
+      message.warning("仅密码认证连接支持查看登录密码。");
+      return;
+    }
+
+    const defaultMasterPassword = await getCachedMasterPassword();
+    const inputPassword = await promptMasterPasswordForReveal(defaultMasterPassword);
+    if (!inputPassword) {
+      return;
+    }
+
+    try {
+      setRevealingLoginPassword(true);
+      const result = await window.nextshell.connection.revealPassword({
+        connectionId: selectedConnectionId,
+        masterPassword: inputPassword
+      });
+      setRevealedLoginPassword(result.password);
+      if (revealPasswordTimeoutRef.current) {
+        clearTimeout(revealPasswordTimeoutRef.current);
+      }
+      revealPasswordTimeoutRef.current = setTimeout(() => {
+        setRevealedLoginPassword(undefined);
+        revealPasswordTimeoutRef.current = undefined;
+      }, 30_000);
+      message.success("已显示登录密码，30 秒后自动隐藏。");
+    } catch (error) {
+      message.error(`查看登录密码失败：${formatErrorMessage(error, "请检查主密码")}`);
+    } finally {
+      setRevealingLoginPassword(false);
+    }
+  }, [
+    getCachedMasterPassword,
+    promptMasterPasswordForReveal,
+    selectedConnection,
+    selectedConnectionId
+  ]);
 
   const resetImportFlow = useCallback(() => {
     setImportModalOpen(false);
@@ -1413,8 +1542,8 @@ export const ConnectionManagerModal = ({
               <div className="mgr-form-tab-body">
                 {/* ── Tab: 基本 ──── */}
                 <div style={{ display: formTab === "basic" ? "" : "none" }}>
-                    <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入连接名称" }]}>
-                      <Input placeholder="我的服务器" />
+                    <Form.Item label="名称" name="name">
+                      <Input placeholder="我的服务器（可选，留空将使用 host:port）" />
                     </Form.Item>
 
                     <div className="flex gap-3 items-start">
@@ -1440,10 +1569,9 @@ export const ConnectionManagerModal = ({
                       <Form.Item
                         label="用户名"
                         name="username"
-                        rules={[{ required: true, message: "请输入用户名" }]}
                         className="flex-1"
                       >
-                        <Input placeholder="root" />
+                        <Input placeholder="root（可选，首次连接时输入）" />
                       </Form.Item>
                       <Form.Item
                         label="认证方式"
@@ -1481,13 +1609,45 @@ export const ConnectionManagerModal = ({
                     ) : null}
 
                     {authType === "password" ? (
-                      <Form.Item
-                        label="密码"
-                        name="password"
-                        preserve={false}
-                      >
-                        <Input.Password placeholder="输入密码（留空则不更新）" />
-                      </Form.Item>
+                      <>
+                        <Form.Item
+                          label="密码"
+                          name="password"
+                          preserve={false}
+                        >
+                          <Input.Password placeholder="输入密码（留空则不更新）" />
+                        </Form.Item>
+                        {mode === "edit" && selectedConnection?.authType === "password" ? (
+                          <Form.Item label="已保存的登录密码" preserve={false}>
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <button
+                                type="button"
+                                className="mgr-action-btn"
+                                onClick={() => void handleRevealConnectionPassword()}
+                                disabled={revealingLoginPassword}
+                                style={{ justifySelf: "start" }}
+                              >
+                                <i
+                                  className={revealingLoginPassword ? "ri-loader-4-line" : "ri-eye-line"}
+                                  aria-hidden="true"
+                                />
+                                {revealingLoginPassword ? "验证中..." : "输入主密码查看"}
+                              </button>
+                              {revealedLoginPassword ? (
+                                <Input.Password
+                                  value={revealedLoginPassword}
+                                  readOnly
+                                  visibilityToggle
+                                />
+                              ) : (
+                                <div style={{ fontSize: 12, color: "var(--t3)" }}>
+                                  仅在输入主密码后显示，30 秒自动隐藏。
+                                </div>
+                              )}
+                            </div>
+                          </Form.Item>
+                        ) : null}
+                      </>
                     ) : null}
 
                     <div className="mgr-section-label mgr-section-gap">安全</div>

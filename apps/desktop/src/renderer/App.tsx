@@ -85,6 +85,7 @@ export const App = () => {
   const {
     connectingIds,
     startSession,
+    retrySessionAuth,
     activateConnection,
     handleCloseSession,
     handleReconnectSession
@@ -424,6 +425,7 @@ export const App = () => {
           onOpenNetworkMonitor={handleOpenNetworkMonitor}
           onCloseMonitorTab={handleCloseMonitorTab}
           onOpenEditorTab={handleOpenEditorTab}
+          onRetrySessionAuth={retrySessionAuth}
           onSetActiveSession={setActiveSession}
           onSetActiveConnection={setActiveConnection}
           onReorderSession={reorderSession}

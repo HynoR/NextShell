@@ -43,9 +43,18 @@ import type {
   ConnectionExportInput,
   ConnectionExportBatchInput,
   ConnectionExportBatchResult,
+  ConnectionRevealPasswordInput,
+  ConnectionRevealPasswordResult,
   ConnectionImportExecuteInput,
   ConnectionImportFinalShellPreviewInput,
   ConnectionImportPreviewInput,
+  MasterPasswordCachedResult,
+  MasterPasswordClearRememberedInput,
+  MasterPasswordGetCachedInput,
+  MasterPasswordSetInput,
+  MasterPasswordStatusInput,
+  MasterPasswordStatusResult,
+  MasterPasswordUnlockInput,
   ConnectionRemoveInput,
   ConnectionUpsertInput,
   DialogOpenDirectoryInput,
@@ -117,6 +126,7 @@ export interface NextShellApi {
     remove: (payload: ConnectionRemoveInput) => Promise<{ ok: true }>;
     exportToFile: (payload: ConnectionExportInput) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
     exportBatch: (payload: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
+    revealPassword: (payload: ConnectionRevealPasswordInput) => Promise<ConnectionRevealPasswordResult>;
     importPreview: (payload: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
     importFinalShellPreview: (payload: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
     importExecute: (payload: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
@@ -205,6 +215,13 @@ export interface NextShellApi {
       isUnlocked: boolean;
       keytarAvailable: boolean;
     }>;
+  };
+  masterPassword: {
+    setPassword: (payload: MasterPasswordSetInput) => Promise<{ ok: true }>;
+    unlockPassword: (payload: MasterPasswordUnlockInput) => Promise<{ ok: true }>;
+    clearRemembered: (payload?: MasterPasswordClearRememberedInput) => Promise<{ ok: true }>;
+    passwordStatus: (payload?: MasterPasswordStatusInput) => Promise<MasterPasswordStatusResult>;
+    getCached: (payload?: MasterPasswordGetCachedInput) => Promise<MasterPasswordCachedResult>;
   };
   templateParams: {
     list: (payload?: TemplateParamsListInput) => Promise<CommandTemplateParam[]>;

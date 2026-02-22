@@ -214,7 +214,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setPwdStatusLoading(true);
     void (async () => {
       try {
-        const status = await window.nextshell.backup.passwordStatus();
+        const status = await window.nextshell.masterPassword.passwordStatus();
         setPwdStatus(status);
       } catch { /* ignore */ } finally {
         setPwdStatusLoading(false);
@@ -224,7 +224,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
   const refreshPasswordStatus = useCallback(async () => {
     try {
-      const status = await window.nextshell.backup.passwordStatus();
+      const status = await window.nextshell.masterPassword.passwordStatus();
       setPwdStatus(status);
     } catch { /* noop */ }
   }, []);
@@ -257,7 +257,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   // ─── Backup handlers ───────────────────────────────────────────────
   const handleSetPassword = async (): Promise<void> => {
     if (!pwdInput || pwdInput.length < 6) {
-      message.warning("备份密码至少需要 6 个字符。");
+      message.warning("主密码至少需要 6 个字符。");
       return;
     }
     if (pwdInput !== pwdConfirm) {
@@ -266,8 +266,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     }
     setPwdBusy(true);
     try {
-      await window.nextshell.backup.setPassword({ password: pwdInput, confirmPassword: pwdConfirm });
-      message.success("备份密码已设置");
+      await window.nextshell.masterPassword.setPassword({ password: pwdInput, confirmPassword: pwdConfirm });
+      message.success("主密码已设置");
       setPwdInput(""); setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
@@ -276,11 +276,11 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   };
 
   const handleUnlockPassword = async (): Promise<void> => {
-    if (!pwdInput) { message.warning("请输入备份密码。"); return; }
+    if (!pwdInput) { message.warning("请输入主密码。"); return; }
     setPwdBusy(true);
     try {
-      await window.nextshell.backup.unlockPassword({ password: pwdInput });
-      message.success("备份密码已解锁");
+      await window.nextshell.masterPassword.unlockPassword({ password: pwdInput });
+      message.success("主密码已解锁");
       setPwdInput(""); setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
@@ -290,8 +290,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
   const handleClearRemembered = async (): Promise<void> => {
     try {
-      await window.nextshell.backup.clearRemembered();
-      message.success("已清除钥匙串中的备份密码缓存");
+      await window.nextshell.masterPassword.clearRemembered();
+      message.success("已清除钥匙串中的主密码缓存");
       await refreshPasswordStatus();
     } catch (error) {
       message.error(`清除缓存失败：${formatErrorMessage(error, "请稍后重试")}`);
@@ -997,7 +997,7 @@ const BackupSection = ({
   message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => (
   <>
-    <SettingsCard title="备份密码" description="使用 rclone 将加密备份同步到远端存储">
+    <SettingsCard title="主密码" description="用于云存档备份、导出加密默认填充和连接密码查看授权">
       <div className="flex items-center gap-2 mb-2">
         <Typography.Text style={{ fontSize: 12 }}>状态: </Typography.Text>
         {pwdStatusLoading ? (
@@ -1016,11 +1016,11 @@ const BackupSection = ({
         )}
       </div>
 
-      <SettingsRow label={pwdStatus.isSet ? "输入备份密码" : "设置备份密码"}>
+      <SettingsRow label={pwdStatus.isSet ? "输入主密码" : "设置主密码"}>
         <Input.Password
           value={pwdInput}
           onChange={(e) => setPwdInput(e.target.value)}
-          placeholder={pwdStatus.isSet ? "输入备份密码以解锁" : "新备份密码（至少 6 个字符）"}
+          placeholder={pwdStatus.isSet ? "输入主密码以解锁" : "新主密码（至少 6 个字符）"}
           disabled={pwdBusy}
         />
         {!pwdStatus.isSet && (
@@ -1044,7 +1044,7 @@ const BackupSection = ({
             </Button>
           ) : (
             <Button type="primary" loading={pwdBusy} onClick={onSetPassword}>
-              设置备份密码
+              设置主密码
             </Button>
           )}
           {pwdStatus.keytarAvailable && pwdStatus.isSet && (
@@ -1095,7 +1095,7 @@ const BackupSection = ({
       </SettingsRow>
 
       <SettingsSwitchRow
-        label="使用系统钥匙串记住备份密码"
+        label="使用系统钥匙串记住主密码"
         checked={backupRememberPassword}
         disabled={loading || !pwdStatus.keytarAvailable}
         onChange={(v) => save({ backup: { rememberPassword: v } })}
@@ -1154,7 +1154,7 @@ const BackupSection = ({
       </Space>
       {!pwdStatus.isUnlocked && (
         <div className="stg-note" style={{ marginTop: 8, color: "var(--t-warning)" }}>
-          请先设置并解锁备份密码后再执行备份/还原操作。
+          请先设置并解锁主密码后再执行备份/还原操作。
         </div>
       )}
       {lastBackupAt && (

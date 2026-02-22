@@ -17,6 +17,14 @@ import {
 } from "../../../../packages/shared/src/index";
 import { WINDOWS_TITLEBAR_SAFE_TOP } from "../shared/window-ui";
 
+const masterPasswordApi: NextShellApi["masterPassword"] = {
+  setPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordSet, payload),
+  unlockPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordUnlock, payload),
+  clearRemembered: () => ipcRenderer.invoke(IPCChannel.MasterPasswordClearRemembered, {}),
+  passwordStatus: () => ipcRenderer.invoke(IPCChannel.MasterPasswordStatus, {}),
+  getCached: () => ipcRenderer.invoke(IPCChannel.MasterPasswordGetCached, {})
+};
+
 const api: NextShellApi = {
   connection: {
     list: (query) => ipcRenderer.invoke(IPCChannel.ConnectionList, query),
@@ -24,6 +32,7 @@ const api: NextShellApi = {
     remove: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRemove, payload),
     exportToFile: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionExport, payload),
     exportBatch: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionExportBatch, payload),
+    revealPassword: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRevealPassword, payload),
     importPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportPreview, payload),
     importFinalShellPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportFinalShellPreview, payload),
     importExecute: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportExecute, payload)
@@ -164,11 +173,12 @@ const api: NextShellApi = {
     list: () => ipcRenderer.invoke(IPCChannel.BackupList, {}),
     run: (payload) => ipcRenderer.invoke(IPCChannel.BackupRun, payload ?? {}),
     restore: (payload) => ipcRenderer.invoke(IPCChannel.BackupRestore, payload),
-    setPassword: (payload) => ipcRenderer.invoke(IPCChannel.BackupPasswordSet, payload),
-    unlockPassword: (payload) => ipcRenderer.invoke(IPCChannel.BackupPasswordUnlock, payload),
-    clearRemembered: () => ipcRenderer.invoke(IPCChannel.BackupPasswordClearRemembered, {}),
-    passwordStatus: () => ipcRenderer.invoke(IPCChannel.BackupPasswordStatus, {})
+    setPassword: (payload) => masterPasswordApi.setPassword(payload),
+    unlockPassword: (payload) => masterPasswordApi.unlockPassword(payload),
+    clearRemembered: () => masterPasswordApi.clearRemembered(),
+    passwordStatus: () => masterPasswordApi.passwordStatus()
   },
+  masterPassword: masterPasswordApi,
   templateParams: {
     list: (payload) => ipcRenderer.invoke(IPCChannel.TemplateParamsList, payload ?? {}),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.TemplateParamsUpsert, payload),

@@ -12,6 +12,7 @@ import {
   commandHistoryRemoveSchema,
   connectionExportSchema,
   connectionExportBatchSchema,
+  connectionRevealPasswordSchema,
   connectionImportFinalShellPreviewSchema,
   connectionImportPreviewSchema,
   connectionImportExecuteSchema,
@@ -61,6 +62,11 @@ import {
   backupPasswordUnlockSchema,
   backupPasswordClearRememberedSchema,
   backupPasswordStatusSchema,
+  masterPasswordSetSchema,
+  masterPasswordUnlockSchema,
+  masterPasswordClearRememberedSchema,
+  masterPasswordStatusSchema,
+  masterPasswordGetCachedSchema,
   templateParamsListSchema,
   templateParamsUpsertSchema,
   templateParamsClearSchema,
@@ -131,6 +137,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.ConnectionExportBatch, (_event, payload) => {
     const input = parsePayload(connectionExportBatchSchema, payload, "连接批量导出");
     return services.exportConnectionsBatch(input);
+  });
+
+  ipcMain.handle(IPCChannel.ConnectionRevealPassword, (_event, payload) => {
+    const input = parsePayload(connectionRevealPasswordSchema, payload, "查看连接密码");
+    return services.revealConnectionPassword(input.connectionId, input.masterPassword);
   });
 
   ipcMain.handle(IPCChannel.ConnectionImportPreview, (_event, payload) => {
@@ -402,24 +413,49 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.backupRestore(input.archiveId, input.conflictPolicy);
   });
 
+  ipcMain.handle(IPCChannel.MasterPasswordSet, (_event, payload) => {
+    const input = parsePayload(masterPasswordSetSchema, payload, "设置主密码");
+    return services.masterPasswordSet(input.password);
+  });
+
+  ipcMain.handle(IPCChannel.MasterPasswordUnlock, (_event, payload) => {
+    const input = parsePayload(masterPasswordUnlockSchema, payload, "解锁主密码");
+    return services.masterPasswordUnlock(input.password);
+  });
+
+  ipcMain.handle(IPCChannel.MasterPasswordClearRemembered, (_event, payload) => {
+    parsePayload(masterPasswordClearRememberedSchema, payload ?? {}, "清除记住的主密码");
+    return services.masterPasswordClearRemembered();
+  });
+
+  ipcMain.handle(IPCChannel.MasterPasswordStatus, (_event, payload) => {
+    parsePayload(masterPasswordStatusSchema, payload ?? {}, "主密码状态查询");
+    return services.masterPasswordStatus();
+  });
+
+  ipcMain.handle(IPCChannel.MasterPasswordGetCached, (_event, payload) => {
+    parsePayload(masterPasswordGetCachedSchema, payload ?? {}, "获取主密码缓存");
+    return services.masterPasswordGetCached();
+  });
+
   ipcMain.handle(IPCChannel.BackupPasswordSet, (_event, payload) => {
     const input = parsePayload(backupPasswordSetSchema, payload, "设置云存档密码");
-    return services.backupSetPassword(input.password);
+    return services.masterPasswordSet(input.password);
   });
 
   ipcMain.handle(IPCChannel.BackupPasswordUnlock, (_event, payload) => {
     const input = parsePayload(backupPasswordUnlockSchema, payload, "解锁云存档密码");
-    return services.backupUnlockPassword(input.password);
+    return services.masterPasswordUnlock(input.password);
   });
 
   ipcMain.handle(IPCChannel.BackupPasswordClearRemembered, (_event, payload) => {
     parsePayload(backupPasswordClearRememberedSchema, payload ?? {}, "清除记住的密码");
-    return services.backupClearRemembered();
+    return services.masterPasswordClearRemembered();
   });
 
   ipcMain.handle(IPCChannel.BackupPasswordStatus, (_event, payload) => {
     parsePayload(backupPasswordStatusSchema, payload ?? {}, "密码状态查询");
-    return services.backupPasswordStatus();
+    return services.masterPasswordStatus();
   });
 
   // ─── Template Params ──────────────────────────────────────────────────────

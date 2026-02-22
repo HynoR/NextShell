@@ -227,6 +227,7 @@ export interface ServiceContainer {
     input: ConnectionExportInput
   ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
   exportConnectionsBatch: (input: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
+  revealConnectionPassword: (connectionId: string, masterPassword?: string) => Promise<{ password: string }>;
   importConnectionsPreview: (input: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
   importFinalShellConnectionsPreview: (input: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
   importConnectionsExecute: (input: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
@@ -321,6 +322,11 @@ export interface ServiceContainer {
   backupList: () => Promise<BackupArchiveMeta[]>;
   backupRun: (conflictPolicy: BackupConflictPolicy) => Promise<{ ok: true; fileName?: string }>;
   backupRestore: (archiveId: string, conflictPolicy: RestoreConflictPolicy) => Promise<{ ok: true }>;
+  masterPasswordSet: (password: string) => Promise<{ ok: true }>;
+  masterPasswordUnlock: (password: string) => Promise<{ ok: true }>;
+  masterPasswordClearRemembered: () => Promise<{ ok: true }>;
+  masterPasswordStatus: () => Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }>;
+  masterPasswordGetCached: () => Promise<{ password?: string }>;
   backupSetPassword: (password: string) => Promise<{ ok: true }>;
   backupUnlockPassword: (password: string) => Promise<{ ok: true }>;
   backupClearRemembered: () => Promise<{ ok: true }>;
@@ -1248,28 +1254,30 @@ export const createServiceContainer = (
   }
   const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKeyHex, "hex"));
 
-  // ─── Backup Password (optional, for cloud backup only) ────────────────────
+  // ─── Master Password (backup/export/reveal authorization) ─────────────────
   const keytarCache = new KeytarPasswordCache();
-  let backupPassword: string | undefined;
+  let masterPassword: string | undefined;
 
-  // Try to recall backup password from keytar on startup
-  const tryRecallBackupPassword = async (): Promise<void> => {
+  const tryRecallMasterPassword = async (): Promise<void> => {
+    if (masterPassword) {
+      return;
+    }
     const meta = connections.getMasterKeyMeta();
     if (!meta) return;
     const cached = await keytarCache.recall();
     if (!cached) return;
     if (verifyMasterPassword(cached, meta)) {
-      backupPassword = cached;
-      logger.info("[Security] recalled backup password from keytar");
+      masterPassword = cached;
+      logger.info("[Security] recalled master password from keytar");
     }
   };
 
-  void tryRecallBackupPassword();
+  void tryRecallMasterPassword();
 
   const backupService = new BackupService({
     dataDir: options.dataDir,
     repo: connections,
-    getMasterPassword: () => backupPassword
+    getMasterPassword: () => masterPassword
   });
 
   const activeSessions = new Map<string, ActiveSession>();
@@ -4905,54 +4913,141 @@ export const createServiceContainer = (
       await keytarCache.remember(password);
     } catch (error) {
       const reason = normalizeError(error);
-      logger.warn("[Security] failed to cache backup password in keytar", { phase, reason });
+      logger.warn("[Security] failed to cache master password in keytar", { phase, reason });
       connections.appendAuditLog({
-        action: "backup.password_cache_failed",
+        action: "master_password.cache_failed",
         level: "warn",
-        message: "Failed to cache backup password in keytar",
+        message: "Failed to cache master password in keytar",
         metadata: { phase, reason }
       });
     }
   };
 
-  const backupSetPassword = async (password: string): Promise<{ ok: true }> => {
+  const getMasterKeyMetaOrThrow = () => {
+    const meta = connections.getMasterKeyMeta();
+    if (!meta) {
+      throw new Error("尚未设置主密码。请先设置主密码。");
+    }
+    return meta;
+  };
+
+  const masterPasswordSet = async (password: string): Promise<{ ok: true }> => {
     const meta = createMasterKeyMeta(password);
     connections.saveMasterKeyMeta(meta);
-    backupPassword = password;
+    masterPassword = password;
     await rememberPasswordBestEffort(password, "set");
     connections.appendAuditLog({
-      action: "backup.password_set",
+      action: "master_password.set",
       level: "info",
-      message: "Cloud backup password configured"
+      message: "Master password configured"
     });
     return { ok: true };
   };
 
-  const backupUnlockPassword = async (password: string): Promise<{ ok: true }> => {
-    const meta = connections.getMasterKeyMeta();
-    if (!meta) {
-      throw new Error("尚未设置备份密码。请先设置密码。");
-    }
+  const masterPasswordUnlock = async (password: string): Promise<{ ok: true }> => {
+    const meta = getMasterKeyMetaOrThrow();
     if (!verifyMasterPassword(password, meta)) {
-      throw new Error("备份密码错误。");
+      throw new Error("主密码错误。");
     }
-    backupPassword = password;
+    masterPassword = password;
     await rememberPasswordBestEffort(password, "unlock");
     return { ok: true };
   };
 
-  const backupClearRemembered = async (): Promise<{ ok: true }> => {
+  const masterPasswordClearRemembered = async (): Promise<{ ok: true }> => {
     await keytarCache.clear();
     return { ok: true };
   };
 
-  const backupPasswordStatus = async (): Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }> => {
+  const masterPasswordStatus = async (): Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }> => {
     const meta = connections.getMasterKeyMeta();
     return {
       isSet: meta !== undefined,
-      isUnlocked: backupPassword !== undefined,
+      isUnlocked: masterPassword !== undefined,
       keytarAvailable: keytarCache.isAvailable()
     };
+  };
+
+  const masterPasswordGetCached = async (): Promise<{ password?: string }> => {
+    if (!masterPassword) {
+      await tryRecallMasterPassword();
+    }
+    return { password: masterPassword };
+  };
+
+  const resolveMasterPassword = async (candidate?: string): Promise<string> => {
+    const input = candidate?.trim();
+    if (input) {
+      const meta = getMasterKeyMetaOrThrow();
+      if (!verifyMasterPassword(input, meta)) {
+        throw new Error("主密码错误。");
+      }
+      masterPassword = input;
+      await rememberPasswordBestEffort(input, "unlock");
+      return input;
+    }
+
+    if (masterPassword) {
+      return masterPassword;
+    }
+
+    await tryRecallMasterPassword();
+    if (masterPassword) {
+      return masterPassword;
+    }
+
+    throw new Error("主密码未解锁，请先输入主密码。");
+  };
+
+  const revealConnectionPassword = async (
+    connectionId: string,
+    providedMasterPassword?: string
+  ): Promise<{ password: string }> => {
+    const connection = connections.getById(connectionId);
+    if (!connection) {
+      throw new Error("连接不存在。");
+    }
+    if (connection.authType !== "password") {
+      throw new Error("该连接未使用密码认证。");
+    }
+    if (!connection.credentialRef) {
+      throw new Error("该连接未保存登录密码。");
+    }
+
+    await resolveMasterPassword(providedMasterPassword);
+    const password = await vault.readCredential(connection.credentialRef);
+    if (!password) {
+      throw new Error("该连接未保存登录密码。");
+    }
+
+    connections.appendAuditLog({
+      action: "connection.password_reveal",
+      level: "warn",
+      connectionId,
+      message: "Revealed saved connection password",
+      metadata: {
+        via: providedMasterPassword?.trim() ? "master-password-input" : "master-password-cache"
+      }
+    });
+
+    return { password };
+  };
+
+  // Backward-compatible aliases
+  const backupSetPassword = async (password: string): Promise<{ ok: true }> => {
+    return masterPasswordSet(password);
+  };
+
+  const backupUnlockPassword = async (password: string): Promise<{ ok: true }> => {
+    return masterPasswordUnlock(password);
+  };
+
+  const backupClearRemembered = async (): Promise<{ ok: true }> => {
+    return masterPasswordClearRemembered();
+  };
+
+  const backupPasswordStatus = async (): Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }> => {
+    return masterPasswordStatus();
   };
 
   // ─── Template Params ──────────────────────────────────────────────────────
@@ -5012,6 +5107,7 @@ export const createServiceContainer = (
     removeConnection,
     exportConnections,
     exportConnectionsBatch,
+    revealConnectionPassword,
     importConnectionsPreview,
     importFinalShellConnectionsPreview,
     importConnectionsExecute,
@@ -5071,6 +5167,11 @@ export const createServiceContainer = (
     backupList,
     backupRun,
     backupRestore,
+    masterPasswordSet,
+    masterPasswordUnlock,
+    masterPasswordClearRemembered,
+    masterPasswordStatus,
+    masterPasswordGetCached,
     backupSetPassword,
     backupUnlockPassword,
     backupClearRemembered,

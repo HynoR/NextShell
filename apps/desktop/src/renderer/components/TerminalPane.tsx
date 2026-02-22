@@ -13,7 +13,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
-import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
+import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import {
   MAX_SESSION_OUTPUT_BYTES,
   appendWithLimit,
@@ -23,11 +23,25 @@ import {
 } from "../utils/sessionOutputBuffer";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { usePreferencesStore } from "../store/usePreferencesStore";
+import {
+  buildTerminalAuthIntro,
+  buildTerminalAuthRetryNotice,
+  consumeTerminalAuthInput,
+  createTerminalAuthState,
+  isAuthFailureReason,
+  resetTerminalAuthForRetry,
+  stripAuthFailurePrefix,
+  type TerminalAuthState
+} from "../utils/terminal-auth-flow";
 
 interface TerminalPaneProps {
   connection?: ConnectionProfile;
   session?: SessionDescriptor;
   sessionIds: string[];
+  onRetrySessionAuth: (
+    sessionId: string,
+    authOverride: SessionAuthOverrideInput
+  ) => Promise<{ ok: true } | { ok: false; authRequired: boolean; reason: string }>;
   onRequestSearchMode?: () => void;
 }
 
@@ -102,9 +116,7 @@ const statusMessage = (
   }
 
   if (status === "failed") {
-    const displayReason = reason?.startsWith(AUTH_REQUIRED_PREFIX)
-      ? reason.slice(AUTH_REQUIRED_PREFIX.length)
-      : reason;
+    const displayReason = stripAuthFailurePrefix(reason);
     return `SSH 会话连接失败：${formatErrorMessage(displayReason, "未知原因")}`;
   }
 
@@ -115,7 +127,7 @@ const isAuthRetryInProgress = (
   status: SessionDescriptor["status"],
   reason?: string
 ): boolean =>
-  status === "failed" && !!reason?.startsWith(AUTH_REQUIRED_PREFIX);
+  status === "failed" && isAuthFailureReason(reason);
 
 const formatStatusOutput = (
   status: SessionDescriptor["status"],
@@ -138,6 +150,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   connection,
   session,
   sessionIds,
+  onRetrySessionAuth,
   onRequestSearchMode
 }, ref) => {
   const { message } = AntdApp.useApp();
@@ -154,14 +167,20 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   const frozenSessionIdRef = useRef<string | undefined>(undefined);
   const terminalOptionsRef = useRef<FrozenTerminalOptions>(DEFAULT_TERMINAL_OPTIONS);
   const onRequestSearchModeRef = useRef<TerminalPaneProps["onRequestSearchMode"]>(onRequestSearchMode);
+  const onRetrySessionAuthRef = useRef<TerminalPaneProps["onRetrySessionAuth"]>(onRetrySessionAuth);
   const findNextRef = useRef<() => void>(() => {});
   const findPreviousRef = useRef<() => void>(() => {});
+  const authStateBySessionRef = useRef<Map<string, TerminalAuthState>>(new Map());
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     onRequestSearchModeRef.current = onRequestSearchMode;
   }, [onRequestSearchMode]);
+
+  useEffect(() => {
+    onRetrySessionAuthRef.current = onRetrySessionAuth;
+  }, [onRetrySessionAuth]);
   const appendSessionOutput = useCallback((targetSessionId: string, text: string) => {
     if (!knownSessionIdsRef.current.has(targetSessionId) || !text) {
       return;
@@ -171,6 +190,94 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     const next = appendWithLimit(existing, text, MAX_SESSION_OUTPUT_BYTES);
     bufferBySessionRef.current.set(targetSessionId, next);
   }, []);
+
+  const writeLocalOutput = useCallback(
+    (
+      targetSessionId: string,
+      text: string,
+      options?: { persist?: boolean }
+    ) => {
+      if (!text) {
+        return;
+      }
+      if (options?.persist !== false) {
+        appendSessionOutput(targetSessionId, text);
+      }
+      if (sessionIdRef.current === targetSessionId) {
+        terminalRef.current?.write(text);
+      }
+    },
+    [appendSessionOutput]
+  );
+
+  const beginLocalAuthPrompt = useCallback(
+    (targetSessionId: string, reason?: string) => {
+      const existing = authStateBySessionRef.current.get(targetSessionId);
+      if (existing) {
+        return;
+      }
+      authStateBySessionRef.current.set(targetSessionId, createTerminalAuthState());
+      writeLocalOutput(targetSessionId, buildTerminalAuthIntro(reason));
+    },
+    [writeLocalOutput]
+  );
+
+  const handleLocalAuthInput = useCallback(
+    (targetSessionId: string, data: string) => {
+      const current = authStateBySessionRef.current.get(targetSessionId);
+      if (!current) {
+        return false;
+      }
+
+      const consumed = consumeTerminalAuthInput(current, data);
+      authStateBySessionRef.current.set(targetSessionId, consumed.nextState);
+      if (consumed.output) {
+        writeLocalOutput(targetSessionId, consumed.output);
+      }
+
+      if (!consumed.submit) {
+        return true;
+      }
+
+      const { username, password, nonce } = consumed.submit;
+      void onRetrySessionAuthRef.current(targetSessionId, {
+        username,
+        authType: "password",
+        password
+      }).then((result) => {
+        const latest = authStateBySessionRef.current.get(targetSessionId);
+        if (!latest || latest.nonce !== nonce) {
+          return;
+        }
+
+        if (result.ok) {
+          authStateBySessionRef.current.delete(targetSessionId);
+          return;
+        }
+
+        if (!result.authRequired) {
+          authStateBySessionRef.current.delete(targetSessionId);
+          return;
+        }
+
+        const retried = resetTerminalAuthForRetry(latest);
+        authStateBySessionRef.current.set(targetSessionId, retried);
+        writeLocalOutput(targetSessionId, buildTerminalAuthRetryNotice(result.reason));
+      }).finally(() => {
+        // Ensure no stale password remains if user closes before retry completes.
+        const latest = authStateBySessionRef.current.get(targetSessionId);
+        if (latest?.stage === "submitting") {
+          authStateBySessionRef.current.set(targetSessionId, {
+            ...latest,
+            passwordBuffer: ""
+          });
+        }
+      });
+
+      return true;
+    },
+    [writeLocalOutput]
+  );
 
   const replaySessionOutput = useCallback((targetSessionId: string) => {
     const terminal = terminalRef.current;
@@ -269,11 +376,15 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         if (!text) {
           return;
         }
+        if (authStateBySessionRef.current.has(sessionId)) {
+          handleLocalAuthInput(sessionId, text);
+          return;
+        }
         return window.nextshell.session.write({ sessionId, data: text });
       })
     );
     setCtxMenu(null);
-  }, []);
+  }, [handleLocalAuthInput]);
 
   const handleCtxPasteSelection = useCallback(() => {
     const terminal = terminalRef.current;
@@ -284,12 +395,17 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     const selection = terminal.getSelection();
     if (selection) {
       void navigator.clipboard.writeText(selection);
+      if (authStateBySessionRef.current.has(sessionId)) {
+        handleLocalAuthInput(sessionId, selection);
+        setCtxMenu(null);
+        return;
+      }
       runSessionAction(
         window.nextshell.session.write({ sessionId, data: selection })
       );
     }
     setCtxMenu(null);
-  }, []);
+  }, [handleLocalAuthInput]);
 
   const handleCtxClear = useCallback(() => {
     const terminal = terminalRef.current;
@@ -337,6 +453,12 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     for (const sessionId of Array.from(lastStatusKeyBySessionRef.current.keys())) {
       if (!knownSessionIds.has(sessionId)) {
         lastStatusKeyBySessionRef.current.delete(sessionId);
+      }
+    }
+
+    for (const sessionId of Array.from(authStateBySessionRef.current.keys())) {
+      if (!knownSessionIds.has(sessionId)) {
+        authStateBySessionRef.current.delete(sessionId);
       }
     }
   }, [sessionIds]);
@@ -425,6 +547,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
               return;
             }
 
+            if (authStateBySessionRef.current.has(sessionId)) {
+              handleLocalAuthInput(sessionId, text);
+              return;
+            }
+
             return window.nextshell.session.write({
               sessionId,
               data: text
@@ -437,6 +564,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       if (event.key === "Backspace") {
         const sessionId = sessionIdRef.current;
         if (!sessionId) {
+          return false;
+        }
+
+        if (authStateBySessionRef.current.has(sessionId)) {
+          handleLocalAuthInput(sessionId, "\x7f");
           return false;
         }
 
@@ -453,6 +585,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
           return false;
         }
 
+        if (authStateBySessionRef.current.has(sessionId)) {
+          handleLocalAuthInput(sessionId, "\x7f");
+          return false;
+        }
+
         runSessionAction(window.nextshell.session.write({
           sessionId,
           data: sequenceByDeleteMode(terminalOptionsRef.current.deleteMode)
@@ -466,6 +603,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     const dataSub = terminal.onData((data) => {
       const sessionId = sessionIdRef.current;
       if (!sessionId) {
+        return;
+      }
+
+      if (authStateBySessionRef.current.has(sessionId)) {
+        handleLocalAuthInput(sessionId, data);
         return;
       }
 
@@ -522,7 +664,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       fitRef.current = null;
       searchAddonRef.current = null;
     };
-  }, []);
+  }, [handleLocalAuthInput]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -575,6 +717,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         return;
       }
 
+      if (event.status === "connected" || event.status === "disconnected") {
+        authStateBySessionRef.current.delete(event.sessionId);
+      }
+
       const eventKey = `${event.sessionId}:${event.status}:${event.reason ?? ""}`;
       const previousEventKey = lastStatusKeyBySessionRef.current.get(event.sessionId);
       if (previousEventKey === eventKey) {
@@ -587,6 +733,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
           ? `连接已建立，${event.reason}`
           : "连接已建立。";
         message.success(text);
+      }
+
+      if (event.status === "failed" && isAuthFailureReason(event.reason)) {
+        beginLocalAuthPrompt(event.sessionId, event.reason);
+        return;
       }
 
       const output = formatStatusOutput(event.status, event.reason);
@@ -604,7 +755,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       offData();
       offStatus();
     };
-  }, [appendSessionOutput]);
+  }, [appendSessionOutput, beginLocalAuthPrompt, message]);
 
   useEffect(() => {
     const previousSessionId = sessionIdRef.current;
@@ -630,6 +781,14 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       }
     }
 
+    if (currentSessionId && session?.status === "failed" && isAuthFailureReason(session.reason)) {
+      beginLocalAuthPrompt(currentSessionId, session.reason);
+    }
+
+    if (currentSessionId && (session?.status === "connected" || session?.status === "disconnected")) {
+      authStateBySessionRef.current.delete(currentSessionId);
+    }
+
     if (frozenSessionIdRef.current !== currentSessionId) {
       frozenSessionIdRef.current = currentSessionId;
       terminalOptionsRef.current = connection
@@ -652,7 +811,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         rows: terminalRef.current.rows
       }));
     }
-  }, [appendSessionOutput, connection, replaySessionOutput, session]);
+  }, [appendSessionOutput, beginLocalAuthPrompt, connection, replaySessionOutput, session]);
 
   const prevSessionStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -667,6 +826,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       prevStatus !== undefined &&
       prevStatus !== "failed"
     ) {
+      if (isAuthFailureReason(session?.reason)) {
+        beginLocalAuthPrompt(currentSessionId, session.reason);
+        return;
+      }
+
       // Skip if the IPC onStatus event already wrote this failure to the terminal
       const lastKey = lastStatusKeyBySessionRef.current.get(currentSessionId);
       if (lastKey?.includes(":failed:")) {
@@ -680,7 +844,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         }
       }
     }
-  }, [appendSessionOutput, session?.id, session?.reason, session?.status]);
+  }, [appendSessionOutput, beginLocalAuthPrompt, session?.id, session?.reason, session?.status]);
 
   const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
   const hasSession = !!sessionIdRef.current;

@@ -449,6 +449,12 @@ export const backupPasswordClearRememberedSchema = z.object({});
 
 export const backupPasswordStatusSchema = z.object({});
 
+export const masterPasswordSetSchema = backupPasswordSetSchema;
+export const masterPasswordUnlockSchema = backupPasswordUnlockSchema;
+export const masterPasswordClearRememberedSchema = backupPasswordClearRememberedSchema;
+export const masterPasswordStatusSchema = backupPasswordStatusSchema;
+export const masterPasswordGetCachedSchema = z.object({});
+
 export const templateParamsListSchema = z.object({
   commandId: z.string().uuid().optional()
 });
@@ -516,6 +522,11 @@ export const connectionExportBatchSchema = z.object({
   connectionIds: z.array(z.string().uuid()).min(1),
   directoryPath: z.string().min(1),
   encryptionPassword: z.preprocess(trimToOptionalString, z.string().min(6).optional())
+});
+
+export const connectionRevealPasswordSchema = z.object({
+  connectionId: z.string().uuid(),
+  masterPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 });
 
 export const connectionImportPreviewSchema = z.object({
@@ -608,6 +619,11 @@ export type BackupPasswordSetInput = z.infer<typeof backupPasswordSetSchema>;
 export type BackupPasswordUnlockInput = z.infer<typeof backupPasswordUnlockSchema>;
 export type BackupPasswordClearRememberedInput = z.infer<typeof backupPasswordClearRememberedSchema>;
 export type BackupPasswordStatusInput = z.infer<typeof backupPasswordStatusSchema>;
+export type MasterPasswordSetInput = z.infer<typeof masterPasswordSetSchema>;
+export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchema>;
+export type MasterPasswordClearRememberedInput = z.infer<typeof masterPasswordClearRememberedSchema>;
+export type MasterPasswordStatusInput = z.infer<typeof masterPasswordStatusSchema>;
+export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
 export type TemplateParamsListInput = z.infer<typeof templateParamsListSchema>;
 export type TemplateParamsUpsertInput = z.infer<typeof templateParamsUpsertSchema>;
 export type TemplateParamsClearInput = z.infer<typeof templateParamsClearSchema>;
@@ -619,6 +635,7 @@ export type ProxyUpsertInput = z.infer<typeof proxyUpsertSchema>;
 export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;
 export type ConnectionExportInput = z.infer<typeof connectionExportSchema>;
 export type ConnectionExportBatchInput = z.infer<typeof connectionExportBatchSchema>;
+export type ConnectionRevealPasswordInput = z.infer<typeof connectionRevealPasswordSchema>;
 export type ConnectionImportPreviewInput = z.infer<typeof connectionImportPreviewSchema>;
 export type ConnectionImportFinalShellPreviewInput = z.infer<typeof connectionImportFinalShellPreviewSchema>;
 export type ConnectionImportExecuteInput = z.infer<typeof connectionImportExecuteSchema>;
@@ -637,6 +654,20 @@ export interface ConnectionExportBatchResult {
   directoryPath: string;
   files: ConnectionExportBatchFileItem[];
   errors: string[];
+}
+
+export interface MasterPasswordStatusResult {
+  isSet: boolean;
+  isUnlocked: boolean;
+  keytarAvailable: boolean;
+}
+
+export interface MasterPasswordCachedResult {
+  password?: string;
+}
+
+export interface ConnectionRevealPasswordResult {
+  password: string;
 }
 
 export const updateCheckSchema = z.object({});

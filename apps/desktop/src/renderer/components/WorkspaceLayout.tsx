@@ -7,7 +7,7 @@ import type {
   SessionType,
   SshKeyProfile,
 } from "@nextshell/core";
-import type { ConnectionUpsertInput } from "@nextshell/shared";
+import type { ConnectionUpsertInput, SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
@@ -70,6 +70,10 @@ interface WorkspaceLayoutProps {
   onOpenNetworkMonitor: (connectionId: string) => void;
   onCloseMonitorTab: (sessionId: string) => void;
   onOpenEditorTab: (connectionId: string, remotePath: string) => Promise<void>;
+  onRetrySessionAuth: (
+    sessionId: string,
+    authOverride: SessionAuthOverrideInput
+  ) => Promise<{ ok: true } | { ok: false; authRequired: boolean; reason: string }>;
   onSetActiveSession: (sessionId?: string) => void;
   onSetActiveConnection: (connectionId?: string) => void;
   onReorderSession: (sourceId: string, targetId: string) => void;
@@ -114,6 +118,7 @@ export const WorkspaceLayout = ({
   onOpenNetworkMonitor,
   onCloseMonitorTab,
   onOpenEditorTab,
+  onRetrySessionAuth,
   onSetActiveSession,
   onSetActiveConnection,
   onReorderSession,
@@ -448,6 +453,7 @@ export const WorkspaceLayout = ({
                         session={activeTerminalSession}
                         connection={activeTerminalConnection}
                         sessionIds={terminalSessionIds}
+                        onRetrySessionAuth={onRetrySessionAuth}
                         onRequestSearchMode={handleRequestTerminalSearchMode}
                       />
                       <CommandInputBar

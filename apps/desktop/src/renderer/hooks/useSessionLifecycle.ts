@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { message } from "antd";
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
-import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
+import { AUTH_REQUIRED_PREFIX, type SessionAuthOverrideInput } from "@nextshell/shared";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import {
@@ -10,11 +10,20 @@ import {
   resolveSessionBaseTitle
 } from "../utils/sessionTitle";
 
-const isAuthRequiredFailure = (reason: string): boolean =>
-  reason.startsWith(AUTH_REQUIRED_PREFIX);
+const extractAuthRequiredReason = (reason: string): string | undefined => {
+  const index = reason.indexOf(AUTH_REQUIRED_PREFIX);
+  if (index < 0) {
+    return undefined;
+  }
+  return reason.slice(index);
+};
 
-const stripAuthRequiredPrefix = (reason: string): string =>
-  isAuthRequiredFailure(reason) ? reason.slice(AUTH_REQUIRED_PREFIX.length) : reason;
+const isAuthRequiredFailure = (reason: string): boolean =>
+  extractAuthRequiredReason(reason) !== undefined;
+
+type RetrySessionAuthResult =
+  | { ok: true }
+  | { ok: false; authRequired: boolean; reason: string };
 
 export function useSessionLifecycle() {
   const {
@@ -32,10 +41,54 @@ export function useSessionLifecycle() {
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
   const sessionIndexByConnectionRef = useRef<Map<string, number>>(new Map());
 
+  const refreshConnections = useCallback(() => {
+    window.nextshell.connection.list({}).then((refreshed) => {
+      setConnections(refreshed);
+    }).catch((refreshError) => {
+      message.warning(formatErrorMessage(refreshError, "刷新连接信息失败"));
+    });
+  }, [setConnections]);
+
+  const finalizeSession = useCallback(
+    (
+      openedSession: SessionDescriptor,
+      connection: ConnectionProfile | undefined,
+      sessionIndex: number
+    ): SessionDescriptor => {
+      const openedBaseTitle = resolveSessionBaseTitle(openedSession.title, connection);
+      const session = {
+        ...openedSession,
+        title: formatSessionTitle(openedBaseTitle, sessionIndex)
+      };
+      upsertSession(session);
+      setActiveSession(session.id);
+      refreshConnections();
+      return session;
+    },
+    [refreshConnections, setActiveSession, upsertSession]
+  );
+
+  const finalizeRetriedSession = useCallback(
+    (openedSession: SessionDescriptor, preservedTitle: string): SessionDescriptor => {
+      const session = {
+        ...openedSession,
+        title: preservedTitle
+      };
+      upsertSession(session);
+      setActiveSession(session.id);
+      refreshConnections();
+      return session;
+    },
+    [refreshConnections, setActiveSession, upsertSession]
+  );
+
   useEffect(() => {
     const unsubscribe = window.nextshell.session.onStatus((event) => {
-      setSessionStatus(event.sessionId, event.status);
+      setSessionStatus(event.sessionId, event.status, event.reason);
       if (event.status === "failed" && event.reason) {
+        if (isAuthRequiredFailure(event.reason)) {
+          return;
+        }
         message.error(formatErrorMessage(event.reason, "会话连接失败"));
       } else if (event.status === "connected" && event.reason) {
         message.warning(formatErrorMessage(event.reason, "会话状态已更新"));
@@ -78,12 +131,11 @@ export function useSessionLifecycle() {
             connectionId,
             sessionId
           });
-          return finalizeSession(openedSession, connection, sessionIndex, sessionId);
+          return finalizeSession(openedSession, connection, sessionIndex);
         } catch (error) {
-          const reason = formatErrorMessage(error, "打开 SSH 会话失败");
-          const displayReason = isAuthRequiredFailure(reason) ? stripAuthRequiredPrefix(reason) : reason;
-          setSessionStatus(sessionId, "failed", displayReason);
-          message.error(displayReason);
+          const rawReason = formatErrorMessage(error, "打开 SSH 会话失败");
+          const reason = extractAuthRequiredReason(rawReason) ?? rawReason;
+          setSessionStatus(sessionId, "failed", reason);
           return undefined;
         }
       } finally {
@@ -94,37 +146,79 @@ export function useSessionLifecycle() {
         });
       }
 
-      function finalizeSession(
-        openedSession: SessionDescriptor,
-        connection: ConnectionProfile | undefined,
-        sessionIndex: number,
-        sessionId: string
-      ): SessionDescriptor {
-        const openedBaseTitle = resolveSessionBaseTitle(openedSession.title, connection);
-        const session = {
-          ...openedSession,
-          title: formatSessionTitle(openedBaseTitle, sessionIndex)
-        };
-        upsertSession(session);
-        setActiveSession(session.id);
-
-        window.nextshell.connection.list({}).then((refreshed) => {
-          setConnections(refreshed);
-        }).catch((refreshError) => {
-          message.warning(formatErrorMessage(refreshError, "刷新连接信息失败"));
-        });
-
-        return session;
-      }
     },
     [
       connections,
       connectingIds,
+      finalizeSession,
       setActiveConnection,
       setActiveSession,
-      setConnections,
       setSessionStatus,
       upsertSession
+    ]
+  );
+
+  const retrySessionAuth = useCallback(
+    async (
+      sessionId: string,
+      authOverride: SessionAuthOverrideInput
+    ): Promise<RetrySessionAuthResult> => {
+      const target = sessions.find((session) => session.id === sessionId);
+      if (!target) {
+        return {
+          ok: false,
+          authRequired: false,
+          reason: "会话不存在或已关闭。"
+        };
+      }
+
+      if (connectingIds.has(target.connectionId)) {
+        return {
+          ok: false,
+          authRequired: false,
+          reason: "连接正在建立，请稍后重试。"
+        };
+      }
+
+      setConnectingIds((prev) => new Set(prev).add(target.connectionId));
+      setActiveConnection(target.connectionId);
+      setActiveSession(target.id);
+      // Clear previous failure reason while retrying.
+      setSessionStatus(target.id, "connecting", "");
+
+      try {
+        const openedSession = await window.nextshell.session.open({
+          connectionId: target.connectionId,
+          sessionId: target.id,
+          authOverride
+        });
+        finalizeRetriedSession(openedSession, target.title);
+        return { ok: true };
+      } catch (error) {
+        const rawReason = formatErrorMessage(error, "打开 SSH 会话失败");
+        const reason = extractAuthRequiredReason(rawReason) ?? rawReason;
+        const authRequired = isAuthRequiredFailure(reason);
+        setSessionStatus(target.id, "failed", reason);
+        return {
+          ok: false,
+          authRequired,
+          reason
+        };
+      } finally {
+        setConnectingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(target.connectionId);
+          return next;
+        });
+      }
+    },
+    [
+      connectingIds,
+      finalizeRetriedSession,
+      sessions,
+      setActiveConnection,
+      setActiveSession,
+      setSessionStatus
     ]
   );
 
@@ -166,6 +260,7 @@ export function useSessionLifecycle() {
   return {
     connectingIds,
     startSession,
+    retrySessionAuth,
     activateConnection,
     handleCloseSession,
     handleReconnectSession
