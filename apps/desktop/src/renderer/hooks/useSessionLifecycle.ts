@@ -10,7 +10,7 @@ import {
   resolveSessionBaseTitle
 } from "../utils/sessionTitle";
 
-const MAX_SESSION_OPEN_ATTEMPTS = 3;
+const MAX_AUTH_RETRIES = 3;
 
 export interface AuthPromptState {
   attempt: number;
@@ -18,6 +18,7 @@ export interface AuthPromptState {
   initialUsername?: string;
   defaultAuthType: SessionAuthOverrideInput["authType"];
   hasExistingPrivateKey: boolean;
+  failureReason?: string;
 }
 
 const isAuthRequiredFailure = (reason: string): boolean =>
@@ -61,7 +62,6 @@ export function useSessionLifecycle() {
     resolve?.(value);
   }, []);
 
-  // Clean up pending auth promise on unmount
   useEffect(() => {
     return () => {
       const resolve = authPromptResolveRef.current;
@@ -70,14 +70,11 @@ export function useSessionLifecycle() {
     };
   }, []);
 
-  // Listen for session status events
   useEffect(() => {
     const unsubscribe = window.nextshell.session.onStatus((event) => {
       setSessionStatus(event.sessionId, event.status);
       if (event.status === "failed" && event.reason) {
-        if (!isAuthRequiredFailure(event.reason)) {
-          message.error(event.reason);
-        }
+        message.error(event.reason);
       } else if (event.status === "connected" && event.reason) {
         message.warning(event.reason);
       }
@@ -114,81 +111,81 @@ export function useSessionLifecycle() {
         upsertSession(pendingSession);
         setActiveSession(sessionId);
 
+        // ── 1. First attempt: use stored credentials ──────────────────
         let authOverride: SessionAuthOverrideInput | undefined;
-        for (let attempt = 1; attempt <= MAX_SESSION_OPEN_ATTEMPTS; attempt += 1) {
+        let lastFailureReason: string | undefined;
+
+        try {
+          const openedSession = await window.nextshell.session.open({
+            connectionId,
+            sessionId
+          });
+          return finalizeSession(openedSession, connection, sessionIndex, sessionId);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "Failed to open SSH session";
+          if (!isAuthRequiredFailure(reason)) {
+            setSessionStatus(sessionId, "failed");
+            return undefined;
+          }
+          lastFailureReason = stripAuthRequiredPrefix(reason);
+        }
+
+        // ── 2. Auth retry loop: up to MAX_AUTH_RETRIES user attempts ──
+        for (let attempt = 1; attempt <= MAX_AUTH_RETRIES; attempt += 1) {
+          const currentConnection = findConnection();
+          const nextInitialUsername = authOverride?.username ?? currentConnection?.username;
+          const hasExistingPrivateKey = Boolean(
+            currentConnection?.sshKeyId ||
+            (authOverride?.authType === "privateKey" &&
+              (authOverride.sshKeyId || authOverride.privateKeyContent))
+          );
+          const nextAuthType = authOverride?.authType ?? resolveDefaultAuthType(currentConnection);
+
+          const nextAuthOverride = await requestAuthOverride({
+            attempt,
+            maxAttempts: MAX_AUTH_RETRIES,
+            initialUsername: nextInitialUsername,
+            defaultAuthType: nextAuthType,
+            hasExistingPrivateKey,
+            failureReason: lastFailureReason
+          });
+
+          if (!nextAuthOverride) {
+            removeSession(sessionId);
+            return undefined;
+          }
+
+          authOverride =
+            nextAuthOverride.authType === "privateKey" && authOverride?.authType === "privateKey"
+              ? {
+                  ...nextAuthOverride,
+                  sshKeyId: nextAuthOverride.sshKeyId ?? authOverride.sshKeyId,
+                  privateKeyContent: nextAuthOverride.privateKeyContent ?? authOverride.privateKeyContent
+                }
+              : nextAuthOverride;
+
+          setSessionStatus(sessionId, "connecting");
+
           try {
             const openedSession = await window.nextshell.session.open({
               connectionId,
               sessionId,
               authOverride
             });
-            const openedBaseTitle = resolveSessionBaseTitle(openedSession.title, connection);
-            const session = {
-              ...openedSession,
-              title: formatSessionTitle(openedBaseTitle, sessionIndex)
-            };
-            upsertSession(session);
-            setActiveSession(session.id);
-
-            if (attempt > 1) {
-              try {
-                const refreshedConnections = await window.nextshell.connection.list({});
-                setConnections(refreshedConnections);
-              } catch (refreshError) {
-                const reason = refreshError instanceof Error ? refreshError.message : "刷新连接信息失败";
-                message.warning(reason);
-              }
-            }
-
-            return session;
+            return finalizeSession(openedSession, connection, sessionIndex, sessionId);
           } catch (error) {
             const reason = error instanceof Error ? error.message : "Failed to open SSH session";
-            const displayReason = stripAuthRequiredPrefix(reason);
-            const isAuthFailure = isAuthRequiredFailure(reason);
-
-            if (!isAuthFailure || attempt >= MAX_SESSION_OPEN_ATTEMPTS) {
+            if (!isAuthRequiredFailure(reason)) {
               setSessionStatus(sessionId, "failed");
-              message.error(displayReason);
               return undefined;
             }
-
-            const currentConnection = findConnection();
-            const nextInitialUsername = authOverride?.username ?? currentConnection?.username;
-            const hasExistingPrivateKey = Boolean(
-              currentConnection?.sshKeyId ||
-              (authOverride?.authType === "privateKey" &&
-                (authOverride.sshKeyId || authOverride.privateKeyContent))
-            );
-            const nextAuthType = authOverride?.authType ?? resolveDefaultAuthType(currentConnection);
-
-            const nextAuthOverride = await requestAuthOverride({
-              attempt: attempt + 1,
-              maxAttempts: MAX_SESSION_OPEN_ATTEMPTS,
-              initialUsername: nextInitialUsername,
-              defaultAuthType: nextAuthType,
-              hasExistingPrivateKey
-            });
-
-            if (!nextAuthOverride) {
-              removeSession(sessionId);
-              return undefined;
-            }
-
-            const mergedAuthOverride: SessionAuthOverrideInput =
-              nextAuthOverride.authType === "privateKey" && authOverride?.authType === "privateKey"
-                ? {
-                    ...nextAuthOverride,
-                    sshKeyId: nextAuthOverride.sshKeyId ?? authOverride.sshKeyId,
-                    privateKeyContent: nextAuthOverride.privateKeyContent ?? authOverride.privateKeyContent
-                  }
-                : nextAuthOverride;
-
-            authOverride = mergedAuthOverride;
-            setSessionStatus(sessionId, "connecting");
+            lastFailureReason = stripAuthRequiredPrefix(reason);
           }
         }
 
+        // ── 3. Exhausted all retries ──────────────────────────────────
         setSessionStatus(sessionId, "failed");
+        message.error(lastFailureReason ?? "认证失败，已达最大重试次数。");
         return undefined;
       } finally {
         setConnectingIds((prev) => {
@@ -196,6 +193,30 @@ export function useSessionLifecycle() {
           next.delete(connectionId);
           return next;
         });
+      }
+
+      function finalizeSession(
+        openedSession: SessionDescriptor,
+        connection: ConnectionProfile | undefined,
+        sessionIndex: number,
+        sessionId: string
+      ): SessionDescriptor {
+        const openedBaseTitle = resolveSessionBaseTitle(openedSession.title, connection);
+        const session = {
+          ...openedSession,
+          title: formatSessionTitle(openedBaseTitle, sessionIndex)
+        };
+        upsertSession(session);
+        setActiveSession(session.id);
+
+        window.nextshell.connection.list({}).then((refreshed) => {
+          setConnections(refreshed);
+        }).catch((refreshError) => {
+          const reason = refreshError instanceof Error ? refreshError.message : "刷新连接信息失败";
+          message.warning(reason);
+        });
+
+        return session;
       }
     },
     [
@@ -264,6 +285,6 @@ export function useSessionLifecycle() {
     handleReconnectSession,
     handleAuthPromptCancel,
     handleAuthPromptSubmit,
-    MAX_SESSION_OPEN_ATTEMPTS
+    MAX_AUTH_RETRIES
   };
 }

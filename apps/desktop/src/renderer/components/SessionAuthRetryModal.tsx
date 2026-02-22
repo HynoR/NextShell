@@ -10,6 +10,7 @@ interface SessionAuthRetryModalProps {
   initialUsername?: string;
   defaultAuthType: SessionAuthOverrideInput["authType"];
   hasExistingPrivateKey: boolean;
+  failureReason?: string;
   sshKeys: SshKeyProfile[];
   onCancel: () => void;
   onSubmit: (payload: SessionAuthOverrideInput) => Promise<void>;
@@ -40,6 +41,7 @@ export const SessionAuthRetryModal = ({
   initialUsername,
   defaultAuthType,
   hasExistingPrivateKey,
+  failureReason,
   sshKeys,
   onCancel,
   onSubmit
@@ -95,8 +97,14 @@ export const SessionAuthRetryModal = ({
       destroyOnHidden
       mask={{ closable: false }}
     >
+      {failureReason ? (
+        <Typography.Paragraph type="danger" style={{ marginBottom: 8 }}>
+          {failureReason}
+        </Typography.Paragraph>
+      ) : null}
+
       <Typography.Paragraph type="secondary">
-        连接需要身份验证。用户名如需修改，请在连接管理中心调整。
+        请输入凭据后重试连接。用户名如需修改，请在连接管理中心调整。
       </Typography.Paragraph>
 
       {normalizedInitialUsername ? (

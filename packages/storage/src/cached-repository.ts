@@ -111,16 +111,13 @@ export class CachedConnectionRepository implements ConnectionRepository {
 
     if (group) {
       result = result.filter((c) => {
-        // 复现 SQL: group_path LIKE '%<group>%'  （group_path 以 JSON 字符串存储）
-        const gpJson = JSON.stringify(c.groupPath);
-        return gpJson.includes(group);
+        return c.groupPath.includes(group);
       });
     }
 
     if (keyword) {
       result = result.filter((c) => {
-        const tagsJson = JSON.stringify(c.tags);
-        const searchable = `${c.name} ${c.host} ${tagsJson} ${c.notes ?? ""}`.toLowerCase();
+        const searchable = `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`.toLowerCase();
         return searchable.includes(keyword);
       });
     }

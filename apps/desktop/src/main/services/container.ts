@@ -3160,11 +3160,13 @@ export const createServiceContainer = (
         connectionId,
         reason
       });
-      sendSessionStatus(sender, {
-        sessionId: descriptor.id,
-        status: "failed",
-        reason
-      });
+      if (!authReason) {
+        sendSessionStatus(sender, {
+          sessionId: descriptor.id,
+          status: "failed",
+          reason
+        });
+      }
       connections.appendAuditLog({
         action: "session.open_failed",
         level: "error",

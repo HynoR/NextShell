@@ -79,6 +79,10 @@ const toConnectionUpsertInput = (
   ...patch
 });
 
+const groupPathToSegments = (groupPath: string): string[] => {
+  return groupPath.split("/").filter((s) => s.length > 0);
+};
+
 const buildTree = (
   connections: ConnectionProfile[],
   sessions: SessionDescriptor[],
@@ -119,12 +123,12 @@ const buildTree = (
   };
 
   for (const connection of connections) {
-    const searchable = `${connection.name} ${connection.host} ${connection.tags.join(" ")} ${connection.notes ?? ""}`.toLowerCase();
+    const searchable = `${connection.name} ${connection.host} ${connection.tags.join(" ")} ${connection.groupPath} ${connection.notes ?? ""}`.toLowerCase();
     if (lower && !searchable.includes(lower)) {
       continue;
     }
 
-    const group = ensureGroup(connection.groupPath);
+    const group = ensureGroup(groupPathToSegments(connection.groupPath));
     const isConnected = connectedConnectionIds.has(connection.id);
     group.children.push({
       type: "leaf",
@@ -631,7 +635,7 @@ export const ConnectionTreePanel = ({
         <input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索名称 / IP / 标签"
+          placeholder="搜索名称 / IP / 分组路径"
           className="ct-search-input"
         />
         {keyword && (

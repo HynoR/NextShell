@@ -43,7 +43,7 @@ const toExportedConnection = async (connection: MockConnection) => {
     username: connection.username,
     authType: "agent" as const,
     password: undefined,
-    groupPath: ["default"],
+    groupPath: "/default",
     tags: [],
     notes: undefined,
     favorite: false,

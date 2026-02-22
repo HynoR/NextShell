@@ -99,7 +99,7 @@ const parseOneFinalShellEntry = (entry: FinalShellEntry): ConnectionImportEntry 
     ...(decryptedPassword !== undefined
       ? { password: decryptedPassword }
       : { passwordUnavailable: true }),
-    groupPath: ["导入"],
+    groupPath: "/导入",
     tags: [],
     favorite: false,
     terminalEncoding: mapFinalShellEncoding(entry.terminal_encoding),

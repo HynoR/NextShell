@@ -60,7 +60,10 @@ export const connectionUpsertSchema = z.object({
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
-  groupPath: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1)).min(1)),
+  groupPath: z.preprocess(
+    (v) => typeof v === "string" ? v.trim() : v,
+    z.string().min(1).refine((s) => s.startsWith("/"), { message: "分组路径必须以 / 开头" })
+  ),
   tags: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1)).default([])),
   notes: z.preprocess(trimToOptionalString, z.string().optional()),
   favorite: z.boolean().default(false),
@@ -525,7 +528,7 @@ export const connectionImportExecuteSchema = z.object({
     username: z.string(),
     authType: authTypeSchema,
     password: z.string().optional(),
-    groupPath: z.array(z.string().min(1)).min(1),
+    groupPath: z.string().min(1),
     tags: z.array(z.string()).default([]),
     notes: z.string().optional(),
     favorite: z.boolean().default(false),

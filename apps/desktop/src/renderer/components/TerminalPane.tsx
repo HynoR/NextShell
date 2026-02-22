@@ -110,12 +110,20 @@ const statusMessage = (
   return undefined;
 };
 
+const isAuthRetryInProgress = (
+  status: SessionDescriptor["status"],
+  reason?: string
+): boolean =>
+  status === "failed" && !!reason?.startsWith(AUTH_REQUIRED_PREFIX);
+
 const formatStatusOutput = (
   status: SessionDescriptor["status"],
   reason?: string
 ): string | undefined => {
-  // "connected" 用通知展示，不写入终端
   if (status === "connected") {
+    return undefined;
+  }
+  if (isAuthRetryInProgress(status, reason)) {
     return undefined;
   }
   const msg = statusMessage(status, reason);
@@ -652,6 +660,29 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       }));
     }
   }, [appendSessionOutput, connection, replaySessionOutput, session]);
+
+  const prevSessionStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentSessionId = session?.id;
+    const currentStatus = session?.status;
+    const prevStatus = prevSessionStatusRef.current;
+    prevSessionStatusRef.current = currentStatus;
+
+    if (
+      currentSessionId &&
+      currentStatus === "failed" &&
+      prevStatus !== undefined &&
+      prevStatus !== "failed"
+    ) {
+      const output = formatStatusOutput("failed");
+      if (output) {
+        appendSessionOutput(currentSessionId, output);
+        if (currentSessionId === sessionIdRef.current) {
+          terminalRef.current?.write(output);
+        }
+      }
+    }
+  }, [appendSessionOutput, session?.id, session?.status]);
 
   const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
   const hasSession = !!sessionIdRef.current;

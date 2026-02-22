@@ -58,7 +58,7 @@ interface WorkspaceLayoutProps {
   transferPanelCollapsed: boolean;
   bottomTab: string;
   authPromptState?: AuthPromptState;
-  MAX_SESSION_OPEN_ATTEMPTS: number;
+  MAX_AUTH_RETRIES: number;
   onLoadConnections: () => void;
   onOpenManager: () => void;
   onOpenSettings: () => void;
@@ -106,7 +106,7 @@ export const WorkspaceLayout = ({
   transferPanelCollapsed,
   bottomTab,
   authPromptState,
-  MAX_SESSION_OPEN_ATTEMPTS,
+  MAX_AUTH_RETRIES,
   onLoadConnections,
   onOpenManager,
   onOpenSettings,
@@ -612,10 +612,11 @@ export const WorkspaceLayout = ({
       <SessionAuthRetryModal
         open={Boolean(authPromptState)}
         attempt={authPromptState?.attempt ?? 1}
-        maxAttempts={authPromptState?.maxAttempts ?? MAX_SESSION_OPEN_ATTEMPTS}
+        maxAttempts={authPromptState?.maxAttempts ?? MAX_AUTH_RETRIES}
         initialUsername={authPromptState?.initialUsername}
         defaultAuthType={authPromptState?.defaultAuthType ?? "password"}
         hasExistingPrivateKey={authPromptState?.hasExistingPrivateKey ?? false}
+        failureReason={authPromptState?.failureReason}
         sshKeys={sshKeys}
         onCancel={onAuthPromptCancel}
         onSubmit={onAuthPromptSubmit}

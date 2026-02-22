@@ -53,7 +53,7 @@ export const QuickConnectBar = ({
     return connections
       .filter((c) => {
         const searchable =
-          `${c.name} ${c.host} ${c.tags.join(" ")} ${c.notes ?? ""}`.toLowerCase();
+          `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`.toLowerCase();
         return searchable.includes(lower);
       })
       .slice(0, 12)
@@ -211,7 +211,7 @@ const QuickConnectItem = ({
   onMouseEnter,
 }: QuickConnectItemProps) => {
   const c = item.connection;
-  const groupLabel = c.groupPath.length > 0 ? c.groupPath.join(" / ") : null;
+  const groupLabel = c.groupPath && c.groupPath !== "/" ? c.groupPath : null;
 
   return (
     <button

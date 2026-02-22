@@ -162,6 +162,19 @@ const toMetadataJSON = (value: Record<string, unknown> | undefined): string | nu
   return JSON.stringify(value);
 };
 
+const parseGroupPath = (raw: string | null | undefined): string => {
+  if (!raw) return "/server";
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("/")) return trimmed;
+  if (trimmed.startsWith("[")) {
+    try {
+      const arr = JSON.parse(trimmed) as string[];
+      if (Array.isArray(arr) && arr.length > 0) return "/" + arr.join("/");
+    } catch { /* fall through */ }
+  }
+  return "/" + trimmed;
+};
+
 const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
   return {
     id: row.id,
@@ -186,7 +199,7 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
       row.delete_mode === "ascii-delete" || row.delete_mode === "ascii-backspace"
         ? row.delete_mode
         : "vt220-delete",
-    groupPath: fromJSON(row.group_path),
+    groupPath: parseGroupPath(row.group_path),
     tags: fromJSON(row.tags),
     notes: row.notes ?? undefined,
     favorite: row.favorite === 1,
@@ -845,7 +858,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             AND (@group IS NULL OR group_path LIKE '%' || @group || '%')
             AND (
               @keywordLike IS NULL
-              OR lower(name || ' ' || host || ' ' || tags || ' ' || ifnull(notes, '')) LIKE @keywordLike
+              OR lower(name || ' ' || host || ' ' || tags || ' ' || group_path || ' ' || ifnull(notes, '')) LIKE @keywordLike
             )
           ORDER BY favorite DESC, name ASC
         `
@@ -949,7 +962,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         terminal_encoding: connection.terminalEncoding,
         backspace_mode: connection.backspaceMode,
         delete_mode: connection.deleteMode,
-        group_path: toJSON(connection.groupPath),
+        group_path: connection.groupPath,
         tags: toJSON(connection.tags),
         notes: connection.notes ?? null,
         favorite: connection.favorite ? 1 : 0,

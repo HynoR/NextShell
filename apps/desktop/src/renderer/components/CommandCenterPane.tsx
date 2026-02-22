@@ -88,10 +88,7 @@ interface CommandCenterPaneProps {
 }
 
 const toGroupPath = (connection: ConnectionProfile): string => {
-  if (connection.groupPath.length === 0) {
-    return "/";
-  }
-  return connection.groupPath.join("/");
+  return connection.groupPath || "/";
 };
 
 export const CommandCenterPane = ({

@@ -44,6 +44,51 @@ const sanitizeTextArray = (values: string[] | undefined): string[] => {
     .filter((item) => item.length > 0);
 };
 
+const normalizeGroupPath = (value: string | undefined): string => {
+  if (!value) return "/server";
+  let path = value.trim().replace(/\\/g, "/");
+  if (!path.startsWith("/")) path = "/" + path;
+  path = path.replace(/\/+/g, "/");
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  return path || "/server";
+};
+
+type FormTab = "basic" | "auth" | "network" | "advanced";
+
+const DRAG_MIME = "application/x-nextshell-connection-id";
+
+const groupKeyToPath = (key: string): string => {
+  if (key === "root") return "/";
+  const prefix = "mgr-group:";
+  const raw = key.startsWith(prefix) ? key.slice(prefix.length) : key;
+  return "/" + raw;
+};
+
+const toQuickUpsertInput = (
+  connection: ConnectionProfile,
+  patch: Partial<ConnectionUpsertInput>
+): ConnectionUpsertInput => ({
+  id: connection.id,
+  name: connection.name,
+  host: connection.host,
+  port: connection.port,
+  username: connection.username,
+  authType: connection.authType,
+  sshKeyId: connection.sshKeyId,
+  hostFingerprint: connection.hostFingerprint,
+  strictHostKeyChecking: connection.strictHostKeyChecking,
+  proxyId: connection.proxyId,
+  terminalEncoding: connection.terminalEncoding,
+  backspaceMode: connection.backspaceMode,
+  deleteMode: connection.deleteMode,
+  groupPath: connection.groupPath,
+  tags: connection.tags,
+  notes: connection.notes,
+  favorite: connection.favorite,
+  monitorSession: connection.monitorSession,
+  ...patch
+});
+
 /* ── Custom tree types ──────────────────────────────────── */
 
 interface MgrGroupNode {
@@ -59,6 +104,10 @@ interface MgrLeafNode {
 }
 
 type MgrTreeNode = MgrGroupNode | MgrLeafNode;
+
+const groupPathToSegments = (groupPath: string): string[] => {
+  return groupPath.split("/").filter((s) => s.length > 0);
+};
 
 const buildManagerTree = (connections: ConnectionProfile[], keyword: string): MgrGroupNode => {
   const lower = keyword.toLowerCase().trim();
@@ -83,9 +132,9 @@ const buildManagerTree = (connections: ConnectionProfile[], keyword: string): Mg
   };
 
   for (const connection of connections) {
-    const text = `${connection.name} ${connection.host} ${connection.groupPath.join("/")} ${connection.tags.join(" ")}`.toLowerCase();
+    const text = `${connection.name} ${connection.host} ${connection.groupPath} ${connection.tags.join(" ")}`.toLowerCase();
     if (lower && !text.includes(lower)) continue;
-    ensureGroup(connection.groupPath).children.push({ type: "leaf", connection });
+    ensureGroup(groupPathToSegments(connection.groupPath)).children.push({ type: "leaf", connection });
   }
 
   return root;
@@ -105,18 +154,33 @@ const countMgrLeaves = (node: MgrGroupNode): number => {
 const MgrGroupRow = ({
   node,
   expanded,
-  onToggle
+  dragOver,
+  onToggle,
+  onDragOver,
+  onDragLeave,
+  onDrop
 }: {
   node: MgrGroupNode;
   expanded: boolean;
+  dragOver: boolean;
   onToggle: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
 }) => (
-  <button type="button" className="mgr-group-row" onClick={onToggle}>
+  <button
+    type="button"
+    className={`mgr-group-row${dragOver ? " mgr-group-row--drop-target" : ""}`}
+    onClick={onToggle}
+    onDragOver={onDragOver}
+    onDragLeave={onDragLeave}
+    onDrop={onDrop}
+  >
     <i
       className={expanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line"}
       aria-hidden="true"
     />
-    <i className="ri-folder-3-line" aria-hidden="true" />
+    <i className={dragOver ? "ri-folder-open-line" : "ri-folder-3-line"} aria-hidden="true" />
     <span className="mgr-group-label">{node.label}</span>
     <span className="mgr-group-count">{countMgrLeaves(node)}</span>
   </button>
@@ -134,35 +198,46 @@ const MgrServerRow = ({
   isExportSelected: boolean;
   onSelect: () => void;
   onToggleExportSelect: () => void;
-}) => (
-  <div className={`mgr-server-row${isSelected ? " selected" : ""}`}>
-    <button
-      type="button"
-      className={`mgr-server-check-btn${isExportSelected ? " checked" : ""}`}
-      onClick={onToggleExportSelect}
-      title={isExportSelected ? "取消导出选择" : "加入导出选择"}
-      aria-label={isExportSelected ? "取消导出选择" : "加入导出选择"}
+}) => {
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData(DRAG_MIME, connection.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  return (
+    <div
+      className={`mgr-server-row${isSelected ? " selected" : ""}`}
+      draggable
+      onDragStart={handleDragStart}
     >
-      <i
-        className={isExportSelected ? "ri-checkbox-circle-fill" : "ri-checkbox-blank-circle-line"}
-        aria-hidden="true"
-      />
-    </button>
-    <button
-      type="button"
-      className="mgr-server-select-btn"
-      onClick={onSelect}
-      title={`${connection.name} (${connection.host}:${connection.port})`}
-    >
-      <span className="mgr-server-status" />
-      {connection.favorite ? (
-        <i className="ri-star-fill mgr-server-star" aria-hidden="true" />
-      ) : null}
-      <span className="mgr-server-name">{connection.name}</span>
-      <span className="mgr-server-host">{connection.host}</span>
-    </button>
-  </div>
-);
+      <button
+        type="button"
+        className={`mgr-server-check-btn${isExportSelected ? " checked" : ""}`}
+        onClick={onToggleExportSelect}
+        title={isExportSelected ? "取消导出选择" : "加入导出选择"}
+        aria-label={isExportSelected ? "取消导出选择" : "加入导出选择"}
+      >
+        <i
+          className={isExportSelected ? "ri-checkbox-circle-fill" : "ri-checkbox-blank-circle-line"}
+          aria-hidden="true"
+        />
+      </button>
+      <button
+        type="button"
+        className="mgr-server-select-btn"
+        onClick={onSelect}
+        title={`${connection.name} (${connection.host}:${connection.port})`}
+      >
+        <span className="mgr-server-status" />
+        {connection.favorite ? (
+          <i className="ri-star-fill mgr-server-star" aria-hidden="true" />
+        ) : null}
+        <span className="mgr-server-name">{connection.name}</span>
+        <span className="mgr-server-host">{connection.host}</span>
+      </button>
+    </div>
+  );
+};
 
 const MgrTreeGroup = ({
   node,
@@ -171,8 +246,12 @@ const MgrTreeGroup = ({
   toggleExpanded,
   selectedConnectionId,
   selectedExportIds,
+  dragOverGroupKey,
   onSelect,
-  onToggleExportSelect
+  onToggleExportSelect,
+  onGroupDragOver,
+  onGroupDragLeave,
+  onGroupDrop
 }: {
   node: MgrGroupNode;
   depth: number;
@@ -180,8 +259,12 @@ const MgrTreeGroup = ({
   toggleExpanded: (key: string) => void;
   selectedConnectionId: string | undefined;
   selectedExportIds: Set<string>;
+  dragOverGroupKey: string | undefined;
   onSelect: (id: string) => void;
   onToggleExportSelect: (id: string) => void;
+  onGroupDragOver: (e: React.DragEvent, groupKey: string) => void;
+  onGroupDragLeave: (groupKey: string) => void;
+  onGroupDrop: (e: React.DragEvent, groupKey: string) => void;
 }) => {
   const isExpanded = expanded.has(node.key);
   return (
@@ -190,7 +273,11 @@ const MgrTreeGroup = ({
         <MgrGroupRow
           node={node}
           expanded={isExpanded}
+          dragOver={dragOverGroupKey === node.key}
           onToggle={() => toggleExpanded(node.key)}
+          onDragOver={(e) => onGroupDragOver(e, node.key)}
+          onDragLeave={() => onGroupDragLeave(node.key)}
+          onDrop={(e) => onGroupDrop(e, node.key)}
         />
       )}
       {(depth === 0 || isExpanded) && (
@@ -205,8 +292,12 @@ const MgrTreeGroup = ({
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
                 selectedExportIds={selectedExportIds}
+                dragOverGroupKey={dragOverGroupKey}
                 onSelect={onSelect}
                 onToggleExportSelect={onToggleExportSelect}
+                onGroupDragOver={onGroupDragOver}
+                onGroupDragLeave={onGroupDragLeave}
+                onGroupDrop={onGroupDrop}
               />
             ) : (
               <MgrServerRow
@@ -234,7 +325,7 @@ const DEFAULT_VALUES = {
   terminalEncoding: "utf-8" as const,
   backspaceMode: "ascii-backspace" as const,
   deleteMode: "vt220-delete" as const,
-  groupPath: ["server"],
+  groupPath: "/server",
   tags: [],
   favorite: false,
   monitorSession: true
@@ -263,6 +354,7 @@ export const ConnectionManagerModal = ({
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>();
   const [selectedExportIds, setSelectedExportIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
+  const [formTab, setFormTab] = useState<FormTab>("basic");
   const [saving, setSaving] = useState(false);
   const [connectingFromForm, setConnectingFromForm] = useState(false);
   const [importingPreview, setImportingPreview] = useState(false);
@@ -286,6 +378,7 @@ export const ConnectionManagerModal = ({
     setSelectedExportIds(new Set());
     setExpanded(new Set(["root"]));
     setMode("idle");
+    setFormTab("basic");
     setKeyword("");
     setActiveTab("connections");
     setImportingPreview(false);
@@ -374,6 +467,7 @@ export const ConnectionManagerModal = ({
     setSelectedConnectionId(undefined);
     form.resetFields();
     form.setFieldsValue(DEFAULT_VALUES);
+    setFormTab("basic");
     setMode("new");
   }, [form]);
 
@@ -381,8 +475,9 @@ export const ConnectionManagerModal = ({
     const connection = connections.find((c) => c.id === connectionId);
     if (!connection) return;
     const expandedKeys = new Set<string>(["root"]);
+    const parts = groupPathToSegments(connection.groupPath);
     const segments: string[] = [];
-    for (const part of connection.groupPath) {
+    for (const part of parts) {
       segments.push(part);
       expandedKeys.add(`mgr-group:${segments.join("/")}`);
     }
@@ -443,7 +538,7 @@ export const ConnectionManagerModal = ({
   const saveConnection = useCallback(async (values: ConnectionUpsertInput): Promise<string | undefined> => {
     const password = sanitizeOptionalText(values.password);
     const hostFingerprint = sanitizeOptionalText(values.hostFingerprint);
-    const groupPath = sanitizeTextArray(values.groupPath);
+    const groupPath = normalizeGroupPath(values.groupPath);
     const tags = sanitizeTextArray(values.tags);
     const notes = sanitizeOptionalText(values.notes);
     const port = Number(values.port);
@@ -484,7 +579,7 @@ export const ConnectionManagerModal = ({
         backspaceMode,
         deleteMode,
         tags,
-        groupPath: groupPath.length > 0 ? groupPath : ["server"],
+        groupPath,
         notes,
         favorite: values.favorite ?? false,
         monitorSession: values.monitorSession ?? false
@@ -539,6 +634,46 @@ export const ConnectionManagerModal = ({
       return next;
     });
   }, []);
+
+  /* ── Drag-and-drop ─────────────────────── */
+  const [dragOverGroupKey, setDragOverGroupKey] = useState<string>();
+  const dragLeaveTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleGroupDragOver = useCallback((e: React.DragEvent, groupKey: string) => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    clearTimeout(dragLeaveTimerRef.current);
+    setDragOverGroupKey(groupKey);
+  }, []);
+
+  const handleGroupDragLeave = useCallback((_groupKey: string) => {
+    dragLeaveTimerRef.current = setTimeout(() => setDragOverGroupKey(undefined), 80);
+  }, []);
+
+  const handleGroupDrop = useCallback(async (e: React.DragEvent, groupKey: string) => {
+    e.preventDefault();
+    setDragOverGroupKey(undefined);
+    const connectionId = e.dataTransfer.getData(DRAG_MIME);
+    if (!connectionId) return;
+
+    const connection = connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+
+    const targetPath = groupKeyToPath(groupKey);
+    if (targetPath === connection.groupPath) return;
+
+    try {
+      await onConnectionSaved(toQuickUpsertInput(connection, { groupPath: targetPath }));
+      message.success(`已移动到 ${targetPath}`);
+      if (selectedConnectionId === connectionId) {
+        form.setFieldValue("groupPath", targetPath);
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "移动失败";
+      message.error(reason);
+    }
+  }, [connections, form, onConnectionSaved, selectedConnectionId]);
 
   const promptExportMode = useCallback((): Promise<"plain" | "encrypted" | null> => {
     return new Promise((resolve) => {
@@ -993,7 +1128,12 @@ export const ConnectionManagerModal = ({
           </div>
 
           {/* Tree */}
-          <div className="mgr-tree-wrap">
+          <div
+            className={`mgr-tree-wrap${dragOverGroupKey === "root" ? " mgr-tree-wrap--drop-target" : ""}`}
+            onDragOver={(e) => handleGroupDragOver(e, "root")}
+            onDragLeave={() => handleGroupDragLeave("root")}
+            onDrop={(e) => void handleGroupDrop(e, "root")}
+          >
             {tree.children.length === 0 ? (
               <div className="mgr-tree-empty">
                 {keyword ? (
@@ -1016,8 +1156,12 @@ export const ConnectionManagerModal = ({
                 toggleExpanded={toggleExpanded}
                 selectedConnectionId={selectedConnectionId}
                 selectedExportIds={selectedExportIds}
+                dragOverGroupKey={dragOverGroupKey}
                 onSelect={handleSelect}
                 onToggleExportSelect={handleToggleExportSelect}
+                onGroupDragOver={handleGroupDragOver}
+                onGroupDragLeave={handleGroupDragLeave}
+                onGroupDrop={(e, key) => void handleGroupDrop(e, key)}
               />
             )}
           </div>
@@ -1194,224 +1338,272 @@ export const ConnectionManagerModal = ({
                 await saveConnection(values);
               }}
             >
-              {/* Section: 连接信息 */}
-              <div className="mgr-section-label">连接信息</div>
-
-              <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入连接名称" }]}>
-                <Input placeholder="我的服务器" />
-              </Form.Item>
-
-              <div className="flex gap-3 items-start">
-                <Form.Item
-                  label="Host / IP"
-                  name="host"
-                  rules={[{ required: true, message: "请输入主机地址" }]}
-                  style={{ flex: 1 }}
+              {/* ── Form tab bar ──── */}
+              <div className="mgr-form-tab-bar">
+                <button
+                  type="button"
+                  title="基本信息"
+                  className={`mgr-form-tab${formTab === "basic" ? " mgr-form-tab--active" : ""}`}
+                  onClick={() => setFormTab("basic")}
                 >
-                  <Input placeholder="192.168.1.1 或 example.com" style={{ fontFamily: "var(--mono)" }} />
-                </Form.Item>
-                <Form.Item
-                  label="端口"
-                  name="port"
-                  rules={[{ required: true, message: "请输入端口" }]}
-                  className="w-[90px] shrink-0"
+                  <i className="ri-server-line" aria-hidden="true" />
+                  基本
+                </button>
+                <button
+                  type="button"
+                  title="认证设置"
+                  className={`mgr-form-tab${formTab === "auth" ? " mgr-form-tab--active" : ""}`}
+                  onClick={() => setFormTab("auth")}
                 >
-                  <InputNumber min={1} max={65535} precision={0} style={{ width: "100%" }} />
-                </Form.Item>
+                  <i className="ri-key-2-line" aria-hidden="true" />
+                  认证
+                </button>
+                <button
+                  type="button"
+                  title="网络代理"
+                  className={`mgr-form-tab${formTab === "network" ? " mgr-form-tab--active" : ""}`}
+                  onClick={() => setFormTab("network")}
+                >
+                  <i className="ri-shield-line" aria-hidden="true" />
+                  网络
+                </button>
+                <button
+                  type="button"
+                  title="高级设置"
+                  className={`mgr-form-tab${formTab === "advanced" ? " mgr-form-tab--active" : ""}`}
+                  onClick={() => setFormTab("advanced")}
+                >
+                  <i className="ri-settings-3-line" aria-hidden="true" />
+                  高级
+                </button>
               </div>
 
-              {/* Section: 认证 */}
-              <div className="mgr-section-label mgr-section-gap">认证</div>
+              <div className="mgr-form-tab-body">
+                {/* ── Tab: 基本 ──── */}
+                {formTab === "basic" && (
+                  <>
+                    <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入连接名称" }]}>
+                      <Input placeholder="我的服务器" />
+                    </Form.Item>
 
-              <div className="flex gap-3 items-start">
-                <Form.Item
-                  label="用户名"
-                  name="username"
-                  className="flex-1"
-                >
-                  <Input placeholder="root" />
-                </Form.Item>
-                <Form.Item
-                  label="认证方式"
-                  name="authType"
-                  rules={[{ required: true }]}
-                  className="w-[150px] shrink-0"
-                >
-                  <Select
-                    options={[
-                      { label: "密码", value: "password" },
-                      { label: "私钥文件", value: "privateKey" },
-                      { label: "SSH Agent", value: "agent" }
-                    ]}
-                  />
-                </Form.Item>
-              </div>
-
-              {authType === "privateKey" ? (
-                <Form.Item
-                  label="SSH 密钥"
-                  name="sshKeyId"
-                  rules={[{ required: true, message: "请选择一个 SSH 密钥" }]}
-                >
-                  <Select
-                    placeholder="选择密钥..."
-                    allowClear
-                    options={sshKeys.map((k) => ({ label: k.name, value: k.id }))}
-                    notFoundContent={
-                      <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
-                        暂无密钥，请先在「密钥管理」中添加
-                      </div>
-                    }
-                  />
-                </Form.Item>
-              ) : null}
-
-              {authType === "password" ? (
-                <Form.Item
-                  label="密码"
-                  name="password"
-                  preserve={false}
-                >
-                  <Input.Password placeholder="输入密码（留空则不更新）" />
-                </Form.Item>
-              ) : null}
-
-              <div className="mgr-section-label mgr-section-gap">网络代理</div>
-
-              <Form.Item
-                label="代理"
-                name="proxyId"
-              >
-                <Select
-                  placeholder="直连（不使用代理）"
-                  allowClear
-                  options={proxies.map((p) => ({
-                    label: `${p.name} (${p.proxyType.toUpperCase()} ${p.host}:${p.port})`,
-                    value: p.id
-                  }))}
-                  notFoundContent={
-                    <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
-                      暂无代理，请先在「代理管理」中添加
+                    <div className="flex gap-3 items-start">
+                      <Form.Item
+                        label="Host / IP"
+                        name="host"
+                        rules={[{ required: true, message: "请输入主机地址" }]}
+                        style={{ flex: 1 }}
+                      >
+                        <Input placeholder="192.168.1.1 或 example.com" style={{ fontFamily: "var(--mono)" }} />
+                      </Form.Item>
+                      <Form.Item
+                        label="端口"
+                        name="port"
+                        rules={[{ required: true, message: "请输入端口" }]}
+                        className="w-[90px] shrink-0"
+                      >
+                        <InputNumber min={1} max={65535} precision={0} style={{ width: "100%" }} />
+                      </Form.Item>
                     </div>
-                  }
-                />
-              </Form.Item>
 
-              {/* Section: 分组 & 标签 */}
-              <div className="mgr-section-label mgr-section-gap">分组 & 标签</div>
+                    <Form.Item label="分组路径" name="groupPath">
+                      <Input
+                        placeholder="/server/production"
+                        prefix={<i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />}
+                        style={{ fontFamily: "var(--mono)" }}
+                      />
+                    </Form.Item>
 
-              <div className="flex gap-3 items-start">
-                <Form.Item label="分组路径" name="groupPath" className="flex-1">
-                  <Select
-                    mode="tags"
-                    tokenSeparators={[","]}
-                    placeholder="server / production"
-                  />
-                </Form.Item>
-                <Form.Item label="标签" name="tags" className="flex-1">
-                  <Select
-                    mode="tags"
-                    tokenSeparators={[","]}
-                    placeholder="web, linux, prod"
-                  />
-                </Form.Item>
+                    <div className="flex gap-3 items-start">
+                      <Form.Item label="标签" name="tags" className="flex-1">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[","]}
+                          placeholder="web, linux, prod"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label="收藏"
+                        name="favorite"
+                        valuePropName="checked"
+                        className="shrink-0 !mb-0"
+                      >
+                        <Switch size="small" />
+                      </Form.Item>
+                    </div>
+
+                    <Form.Item label="备注" name="notes" className="!mb-0">
+                      <Input.TextArea rows={2} placeholder="可选备注信息..." className="mgr-textarea" />
+                    </Form.Item>
+                  </>
+                )}
+
+                {/* ── Tab: 认证 ──── */}
+                {formTab === "auth" && (
+                  <>
+                    <div className="flex gap-3 items-start">
+                      <Form.Item
+                        label="用户名"
+                        name="username"
+                        className="flex-1"
+                      >
+                        <Input placeholder="root" />
+                      </Form.Item>
+                      <Form.Item
+                        label="认证方式"
+                        name="authType"
+                        rules={[{ required: true }]}
+                        className="w-[150px] shrink-0"
+                      >
+                        <Select
+                          options={[
+                            { label: "密码", value: "password" },
+                            { label: "私钥文件", value: "privateKey" },
+                            { label: "SSH Agent", value: "agent" }
+                          ]}
+                        />
+                      </Form.Item>
+                    </div>
+
+                    {authType === "privateKey" ? (
+                      <Form.Item
+                        label="SSH 密钥"
+                        name="sshKeyId"
+                        rules={[{ required: true, message: "请选择一个 SSH 密钥" }]}
+                      >
+                        <Select
+                          placeholder="选择密钥..."
+                          allowClear
+                          options={sshKeys.map((k) => ({ label: k.name, value: k.id }))}
+                          notFoundContent={
+                            <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                              暂无密钥，请先在「密钥管理」中添加
+                            </div>
+                          }
+                        />
+                      </Form.Item>
+                    ) : null}
+
+                    {authType === "password" ? (
+                      <Form.Item
+                        label="密码"
+                        name="password"
+                        preserve={false}
+                      >
+                        <Input.Password placeholder="输入密码（留空则不更新）" />
+                      </Form.Item>
+                    ) : null}
+
+                    <div className="mgr-section-label mgr-section-gap">安全</div>
+
+                    <div className="flex gap-3 items-start">
+                      <Form.Item
+                        label="主机指纹（SHA256:... / md5:aa:bb... / hex）"
+                        name="hostFingerprint"
+                        className="flex-1"
+                      >
+                        <Input placeholder="SHA256:xxxxxxxxxxxxxxxxxxxx" className="mgr-mono-input" />
+                      </Form.Item>
+                      <Form.Item
+                        label="严格主机校验"
+                        name="strictHostKeyChecking"
+                        valuePropName="checked"
+                        className="shrink-0 !mb-0"
+                      >
+                        <Switch size="small" />
+                      </Form.Item>
+                    </div>
+                  </>
+                )}
+
+                {/* ── Tab: 网络 ──── */}
+                {formTab === "network" && (
+                  <>
+                    <Form.Item
+                      label="代理"
+                      name="proxyId"
+                    >
+                      <Select
+                        placeholder="直连（不使用代理）"
+                        allowClear
+                        options={proxies.map((p) => ({
+                          label: `${p.name} (${p.proxyType.toUpperCase()} ${p.host}:${p.port})`,
+                          value: p.id
+                        }))}
+                        notFoundContent={
+                          <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                            暂无代理，请先在「代理管理」中添加
+                          </div>
+                        }
+                      />
+                    </Form.Item>
+                  </>
+                )}
+
+                {/* ── Tab: 高级 ──── */}
+                {formTab === "advanced" && (
+                  <>
+                    <div className="flex gap-3 items-start">
+                      <Form.Item
+                        label="Monitor Session"
+                        name="monitorSession"
+                        valuePropName="checked"
+                        className="shrink-0 !mb-0"
+                      >
+                        <Switch size="small" />
+                      </Form.Item>
+                      <div className="mgr-monitor-hint">
+                        启用后支持进程管理器和网络监控
+                      </div>
+                    </div>
+
+                    <Form.Item
+                      label="字符编码"
+                      name="terminalEncoding"
+                    >
+                      <Select
+                        options={[
+                          { label: "UTF-8", value: "utf-8" },
+                          { label: "GB18030", value: "gb18030" },
+                          { label: "GBK", value: "gbk" },
+                          { label: "Big5", value: "big5" }
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <div className="mgr-section-label">按键序列</div>
+
+                    <div className="flex gap-3 items-start">
+                      <Form.Item
+                        label="Backspace 退格键"
+                        name="backspaceMode"
+                        className="flex-1"
+                      >
+                        <Select
+                          options={[
+                            { label: "ASCII - Backspace", value: "ascii-backspace" },
+                            { label: "ASCII - Delete", value: "ascii-delete" }
+                          ]}
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label="Delete 删除键"
+                        name="deleteMode"
+                        className="flex-1"
+                      >
+                        <Select
+                          options={[
+                            { label: "VT220 - Delete", value: "vt220-delete" },
+                            { label: "ASCII - Delete", value: "ascii-delete" },
+                            { label: "ASCII - Backspace", value: "ascii-backspace" }
+                          ]}
+                        />
+                      </Form.Item>
+                    </div>
+
+                    <div className="mgr-form-subtitle">终端高级配置保存后需重连会话生效。</div>
+                  </>
+                )}
               </div>
-
-              <div className="flex gap-3 items-start">
-                <Form.Item label="备注" name="notes" className="flex-1 !mb-0">
-                  <Input.TextArea rows={2} placeholder="可选备注信息..." className="mgr-textarea" />
-                </Form.Item>
-                <Form.Item
-                  label="收藏"
-                  name="favorite"
-                  valuePropName="checked"
-                  className="shrink-0 !mb-0"
-                >
-                  <Switch size="small" />
-                </Form.Item>
-              </div>
-
-              <div className="mgr-section-label mgr-section-gap">安全</div>
-
-              <div className="flex gap-3 items-start">
-                <Form.Item
-                  label="主机指纹（SHA256:... / md5:aa:bb... / hex）"
-                  name="hostFingerprint"
-                  className="flex-1"
-                >
-                  <Input placeholder="SHA256:xxxxxxxxxxxxxxxxxxxx" className="mgr-mono-input" />
-                </Form.Item>
-                <Form.Item
-                  label="严格主机校验"
-                  name="strictHostKeyChecking"
-                  valuePropName="checked"
-                  className="shrink-0 !mb-0"
-                >
-                  <Switch size="small" />
-                </Form.Item>
-              </div>
-
-              <div className="mgr-section-label mgr-section-gap">高级</div>
-
-              <div className="flex gap-3 items-start">
-                <Form.Item
-                  label="Monitor Session"
-                  name="monitorSession"
-                  valuePropName="checked"
-                  className="shrink-0 !mb-0"
-                >
-                  <Switch size="small" />
-                </Form.Item>
-                <div className="mgr-monitor-hint">
-                  启用后支持进程管理器和网络监控
-                </div>
-              </div>
-
-              <Form.Item
-                label="字符编码"
-                name="terminalEncoding"
-              >
-                <Select
-                  options={[
-                    { label: "UTF-8", value: "utf-8" },
-                    { label: "GB18030", value: "gb18030" },
-                    { label: "GBK", value: "gbk" },
-                    { label: "Big5", value: "big5" }
-                  ]}
-                />
-              </Form.Item>
-
-              <div className="mgr-section-label">按键序列（解决退格/删除键异常）</div>
-
-              <div className="flex gap-3 items-start">
-                <Form.Item
-                  label="Backspace 退格键"
-                  name="backspaceMode"
-                  className="flex-1"
-                >
-                  <Select
-                    options={[
-                      { label: "ASCII - Backspace", value: "ascii-backspace" },
-                      { label: "ASCII - Delete", value: "ascii-delete" }
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item
-                  label="Delete 删除键"
-                  name="deleteMode"
-                  className="flex-1"
-                >
-                  <Select
-                    options={[
-                      { label: "VT220 - Delete", value: "vt220-delete" },
-                      { label: "ASCII - Delete", value: "ascii-delete" },
-                      { label: "ASCII - Backspace", value: "ascii-backspace" }
-                    ]}
-                  />
-                </Form.Item>
-              </div>
-
-              <div className="mgr-form-subtitle">终端高级配置保存后需重连会话生效。</div>
             </Form>
           </div>
         )}

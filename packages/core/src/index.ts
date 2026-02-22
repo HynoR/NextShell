@@ -48,7 +48,8 @@ export interface ConnectionProfile {
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
-  groupPath: string[];
+  /** 分组路径，如 /server/hk，以 / 分隔层级 */
+  groupPath: string;
   tags: string[];
   notes?: string;
   favorite: boolean;
@@ -401,7 +402,7 @@ export interface ExportedConnection {
   username: string;
   authType: AuthType;
   password?: string;
-  groupPath: string[];
+  groupPath: string;
   tags: string[];
   notes?: string;
   favorite: boolean;

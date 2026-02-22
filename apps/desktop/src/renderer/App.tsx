@@ -3,7 +3,7 @@ import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { ConnectionManagerModal } from "./components/ConnectionManagerModal";
-import { SettingsCenterDrawer } from "./components/SettingsCenterDrawer";
+import { SettingsCenterModal } from "./components/SettingsCenterModal";
 import { WorkspaceLayout } from "./components/WorkspaceLayout";
 import { AppSkeleton } from "./components/LoadingSkeletons";
 import { useConnectionManager } from "./hooks/useConnectionManager";
@@ -92,7 +92,7 @@ export const App = () => {
     handleReconnectSession,
     handleAuthPromptCancel,
     handleAuthPromptSubmit,
-    MAX_SESSION_OPEN_ATTEMPTS
+    MAX_AUTH_RETRIES
   } = useSessionLifecycle();
 
   const activeConnection = useMemo(
@@ -416,7 +416,7 @@ export const App = () => {
           transferPanelCollapsed={transferPanelCollapsed}
           bottomTab={bottomTab}
           authPromptState={authPromptState}
-          MAX_SESSION_OPEN_ATTEMPTS={MAX_SESSION_OPEN_ATTEMPTS}
+          MAX_AUTH_RETRIES={MAX_AUTH_RETRIES}
           onLoadConnections={() => void loadConnections()}
           onOpenManager={handleOpenManager}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -476,7 +476,7 @@ export const App = () => {
           onReloadProxies={loadProxies}
         />
 
-        <SettingsCenterDrawer
+        <SettingsCenterModal
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
         />

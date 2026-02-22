@@ -2949,6 +2949,21 @@ body {
 .mgr-tree-wrap::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
 .mgr-tree-wrap::-webkit-scrollbar-track { background: transparent; }
 
+.mgr-tree-wrap--drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-sm);
+}
+
+/* Drag-and-drop: draggable server rows */
+.mgr-server-row[draggable="true"] {
+  cursor: grab;
+}
+
+.mgr-server-row[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 /* Tree group */
 .mgr-group-row {
   display: flex;
@@ -2970,6 +2985,18 @@ body {
 .mgr-group-row:hover {
   background: var(--bg-hover);
   color: var(--t1);
+}
+
+.mgr-group-row--drop-target {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  outline: 1.5px dashed var(--accent);
+  outline-offset: -1.5px;
+  border-radius: var(--r-sm);
+  color: var(--accent);
+}
+
+.mgr-group-row--drop-target > i:nth-child(2) {
+  color: var(--accent);
 }
 
 .mgr-group-row > i:first-child {
@@ -3425,8 +3452,53 @@ body {
 .mgr-form {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px 0;
+  padding: 0 20px 0;
+  display: flex;
+  flex-direction: column;
 }
+
+.mgr-form-tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 8px 0 0;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.mgr-form-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--sans);
+  color: var(--t3);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mgr-form-tab:hover { color: var(--t1); }
+
+.mgr-form-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.mgr-form-tab i { font-size: 13px; }
+
+.mgr-form-tab-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 0 16px;
+}
+
+.mgr-form-tab-body::-webkit-scrollbar { width: 4px; }
+.mgr-form-tab-body::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
+.mgr-form-tab-body::-webkit-scrollbar-track { background: transparent; }
 
 .mgr-form::-webkit-scrollbar { width: 4px; }
 .mgr-form::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
@@ -3701,6 +3773,144 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* Settings Center – layout */
+.stg-layout {
+  display: flex;
+  height: 540px;
+  overflow: hidden;
+}
+
+/* Settings Center – sidebar */
+.stg-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.stg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--t2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+.stg-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+.stg-nav-item--active {
+  background: var(--accent-bg, rgba(22, 119, 255, 0.08));
+  color: var(--accent);
+  font-weight: 500;
+}
+.stg-nav-item i {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+}
+
+/* Settings Center – content area */
+.stg-content {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Settings Center – card */
+.stg-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.stg-card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.stg-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.stg-card-desc {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+.stg-card-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Settings Center – row */
+.stg-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stg-row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stg-row-label > span:first-child {
+  font-size: 12px;
+  color: var(--t1);
+  font-weight: 500;
+}
+.stg-row-hint {
+  font-size: 11px;
+  color: var(--t3);
+}
+.stg-row-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Settings Center – switch row */
+.stg-switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 32px;
+}
+.stg-switch-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stg-switch-label > span:first-child {
+  font-size: 12px;
+  color: var(--t1);
+}
+
+/* Settings Center – note */
+.stg-note {
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.5;
 }
 
 /* ── Transfer Queue ─────────────────────────────────────── */
