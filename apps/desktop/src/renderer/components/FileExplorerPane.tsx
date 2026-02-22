@@ -1027,7 +1027,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       });
       message.success(`已打开远端编辑: ${entry.name}`);
     } catch (err) {
-      message.error(`远端编辑失败：${formatErrorMessage(err, "请检查编辑器配置")}`);
+      message.error(`远端编辑失败：${formatErrorMessage(err, "请检查编辑器配置或环境变量")}`);
     } finally {
       setBusy(false);
     }
@@ -1039,12 +1039,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       void onOpenEditorTab(connection.id, entry.path);
       return;
     }
-    const editor = preferences.remoteEdit.defaultEditorCommand?.trim();
-    if (!editor) {
-      pendingEditRef.current = entry;
-      setEditorModalOpen(true);
-      return;
-    }
+    const editor = preferences.remoteEdit.defaultEditorCommand?.trim() ?? "";
     void doRemoteEdit(entry, editor);
   };
 

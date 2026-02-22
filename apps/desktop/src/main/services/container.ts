@@ -737,7 +737,9 @@ const mergePreferences = (
     },
     remoteEdit: {
       defaultEditorCommand:
-        patch.remoteEdit?.defaultEditorCommand?.trim() || current.remoteEdit.defaultEditorCommand,
+        patch.remoteEdit?.defaultEditorCommand !== undefined
+          ? patch.remoteEdit.defaultEditorCommand.trim()
+          : current.remoteEdit.defaultEditorCommand,
       editorMode:
         patch.remoteEdit?.editorMode ?? current.remoteEdit.editorMode
     },
@@ -4220,15 +4222,41 @@ export const createServiceContainer = (
     sender: WebContents
   ): Promise<{ editId: string; localPath: string }> => {
     getConnectionOrThrow(connectionId);
-    const result = await remoteEditManager.open(connectionId, remotePath, editorCommand, sender);
-    connections.appendAuditLog({
-      action: "sftp.edit_open",
-      level: "info",
-      connectionId,
-      message: "Opened remote file for live editing",
-      metadata: { remotePath, editId: result.editId }
-    });
-    return result;
+    try {
+      const result = await remoteEditManager.open(connectionId, remotePath, editorCommand, sender);
+      connections.appendAuditLog({
+        action: "sftp.edit_open",
+        level: "info",
+        connectionId,
+        message: "Opened remote file for live editing",
+        metadata: { remotePath, editId: result.editId }
+      });
+      return result;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const enriched = error as {
+        source?: string;
+        code?: string;
+        requestedCommand?: string;
+        resolvedCommand?: string;
+      };
+      connections.appendAuditLog({
+        action: "sftp.edit_open_failed",
+        level: "error",
+        connectionId,
+        message: "Failed to open remote file for live editing",
+        metadata: {
+          remotePath,
+          editorCommand,
+          reason,
+          commandSource: enriched.source,
+          code: enriched.code,
+          requestedCommand: enriched.requestedCommand,
+          resolvedCommand: enriched.resolvedCommand
+        }
+      });
+      throw error;
+    }
   };
 
   const stopRemoteEdit = async (editId: string): Promise<{ ok: true }> => {

@@ -620,7 +620,7 @@ const EditorSection = ({
       </Radio.Group>
     </SettingsRow>
     {editorMode === "external" && (
-      <SettingsRow label="默认编辑器命令">
+      <SettingsRow label="默认编辑器命令" hint="留空时自动使用 VISUAL / EDITOR，最后回退系统默认">
         <div className="flex gap-2">
           <Input
             style={{ flex: 1 }}
@@ -629,9 +629,9 @@ const EditorSection = ({
             onChange={(e) => setEditorCommand(e.target.value)}
             onBlur={() => {
               const v = editorCommand.trim();
-              if (v) save({ remoteEdit: { defaultEditorCommand: v } });
+              save({ remoteEdit: { defaultEditorCommand: v } });
             }}
-            placeholder="例如 code 或 cursor"
+            placeholder="例如 code、cursor，或留空使用系统默认"
           />
           <Button
             onClick={() =>

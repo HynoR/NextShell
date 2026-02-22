@@ -62,6 +62,33 @@ const RETRY_BASE_MS = 300;
 const TEMP_ROOT = path.join(os.tmpdir(), "nextshell-edit");
 const IDLE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 min
 const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;    // 2 hours
+const EDITOR_LAUNCH_PROBE_TIMEOUT_MS = 1200;
+
+type EditorCommandSource = "settings" | "visual" | "editor" | "platform-default";
+
+interface ResolvedEditorCommand {
+  source: EditorCommandSource;
+  command: string;
+}
+
+interface PreparedEditorInvocation {
+  executable: string;
+  args: string[];
+}
+
+interface EditorLaunchResult {
+  ok: boolean;
+  source: EditorCommandSource;
+  requestedCommand: string;
+  resolvedCommand: string;
+  executable: string;
+  args: string[];
+  probe: "timeout" | "error" | "exit" | "close" | "exception";
+  error?: string;
+  code?: string;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+}
 
 type EditStatus = SftpEditStatusEvent["status"];
 
@@ -111,7 +138,17 @@ export class RemoteEditManager {
   ): Promise<{ editId: string; localPath: string }> {
     const existing = this.findByRemotePath(connectionId, remotePath);
     if (existing) {
-      this.spawnEditor(editorCommand, existing.localPath);
+      const launchResult = await this.spawnEditor(editorCommand, existing.localPath);
+      if (!launchResult.ok) {
+        throw this.buildEditorLaunchError(launchResult);
+      }
+
+      logger.info("[RemoteEdit] reopened with existing session", {
+        editId: existing.editId,
+        connectionId,
+        remotePath,
+        source: launchResult.source
+      });
       return { editId: existing.editId, localPath: existing.localPath };
     }
 
@@ -157,7 +194,10 @@ export class RemoteEditManager {
     // Sender lifecycle: auto-cleanup when renderer window closes
     const senderDestroyedHandler = () => {
       logger.info("[RemoteEdit] sender destroyed, cleaning up", { editId });
-      void this.cleanup(this.sessions.get(editId)!, false);
+      const active = this.sessions.get(editId);
+      if (active) {
+        void this.cleanup(active, false);
+      }
     };
     sender.once("destroyed", senderDestroyedHandler);
 
@@ -177,7 +217,11 @@ export class RemoteEditManager {
 
     this.sessions.set(editId, session);
 
-    this.spawnEditor(editorCommand, localPath);
+    const launchResult = await this.spawnEditor(editorCommand, localPath);
+    if (!launchResult.ok) {
+      await this.cleanup(session, false);
+      throw this.buildEditorLaunchError(launchResult);
+    }
 
     this.sendStatus(sender, {
       editId,
@@ -186,7 +230,13 @@ export class RemoteEditManager {
       status: "editing"
     });
 
-    logger.info("[RemoteEdit] opened", { editId, connectionId, remotePath, localPath });
+    logger.info("[RemoteEdit] opened", {
+      editId,
+      connectionId,
+      remotePath,
+      localPath,
+      source: launchResult.source
+    });
     return { editId, localPath };
   }
 
@@ -392,25 +442,223 @@ export class RemoteEditManager {
     return path.join(TEMP_ROOT, connShort, `${pathHash}-${fileName}`);
   }
 
-  private spawnEditor(editorCommand: string, localPath: string): void {
-    try {
-      // Tokenise the command respecting double-quoted segments (e.g. paths with spaces).
-      const parts = tokenizeCommand(editorCommand.trim());
-      const cmd = parts[0]!;
-      const args = [...parts.slice(1), localPath];
+  private resolveEditorCommand(editorCommand: string): ResolvedEditorCommand {
+    const fromSettings = editorCommand.trim();
+    if (fromSettings) {
+      return { source: "settings", command: fromSettings };
+    }
 
-      const child = spawn(cmd, args, {
+    const fromVisual = (process.env["VISUAL"] ?? "").trim();
+    if (fromVisual) {
+      return { source: "visual", command: fromVisual };
+    }
+
+    const fromEditor = (process.env["EDITOR"] ?? "").trim();
+    if (fromEditor) {
+      return { source: "editor", command: fromEditor };
+    }
+
+    if (process.platform === "darwin") {
+      return { source: "platform-default", command: "open -t" };
+    }
+    if (process.platform === "win32") {
+      return { source: "platform-default", command: "notepad" };
+    }
+    return { source: "platform-default", command: "xdg-open" };
+  }
+
+  private prepareEditorInvocation(command: string, localPath: string): PreparedEditorInvocation {
+    const parts = tokenizeCommand(command.trim());
+    if (parts.length === 0) {
+      throw new Error("editor command is empty");
+    }
+
+    const executable = parts[0]!;
+    const extraArgs = parts.slice(1);
+
+    // macOS app bundle support: "/Applications/Foo.app" => open -a "/Applications/Foo.app" <file>
+    if (process.platform === "darwin" && executable.toLowerCase().endsWith(".app")) {
+      const args = ["-a", executable, localPath];
+      if (extraArgs.length > 0) {
+        args.push("--args", ...extraArgs);
+      }
+      return { executable: "open", args };
+    }
+
+    return {
+      executable,
+      args: [...extraArgs, localPath]
+    };
+  }
+
+  private buildEditorLaunchError(result: EditorLaunchResult): Error {
+    const detail = result.error ?? "未知错误";
+    const message = `外部编辑器启动失败（来源: ${result.source}）：${detail}`;
+    const error = new Error(message) as Error & {
+      source?: EditorCommandSource;
+      code?: string;
+      requestedCommand?: string;
+      resolvedCommand?: string;
+      executable?: string;
+      args?: string[];
+    };
+    error.source = result.source;
+    error.code = result.code;
+    error.requestedCommand = result.requestedCommand;
+    error.resolvedCommand = result.resolvedCommand;
+    error.executable = result.executable;
+    error.args = result.args;
+    return error;
+  }
+
+  private async spawnEditor(editorCommand: string, localPath: string): Promise<EditorLaunchResult> {
+    const resolved = this.resolveEditorCommand(editorCommand);
+    let prepared: PreparedEditorInvocation;
+
+    try {
+      prepared = this.prepareEditorInvocation(resolved.command, localPath);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        source: resolved.source,
+        requestedCommand: editorCommand,
+        resolvedCommand: resolved.command,
+        executable: "",
+        args: [],
+        probe: "exception",
+        error: reason
+      };
+    }
+
+    try {
+      const child = spawn(prepared.executable, prepared.args, {
         detached: true,
         stdio: "ignore",
         shell: process.platform === "win32"
       });
 
-      child.unref();
-      child.on("error", (err) => {
-        logger.error("[RemoteEdit] editor spawn error", { editorCommand, error: String(err) });
+      const probeResult = await new Promise<{
+        ok: boolean;
+        probe: EditorLaunchResult["probe"];
+        error?: string;
+        code?: string;
+        exitCode?: number | null;
+        signal?: NodeJS.Signals | null;
+      }>((resolve) => {
+        let settled = false;
+        const finish = (value: {
+          ok: boolean;
+          probe: EditorLaunchResult["probe"];
+          error?: string;
+          code?: string;
+          exitCode?: number | null;
+          signal?: NodeJS.Signals | null;
+        }) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        };
+
+        const timer = setTimeout(() => {
+          finish({ ok: true, probe: "timeout" });
+        }, EDITOR_LAUNCH_PROBE_TIMEOUT_MS);
+
+        child.once("error", (err) => {
+          const error = err instanceof Error ? err.message : String(err);
+          const code = (err as NodeJS.ErrnoException).code;
+          finish({ ok: false, probe: "error", error, code });
+        });
+
+        child.once("exit", (exitCode, signal) => {
+          if (exitCode === 0) {
+            finish({ ok: true, probe: "exit", exitCode, signal });
+            return;
+          }
+          finish({
+            ok: false,
+            probe: "exit",
+            exitCode,
+            signal,
+            error: `进程退出码异常: ${String(exitCode)}`
+          });
+        });
+
+        child.once("close", (exitCode, signal) => {
+          if (exitCode === 0) {
+            finish({ ok: true, probe: "close", exitCode, signal });
+            return;
+          }
+          finish({
+            ok: false,
+            probe: "close",
+            exitCode,
+            signal,
+            error: `进程关闭码异常: ${String(exitCode)}`
+          });
+        });
       });
-    } catch (err) {
-      logger.error("[RemoteEdit] failed to spawn editor", { editorCommand, error: String(err) });
+
+      child.unref();
+
+      const result: EditorLaunchResult = {
+        ok: probeResult.ok,
+        source: resolved.source,
+        requestedCommand: editorCommand,
+        resolvedCommand: resolved.command,
+        executable: prepared.executable,
+        args: prepared.args,
+        probe: probeResult.probe,
+        error: probeResult.error,
+        code: probeResult.code,
+        exitCode: probeResult.exitCode,
+        signal: probeResult.signal
+      };
+
+      if (!result.ok) {
+        logger.error("[RemoteEdit] editor launch failed", {
+          source: result.source,
+          requestedCommand: result.requestedCommand,
+          resolvedCommand: result.resolvedCommand,
+          executable: result.executable,
+          args: result.args,
+          probe: result.probe,
+          error: result.error,
+          code: result.code
+        });
+      } else {
+        logger.info("[RemoteEdit] editor launch success", {
+          source: result.source,
+          resolvedCommand: result.resolvedCommand,
+          executable: result.executable,
+          args: result.args,
+          probe: result.probe
+        });
+      }
+
+      return result;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const result: EditorLaunchResult = {
+        ok: false,
+        source: resolved.source,
+        requestedCommand: editorCommand,
+        resolvedCommand: resolved.command,
+        executable: prepared.executable,
+        args: prepared.args,
+        probe: "exception",
+        error: reason
+      };
+      logger.error("[RemoteEdit] failed to spawn editor", {
+        source: result.source,
+        requestedCommand: result.requestedCommand,
+        resolvedCommand: result.resolvedCommand,
+        executable: result.executable,
+        args: result.args,
+        error: result.error
+      });
+      return result;
     }
   }
 

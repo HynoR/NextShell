@@ -445,7 +445,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     downloadDefaultDir: "~/Downloads"
   },
   remoteEdit: {
-    defaultEditorCommand: "code",
+    defaultEditorCommand: "",
     editorMode: "builtin"
   },
   commandCenter: {

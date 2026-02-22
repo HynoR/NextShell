@@ -276,7 +276,7 @@ export const savedCommandRemoveSchema = z.object({
 export const sftpEditOpenSchema = z.object({
   connectionId: z.string().uuid(),
   remotePath: z.string().min(1),
-  editorCommand: z.string().min(1)
+  editorCommand: z.string()
 });
 
 export const sftpEditOpenBuiltinSchema = z.object({
@@ -318,7 +318,7 @@ export const appPreferencesSchema = z.object({
     downloadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.downloadDefaultDir)
   }).default(DEFAULT_APP_PREFERENCES.transfer),
   remoteEdit: z.object({
-    defaultEditorCommand: z.string().min(1).default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand),
+    defaultEditorCommand: z.string().default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand),
     editorMode: z.enum(["builtin", "external"]).default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
   }).default(DEFAULT_APP_PREFERENCES.remoteEdit),
   commandCenter: z.object({
@@ -353,7 +353,7 @@ export const appPreferencesPatchSchema = z.object({
     downloadDefaultDir: z.string().min(1).optional()
   }).optional(),
   remoteEdit: z.object({
-    defaultEditorCommand: z.string().min(1).optional(),
+    defaultEditorCommand: z.string().optional(),
     editorMode: z.enum(["builtin", "external"]).optional()
   }).optional(),
   commandCenter: z.object({
