@@ -1,4 +1,5 @@
 import { message } from "antd";
+import { formatErrorMessage } from "./errorMessage";
 
 /**
  * Utility for optimistic UI updates.
@@ -25,7 +26,7 @@ export async function withOptimistic<T>(options: {
     if (onError) {
       onError(err);
     } else {
-      message.error(err.message);
+      message.error(formatErrorMessage(err, "操作失败"));
     }
     return undefined;
   }

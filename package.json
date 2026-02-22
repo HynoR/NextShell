@@ -8,6 +8,8 @@
     "packages/*"
   ],
   "scripts": {
+    "setup": "bun install && bun run --cwd apps/desktop rebuild:native",
+    "rebuild:native": "bun run --cwd apps/desktop rebuild:native",
     "dev": "bun run --cwd apps/desktop dev",
     "build": "bun run --cwd apps/desktop build",
     "typecheck": "bun run --cwd apps/desktop typecheck"

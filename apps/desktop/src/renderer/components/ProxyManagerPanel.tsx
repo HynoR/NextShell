@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Form, Input, InputNumber, Modal, Select, message } from "antd";
 import type { ProxyProfile } from "@nextshell/core";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 interface ProxyManagerPanelProps {
   proxies: ProxyProfile[];
@@ -69,8 +70,7 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
           setMode("idle");
           message.success("代理已删除");
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "删除失败";
-          message.error(reason);
+          message.error(`删除代理失败：${formatErrorMessage(error, "请稍后重试")}`);
         }
       }
     });
@@ -236,8 +236,7 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                 }
                 form.setFieldValue("password", undefined);
               } catch (error) {
-                const reason = error instanceof Error ? error.message : "保存失败";
-                message.error(reason);
+                message.error(`保存代理失败：${formatErrorMessage(error, "请检查输入内容")}`);
               } finally {
                 setSaving(false);
               }

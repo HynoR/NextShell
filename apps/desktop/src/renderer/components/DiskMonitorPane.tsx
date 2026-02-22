@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { CommandExecutionResult, ConnectionProfile } from "@nextshell/core";
 import { TableSkeleton } from "./LoadingSkeletons";
 import { formatDiskSize, parseDfOutput, type DiskUsageEntry } from "../utils/diskUsage";
+import { formatErrorMessage } from "../utils/errorMessage";
 import {
   buildSystemDiskCacheKey,
   getSharedDiskSnapshot,
@@ -148,7 +149,7 @@ export const DiskMonitorPane = ({
           return;
         }
 
-        const reason = error instanceof Error ? error.message : "读取磁盘信息失败";
+        const reason = formatErrorMessage(error, "读取磁盘信息失败");
         setErrorText(reason);
         const previous = cacheRef.current[cacheKey] ?? getSharedDiskSnapshot(cacheKey);
         cacheRef.current[cacheKey] = {
@@ -241,7 +242,7 @@ export const DiskMonitorPane = ({
     return (
       <div className="disk-gate">
         <Typography.Text className="text-[var(--t2)]">
-          当前连接未启用 Monitor Session，请在连接设置中开启后再查看磁盘。
+          当前连接未启用监控会话，请在连接设置中开启后再查看磁盘。
         </Typography.Text>
         <button type="button" className="disk-gate-btn" onClick={onOpenSettings}>
           <i className="ri-settings-3-line" aria-hidden="true" />

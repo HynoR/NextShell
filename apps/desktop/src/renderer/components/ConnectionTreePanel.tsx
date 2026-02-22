@@ -4,6 +4,7 @@ import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nexts
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { CredentialEditModal, toConnectionUpsertInput } from "./CredentialEditModal";
 import { promptModal } from "../utils/promptModal";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { formatDateTime, formatRelativeTime } from "../utils/formatTime";
 
 interface ConnectionTreePanelProps {
@@ -483,8 +484,7 @@ export const ConnectionTreePanel = ({
         await onQuickSave(toConnectionUpsertInput(connection, { name }));
         message.success("名称已更新");
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "更新名称失败";
-        message.error(reason);
+        message.error(`更新名称失败：${formatErrorMessage(error, "请稍后重试")}`);
       } finally {
         setSavingName(false);
       }

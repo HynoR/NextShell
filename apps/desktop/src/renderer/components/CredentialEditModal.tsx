@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Form, Input, Modal, Select, Typography, message } from "antd";
 import type { ConnectionProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 interface CredentialEditFormValues {
   username?: string;
@@ -133,8 +134,7 @@ export const CredentialEditModal = ({
       message.success("凭据已更新");
       onClose();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "更新凭据失败";
-      message.error(reason);
+      message.error(`更新凭据失败：${formatErrorMessage(error, "请检查认证信息")}`);
     } finally {
       setSaving(false);
     }

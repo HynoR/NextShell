@@ -6,6 +6,7 @@ import type { ConnectionProfile, RemoteFileEntry } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { useTransferQueueStore } from "../store/useTransferQueueStore";
 import { pMap } from "../utils/concurrentLimit";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { promptModal } from "../utils/promptModal";
 
 interface FileExplorerPaneProps {
@@ -502,8 +503,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       setSelectedPaths([]);
       setPathName(normalizedPath);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "SFTP list failed";
-      message.error(reason);
+      message.error(`读取目录失败：${formatErrorMessage(error, "请检查连接状态")}`);
       // Only clear on error if this is a new path
       setFiles([]);
     } finally {
@@ -696,7 +696,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
         }
         return { ok: true, stderr: "" };
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "SSH exec failed";
+        const reason = formatErrorMessage(error, "远端命令执行失败");
         message.error(reason);
         return { ok: false, stderr: reason };
       }
@@ -752,9 +752,9 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
           markSuccess(task.id);
           successCount += 1;
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "Upload failed";
+          const reason = formatErrorMessage(error, "上传失败");
           markFailed(task.id, reason);
-          message.error(`上传失败: ${inferName(localPath)} (${reason})`);
+          message.error(`上传失败：${inferName(localPath)}（${reason}）`);
         }
       }, 5);
 
@@ -763,8 +763,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       }
       await loadFiles();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Upload failed";
-      message.error(reason);
+      message.error(`上传失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
       setBusy(false);
     }
@@ -811,9 +810,9 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
             markSuccess(task.id);
             successCount += 1;
           } catch (error) {
-            const reason = error instanceof Error ? error.message : "Download failed";
+            const reason = formatErrorMessage(error, "下载失败");
             markFailed(task.id, reason);
-            message.error(`下载失败: ${entry.name} (${reason})`);
+            message.error(`下载失败：${entry.name}（${reason}）`);
           }
         }, 5);
 
@@ -821,8 +820,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
           message.success(`下载完成 (${successCount}/${entries.length}) → ${localBasePath}`);
         }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "Download failed";
-        message.error(reason);
+        message.error(`下载失败：${formatErrorMessage(error, "请稍后重试")}`);
       } finally {
         setBusy(false);
       }
@@ -849,8 +847,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       message.success("目录已创建");
       await loadFiles();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Create directory failed";
-      message.error(reason);
+      message.error(`创建目录失败：${formatErrorMessage(error, "请检查目录名称")}`);
     } finally {
       setBusy(false);
     }
@@ -887,8 +884,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       message.success("重命名成功");
       await loadFiles();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Rename failed";
-      message.error(reason);
+      message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
       setBusy(false);
     }
@@ -923,8 +919,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
           message.success("删除成功");
           await loadFiles();
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "Delete failed";
-          message.error(reason);
+          message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
           // Rollback on failure
           setFiles(prevFiles);
         } finally {
@@ -1032,7 +1027,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       });
       message.success(`已打开远端编辑: ${entry.name}`);
     } catch (err) {
-      message.error(`远端编辑失败: ${err instanceof Error ? err.message : String(err)}`);
+      message.error(`远端编辑失败：${formatErrorMessage(err, "请检查编辑器配置")}`);
     } finally {
       setBusy(false);
     }
@@ -1103,8 +1098,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       }
       await handleDownload(entries, result.filePath, false);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Open directory dialog failed";
-      message.error(reason);
+      message.error(`打开目录选择器失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   };
 

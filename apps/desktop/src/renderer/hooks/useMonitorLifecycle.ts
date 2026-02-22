@@ -2,6 +2,7 @@ import { useCallback, useEffect } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 export function useMonitorLifecycle(
   activeConnectionId: string | undefined,
@@ -46,8 +47,7 @@ export function useMonitorLifecycle(
     let disposed = false;
     void window.nextshell.monitor.startSystem({ connectionId: activeConnectionId }).catch((error) => {
       if (disposed) return;
-      const reason = error instanceof Error ? error.message : "启动系统监控失败";
-      message.error(reason);
+      message.error(`启动系统监控失败：${formatErrorMessage(error, "请检查连接状态")}`);
       setMonitor(undefined);
     });
 
@@ -88,7 +88,7 @@ export function useMonitorLifecycle(
     ) => {
       const connection = connections.find((c) => c.id === connectionId);
       if (!connection?.monitorSession) {
-        message.warning("当前连接未启用 Monitor Session。");
+        message.warning("当前连接未启用监控会话。");
         return;
       }
 
@@ -100,7 +100,7 @@ export function useMonitorLifecycle(
       );
 
       if (!hasConnectedTerminal) {
-        message.warning("请先连接 SSH 终端以启动 Monitor Session。");
+        message.warning("请先连接 SSH 终端，再启动监控会话。");
         return;
       }
 

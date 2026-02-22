@@ -8,6 +8,7 @@ import type {
   SessionDescriptor
 } from "@nextshell/core";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { TableSkeleton } from "./LoadingSkeletons";
 
 interface NetworkMonitorPaneProps {
@@ -44,8 +45,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
     });
 
     void window.nextshell.monitor.startNetwork({ connectionId }).catch((err: unknown) => {
-      const reason = err instanceof Error ? err.message : "启动网络监控失败";
-      message.error(reason);
+      message.error(`启动网络监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
     });
 
     return () => {
@@ -122,8 +122,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
         if (detailRequestIdRef.current !== requestId) {
           return;
         }
-        const reason = error instanceof Error ? error.message : "读取端口连接失败";
-        setDetailError(reason);
+        setDetailError(formatErrorMessage(error, "读取端口连接失败"));
       } finally {
         if (detailRequestIdRef.current === requestId) {
           setDetailLoading(false);

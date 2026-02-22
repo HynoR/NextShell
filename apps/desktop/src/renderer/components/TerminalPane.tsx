@@ -21,6 +21,7 @@ import {
   toReplayChunks,
   type SessionOutputBuffer
 } from "../utils/sessionOutputBuffer";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 
 interface TerminalPaneProps {
@@ -72,7 +73,7 @@ const sequenceByDeleteMode = (
 };
 
 const swallowSessionActionError = (error: unknown): void => {
-  const reason = error instanceof Error ? error.message : String(error);
+  const reason = formatErrorMessage(error, "会话不存在");
   if (reason.includes("Session not found")) {
     return;
   }
@@ -87,24 +88,24 @@ const statusMessage = (
   reason?: string
 ): string | undefined => {
   if (status === "connecting") {
-    return "[session connecting] 正在建立 SSH 连接...";
+    return "正在建立 SSH 会话...";
   }
 
   if (status === "connected") {
     return reason
-      ? `[session connected] 连接已建立，${reason}`
-      : "[session connected] 连接已建立。";
+      ? `SSH 会话已连接：${formatErrorMessage(reason, "连接成功")}`
+      : "SSH 会话已连接。";
   }
 
   if (status === "disconnected") {
-    return "[session disconnected]";
+    return "SSH 会话已断开。";
   }
 
   if (status === "failed") {
     const displayReason = reason?.startsWith(AUTH_REQUIRED_PREFIX)
       ? reason.slice(AUTH_REQUIRED_PREFIX.length)
       : reason;
-    return `[session failed] ${displayReason ?? "unknown"}`;
+    return `SSH 会话连接失败：${formatErrorMessage(displayReason, "未知原因")}`;
   }
 
   return undefined;

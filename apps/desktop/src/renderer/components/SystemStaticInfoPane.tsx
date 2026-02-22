@@ -9,6 +9,7 @@ import type {
 } from "@nextshell/core";
 import { TableSkeleton } from "./LoadingSkeletons";
 import { formatDiskSize } from "../utils/diskUsage";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { buildSystemDiskCacheKey } from "../utils/systemDiskSharedCache";
 
 interface SystemStaticInfoPaneProps {
@@ -154,7 +155,7 @@ export const SystemStaticInfoPane = ({
           return;
         }
 
-        const reason = error instanceof Error ? error.message : "读取系统信息失败";
+        const reason = formatErrorMessage(error, "读取系统信息失败");
         setErrorText(reason);
         const previous = cacheRef.current[cacheKey];
         cacheRef.current[cacheKey] = {
@@ -289,7 +290,7 @@ export const SystemStaticInfoPane = ({
     return (
       <div className="disk-gate">
         <Typography.Text className="text-[var(--t2)]">
-          当前连接未启用 Monitor Session，请在连接设置中开启后再查看系统信息。
+          当前连接未启用监控会话，请在连接设置中开启后再查看系统信息。
         </Typography.Text>
         <button type="button" className="disk-gate-btn" onClick={onOpenSettings}>
           <i className="ri-settings-3-line" aria-hidden="true" />

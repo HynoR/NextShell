@@ -13,6 +13,7 @@ import { useEditorTabStore } from "./store/useEditorTabStore";
 import { usePreferencesStore } from "./store/usePreferencesStore";
 import { useTransferQueueStore } from "./store/useTransferQueueStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
+import { formatErrorMessage } from "./utils/errorMessage";
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
   !session.type || session.type === "terminal";
@@ -68,8 +69,7 @@ export const App = () => {
       const list = await window.nextshell.sshKey.list({});
       setSshKeys(list);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "加载密钥失败";
-      message.error(reason);
+      message.error(`加载密钥失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   }, [setSshKeys]);
 
@@ -78,8 +78,7 @@ export const App = () => {
       const list = await window.nextshell.proxy.list({});
       setProxies(list);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "加载代理失败";
-      message.error(reason);
+      message.error(`加载代理失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   }, [setProxies]);
 
@@ -266,7 +265,7 @@ export const App = () => {
         setActiveSession(sessionId);
         setActiveConnection(connectionId);
       } catch (err) {
-        message.error(`打开编辑器失败: ${err instanceof Error ? err.message : String(err)}`);
+        message.error(`打开编辑器失败：${formatErrorMessage(err, "请检查连接状态")}`);
       }
     },
     [connections, editorTabFindByRemotePath, editorTabOpenTab, setActiveConnection, setActiveSession, upsertSession]
@@ -291,8 +290,7 @@ export const App = () => {
         connectionId: activeConnectionId,
         networkInterface
       }).catch((error) => {
-        const reason = error instanceof Error ? error.message : "切换监控网卡失败";
-        message.error(reason);
+        message.error(`切换监控网卡失败：${formatErrorMessage(error, "请稍后重试")}`);
       });
     },
     [activeConnectionId]
@@ -328,9 +326,9 @@ export const App = () => {
       }
       markTransferSuccess(retryTask.id);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Transfer retry failed";
+      const reason = formatErrorMessage(error, "重试失败");
       markTransferFailed(retryTask.id, reason);
-      message.error(reason);
+      message.error(`重试传输失败：${reason}`);
     }
   }, [enqueueTransferTask, getTransferTask, markTransferFailed, markTransferSuccess]);
 
@@ -340,7 +338,7 @@ export const App = () => {
       revealInFolder: false
     });
     if (!result.ok) {
-      message.error(result.error ? `打开文件失败: ${result.error}` : "打开文件失败");
+      message.error(`打开文件失败：${formatErrorMessage(result.error, "请检查文件路径")}`);
     }
   }, []);
 

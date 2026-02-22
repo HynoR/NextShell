@@ -3,6 +3,7 @@ import { message } from "antd";
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
 import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 import {
   claimNextSessionIndex,
   formatSessionTitle,
@@ -35,9 +36,9 @@ export function useSessionLifecycle() {
     const unsubscribe = window.nextshell.session.onStatus((event) => {
       setSessionStatus(event.sessionId, event.status);
       if (event.status === "failed" && event.reason) {
-        message.error(event.reason);
+        message.error(formatErrorMessage(event.reason, "会话连接失败"));
       } else if (event.status === "connected" && event.reason) {
-        message.warning(event.reason);
+        message.warning(formatErrorMessage(event.reason, "会话状态已更新"));
       }
     });
     return () => { unsubscribe(); };
@@ -79,7 +80,7 @@ export function useSessionLifecycle() {
           });
           return finalizeSession(openedSession, connection, sessionIndex, sessionId);
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "Failed to open SSH session";
+          const reason = formatErrorMessage(error, "打开 SSH 会话失败");
           const displayReason = isAuthRequiredFailure(reason) ? stripAuthRequiredPrefix(reason) : reason;
           setSessionStatus(sessionId, "failed", displayReason);
           message.error(displayReason);
@@ -110,8 +111,7 @@ export function useSessionLifecycle() {
         window.nextshell.connection.list({}).then((refreshed) => {
           setConnections(refreshed);
         }).catch((refreshError) => {
-          const reason = refreshError instanceof Error ? refreshError.message : "刷新连接信息失败";
-          message.warning(reason);
+          message.warning(formatErrorMessage(refreshError, "刷新连接信息失败"));
         });
 
         return session;
@@ -145,8 +145,7 @@ export function useSessionLifecycle() {
     async (sessionId: string) => {
       removeSession(sessionId);
       window.nextshell.session.close({ sessionId }).catch((error) => {
-        const reason = error instanceof Error ? error.message : "Failed to close session";
-        message.warning(reason);
+        message.warning(formatErrorMessage(error, "关闭会话失败"));
       });
     },
     [removeSession]

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { message } from "antd";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 export function useConnectionManager() {
   const {
@@ -29,8 +30,7 @@ export function useConnectionManager() {
         setMonitor(undefined);
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`加载连接失败：${reason}`);
+      message.error(`加载连接失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   }, [activeConnectionId, setActiveConnection, setConnections, setMonitor]);
 
@@ -40,8 +40,7 @@ export function useConnectionManager() {
       const refreshed = await window.nextshell.connection.list({});
       setConnections(refreshed);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "保存连接失败";
-      message.error(reason);
+      message.error(`保存连接失败：${formatErrorMessage(error, "请稍后重试")}`);
       void loadConnections();
     }
   };
@@ -54,8 +53,7 @@ export function useConnectionManager() {
     try {
       await window.nextshell.connection.remove({ id: connectionId });
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "Failed to delete connection";
-      message.error(reason);
+      message.error(`删除连接失败：${formatErrorMessage(error, "请稍后重试")}`);
       setConnections(prevConnections);
     }
   };

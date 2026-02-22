@@ -8,6 +8,7 @@ import type {
   SessionDescriptor
 } from "@nextshell/core";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { TableSkeleton } from "./LoadingSkeletons";
 
 interface ProcessManagerPaneProps {
@@ -48,8 +49,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
 
     void window.nextshell.monitor.startProcess({ connectionId }).catch((err: unknown) => {
       if (disposed) return;
-      const reason = err instanceof Error ? err.message : "启动进程监控失败";
-      message.error(reason);
+      message.error(`启动进程监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
     });
 
     return () => {
@@ -66,8 +66,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
         await window.nextshell.monitor.killProcess({ connectionId, pid, signal });
         message.success(`已发送 ${signal} 到 PID ${pid}`);
       } catch (err) {
-        const reason = err instanceof Error ? err.message : "终止进程失败";
-        message.error(reason);
+        message.error(`终止进程失败：${formatErrorMessage(err, "请稍后重试")}`);
       } finally {
         setKilling((prev) => {
           const next = new Set(prev);
@@ -97,8 +96,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
         const snapshot = await window.nextshell.monitor.getProcessDetail({ connectionId, pid });
         setDetailSnapshot(snapshot);
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "读取进程详情失败";
-        setDetailError(reason);
+        setDetailError(formatErrorMessage(error, "读取进程详情失败"));
       } finally {
         setDetailLoading(false);
       }

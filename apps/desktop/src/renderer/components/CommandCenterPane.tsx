@@ -24,6 +24,7 @@ import type {
   SavedCommand
 } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 const CMD_PARAMS_STORAGE_PREFIX = "nextshell:cmdParams:";
 
@@ -169,8 +170,7 @@ export const CommandCenterPane = ({
       const list = await window.nextshell.savedCommand.list({});
       setAllCommands(list);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "加载命令库失败";
-      message.error(reason);
+      message.error(`加载命令库失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
       setLoading(false);
     }
@@ -225,8 +225,7 @@ export const CommandCenterPane = ({
       // Refresh all commands from DB to get new/updated item
       void loadSavedCommands();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "保存失败";
-      message.error(reason);
+      message.error(`保存命令失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   };
 
@@ -238,8 +237,7 @@ export const CommandCenterPane = ({
       await window.nextshell.savedCommand.remove({ id: cmd.id });
       message.success("已删除");
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "删除失败";
-      message.error(reason);
+      message.error(`删除命令失败：${formatErrorMessage(error, "请稍后重试")}`);
       // Rollback
       setAllCommands(prev);
     }
@@ -320,8 +318,7 @@ export const CommandCenterPane = ({
       });
       setBatchResult(result);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "批量执行失败";
-      message.error(reason);
+      message.error(`批量执行失败：${formatErrorMessage(error, "请检查连接状态")}`);
     } finally {
       setBatchRunning(false);
     }

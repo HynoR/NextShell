@@ -1,6 +1,6 @@
 # NextShell
 
-NextShell 是一个 Electron + TypeScript 的桌面运维客户端原型工程，采用 Bun 作为工作区与工具链管理。
+NextShell 是一个 Electron + TypeScript 的桌面运维客户端，采用 Bun 作为工作区与工具链管理。
 
 ## Workspace
 
@@ -11,11 +11,22 @@ NextShell 是一个 Electron + TypeScript 的桌面运维客户端原型工程�
 ## Quick Start
 
 ```bash
-bun install
+bun run setup
 bun run dev
 ```
 
-## MVP Scope
+## Native Modules (ABI)
+
+为避免 `better-sqlite3` / `keytar` / `ssh2` 在不同开发环境出现 `NODE_MODULE_VERSION` 不匹配，请使用以下流程：
+
+- 首次拉取仓库后执行 `bun run setup`
+- 切换分支后若 lockfile/依赖发生变化，重新执行 `bun run setup`
+- Bun 或 Electron 版本变化后，执行 `bun run setup`
+- 若已出现 `NODE_MODULE_VERSION` 报错，执行 `bun run rebuild:native` 后再启动
+
+仓库通过 `.bun-version` 固定 Bun 版本（当前为 `1.3.4`），建议本地保持一致。
+
+## Core Features
 
 - 连接管理（分组/搜索/收藏）
 - SSH 多标签终端

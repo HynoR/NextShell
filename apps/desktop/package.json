@@ -16,7 +16,8 @@
     "dist": "bun run build && electron-builder --config build/electron-builder.yml",
     "dist:dir": "bun run build && electron-builder --dir --config build/electron-builder.yml",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "rebuild:native": "electron-rebuild -f --only better-sqlite3,keytar,ssh2"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -58,6 +59,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.14",

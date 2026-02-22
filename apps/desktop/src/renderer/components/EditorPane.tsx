@@ -6,6 +6,7 @@ import { EditorState } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { getLanguageSupport } from "../utils/detectLanguage";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { useEditorTabStore } from "../store/useEditorTabStore";
 
 interface EditorPaneProps {
@@ -36,7 +37,7 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
       setSaveStatus("saved");
       message.success({ content: `已保存: ${tab.remotePath.split("/").pop()}`, duration: 2 });
     } catch (err) {
-      message.error(`保存失败: ${err instanceof Error ? err.message : String(err)}`);
+      message.error(`保存失败：${formatErrorMessage(err, "请稍后重试")}`);
       setSaveStatus("unsaved");
     } finally {
       setSaving(session.id, false);

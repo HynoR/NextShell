@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Tag, Tooltip, message } from "antd";
 import type { DebugLogEntry, UpdateCheckResult } from "@nextshell/shared";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 const appVersion = __APP_VERSION__;
 const githubRepo = __GITHUB_REPO__;
@@ -41,7 +42,7 @@ export const AboutPane = () => {
   const handleOpenLink = useCallback(async (url: string) => {
     const openResult = await window.nextshell.dialog.openPath({ path: url, revealInFolder: false });
     if (!openResult.ok) {
-      void message.error(openResult.error ? `打开链接失败: ${openResult.error}` : "打开链接失败");
+      void message.error(`打开链接失败：${formatErrorMessage(openResult.error, "请稍后重试")}`);
     }
   }, []);
 
@@ -51,7 +52,7 @@ export const AboutPane = () => {
       const res = await window.nextshell.about.checkUpdate();
       setResult(res);
       if (res.error) {
-        void message.warning(`检查更新失败: ${res.error}`);
+        void message.warning(`检查更新失败：${formatErrorMessage(res.error, "请稍后重试")}`);
       } else if (res.hasUpdate) {
         void message.success(`发现新版本 ${res.latestVersion}`);
       } else {
@@ -233,7 +234,7 @@ export const AboutPane = () => {
             icon={<i className={debugEnabled ? "ri-stop-circle-line" : "ri-bug-line"} aria-hidden="true" />}
             onClick={() => void handleToggleDebug()}
           >
-            {debugEnabled ? "停止 Debug" : "Debug 日志"}
+            {debugEnabled ? "停止诊断日志" : "诊断日志"}
           </Button>
         </Tooltip>
       </div>
@@ -243,7 +244,7 @@ export const AboutPane = () => {
           <div className="about-debug-header">
             <span className="about-debug-title">
               <i className="ri-terminal-line" aria-hidden="true" />
-              Hidden Shell 执行日志
+              后台命令执行日志
               <Tag color="processing" style={{ marginLeft: 8 }}>实时</Tag>
               <span className="about-debug-count">{debugLogs.length} 条</span>
             </span>
@@ -280,7 +281,7 @@ export const AboutPane = () => {
           >
             {debugLogs.length === 0 ? (
               <div className="about-debug-empty">
-                等待 Hidden Shell 命令执行…
+                等待后台命令执行...
               </div>
             ) : (
               debugLogs.map((entry) => (

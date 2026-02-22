@@ -20,6 +20,7 @@ import {
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import type { BackupArchiveMeta, WindowAppearance } from "@nextshell/core";
 import { SUPPORTED_BACKGROUND_IMAGE_EXTENSIONS } from "@nextshell/shared";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 interface SettingsCenterModalProps {
   open: boolean;
@@ -232,7 +233,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const save = useCallback(
     (patch: Parameters<typeof updatePreferences>[0]) => {
       void updatePreferences(patch).catch((err) => {
-        message.error(err instanceof Error ? err.message : "保存设置失败");
+        message.error(`保存设置失败：${formatErrorMessage(err, "请稍后重试")}`);
       });
     },
     [updatePreferences, message]
@@ -247,7 +248,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           save({ transfer: { [field]: result.filePath } });
         }
       } catch (error) {
-        message.error(error instanceof Error ? error.message : "打开目录选择器失败");
+        message.error(`打开目录选择器失败：${formatErrorMessage(error, "请稍后重试")}`);
       }
     },
     [save, message]
@@ -270,7 +271,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       setPwdInput(""); setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "设置密码失败");
+      message.error(`设置密码失败：${formatErrorMessage(error, "请检查输入内容")}`);
     } finally { setPwdBusy(false); }
   };
 
@@ -283,7 +284,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       setPwdInput(""); setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "解锁密码失败");
+      message.error(`解锁密码失败：${formatErrorMessage(error, "请检查密码是否正确")}`);
     } finally { setPwdBusy(false); }
   };
 
@@ -293,7 +294,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       message.success("已清除钥匙串中的备份密码缓存");
       await refreshPasswordStatus();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "清除缓存失败");
+      message.error(`清除缓存失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   };
 
@@ -303,7 +304,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       const result = await window.nextshell.backup.run({ conflictPolicy: backupConflictPolicy });
       message.success(result.fileName ? `备份完成: ${result.fileName}` : "备份完成");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "备份失败");
+      message.error(`备份失败：${formatErrorMessage(error, "请检查云存档配置")}`);
     } finally { setBackupRunning(false); }
   };
 
@@ -314,7 +315,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       const list = await window.nextshell.backup.list();
       setArchiveList(list);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "获取存档列表失败");
+      message.error(`获取存档列表失败：${formatErrorMessage(error, "请检查云存档配置")}`);
     } finally { setArchiveListLoading(false); }
   };
 
@@ -331,7 +332,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           await window.nextshell.backup.restore({ archiveId, conflictPolicy: restoreConflictPolicy });
           message.success("还原文件已准备，重启应用后生效。");
         } catch (error) {
-          message.error(error instanceof Error ? error.message : "还原失败");
+          message.error(`还原失败：${formatErrorMessage(error, "请检查云存档配置")}`);
         } finally { setRestoring(null); }
       },
     });

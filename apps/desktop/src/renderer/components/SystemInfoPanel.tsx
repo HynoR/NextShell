@@ -159,7 +159,7 @@ export const SystemInfoPanel = ({
         <div className="monitor-panel-body">
           {!hasVisibleTerminal ? (
             <div className="monitor-placeholder">
-              请先连接 SSH 终端以启动 Monitor Session
+              请先连接 SSH 终端以启动监控会话
             </div>
           ) : snapshot ? (
             <div className="flex flex-col gap-3 py-1">

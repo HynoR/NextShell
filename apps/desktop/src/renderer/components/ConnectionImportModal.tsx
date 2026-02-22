@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Modal, Radio, Table, Tag, message } from "antd";
 import type { ConnectionImportEntry, ConnectionProfile, ImportConflictPolicy } from "@nextshell/core";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 interface ConnectionImportModalProps {
   open: boolean;
@@ -117,14 +118,13 @@ export const ConnectionImportModal = ({
 
       if (result.errors.length > 0) {
         for (const err of result.errors) {
-          message.warning(err);
+          message.warning(formatErrorMessage(err, "部分连接导入失败"));
         }
       }
 
       await onImported();
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`导入失败：${reason}`);
+      message.error(`导入失败：${formatErrorMessage(error, "请检查导入文件")}`);
     } finally {
       setImporting(false);
     }

@@ -8,6 +8,7 @@ import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
 import { formatDateTime, formatRelativeTime } from "../utils/formatTime";
+import { formatErrorMessage } from "../utils/errorMessage";
 
 type ManagerTab = "connections" | "keys" | "proxies";
 
@@ -55,7 +56,7 @@ const normalizeGroupPath = (value: string | undefined): string => {
   return path || "/server";
 };
 
-type FormTab = "basic" | "auth" | "network" | "advanced";
+type FormTab = "basic" | "property" | "network" | "advanced";
 
 const groupKeyToPath = (key: string): string => {
   if (key === "root") return "/";
@@ -316,16 +317,16 @@ const FIELD_TAB_MAP: Record<string, FormTab> = {
   name: "basic",
   host: "basic",
   port: "basic",
-  groupPath: "basic",
-  tags: "basic",
-  notes: "basic",
-  favorite: "basic",
-  username: "auth",
-  authType: "auth",
-  sshKeyId: "auth",
-  password: "auth",
-  hostFingerprint: "auth",
-  strictHostKeyChecking: "auth",
+  username: "basic",
+  authType: "basic",
+  sshKeyId: "basic",
+  password: "basic",
+  hostFingerprint: "basic",
+  strictHostKeyChecking: "basic",
+  groupPath: "property",
+  tags: "property",
+  notes: "property",
+  favorite: "property",
   proxyId: "network",
   monitorSession: "advanced",
   terminalEncoding: "advanced",
@@ -565,13 +566,13 @@ export const ConnectionManagerModal = ({
 
     if (values.authType === "privateKey" && !values.sshKeyId) {
       message.error("私钥认证需要选择一个 SSH 密钥。");
-      setFormTab("auth");
+      setFormTab("basic");
       return undefined;
     }
 
     if (values.strictHostKeyChecking && !hostFingerprint) {
       message.error("启用严格主机校验时必须填写主机指纹。");
-      setFormTab("auth");
+      setFormTab("basic");
       return undefined;
     }
 
@@ -583,8 +584,8 @@ export const ConnectionManagerModal = ({
 
     const username = (values.username ?? "").trim();
     if (!username) {
-      message.error("请填写用户名（在「认证」标签页）。");
-      setFormTab("auth");
+      message.error("请填写用户名（在「基本」标签页）。");
+      setFormTab("basic");
       return undefined;
     }
 
@@ -620,8 +621,7 @@ export const ConnectionManagerModal = ({
       });
       return payload.id;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "保存失败";
-      message.error(reason);
+      message.error(`保存连接失败：${formatErrorMessage(error, "请检查输入内容")}`);
       return undefined;
     } finally {
       setSaving(false);
@@ -697,8 +697,7 @@ export const ConnectionManagerModal = ({
         form.setFieldValue("groupPath", targetPath);
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "移动失败";
-      message.error(reason);
+      message.error(`移动连接失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   }, [form, onConnectionSaved, selectedConnectionId]);
 
@@ -809,8 +808,7 @@ export const ConnectionManagerModal = ({
           }
         }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : "未知错误";
-        message.error(`导出失败：${reason}`);
+        message.error(`导出失败：${formatErrorMessage(error, "请稍后重试")}`);
       }
     },
     [promptExportEncryptionPassword, promptExportMode]
@@ -881,14 +879,13 @@ export const ConnectionManagerModal = ({
 
       const maxWarnings = 5;
       result.errors.slice(0, maxWarnings).forEach((errorText) => {
-        message.warning(errorText);
+        message.warning(formatErrorMessage(errorText, "导出失败"));
       });
       if (result.errors.length > maxWarnings) {
         message.warning(`其余 ${result.errors.length - maxWarnings} 项导出失败`);
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`导出失败：${reason}`);
+      message.error(`导出失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
   }, [connections, promptExportEncryptionPassword, promptExportMode, selectedExportIds]);
 
@@ -980,7 +977,7 @@ export const ConnectionManagerModal = ({
               }
               handled = true;
             } catch (error) {
-              const reason = error instanceof Error ? error.message : "未知错误";
+              const reason = formatErrorMessage(error, "导入预览失败");
               if (reason.startsWith(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX)) {
                 const promptText =
                   reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim()
@@ -995,7 +992,7 @@ export const ConnectionManagerModal = ({
                 continue;
               }
 
-              warnings.push(`${fileName}：${reason}`);
+              warnings.push(`${fileName}：${formatErrorMessage(reason, "导入预览失败")}`);
               handled = true;
             }
           }
@@ -1012,14 +1009,13 @@ export const ConnectionManagerModal = ({
             queue.push({ fileName, entries });
           }
         } catch (error) {
-          const reason = error instanceof Error ? error.message : "未知错误";
-          warnings.push(`${fileName}：${reason}`);
+          warnings.push(`${fileName}：${formatErrorMessage(error, "导入预览失败")}`);
         }
       }
 
       if (warnings.length > 0) {
         warnings.forEach((item) => {
-          message.warning(item);
+          message.warning(formatErrorMessage(item, "部分文件导入失败"));
         });
       }
 
@@ -1039,8 +1035,7 @@ export const ConnectionManagerModal = ({
         message.info(`已加载 ${queue.length} 个文件，将按文件逐个导入`);
       }
     } catch (error) {
-      const reason = error instanceof Error ? error.message : "未知错误";
-      message.error(`导入预览失败：${reason}`);
+      message.error(`导入预览失败：${formatErrorMessage(error, "请检查文件格式")}`);
     } finally {
       setImportingPreview(false);
     }
@@ -1307,7 +1302,7 @@ export const ConnectionManagerModal = ({
                       onClick={handleDelete}
                       aria-label="删除连接"
                     >
-                      <i className="ri-trash-line" aria-hidden="true" />
+                      <i className="ri-delete-bin-line" aria-hidden="true" />
                     </button>
                   </Tooltip>
                 ) : (
@@ -1388,12 +1383,12 @@ export const ConnectionManagerModal = ({
                 </button>
                 <button
                   type="button"
-                  title="认证设置"
-                  className={`mgr-form-tab${formTab === "auth" ? " mgr-form-tab--active" : ""}`}
-                  onClick={() => setFormTab("auth")}
+                  title="属性信息"
+                  className={`mgr-form-tab${formTab === "property" ? " mgr-form-tab--active" : ""}`}
+                  onClick={() => setFormTab("property")}
                 >
-                  <i className="ri-key-2-line" aria-hidden="true" />
-                  认证
+                  <i className="ri-price-tag-3-line" aria-hidden="true" />
+                  属性
                 </button>
                 <button
                   type="button"
@@ -1441,39 +1436,6 @@ export const ConnectionManagerModal = ({
                       </Form.Item>
                     </div>
 
-                    <Form.Item label="分组路径" name="groupPath">
-                      <Input
-                        placeholder="/server/production"
-                        prefix={<i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />}
-                        style={{ fontFamily: "var(--mono)" }}
-                      />
-                    </Form.Item>
-
-                    <div className="flex gap-3 items-start">
-                      <Form.Item label="标签" name="tags" className="flex-1">
-                        <Select
-                          mode="tags"
-                          tokenSeparators={[","]}
-                          placeholder="web, linux, prod"
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        label="收藏"
-                        name="favorite"
-                        valuePropName="checked"
-                        className="shrink-0 !mb-0"
-                      >
-                        <Switch size="small" />
-                      </Form.Item>
-                    </div>
-
-                    <Form.Item label="备注" name="notes" className="!mb-0">
-                      <Input.TextArea rows={2} placeholder="可选备注信息..." className="mgr-textarea" />
-                    </Form.Item>
-                </div>
-
-                {/* ── Tab: 认证 ──── */}
-                <div style={{ display: formTab === "auth" ? "" : "none" }}>
                     <div className="flex gap-3 items-start">
                       <Form.Item
                         label="用户名"
@@ -1549,6 +1511,39 @@ export const ConnectionManagerModal = ({
                     </div>
                 </div>
 
+                {/* ── Tab: 属性 ──── */}
+                <div style={{ display: formTab === "property" ? "" : "none" }}>
+                    <Form.Item label="分组路径" name="groupPath">
+                      <Input
+                        placeholder="/server/production"
+                        prefix={<i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />}
+                        style={{ fontFamily: "var(--mono)" }}
+                      />
+                    </Form.Item>
+
+                    <div className="flex gap-3 items-start">
+                      <Form.Item label="标签" name="tags" className="flex-1">
+                        <Select
+                          mode="tags"
+                          tokenSeparators={[","]}
+                          placeholder="web, linux, prod"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        label="收藏"
+                        name="favorite"
+                        valuePropName="checked"
+                        className="shrink-0 !mb-0"
+                      >
+                        <Switch size="small" />
+                      </Form.Item>
+                    </div>
+
+                    <Form.Item label="备注" name="notes" className="!mb-0">
+                      <Input.TextArea rows={2} placeholder="可选备注信息..." className="mgr-textarea" />
+                    </Form.Item>
+                </div>
+
                 {/* ── Tab: 网络 ──── */}
                 <div style={{ display: formTab === "network" ? "" : "none" }}>
                     <Form.Item
@@ -1575,7 +1570,7 @@ export const ConnectionManagerModal = ({
                 <div style={{ display: formTab === "advanced" ? "" : "none" }}>
                     <div className="flex gap-3 items-start">
                       <Form.Item
-                        label="Monitor Session"
+                        label="监控会话"
                         name="monitorSession"
                         valuePropName="checked"
                         className="shrink-0 !mb-0"
