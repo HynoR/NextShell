@@ -5,6 +5,7 @@ interface QuickConnectBarProps {
   connections: ConnectionProfile[];
   sessions: SessionDescriptor[];
   onConnect: (connectionId: string) => void;
+  onQuickConnectInput: (raw: string) => Promise<boolean>;
 }
 
 interface ResultItem {
@@ -18,10 +19,12 @@ export const QuickConnectBar = ({
   connections,
   sessions,
   onConnect,
+  onQuickConnectInput,
 }: QuickConnectBarProps) => {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [submitting, setSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +72,7 @@ export const QuickConnectBar = ({
     setOpen(false);
     setKeyword("");
     setActiveIndex(-1);
+    setSubmitting(false);
     inputRef.current?.blur();
   }, []);
 
@@ -92,13 +96,41 @@ export const QuickConnectBar = ({
       } else if (e.key === "Enter") {
         e.preventDefault();
         const item = filteredResults[activeIndex];
-        if (item) handleSelect(item.connection.id);
+        if (item) {
+          handleSelect(item.connection.id);
+          return;
+        }
+
+        const raw = keyword.trim();
+        if (!raw || submitting) {
+          return;
+        }
+
+        setSubmitting(true);
+        void onQuickConnectInput(raw)
+          .then((accepted) => {
+            if (accepted) {
+              handleClose();
+            }
+          })
+          .finally(() => {
+            setSubmitting(false);
+          });
       } else if (e.key === "Escape") {
         e.preventDefault();
         handleClose();
       }
     },
-    [open, filteredResults, activeIndex, handleSelect, handleClose],
+    [
+      activeIndex,
+      filteredResults,
+      handleClose,
+      handleSelect,
+      keyword,
+      onQuickConnectInput,
+      open,
+      submitting,
+    ],
   );
 
   // Close on outside click
@@ -184,7 +216,7 @@ export const QuickConnectBar = ({
               ))}
               <div className="qcb-footer">
                 <span>↑↓ 导航</span>
-                <span>↵ 连接</span>
+                <span>↵ 连接/输入地址</span>
                 <span>Esc 关闭</span>
               </div>
             </>

@@ -14,6 +14,11 @@ import { usePreferencesStore } from "./store/usePreferencesStore";
 import { useTransferQueueStore } from "./store/useTransferQueueStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
 import { formatErrorMessage } from "./utils/errorMessage";
+import {
+  buildQuickConnectUpsertInput,
+  findExistingByAddress,
+  parseQuickConnectInput
+} from "./utils/quickConnectInput";
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
   !session.type || session.type === "terminal";
@@ -351,6 +356,37 @@ export const App = () => {
     [loadConnections]
   );
 
+  const handleTitlebarQuickConnect = useCallback(
+    async (raw: string): Promise<boolean> => {
+      const parsed = parseQuickConnectInput(raw);
+      if (!parsed.ok) {
+        message.warning(parsed.message);
+        return false;
+      }
+
+      try {
+        const existing = findExistingByAddress(connections, parsed.value);
+        const connectionId = existing
+          ? existing.id
+          : (await window.nextshell.connection.upsert(
+              buildQuickConnectUpsertInput(parsed.value)
+            )).id;
+
+        if (!existing) {
+          const refreshed = await window.nextshell.connection.list({});
+          setConnections(refreshed);
+        }
+
+        await startSession(connectionId);
+        return true;
+      } catch (error) {
+        message.error(`快速连接失败：${formatErrorMessage(error, "请稍后重试")}`);
+        return false;
+      }
+    },
+    [connections, setConnections, startSession]
+  );
+
   const handleOpenManager = useCallback(() => {
     setManagerFocusConnectionId(undefined);
     setManagerOpen(true);
@@ -417,6 +453,7 @@ export const App = () => {
           onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}
           onTreeConnect={(connectionId) => void startSession(connectionId)}
           onTreeQuickSaveConnection={handleTreeQuickSaveConnection}
+          onTitlebarQuickConnect={handleTitlebarQuickConnect}
           onTreeEditServer={handleOpenManagerForConnection}
           onCloseSession={handleCloseSession}
           onReconnectSession={handleReconnectSession}

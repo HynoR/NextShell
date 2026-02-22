@@ -62,6 +62,7 @@ interface WorkspaceLayoutProps {
   onTreeDoubleConnect: (connectionId: string) => void;
   onTreeConnect: (connectionId: string) => void;
   onTreeQuickSaveConnection: (payload: ConnectionUpsertInput) => Promise<void>;
+  onTitlebarQuickConnect: (raw: string) => Promise<boolean>;
   onTreeEditServer: (connectionId: string) => void;
   onCloseSession: (sessionId: string) => void;
   onReconnectSession: (sessionId: string) => void;
@@ -110,6 +111,7 @@ export const WorkspaceLayout = ({
   onTreeDoubleConnect,
   onTreeConnect,
   onTreeQuickSaveConnection,
+  onTitlebarQuickConnect,
   onTreeEditServer,
   onCloseSession,
   onReconnectSession,
@@ -219,6 +221,7 @@ export const WorkspaceLayout = ({
             connections={connections}
             sessions={sessions}
             onConnect={(connectionId) => void onTreeConnect(connectionId)}
+            onQuickConnectInput={onTitlebarQuickConnect}
           />
         </div>
         <div className="header-actions">
