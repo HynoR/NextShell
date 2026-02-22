@@ -75,3 +75,11 @@ const assert = (condition: boolean, message: string): void => {
   const intro = buildTerminalAuthIntro(wrappedReason);
   assert(intro.includes("缺少用户名"), "wrapped auth error should be normalized");
 })();
+
+(() => {
+  assertEqual(
+    isAuthFailureReason(undefined),
+    false,
+    "cleared reason should not continue auth prompt flow"
+  );
+})();

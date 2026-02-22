@@ -40,7 +40,7 @@ interface WorkspaceState {
   setProxies: (proxies: ProxyProfile[]) => void;
   setActiveConnection: (connectionId?: string) => void;
   upsertSession: (session: SessionDescriptor) => void;
-  setSessionStatus: (sessionId: string, status: SessionDescriptor["status"], reason?: string) => void;
+  setSessionStatus: (sessionId: string, status: SessionDescriptor["status"], reason?: string | null) => void;
   removeSession: (sessionId: string) => void;
   removeSessionsByConnection: (connectionId: string) => void;
   reorderSession: (sourceSessionId: string, targetSessionId: string) => void;
@@ -78,38 +78,55 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
   setSessionStatus: (sessionId, status, reason) =>
     set((state) => ({
-      sessions: state.sessions.map((session) =>
-        session.id === sessionId
-          ? { ...session, status, ...(reason !== undefined ? { reason } : {}) }
-          : session
-      )
+      sessions: state.sessions.map((session) => {
+        if (session.id !== sessionId) {
+          return session;
+        }
+
+        if (reason === null) {
+          const { reason: _ignored, ...rest } = session;
+          return { ...rest, status };
+        }
+
+        if (reason !== undefined) {
+          return { ...session, status, reason };
+        }
+
+        if (status !== "failed") {
+          const { reason: _ignored, ...rest } = session;
+          return { ...rest, status };
+        }
+
+        return { ...session, status };
+      })
     })),
   removeSession: (sessionId) =>
     set((state) => {
-      const removed = state.sessions.find((session) => session.id === sessionId);
       const sessions = state.sessions.filter((session) => session.id !== sessionId);
-      const nextActiveSessionId =
+      const candidateActiveSessionId =
         state.activeSessionId === sessionId ? sessions.at(-1)?.id : state.activeSessionId;
-      const nextActiveConnectionId =
-        removed && state.activeConnectionId === removed.connectionId && sessions.every(
-          (item) => item.connectionId !== removed.connectionId
-        )
-          ? undefined
-          : state.activeConnectionId;
+      const nextActiveSession = candidateActiveSessionId
+        ? sessions.find((session) => session.id === candidateActiveSessionId)
+        : undefined;
 
       return {
         sessions,
-        activeSessionId: nextActiveSessionId,
-        activeConnectionId: nextActiveConnectionId
+        activeSessionId: nextActiveSession?.id,
+        activeConnectionId: nextActiveSession?.connectionId
       };
     }),
   removeSessionsByConnection: (connectionId) =>
     set((state) => {
       const sessions = state.sessions.filter((session) => session.connectionId !== connectionId);
-      const activeSession =
-        state.activeSessionId
-          ? state.sessions.find((session) => session.id === state.activeSessionId)
-          : undefined;
+      const hasCurrentActiveSession = Boolean(
+        state.activeSessionId && sessions.some((session) => session.id === state.activeSessionId)
+      );
+      const candidateActiveSessionId = hasCurrentActiveSession
+        ? state.activeSessionId
+        : sessions.at(-1)?.id;
+      const nextActiveSession = candidateActiveSessionId
+        ? sessions.find((session) => session.id === candidateActiveSessionId)
+        : undefined;
 
       const prefix = `${connectionId}:`;
       const networkRateHistory = { ...state.networkRateHistory };
@@ -121,10 +138,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       return {
         sessions,
-        activeSessionId:
-          activeSession?.connectionId === connectionId ? undefined : state.activeSessionId,
-        activeConnectionId:
-          state.activeConnectionId === connectionId ? undefined : state.activeConnectionId,
+        activeSessionId: nextActiveSession?.id,
+        activeConnectionId: nextActiveSession?.connectionId,
         networkRateHistory
       };
     }),
@@ -157,7 +172,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         session.id === sessionId ? { ...session, title } : session
       )
     })),
-  setActiveSession: (activeSessionId) => set({ activeSessionId }),
+  setActiveSession: (activeSessionId) =>
+    set((state) => {
+      if (!activeSessionId) {
+        return { activeSessionId };
+      }
+
+      const activeSession = state.sessions.find((session) => session.id === activeSessionId);
+      if (!activeSession) {
+        return { activeSessionId };
+      }
+
+      return {
+        activeSessionId,
+        activeConnectionId: activeSession.connectionId
+      };
+    }),
   setMonitor: (monitor) => set({ monitor }),
   setProcessSnapshot: (connectionId, snapshot) =>
     set((state) => ({
