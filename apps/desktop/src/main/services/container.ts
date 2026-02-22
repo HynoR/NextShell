@@ -2216,6 +2216,7 @@ export const createServiceContainer = (
     const dialogOptions: OpenDialogOptions = {
       title: input.title ?? "选择文件",
       defaultPath: input.defaultPath ? resolveLocalPath(input.defaultPath) : undefined,
+      filters: input.filters,
       properties: input.multi
         ? ["openFile", "multiSelections"]
         : ["openFile"],

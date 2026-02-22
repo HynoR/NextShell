@@ -1,2 +1,3 @@
 export const AUTH_REQUIRED_PREFIX = "AUTH_REQUIRED::";
 export const CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX = "CONNECTION_IMPORT_DECRYPT_PROMPT::";
+export const SUPPORTED_BACKGROUND_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp"];

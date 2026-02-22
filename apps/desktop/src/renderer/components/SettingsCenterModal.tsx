@@ -19,6 +19,7 @@ import {
 } from "antd";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import type { BackupArchiveMeta, WindowAppearance } from "@nextshell/core";
+import { SUPPORTED_BACKGROUND_IMAGE_EXTENSIONS } from "@nextshell/shared";
 
 interface SettingsCenterModalProps {
   open: boolean;
@@ -367,6 +368,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           setEditorMode={setEditorMode}
           setEditorCommand={setEditorCommand}
           save={save}
+          message={message}
         />;
 
       case "command":
@@ -591,7 +593,7 @@ const TransferSection = ({
 
 const EditorSection = ({
   loading, editorMode, editorCommand,
-  setEditorMode, setEditorCommand, save,
+  setEditorMode, setEditorCommand, save, message: msg,
 }: {
   loading: boolean;
   editorMode: "builtin" | "external";
@@ -599,6 +601,7 @@ const EditorSection = ({
   setEditorMode: (v: "builtin" | "external") => void;
   setEditorCommand: (v: string) => void;
   save: (patch: Record<string, unknown>) => void;
+  message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => (
   <SettingsCard title="编辑器" description="选择编辑模式和默认编辑器命令">
     <SettingsRow label="编辑器模式">
@@ -617,16 +620,41 @@ const EditorSection = ({
     </SettingsRow>
     {editorMode === "external" && (
       <SettingsRow label="默认编辑器命令">
-        <Input
-          value={editorCommand}
-          disabled={loading}
-          onChange={(e) => setEditorCommand(e.target.value)}
-          onBlur={() => {
-            const v = editorCommand.trim();
-            if (v) save({ remoteEdit: { defaultEditorCommand: v } });
-          }}
-          placeholder="例如 code 或 cursor"
-        />
+        <div className="flex gap-2">
+          <Input
+            style={{ flex: 1 }}
+            value={editorCommand}
+            disabled={loading}
+            onChange={(e) => setEditorCommand(e.target.value)}
+            onBlur={() => {
+              const v = editorCommand.trim();
+              if (v) save({ remoteEdit: { defaultEditorCommand: v } });
+            }}
+            placeholder="例如 code 或 cursor"
+          />
+          <Button
+            onClick={() =>
+              void (async () => {
+                try {
+                  const result = await window.nextshell.dialog.openFiles({
+                    title: "选择编辑器可执行文件",
+                    multi: false,
+                  });
+                  if (!result.canceled && result.filePaths[0]) {
+                    const filePath = result.filePaths[0];
+                    // Wrap in double-quotes if the path contains spaces so that
+                    // the command tokeniser can handle it correctly.
+                    const cmd = filePath.includes(" ") ? `"${filePath}"` : filePath;
+                    setEditorCommand(cmd);
+                    save({ remoteEdit: { defaultEditorCommand: cmd } });
+                  }
+                } catch { msg.error("打开文件选择器失败"); }
+              })()
+            }
+          >
+            浏览
+          </Button>
+        </div>
         <Space wrap size={[6, 6]} style={{ marginTop: 8 }}>
           {EDITOR_PRESETS.map((preset) => (
             <Button
@@ -748,7 +776,11 @@ const TerminalSection = ({
             onClick={() =>
               void (async () => {
                 try {
-                  const result = await window.nextshell.dialog.openFiles({ title: "选择 APP 背景图片", multi: false });
+                  const result = await window.nextshell.dialog.openFiles({
+                    title: "选择 APP 背景图片",
+                    filters: [{ name: "图片文件", extensions: SUPPORTED_BACKGROUND_IMAGE_EXTENSIONS }],
+                    multi: false
+                  });
                   if (!result.canceled && result.filePaths[0]) {
                     setAppBackgroundImagePath(result.filePaths[0]);
                     save({ window: { backgroundImagePath: result.filePaths[0] } });

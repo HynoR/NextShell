@@ -31,6 +31,32 @@ const loadChokidar = async (): Promise<ChokidarModule> => {
   return chokidarModulePromise;
 };
 
+/**
+ * Split a command string into tokens, respecting double-quoted segments.
+ * e.g. `"C:\Program Files\code.exe" --wait` → [`C:\Program Files\code.exe`, `--wait`]
+ */
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+    } else if (ch === " " && !inQuotes) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current.length > 0) tokens.push(current);
+  return tokens;
+}
+
 const MAX_UPLOAD_RETRIES = 3;
 const RETRY_BASE_MS = 300;
 const TEMP_ROOT = path.join(os.tmpdir(), "nextshell-edit");
@@ -368,7 +394,8 @@ export class RemoteEditManager {
 
   private spawnEditor(editorCommand: string, localPath: string): void {
     try {
-      const parts = editorCommand.trim().split(/\s+/);
+      // Tokenise the command respecting double-quoted segments (e.g. paths with spaces).
+      const parts = tokenizeCommand(editorCommand.trim());
       const cmd = parts[0]!;
       const args = [...parts.slice(1), localPath];
 

@@ -388,6 +388,15 @@ export const settingsUpdateSchema = appPreferencesPatchSchema;
 export const dialogOpenFilesSchema = z.object({
   title: z.string().trim().min(1).optional(),
   defaultPath: z.string().trim().min(1).optional(),
+  filters: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        extensions: z.array(z.string().trim().min(1)).min(1)
+      })
+    )
+    .min(1)
+    .optional(),
   multi: z.boolean().default(true)
 });
 
