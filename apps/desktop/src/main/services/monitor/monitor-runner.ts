@@ -14,6 +14,13 @@ export interface TimedExecResult {
   durationMs: number;
 }
 
+export const normalizeMonitorError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+};
+
 export const runTimedExec = async (
   connection: SshConnection,
   command: string,
