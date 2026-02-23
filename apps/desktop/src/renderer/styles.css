@@ -5347,3 +5347,35 @@ body {
   background: var(--bg-hover);
   color: var(--t1);
 }
+
+/* ─── Traceroute Pane ─────────────────────────────────────────────── */
+
+.traceroute-output {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f8f8f2;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--border);
+}
+
+.traceroute-placeholder {
+  color: var(--t3);
+}
+
+.traceroute-line {
+  display: contents;
+}
+
+:root[data-theme="light"] .traceroute-output {
+  background: rgba(0, 0, 0, 0.04);
+  color: #24292e;
+}

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import * as iconv from "iconv-lite";
 import { BrowserWindow, dialog, shell } from "electron";
 import type { OpenDialogOptions, WebContents } from "electron";
@@ -83,7 +84,7 @@ import {
   AUTH_REQUIRED_PREFIX,
   CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX
 } from "../../../../../packages/shared/src/index";
-import type { UpdateCheckResult, PingResult } from "../../../../../packages/shared/src/index";
+import type { UpdateCheckResult, PingResult, TracerouteEvent } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
@@ -211,6 +212,8 @@ export interface ServiceContainer {
   removeProxy: (input: ProxyRemoveInput) => Promise<{ ok: true }>;
   checkForUpdate: () => Promise<UpdateCheckResult>;
   pingHost: (host: string) => Promise<PingResult>;
+  tracerouteRun: (host: string, sender: WebContents) => Promise<{ ok: true }>;
+  tracerouteStop: () => { ok: true };
   getAppPreferences: () => AppPreferences;
   updateAppPreferences: (patch: SettingsUpdateInput) => AppPreferences;
   openFilesDialog: (
@@ -738,6 +741,38 @@ const mergePreferences = (
         patch.window?.backgroundOpacity,
         current.window.backgroundOpacity
       )
+    },
+    traceroute: {
+      nexttracePath: patch.traceroute?.nexttracePath !== undefined
+        ? patch.traceroute.nexttracePath
+        : current.traceroute.nexttracePath,
+      protocol: patch.traceroute?.protocol !== undefined
+        ? patch.traceroute.protocol
+        : current.traceroute.protocol,
+      port: patch.traceroute?.port !== undefined
+        ? patch.traceroute.port
+        : current.traceroute.port,
+      queries: patch.traceroute?.queries !== undefined
+        ? patch.traceroute.queries
+        : current.traceroute.queries,
+      maxHops: patch.traceroute?.maxHops !== undefined
+        ? patch.traceroute.maxHops
+        : current.traceroute.maxHops,
+      ipVersion: patch.traceroute?.ipVersion !== undefined
+        ? patch.traceroute.ipVersion
+        : current.traceroute.ipVersion,
+      dataProvider: patch.traceroute?.dataProvider !== undefined
+        ? patch.traceroute.dataProvider
+        : current.traceroute.dataProvider,
+      noRdns: patch.traceroute?.noRdns !== undefined
+        ? patch.traceroute.noRdns
+        : current.traceroute.noRdns,
+      language: patch.traceroute?.language !== undefined
+        ? patch.traceroute.language
+        : current.traceroute.language,
+      powProvider: patch.traceroute?.powProvider !== undefined
+        ? patch.traceroute.powProvider
+        : current.traceroute.powProvider
     }
   };
 };
@@ -2261,6 +2296,133 @@ export const createServiceContainer = (
     }
   };
 
+  // ─── Traceroute ──────────────────────────────────────────────────────────
+
+  let activeTracerouteProcess: ChildProcess | null = null;
+
+  const resolveNexttrace = (): string => {
+    const prefs = connections.getAppPreferences();
+    const configured = prefs.traceroute.nexttracePath.trim();
+    if (configured) {
+      return configured;
+    }
+    // Fallback: try to find nexttrace in PATH
+    const cmd = process.platform === "win32" ? "where" : "which";
+    try {
+      return execFileSync(cmd, ["nexttrace"], { encoding: "utf-8" }).trim().split(/\r?\n/)[0]!;
+    } catch {
+      throw new Error("未找到 nexttrace，请在设置 > 网络工具中配置路径，或确保 nexttrace 已安装到 PATH。");
+    }
+  };
+
+  const tracerouteRun = async (host: string, sender: WebContents): Promise<{ ok: true }> => {
+    // Kill any existing traceroute process
+    if (activeTracerouteProcess) {
+      activeTracerouteProcess.kill();
+      activeTracerouteProcess = null;
+    }
+
+    const bin = resolveNexttrace();
+    const prefs = connections.getAppPreferences().traceroute;
+
+    // Build CLI args from preferences
+    const args: string[] = [];
+    if (prefs.protocol === "tcp") {
+      args.push("--tcp");
+    } else if (prefs.protocol === "udp") {
+      args.push("--udp");
+    }
+    if ((prefs.protocol === "tcp" || prefs.protocol === "udp") && prefs.port > 0) {
+      args.push("--port", String(prefs.port));
+    }
+    if (prefs.ipVersion === "ipv4") {
+      args.push("--ipv4");
+    } else if (prefs.ipVersion === "ipv6") {
+      args.push("--ipv6");
+    }
+    if (prefs.queries !== 3) {
+      args.push("--queries", String(prefs.queries));
+    }
+    if (prefs.maxHops !== 30) {
+      args.push("--max-hops", String(prefs.maxHops));
+    }
+    if (prefs.dataProvider !== "LeoMoeAPI") {
+      args.push("--data-provider", prefs.dataProvider);
+    }
+    if (prefs.noRdns) {
+      args.push("--no-rdns");
+    }
+    if (prefs.language !== "cn") {
+      args.push("--language", prefs.language);
+    }
+    if (prefs.powProvider !== "api.nxtrace.org") {
+      args.push("--pow-provider", prefs.powProvider);
+    }
+    args.push(host);
+
+    const child = spawn(bin, args, {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    activeTracerouteProcess = child;
+
+    const sendEvent = (event: TracerouteEvent): void => {
+      if (!sender.isDestroyed()) {
+        sender.send(IPCChannel.TracerouteData, event);
+      }
+    };
+
+    let stdoutBuffer = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString("utf-8");
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        sendEvent({ type: "data", line });
+      }
+    });
+
+    let stderrBuffer = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderrBuffer += chunk.toString("utf-8");
+      const lines = stderrBuffer.split(/\r?\n/);
+      stderrBuffer = lines.pop() ?? "";
+      for (const line of lines) {
+        sendEvent({ type: "data", line });
+      }
+    });
+
+    child.on("error", (err) => {
+      sendEvent({ type: "error", message: err.message });
+      if (activeTracerouteProcess === child) {
+        activeTracerouteProcess = null;
+      }
+    });
+
+    child.on("close", (code) => {
+      // Flush remaining buffer
+      if (stdoutBuffer) {
+        sendEvent({ type: "data", line: stdoutBuffer });
+      }
+      if (stderrBuffer) {
+        sendEvent({ type: "data", line: stderrBuffer });
+      }
+      sendEvent({ type: "done", exitCode: code });
+      if (activeTracerouteProcess === child) {
+        activeTracerouteProcess = null;
+      }
+    });
+
+    return { ok: true };
+  };
+
+  const tracerouteStop = (): { ok: true } => {
+    if (activeTracerouteProcess) {
+      activeTracerouteProcess.kill();
+      activeTracerouteProcess = null;
+    }
+    return { ok: true };
+  };
+
   const removeConnection = async (id: string): Promise<{ ok: true }> => {
     const sessions = Array.from(activeSessions.values()).filter(
       (session) => session.connectionId === id
@@ -3709,6 +3871,8 @@ export const createServiceContainer = (
 
     await remoteEditManager.dispose();
 
+    tracerouteStop();
+
     const sessionIds = Array.from(activeSessions.keys());
     await Promise.all(sessionIds.map((sessionId) => closeSession(sessionId)));
 
@@ -3742,6 +3906,8 @@ export const createServiceContainer = (
     removeProxy,
     checkForUpdate,
     pingHost,
+    tracerouteRun,
+    tracerouteStop,
     getAppPreferences,
     updateAppPreferences,
     openFilesDialog,

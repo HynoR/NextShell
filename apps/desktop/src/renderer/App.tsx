@@ -478,6 +478,7 @@ export const App = () => {
               tab === "connections" ||
               tab === "live-edit" ||
               tab === "system-info" ||
+              tab === "traceroute" ||
               tab === "about"
             ) {
               setBottomTab(tab);

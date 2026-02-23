@@ -104,6 +104,8 @@ import type {
   TemplateParamsListInput,
   TemplateParamsUpsertInput,
   TemplateParamsClearInput,
+  TracerouteRunInput,
+  TracerouteEvent,
   UpdateCheckResult,
   PingRequestInput,
   PingResult
@@ -241,6 +243,11 @@ export interface NextShellApi {
   };
   ping: {
     probe: (payload: PingRequestInput) => Promise<PingResult>;
+  };
+  traceroute: {
+    run: (payload: TracerouteRunInput) => Promise<{ ok: true }>;
+    stop: () => Promise<{ ok: true }>;
+    onData: (listener: (event: TracerouteEvent) => void) => SessionEventUnsubscribe;
   };
   debug: {
     enableLog: () => Promise<{ ok: true }>;

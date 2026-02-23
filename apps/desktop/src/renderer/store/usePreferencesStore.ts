@@ -15,7 +15,8 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   commandCenter: { ...prefs.commandCenter },
   terminal: { ...prefs.terminal },
   backup: { ...prefs.backup },
-  window: { ...prefs.window }
+  window: { ...prefs.window },
+  traceroute: { ...prefs.traceroute }
 });
 
 const readLegacyValue = (key: string): string | undefined => {
@@ -140,7 +141,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       commandCenter: { ...prev.commandCenter, ...(patch.commandCenter ?? {}) },
       terminal: { ...prev.terminal, ...(patch.terminal ?? {}) },
       backup: { ...prev.backup, ...(patch.backup ?? {}) },
-      window: { ...prev.window, ...(patch.window ?? {}) }
+      window: { ...prev.window, ...(patch.window ?? {}) },
+      traceroute: { ...prev.traceroute, ...(patch.traceroute ?? {}) }
     };
     set({ preferences: optimistic });
 

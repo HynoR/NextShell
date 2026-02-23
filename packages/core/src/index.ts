@@ -319,6 +319,28 @@ export interface AppPreferences {
     /** APP 背景整体透明度（30-80） */
     backgroundOpacity: number;
   };
+  traceroute: {
+    /** nexttrace 可执行文件路径，留空表示从 PATH 查找 */
+    nexttracePath: string;
+    /** 探测协议 */
+    protocol: "icmp" | "tcp" | "udp";
+    /** 目标端口（仅 TCP/UDP 有效，0 = 使用协议默认值） */
+    port: number;
+    /** 每跳探测次数，默认 3 */
+    queries: number;
+    /** 最大跳数（最大 TTL），默认 30 */
+    maxHops: number;
+    /** IP 版本偏好 */
+    ipVersion: "auto" | "ipv4" | "ipv6";
+    /** IP 地理信息数据来源 */
+    dataProvider: "LeoMoeAPI" | "ip-api.com" | "IPInfo" | "IPInsight" | "IP.SB" | "disable-geoip";
+    /** 不解析 PTR 记录 */
+    noRdns: boolean;
+    /** 界面语言 */
+    language: "cn" | "en";
+    /** PoW 服务商（国内用户建议选 sakura） */
+    powProvider: "api.nxtrace.org" | "sakura";
+  };
 }
 
 export interface AppPreferencesPatch {
@@ -353,6 +375,18 @@ export interface AppPreferencesPatch {
     confirmBeforeClose?: boolean;
     backgroundImagePath?: string;
     backgroundOpacity?: number;
+  };
+  traceroute?: {
+    nexttracePath?: string;
+    protocol?: "icmp" | "tcp" | "udp";
+    port?: number;
+    queries?: number;
+    maxHops?: number;
+    ipVersion?: "auto" | "ipv4" | "ipv6";
+    dataProvider?: "LeoMoeAPI" | "ip-api.com" | "IPInfo" | "IPInsight" | "IP.SB" | "disable-geoip";
+    noRdns?: boolean;
+    language?: "cn" | "en";
+    powProvider?: "api.nxtrace.org" | "sakura";
   };
 }
 
@@ -471,5 +505,17 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     confirmBeforeClose: true,
     backgroundImagePath: "",
     backgroundOpacity: 60
+  },
+  traceroute: {
+    nexttracePath: "",
+    protocol: "icmp",
+    port: 0,
+    queries: 3,
+    maxHops: 30,
+    ipVersion: "auto",
+    dataProvider: "LeoMoeAPI",
+    noRdns: false,
+    language: "cn",
+    powProvider: "api.nxtrace.org"
   }
 };

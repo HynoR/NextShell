@@ -4,7 +4,8 @@ import type {
   SessionDataEvent,
   SessionStatusEvent,
   SftpEditStatusEvent,
-  SftpTransferStatusEvent
+  SftpTransferStatusEvent,
+  TracerouteEvent
 } from "../../../../packages/shared/src/index";
 import type {
   MonitorSnapshot,
@@ -198,6 +199,19 @@ const api: NextShellApi = {
   },
   ping: {
     probe: (payload: { host: string }) => ipcRenderer.invoke(IPCChannel.Ping, payload)
+  },
+  traceroute: {
+    run: (payload: { host: string }) => ipcRenderer.invoke(IPCChannel.TracerouteRun, payload),
+    stop: () => ipcRenderer.invoke(IPCChannel.TracerouteStop, {}),
+    onData: (listener: (event: TracerouteEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: TracerouteEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.TracerouteData, handler);
+      return () => {
+        ipcRenderer.off(IPCChannel.TracerouteData, handler);
+      };
+    }
   },
   debug: {
     enableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogEnable, {}),

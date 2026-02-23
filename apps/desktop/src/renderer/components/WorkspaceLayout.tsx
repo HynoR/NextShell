@@ -23,6 +23,7 @@ import { SystemStaticInfoPane } from "./SystemStaticInfoPane";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { TransferQueuePanel } from "./TransferQueuePanel";
 import { AboutPane } from "./AboutPane";
+import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
 import { promptModal } from "../utils/promptModal";
@@ -590,6 +591,16 @@ export const WorkspaceLayout = ({
                               active={bottomTab === "system-info"}
                               connectedTerminalSessionId={activeConnectionConnectedTerminalSessionId}
                               onOpenSettings={onOpenSettings}
+                            />
+                          ),
+                        },
+                        {
+                          key: "traceroute",
+                          label: "路由追踪",
+                          children: (
+                            <TraceroutePane
+                              connection={activeConnection}
+                              connected={isActiveConnectionTerminalConnected}
                             />
                           ),
                         },

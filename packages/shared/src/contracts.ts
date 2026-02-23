@@ -340,7 +340,19 @@ export const appPreferencesSchema = z.object({
     confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose),
     backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.window.backgroundImagePath),
     backgroundOpacity: z.coerce.number().int().min(30).max(80).default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity)
-  }).default(DEFAULT_APP_PREFERENCES.window)
+  }).default(DEFAULT_APP_PREFERENCES.window),
+  traceroute: z.object({
+    nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
+    protocol: z.enum(["icmp", "tcp", "udp"]).default(DEFAULT_APP_PREFERENCES.traceroute.protocol),
+    port: z.coerce.number().int().min(0).max(65535).default(DEFAULT_APP_PREFERENCES.traceroute.port),
+    queries: z.coerce.number().int().min(1).max(10).default(DEFAULT_APP_PREFERENCES.traceroute.queries),
+    maxHops: z.coerce.number().int().min(1).max(64).default(DEFAULT_APP_PREFERENCES.traceroute.maxHops),
+    ipVersion: z.enum(["auto", "ipv4", "ipv6"]).default(DEFAULT_APP_PREFERENCES.traceroute.ipVersion),
+    dataProvider: z.enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"]).default(DEFAULT_APP_PREFERENCES.traceroute.dataProvider),
+    noRdns: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.noRdns),
+    language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
+    powProvider: z.enum(["api.nxtrace.org", "sakura"]).default(DEFAULT_APP_PREFERENCES.traceroute.powProvider)
+  }).default(DEFAULT_APP_PREFERENCES.traceroute)
 }).default(DEFAULT_APP_PREFERENCES);
 
 export const appPreferencesPatchSchema = z.object({
@@ -375,6 +387,18 @@ export const appPreferencesPatchSchema = z.object({
     confirmBeforeClose: z.boolean().optional(),
     backgroundImagePath: z.string().optional(),
     backgroundOpacity: z.coerce.number().int().min(30).max(80).optional()
+  }).optional(),
+  traceroute: z.object({
+    nexttracePath: z.string().optional(),
+    protocol: z.enum(["icmp", "tcp", "udp"]).optional(),
+    port: z.coerce.number().int().min(0).max(65535).optional(),
+    queries: z.coerce.number().int().min(1).max(10).optional(),
+    maxHops: z.coerce.number().int().min(1).max(64).optional(),
+    ipVersion: z.enum(["auto", "ipv4", "ipv6"]).optional(),
+    dataProvider: z.enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"]).optional(),
+    noRdns: z.boolean().optional(),
+    language: z.enum(["cn", "en"]).optional(),
+    powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional()
   }).optional()
 });
 
@@ -696,3 +720,15 @@ export type PingRequestInput = z.infer<typeof pingRequestSchema>;
 export type PingResult =
   | { ok: true; avgMs: number }
   | { ok: false; error: string };
+
+// ─── Traceroute ──────────────────────────────────────────────────────────
+
+export const tracerouteRunSchema = z.object({
+  host: z.string().trim().min(1).max(253)
+});
+export type TracerouteRunInput = z.infer<typeof tracerouteRunSchema>;
+
+export type TracerouteEvent =
+  | { type: "data"; line: string }
+  | { type: "done"; exitCode: number | null }
+  | { type: "error"; message: string };

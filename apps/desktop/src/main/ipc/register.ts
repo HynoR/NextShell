@@ -76,7 +76,8 @@ import {
   proxyUpsertSchema,
   proxyRemoveSchema,
   updateCheckSchema,
-  pingRequestSchema
+  pingRequestSchema,
+  tracerouteRunSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -513,6 +514,17 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.Ping, async (_event, payload) => {
     const input = parsePayload(pingRequestSchema, payload, "Ping");
     return services.pingHost(input.host);
+  });
+
+  // ─── Traceroute ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.TracerouteRun, (event, payload) => {
+    const input = parsePayload(tracerouteRunSchema, payload, "路由追踪");
+    return services.tracerouteRun(input.host, event.sender);
+  });
+
+  ipcMain.handle(IPCChannel.TracerouteStop, () => {
+    return services.tracerouteStop();
   });
 
   // ─── Debug Log ────────────────────────────────────────────────────────────
