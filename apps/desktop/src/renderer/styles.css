@@ -5357,7 +5357,7 @@ body {
   margin: 0;
   padding: 10px 12px;
   border-radius: 6px;
-  background: rgba(0, 0, 0, 0.35);
+  background: #1a1a2e;
   color: #f8f8f2;
   font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Menlo", "Consolas", monospace;
   font-size: 12px;
@@ -5368,7 +5368,7 @@ body {
 }
 
 .traceroute-placeholder {
-  color: var(--t3);
+  color: rgba(248, 248, 242, 0.35);
 }
 
 .traceroute-line {
@@ -5376,6 +5376,7 @@ body {
 }
 
 :root[data-theme="light"] .traceroute-output {
-  background: rgba(0, 0, 0, 0.04);
-  color: #24292e;
+  background: #1a1a2e;
+  color: #f8f8f2;
+  border-color: rgba(255, 255, 255, 0.08);
 }
