@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { App as AntdApp, Modal, Table, Tooltip, Tree, Typography, message } from "antd";
+import { App as AntdApp, Modal, Table, Tooltip, Tree, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import type { ConnectionProfile, RemoteFileEntry } from "@nextshell/core";
@@ -339,7 +339,7 @@ const ContextMenu = ({
 
 // ── Main component ────────────────────────────────────────
 export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpenEditorTab }: FileExplorerPaneProps) => {
-  const { modal } = AntdApp.useApp();
+  const { message, modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const enqueueTask = useTransferQueueStore((state) => state.enqueueTask);

@@ -22,7 +22,6 @@ import {
   dialogOpenDirectorySchema,
   dialogOpenFilesSchema,
   dialogOpenPathSchema,
-  monitorSnapshotSchema,
   monitorSystemInfoSnapshotSchema,
   monitorSystemStartSchema,
   monitorSystemStopSchema,
@@ -207,11 +206,6 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.SessionGetCwd, (_event, payload) => {
     const input = parsePayload(sessionGetCwdSchema, payload, "获取终端工作目录");
     return services.getSessionCwd(input.connectionId);
-  });
-
-  ipcMain.handle(IPCChannel.MonitorSnapshot, (_event, payload) => {
-    const input = parsePayload(monitorSnapshotSchema, payload, "监控快照");
-    return services.getMonitorSnapshot(input.connectionId);
   });
 
   ipcMain.handle(IPCChannel.MonitorSystemInfoSnapshot, (_event, payload) => {

@@ -27,7 +27,6 @@ import type {
   ExportedConnection,
   MigrationRecord,
   MonitorProcess,
-  MonitorSnapshot,
   NetworkConnection,
   NetworkListener,
   NetworkSnapshot,
@@ -125,6 +124,11 @@ import {
   parseNetworkInterfaceTotals,
   parseOsReleaseName
 } from "./system-info-parser";
+import {
+  SystemMonitorController,
+  type MonitorSelectionState,
+  type ProbeExecutionLog,
+} from "./monitor/system-monitor-controller";
 
 interface ActiveSession {
   descriptor: SessionDescriptor;
@@ -142,29 +146,14 @@ interface CreateServiceContainerOptions {
 }
 
 interface MonitorState {
-  cpuTotal?: number;
-  cpuIdle?: number;
-  netRxBytes?: number;
-  netTxBytes?: number;
   selectedNetworkInterface?: string;
   networkInterfaceOptions?: string[];
-  sampledAt?: number;
-  /** Cached after first probe — stable during connection lifetime */
-  isLinuxHost?: boolean;
-  /** Cached after first probe — stable during connection lifetime */
-  hasTopCommand?: boolean;
 }
 
 // ─── Hidden Session ① System Monitor (primary, long-lived) ───────────────
 interface SystemMonitorRuntime {
-  connection: SshConnection;
-  shellChannel: SshShellChannel;
-  commandQueue: Promise<void>;
-  pollTimer?: ReturnType<typeof setTimeout>;
-  systemTimerActive?: boolean;
-  cachedSnapshot?: MonitorSnapshot;
-  cachedSnapshotAt?: number;
-  consecutiveFailures: number;
+  controller: SystemMonitorController;
+  sender?: WebContents;
   disposed: boolean;
 }
 
@@ -195,27 +184,6 @@ interface AdhocSessionRuntime {
   idleTimer?: ReturnType<typeof setTimeout>;
   lastUsedAt: number;
   disposed: boolean;
-}
-
-/** @deprecated kept as alias during migration — remove after all refs updated */
-type MonitorRuntime = SystemMonitorRuntime;
-
-interface MonitorProbeResult {
-  loadAverage: [number, number, number];
-  cpuTotal?: number;
-  cpuIdle?: number;
-  cpuPercentHint?: number;
-  memTotalKb: number;
-  memAvailableKb: number;
-  swapTotalKb: number;
-  swapFreeKb: number;
-  diskTotalKb: number;
-  diskUsedKb: number;
-  networkInterface: string;
-  networkInterfaceOptions: string[];
-  netRxBytes: number;
-  netTxBytes: number;
-  processes: MonitorProcess[];
 }
 
 export interface ServiceContainer {
@@ -262,7 +230,6 @@ export interface ServiceContainer {
   writeSession: (sessionId: string, data: string) => { ok: true };
   resizeSession: (sessionId: string, cols: number, rows: number) => { ok: true };
   closeSession: (sessionId: string) => Promise<{ ok: true }>;
-  getMonitorSnapshot: (connectionId: string) => Promise<MonitorSnapshot>;
   getSystemInfoSnapshot: (connectionId: string) => Promise<SystemInfoSnapshot>;
   startSystemMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
   stopSystemMonitor: (connectionId: string) => { ok: true };
@@ -340,13 +307,6 @@ export interface ServiceContainer {
 }
 
 const MONITOR_UPTIME_COMMAND = "cat /proc/uptime 2>/dev/null | awk '{print $1}'";
-const MONITOR_LOADAVG_COMMAND = "cat /proc/loadavg 2>/dev/null | awk '{print $1\" \"$2\" \"$3}' || uptime 2>/dev/null";
-const MONITOR_CPU_STAT_COMMAND = "grep '^cpu ' /proc/stat 2>/dev/null";
-const MONITOR_CPU_TOP_COMMAND =
-  "top -bn1 2>/dev/null | head -n 20 || top -l 1 -n 0 2>/dev/null | head -n 20";
-const MONITOR_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
-const MONITOR_FREE_COMMAND = "free -k 2>/dev/null";
-const MONITOR_DISK_COMMAND = "df -kP / 2>/dev/null | tail -n 1";
 const MONITOR_SYSTEM_INFO_OS_RELEASE_COMMAND = "cat /etc/os-release 2>/dev/null";
 const MONITOR_SYSTEM_INFO_HOSTNAME_COMMAND = "hostname 2>/dev/null";
 const MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND = "uname -s 2>/dev/null";
@@ -356,17 +316,6 @@ const MONITOR_SYSTEM_INFO_CPUINFO_COMMAND = "cat /proc/cpuinfo 2>/dev/null";
 const MONITOR_SYSTEM_INFO_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
 const MONITOR_SYSTEM_INFO_NET_DEV_COMMAND = "cat /proc/net/dev 2>/dev/null";
 const MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND = "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
-const MONITOR_NET_INTERFACES_COMMAND = "ls -1 /sys/class/net 2>/dev/null | grep -v '^lo$'";
-const MONITOR_NET_DEFAULT_INTERFACE_COMMAND =
-  "ip route show default 2>/dev/null | awk 'NR==1 {for (i=1;i<=NF;i++) if ($i==\"dev\") {print $(i+1); exit}}'";
-const MONITOR_SYSTEM_PROCESS_COMMAND =
-  "ps -eo pid=,comm=,%cpu=,rss= --sort=-%cpu 2>/dev/null | head -n 5";
-/** 网卡网速采样间隔：1 秒 */
-const MONITOR_NET_SPEED_INTERVAL_MS = 1000;
-/** CPU / 内存 / swap 采样间隔：3 秒 */
-const MONITOR_CPU_MEM_SWAP_INTERVAL_MS = 3000;
-/** 磁盘采样间隔：10 秒 */
-const MONITOR_DISK_INTERVAL_MS = 10000;
 const MONITOR_NETWORK_INTERVAL_MS = 5000;
 const ADHOC_IDLE_TIMEOUT_MS = 30_000;
 const MONITOR_MAX_CONSECUTIVE_FAILURES = 3;
@@ -837,343 +786,6 @@ const parseUptimeSeconds = (raw: string): number => {
   return seconds;
 };
 
-const parseLoadAverage = (raw: string): [number, number, number] => {
-  if (!raw.trim()) {
-    return [0, 0, 0];
-  }
-
-  const lower = raw.toLowerCase();
-  const loadSegment = lower.includes("load average")
-    ? raw.slice(lower.indexOf("load average"))
-    : raw;
-
-  const numbers = Array.from(loadSegment.matchAll(/-?\d+(?:\.\d+)?/g))
-    .map((match) => parseFloatSafe(match[0]))
-    .filter((value) => Number.isFinite(value));
-
-  if (numbers.length < 3) {
-    return [0, 0, 0];
-  }
-
-  return [numbers[0] ?? 0, numbers[1] ?? 0, numbers[2] ?? 0];
-};
-
-const parseCpuTotals = (raw: string): { cpuTotal?: number; cpuIdle?: number } => {
-  const cpuLine = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.startsWith("cpu "));
-
-  if (!cpuLine) {
-    return {};
-  }
-
-  const fields = cpuLine
-    .replace(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .slice(1)
-    .map((value) => parseFloatSafe(value));
-
-  if (fields.length < 4) {
-    return {};
-  }
-
-  const cpuTotal = fields.reduce((sum, value) => sum + value, 0);
-  const cpuIdle = (fields[3] ?? 0) + (fields[4] ?? 0);
-
-  if (cpuTotal <= 0) {
-    return {};
-  }
-
-  return { cpuTotal, cpuIdle };
-};
-
-const parseCpuPercentFromTop = (raw: string): number | undefined => {
-  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    if (!lower.includes("cpu")) {
-      continue;
-    }
-
-    const idleMatch = line.match(/([0-9]+(?:\.[0-9]+)?)\s*id\b/) ??
-      line.match(/([0-9]+(?:\.[0-9]+)?)%\s*idle\b/);
-    if (idleMatch?.[1]) {
-      const idle = parseFloatSafe(idleMatch[1]);
-      return Math.max(0, Math.min(100, 100 - idle));
-    }
-
-    const userMatch = line.match(/([0-9]+(?:\.[0-9]+)?)%?\s*(?:us|user)\b/i);
-    const systemMatch = line.match(/([0-9]+(?:\.[0-9]+)?)%?\s*(?:sy|sys)\b/i);
-    const combined = parseFloatSafe(userMatch?.[1]) + parseFloatSafe(systemMatch?.[1]);
-    if (combined > 0) {
-      return Math.max(0, Math.min(100, combined));
-    }
-  }
-
-  return undefined;
-};
-
-const parseMemoryFromMeminfo = (
-  raw: string
-): { memTotalKb: number; memAvailableKb: number; swapTotalKb: number; swapFreeKb: number } | undefined => {
-  const values = new Map<string, number>();
-  for (const line of raw.split(/\r?\n/)) {
-    const match = line.match(/^([A-Za-z_()]+):\s+(\d+)/);
-    if (!match?.[1] || !match[2]) {
-      continue;
-    }
-    values.set(match[1], parseIntSafe(match[2]));
-  }
-
-  const memTotalKb = values.get("MemTotal") ?? 0;
-  if (memTotalKb <= 0) {
-    return undefined;
-  }
-
-  const memAvailableKb = values.get("MemAvailable") ??
-    ((values.get("MemFree") ?? 0) + (values.get("Buffers") ?? 0) + (values.get("Cached") ?? 0));
-
-  return {
-    memTotalKb,
-    memAvailableKb,
-    swapTotalKb: values.get("SwapTotal") ?? 0,
-    swapFreeKb: values.get("SwapFree") ?? 0
-  };
-};
-
-const parseMemoryFromFree = (
-  raw: string
-): { memTotalKb: number; memAvailableKb: number; swapTotalKb: number; swapFreeKb: number } | undefined => {
-  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const memLine = lines.find((line) => /^mem:/i.test(line));
-  if (!memLine) {
-    return undefined;
-  }
-
-  const memParts = memLine.split(/\s+/);
-  const memTotalKb = parseIntSafe(memParts[1]);
-  if (memTotalKb <= 0) {
-    return undefined;
-  }
-
-  const memAvailableKb = parseIntSafe(memParts[6]) || parseIntSafe(memParts[3]);
-  const swapLine = lines.find((line) => /^swap:/i.test(line));
-  const swapParts = swapLine?.split(/\s+/) ?? [];
-  const swapTotalKb = parseIntSafe(swapParts[1]);
-  const swapFreeKb = parseIntSafe(swapParts[3]) || Math.max(0, swapTotalKb - parseIntSafe(swapParts[2]));
-
-  return {
-    memTotalKb,
-    memAvailableKb,
-    swapTotalKb,
-    swapFreeKb
-  };
-};
-
-const parseDiskUsage = (raw: string): { diskTotalKb: number; diskUsedKb: number } => {
-  const line = raw
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .at(-1) ?? "";
-  const parts = line.replace(/\s+/g, " ").trim().split(" ");
-  return {
-    diskTotalKb: parseIntSafe(parts[1]),
-    diskUsedKb: parseIntSafe(parts[2])
-  };
-};
-
-const normalizeNetworkInterfaceName = (value: string): string | undefined => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  if (!/^[a-zA-Z0-9_.:-]+$/.test(trimmed)) {
-    return undefined;
-  }
-
-  return trimmed;
-};
-
-const parseNetworkInterfaceList = (raw: string): string[] => {
-  const interfaces = raw
-    .split(/\r?\n/)
-    .map((line) => normalizeNetworkInterfaceName(line))
-    .filter((line): line is string => Boolean(line) && line !== "lo");
-
-  if (interfaces.length > 0) {
-    return Array.from(new Set(interfaces)).sort((a, b) => a.localeCompare(b));
-  }
-
-  return ["eth0"];
-};
-
-const parseNetworkCounters = (raw: string): { rxBytes: number; txBytes: number } => {
-  const values = raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => Number.parseFloat(line))
-    .filter((value) => Number.isFinite(value));
-
-  return {
-    rxBytes: values[0] ?? 0,
-    txBytes: values[1] ?? 0
-  };
-};
-
-const parseMonitorProcesses = (raw: string): MonitorProcess[] => {
-  const processes = raw
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .map((line) => {
-      const parts = line.split(" ");
-      const pid = parseIntSafe(parts[0]);
-      const command = parts[1] ?? "unknown";
-      const cpuPercent = parseFloatSafe(parts[2]);
-      const rssKb = parseFloatSafe(parts[3]);
-
-      return {
-        pid,
-        ppid: 0,
-        command,
-        cpuPercent,
-        memoryPercent: 0,
-        memoryMb: Number((rssKb / 1024).toFixed(2)),
-        user: "-",
-        stat: "-",
-        nice: 0,
-        priority: 0,
-        vszMb: 0,
-        elapsedSeconds: 0
-      };
-    })
-    .filter((item) => item.pid > 0)
-    .slice(0, 5);
-
-  return processes.length > 0
-    ? processes
-    : [{ pid: 0, ppid: 0, command: "n/a", cpuPercent: 0, memoryPercent: 0, memoryMb: 0, user: "-", stat: "-", nice: 0, priority: 0, vszMb: 0, elapsedSeconds: 0 }];
-};
-
-const parseMonitorProbe = (samples: {
-  loadAverage: string;
-  cpuStat: string;
-  cpuTop: string;
-  meminfo: string;
-  free: string;
-  disk: string;
-  networkInterface: string;
-  networkInterfaceOptions: string[];
-  networkCounters: string;
-  process: string;
-}): MonitorProbeResult => {
-  const memory = parseMemoryFromMeminfo(samples.meminfo) ??
-    parseMemoryFromFree(samples.free) ?? {
-      memTotalKb: 0,
-      memAvailableKb: 0,
-      swapTotalKb: 0,
-      swapFreeKb: 0
-    };
-
-  const disk = parseDiskUsage(samples.disk);
-  const counters = parseNetworkCounters(samples.networkCounters);
-  const cpuTotals = parseCpuTotals(samples.cpuStat);
-
-  return {
-    loadAverage: parseLoadAverage(samples.loadAverage),
-    cpuTotal: cpuTotals.cpuTotal,
-    cpuIdle: cpuTotals.cpuIdle,
-    cpuPercentHint: parseCpuPercentFromTop(samples.cpuTop),
-    memTotalKb: memory.memTotalKb,
-    memAvailableKb: memory.memAvailableKb,
-    swapTotalKb: memory.swapTotalKb,
-    swapFreeKb: memory.swapFreeKb,
-    diskTotalKb: disk.diskTotalKb,
-    diskUsedKb: disk.diskUsedKb,
-    networkInterface: samples.networkInterface,
-    networkInterfaceOptions: samples.networkInterfaceOptions,
-    netRxBytes: counters.rxBytes,
-    netTxBytes: counters.txBytes,
-    processes: parseMonitorProcesses(samples.process)
-  };
-};
-
-// ─── Compound Command Builders ──────────────────────────────────────────────
-
-/**
- * Build a single compound shell command that collects all system monitor data
- * in one exec, using section markers to delimit each piece of output.
- */
-const buildSystemProbeCommand = (networkInterface: string): string => {
-  const normalized = normalizeNetworkInterfaceName(networkInterface) || "eth0";
-  return [
-    "echo '---NS_LOADAVG---'",
-    MONITOR_LOADAVG_COMMAND,
-    "echo '---NS_CPUSTAT---'",
-    MONITOR_CPU_STAT_COMMAND,
-    "echo '---NS_CPUTOP---'",
-    MONITOR_CPU_TOP_COMMAND,
-    "echo '---NS_MEMINFO---'",
-    MONITOR_MEMINFO_COMMAND,
-    "echo '---NS_FREE---'",
-    MONITOR_FREE_COMMAND,
-    "echo '---NS_DISK---'",
-    MONITOR_DISK_COMMAND,
-    "echo '---NS_NETIFACES---'",
-    MONITOR_NET_INTERFACES_COMMAND,
-    "echo '---NS_NETDEFAULT---'",
-    MONITOR_NET_DEFAULT_INTERFACE_COMMAND,
-    "echo '---NS_NETCOUNTERS---'",
-    `cat /sys/class/net/${normalized}/statistics/rx_bytes 2>/dev/null; cat /sys/class/net/${normalized}/statistics/tx_bytes 2>/dev/null`,
-    "echo '---NS_PROCESSES---'",
-    MONITOR_SYSTEM_PROCESS_COMMAND,
-    "echo '---NS_PROBE_END---'"
-  ].join("; ");
-};
-
-/**
- * Build a dynamic compound command: always collects network counters (1s),
- * optionally includes CPU/mem/swap (3s) and disk (10s) sections.
- */
-const buildDynamicProbeCommand = (
-  networkInterface: string,
-  collectCpuMemSwap: boolean,
-  collectDisk: boolean
-): string => {
-  const normalized = normalizeNetworkInterfaceName(networkInterface) || "eth0";
-  const parts: string[] = [];
-
-  if (collectCpuMemSwap) {
-    parts.push(
-      "echo '---NS_LOADAVG---'", MONITOR_LOADAVG_COMMAND,
-      "echo '---NS_CPUSTAT---'", MONITOR_CPU_STAT_COMMAND,
-      "echo '---NS_CPUTOP---'", MONITOR_CPU_TOP_COMMAND,
-      "echo '---NS_MEMINFO---'", MONITOR_MEMINFO_COMMAND,
-      "echo '---NS_FREE---'", MONITOR_FREE_COMMAND,
-      "echo '---NS_PROCESSES---'", MONITOR_SYSTEM_PROCESS_COMMAND
-    );
-  }
-
-  if (collectDisk) {
-    parts.push("echo '---NS_DISK---'", MONITOR_DISK_COMMAND);
-  }
-
-  parts.push(
-    "echo '---NS_NETIFACES---'", MONITOR_NET_INTERFACES_COMMAND,
-    "echo '---NS_NETDEFAULT---'", MONITOR_NET_DEFAULT_INTERFACE_COMMAND,
-    "echo '---NS_NETCOUNTERS---'",
-    `cat /sys/class/net/${normalized}/statistics/rx_bytes 2>/dev/null; cat /sys/class/net/${normalized}/statistics/tx_bytes 2>/dev/null`,
-    "echo '---NS_PROBE_END---'"
-  );
-
-  return parts.join("; ");
-};
-
 /** Parse a compound probe output back into named sections. */
 const parseCompoundOutput = (stdout: string): Map<string, string> => {
   const sections = new Map<string, string>();
@@ -1287,7 +899,9 @@ export const createServiceContainer = (
   const connectionPromises = new Map<string, Promise<SshConnection>>();
   // ─── Hidden Session Maps ──────────────────────────────────────────────
   const systemMonitorRuntimes = new Map<string, SystemMonitorRuntime>();
-  const systemMonitorPromises = new Map<string, Promise<SystemMonitorRuntime>>();
+  const systemMonitorConnections = new Map<string, SshConnection>();
+  const systemMonitorConnectionPromises = new Map<string, Promise<SshConnection>>();
+  const cancelledSystemMonitorConnections = new Set<string>();
   const processMonitorRuntimes = new Map<string, ProcessMonitorRuntime>();
   const processMonitorPromises = new Map<string, Promise<ProcessMonitorRuntime>>();
   const networkMonitorRuntimes = new Map<string, NetworkMonitorRuntime>();
@@ -1296,11 +910,6 @@ export const createServiceContainer = (
   const adhocSessionPromises = new Map<string, Promise<AdhocSessionRuntime>>();
   const monitorStates = new Map<string, MonitorState>();
   const networkToolCache = new Map<string, "ss" | "netstat">();
-  // Legacy aliases used by code that hasn't been migrated yet
-  const monitorConnections = new Map<string, SshConnection>();
-  const monitorConnectionPromises = new Map<string, Promise<SshConnection>>();
-  const monitorRuntimePromises = new Map<string, Promise<MonitorRuntime>>();
-  const monitorRuntimes = new Map<string, MonitorRuntime>();
 
   const getConnectionOrThrow = (id: string): ConnectionProfile => {
     const connection = connections.getById(id);
@@ -1535,25 +1144,10 @@ export const createServiceContainer = (
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      if (runtime.pollTimer) {
-        clearTimeout(runtime.pollTimer);
-        runtime.pollTimer = undefined;
-      }
-      runtime.systemTimerActive = false;
+      await runtime.controller.stop();
       systemMonitorRuntimes.delete(connectionId);
-
-      try { runtime.shellChannel.end(); } catch { /* ignore */ }
-      try { await runtime.connection.close(); } catch (error) {
-        logger.warn("[SystemMonitor] failed to close connection", { connectionId, reason: normalizeError(error) });
-      }
     }
-    systemMonitorPromises.delete(connectionId);
-
-    // Also clean up legacy maps (code that still references them)
-    monitorRuntimes.delete(connectionId);
-    monitorRuntimePromises.delete(connectionId);
-    monitorConnections.delete(connectionId);
-    monitorConnectionPromises.delete(connectionId);
+    await closeSystemMonitorConnection(connectionId);
   };
 
   // ─── Session ② Process Monitor: dispose ────────────────────────────────────
@@ -1630,9 +1224,6 @@ export const createServiceContainer = (
     networkToolCache.delete(connectionId);
   };
 
-  /** @deprecated alias — delegates to disposeAllMonitorSessions */
-  const disposeMonitorRuntime = disposeAllMonitorSessions;
-
   // ─── Generic hidden SSH connection factory ────────────────────────────────
 
   const establishHiddenConnection = async (
@@ -1644,6 +1235,66 @@ export const createServiceContainer = (
     const ssh = await SshConnection.connect(await resolveConnectOptions(profile));
     logger.info(`[${tag}] hidden SSH connected`, { connectionId });
     return ssh;
+  };
+
+  const closeSystemMonitorConnection = async (connectionId: string): Promise<void> => {
+    cancelledSystemMonitorConnections.add(connectionId);
+    const existing = systemMonitorConnections.get(connectionId);
+    systemMonitorConnections.delete(connectionId);
+    systemMonitorConnectionPromises.delete(connectionId);
+    if (!existing) {
+      return;
+    }
+
+    try {
+      await existing.close();
+    } catch (error) {
+      logger.warn("[SystemMonitor] failed to close connection", {
+        connectionId,
+        reason: normalizeError(error),
+      });
+    }
+  };
+
+  const ensureSystemMonitorConnection = async (connectionId: string): Promise<SshConnection> => {
+    cancelledSystemMonitorConnections.delete(connectionId);
+    const existing = systemMonitorConnections.get(connectionId);
+    if (existing) {
+      return existing;
+    }
+
+    const pending = systemMonitorConnectionPromises.get(connectionId);
+    if (pending) {
+      return pending;
+    }
+
+    const promise = (async () => {
+      const connection = await establishHiddenConnection(connectionId, "SystemMonitor");
+      if (cancelledSystemMonitorConnections.has(connectionId)) {
+        cancelledSystemMonitorConnections.delete(connectionId);
+        try { await connection.close(); } catch { /* ignore */ }
+        throw new Error("SystemMonitor connection discarded");
+      }
+
+      systemMonitorConnections.set(connectionId, connection);
+      connection.onClose(() => {
+        const wasActive = systemMonitorConnections.get(connectionId) === connection;
+        if (wasActive) {
+          systemMonitorConnections.delete(connectionId);
+          logger.warn("[SystemMonitor] hidden SSH disconnected unexpectedly", { connectionId });
+        }
+      });
+      return connection;
+    })();
+
+    systemMonitorConnectionPromises.set(connectionId, promise);
+    try {
+      return await promise;
+    } finally {
+      if (systemMonitorConnectionPromises.get(connectionId) === promise) {
+        systemMonitorConnectionPromises.delete(connectionId);
+      }
+    }
   };
 
   // ─── Initialize a hidden shell (shared by System & Network sessions) ──────
@@ -1714,82 +1365,63 @@ export const createServiceContainer = (
       return existing;
     }
 
-    const pending = systemMonitorPromises.get(connectionId);
-    if (pending) {
-      return pending;
-    }
+    let runtime: SystemMonitorRuntime;
 
-    const promise = (async () => {
-      const connection = await establishHiddenConnection(connectionId, "SystemMonitor");
-      const shellChannel = await connection.openShell({ cols: 120, rows: 40, term: "xterm-256color" });
-      await initializeMonitorShell(connectionId, shellChannel);
-
-      const runtime: SystemMonitorRuntime = {
-        connection,
-        shellChannel,
-        commandQueue: Promise.resolve(),
-        consecutiveFailures: 0,
-        disposed: false
-      };
-
-      connection.onClose(() => {
-        if (runtime.disposed) return;
-        runtime.disposed = true;
-        if (runtime.pollTimer) { clearTimeout(runtime.pollTimer); runtime.pollTimer = undefined; }
-        runtime.systemTimerActive = false;
-        systemMonitorRuntimes.delete(connectionId);
-        systemMonitorPromises.delete(connectionId);
-        monitorRuntimes.delete(connectionId);
-        monitorRuntimePromises.delete(connectionId);
-        monitorConnections.delete(connectionId);
-        monitorConnectionPromises.delete(connectionId);
-        logger.warn("[SystemMonitor] hidden SSH disconnected unexpectedly", { connectionId });
-      });
-
-      shellChannel.on("close", () => {
-        if (runtime.disposed) return;
-        runtime.disposed = true;
-        if (runtime.pollTimer) { clearTimeout(runtime.pollTimer); runtime.pollTimer = undefined; }
-        runtime.systemTimerActive = false;
-        systemMonitorRuntimes.delete(connectionId);
-        systemMonitorPromises.delete(connectionId);
-        monitorRuntimes.delete(connectionId);
-        monitorRuntimePromises.delete(connectionId);
-        monitorConnections.delete(connectionId);
-        monitorConnectionPromises.delete(connectionId);
-        // Shell closed — also close the SSH connection to avoid dangling sessions
-        void connection.close().catch(() => {});
-        logger.warn("[SystemMonitor] hidden shell closed, closing SSH connection", { connectionId });
-      });
-
-      systemMonitorRuntimes.set(connectionId, runtime);
-
-      // Also write to legacy map so old code paths still work
-      monitorRuntimes.set(connectionId, runtime);
-      monitorConnections.set(connectionId, connection);
-
-      if (!hasVisibleTerminalAlive(connectionId)) {
-        await disposeSystemMonitorRuntime(connectionId);
-        throw new Error("可见 SSH 会话已关闭，Monitor Session 启动取消。");
+    const onProbeExecution = (entry: ProbeExecutionLog) => {
+      if (debugSenders.size > 0) {
+        emitDebugLog({
+          id: randomUUID(),
+          timestamp: Date.now(),
+          connectionId,
+          command: entry.command,
+          stdout: entry.stdout.slice(0, 4096),
+          exitCode: entry.exitCode,
+          durationMs: entry.durationMs,
+          ok: entry.ok,
+          error: entry.error,
+        });
       }
 
-      logger.info("[SystemMonitor] runtime ready", { connectionId });
-      return runtime;
-    })();
+      if (!entry.ok && entry.exitCode >= 0) {
+        logger.debug("[SystemMonitor] command non-zero exit", {
+          connectionId,
+          command: entry.command,
+          exitCode: entry.exitCode,
+          output: entry.stdout.slice(0, 200),
+        });
+      }
+    };
 
-    systemMonitorPromises.set(connectionId, promise);
-    try {
-      return await promise;
-    } catch (error) {
-      await disposeSystemMonitorRuntime(connectionId);
-      throw error;
-    } finally {
-      systemMonitorPromises.delete(connectionId);
-    }
+    const controller = new SystemMonitorController({
+      connectionId,
+      getConnection: () => ensureSystemMonitorConnection(connectionId),
+      closeConnection: () => closeSystemMonitorConnection(connectionId),
+      isVisibleTerminalAlive: () => hasVisibleTerminalAlive(connectionId),
+      isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
+      emitSnapshot: (snapshot) => {
+        if (runtime.sender && !runtime.sender.isDestroyed()) {
+          runtime.sender.send(IPCChannel.MonitorSystemData, snapshot);
+        }
+      },
+      readSelection: () => monitorStates.get(connectionId),
+      writeSelection: (state: MonitorSelectionState) => {
+        const previous = monitorStates.get(connectionId);
+        monitorStates.set(connectionId, { ...previous, ...state });
+      },
+      logger,
+      onProbeExecution,
+    });
+
+    runtime = {
+      disposed: false,
+      controller,
+      sender: undefined,
+    };
+
+    systemMonitorRuntimes.set(connectionId, runtime);
+    logger.info("[SystemMonitor] runtime ready", { connectionId });
+    return runtime;
   };
-
-  /** @deprecated alias — use ensureSystemMonitorRuntime */
-  const ensureMonitorRuntime = ensureSystemMonitorRuntime;
 
   // ─── Session ② Process Monitor: ensure ────────────────────────────────────
 
@@ -1980,11 +1612,11 @@ export const createServiceContainer = (
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
 
-  // ─── Shell command execution (for System & Network sessions) ───────────────
+  // ─── Shell command execution (for Network monitor shell session) ───────────
 
   /**
-   * Execute a command in an interactive monitor shell, serialized via its
-   * commandQueue.  Works for either SystemMonitorRuntime or NetworkMonitorRuntime.
+   * Execute a command in Network Monitor's interactive shell, serialized via
+   * its commandQueue.
    */
   const execInShellRuntime = async (
     connectionId: string,
@@ -2110,11 +1742,7 @@ export const createServiceContainer = (
 
       if (reason.includes("closed")) {
         // Shell channel closed — must dispose this session
-        if (tag === "SystemMonitor") {
-          await disposeSystemMonitorRuntime(connectionId);
-        } else if (tag === "NetworkMonitor") {
-          await disposeNetworkMonitorRuntime(connectionId);
-        }
+        await disposeNetworkMonitorRuntime(connectionId);
       } else if (reason.includes("超时")) {
         // Timeout — try to interrupt the current command, don't dispose immediately
         try { shellChannel.write("\x03\n"); } catch { /* ignore */ }
@@ -2122,29 +1750,12 @@ export const createServiceContainer = (
 
         if (runtime.consecutiveFailures >= MONITOR_MAX_CONSECUTIVE_FAILURES) {
           logger.error(`[${tag}] too many consecutive failures, disposing`, { connectionId });
-          if (tag === "SystemMonitor") {
-            await disposeSystemMonitorRuntime(connectionId);
-          } else if (tag === "NetworkMonitor") {
-            await disposeNetworkMonitorRuntime(connectionId);
-          }
+          await disposeNetworkMonitorRuntime(connectionId);
         }
       }
 
       throw error;
     }
-  };
-
-  /**
-   * Execute a command in the System Monitor shell (Session ①).
-   * This is the primary hidden session for periodic system probes.
-   */
-  const execInMonitorShell = async (
-    connectionId: string,
-    command: string,
-    timeoutMs = MONITOR_COMMAND_TIMEOUT_MS
-  ): Promise<{ stdout: string; exitCode: number }> => {
-    const runtime = await ensureSystemMonitorRuntime(connectionId);
-    return execInShellRuntime(connectionId, runtime.shellChannel, runtime, command, "SystemMonitor", timeoutMs);
   };
 
   /**
@@ -2392,7 +2003,7 @@ export const createServiceContainer = (
     connections.save(profile);
 
     if (!profile.monitorSession) {
-      await disposeMonitorRuntime(profile.id);
+      await disposeAllMonitorSessions(profile.id);
     }
 
     connections.appendAuditLog({
@@ -2493,7 +2104,7 @@ export const createServiceContainer = (
       return;
     }
 
-    await disposeMonitorRuntime(connectionId);
+    await disposeAllMonitorSessions(connectionId);
 
     const client = activeConnections.get(connectionId);
     if (!client) {
@@ -3143,7 +2754,7 @@ export const createServiceContainer = (
 
       if (profile.monitorSession) {
         try {
-          await ensureMonitorRuntime(connectionId);
+          await ensureSystemMonitorRuntime(connectionId);
         } catch (error) {
           const monitorReason = `Monitor Session 后台连接初始化失败：${normalizeError(error)}`;
           connectedReason = connectedReason
@@ -3254,82 +2865,6 @@ export const createServiceContainer = (
     return { ok: true };
   };
 
-  const buildMonitorSnapshot = (
-    connectionId: string,
-    probe: MonitorProbeResult
-  ): MonitorSnapshot => {
-    const now = Date.now();
-    const previous = monitorStates.get(connectionId);
-
-    let cpuPercent = probe.cpuPercentHint ?? 0;
-    if (
-      previous?.cpuTotal !== undefined &&
-      previous.cpuIdle !== undefined &&
-      probe.cpuTotal !== undefined &&
-      probe.cpuIdle !== undefined
-    ) {
-      const deltaTotal = probe.cpuTotal - previous.cpuTotal;
-      const deltaIdle = probe.cpuIdle - previous.cpuIdle;
-      if (deltaTotal > 0) {
-        cpuPercent = ((deltaTotal - deltaIdle) / deltaTotal) * 100;
-      }
-    }
-
-    const elapsedSeconds =
-      previous?.sampledAt !== undefined
-        ? (now - previous.sampledAt) / 1000
-        : undefined;
-    let networkInMbps = 0;
-    let networkOutMbps = 0;
-    if (
-      elapsedSeconds &&
-      elapsedSeconds > 0 &&
-      previous?.netRxBytes !== undefined &&
-      previous.netTxBytes !== undefined
-    ) {
-      networkInMbps = ((probe.netRxBytes - previous.netRxBytes) * 8) / (elapsedSeconds * 1000 * 1000);
-      networkOutMbps = ((probe.netTxBytes - previous.netTxBytes) * 8) / (elapsedSeconds * 1000 * 1000);
-    }
-
-    monitorStates.set(connectionId, {
-      cpuTotal: probe.cpuTotal ?? previous?.cpuTotal,
-      cpuIdle: probe.cpuIdle ?? previous?.cpuIdle,
-      netRxBytes: probe.netRxBytes,
-      netTxBytes: probe.netTxBytes,
-      selectedNetworkInterface: probe.networkInterface,
-      networkInterfaceOptions: probe.networkInterfaceOptions,
-      sampledAt: now
-    });
-
-    const memoryUsedKb = Math.max(0, probe.memTotalKb - probe.memAvailableKb);
-    const swapUsedKb = Math.max(0, probe.swapTotalKb - probe.swapFreeKb);
-
-    const memoryPercent = probe.memTotalKb > 0 ? (memoryUsedKb / probe.memTotalKb) * 100 : 0;
-    const swapPercent = probe.swapTotalKb > 0 ? (swapUsedKb / probe.swapTotalKb) * 100 : 0;
-    const diskPercent = probe.diskTotalKb > 0 ? (probe.diskUsedKb / probe.diskTotalKb) * 100 : 0;
-
-    return {
-      connectionId,
-      loadAverage: probe.loadAverage,
-      cpuPercent: Number(cpuPercent.toFixed(2)),
-      memoryPercent: Number(memoryPercent.toFixed(2)),
-      memoryUsedMb: Number((memoryUsedKb / 1024).toFixed(2)),
-      memoryTotalMb: Number((probe.memTotalKb / 1024).toFixed(2)),
-      swapPercent: Number(swapPercent.toFixed(2)),
-      swapUsedMb: Number((swapUsedKb / 1024).toFixed(2)),
-      swapTotalMb: Number((probe.swapTotalKb / 1024).toFixed(2)),
-      diskPercent: Number(diskPercent.toFixed(2)),
-      diskUsedGb: Number((probe.diskUsedKb / (1024 * 1024)).toFixed(2)),
-      diskTotalGb: Number((probe.diskTotalKb / (1024 * 1024)).toFixed(2)),
-      networkInMbps: Number(Math.max(0, networkInMbps).toFixed(2)),
-      networkOutMbps: Number(Math.max(0, networkOutMbps).toFixed(2)),
-      networkInterface: probe.networkInterface,
-      networkInterfaceOptions: probe.networkInterfaceOptions,
-      processes: probe.processes,
-      capturedAt: new Date(now).toISOString()
-    };
-  };
-
   const debugSenders = new Set<WebContents>();
 
   const enableDebugLog = (sender: WebContents): { ok: true } => {
@@ -3352,149 +2887,6 @@ export const createServiceContainer = (
     }
   };
 
-  const runMonitorCommand = async (
-    connectionId: string,
-    command: string
-  ): Promise<string> => {
-    const startTime = Date.now();
-    try {
-      const { stdout, exitCode } = await execInMonitorShell(connectionId, command);
-      const durationMs = Date.now() - startTime;
-      if (debugSenders.size > 0) {
-        emitDebugLog({
-          id: randomUUID(),
-          timestamp: startTime,
-          connectionId,
-          command,
-          stdout: stdout.slice(0, 4096),
-          exitCode,
-          durationMs,
-          ok: exitCode === 0
-        });
-      }
-      if (exitCode !== 0) {
-        logger.debug("[SystemMonitor] command non-zero exit", {
-          connectionId,
-          command,
-          exitCode,
-          output: stdout.slice(0, 200)
-        });
-      }
-      return stdout;
-    } catch (error) {
-      const durationMs = Date.now() - startTime;
-      const reason = normalizeError(error);
-      if (debugSenders.size > 0) {
-        emitDebugLog({
-          id: randomUUID(),
-          timestamp: startTime,
-          connectionId,
-          command,
-          stdout: "",
-          exitCode: -1,
-          durationMs,
-          ok: false,
-          error: reason
-        });
-      }
-      logger.debug("[SystemMonitor] command execution failed", {
-        connectionId,
-        command,
-        reason
-      });
-      return "";
-    }
-  };
-
-  const buildNetCountersCommand = (networkInterface: string): string => {
-    const normalized = normalizeNetworkInterfaceName(networkInterface);
-    if (!normalized) {
-      throw new Error("无效网卡名称");
-    }
-
-    return (
-      `cat /sys/class/net/${normalized}/statistics/rx_bytes 2>/dev/null; ` +
-      `cat /sys/class/net/${normalized}/statistics/tx_bytes 2>/dev/null`
-    );
-  };
-
-  const resolveSystemNetworkInterface = async (
-    connectionId: string,
-    options: string[]
-  ): Promise<string> => {
-    const state = monitorStates.get(connectionId);
-    const selected = state?.selectedNetworkInterface;
-    if (selected && options.includes(selected)) {
-      return selected;
-    }
-
-    const defaultIfaceRaw = await runMonitorCommand(connectionId, MONITOR_NET_DEFAULT_INTERFACE_COMMAND);
-    const defaultIface = normalizeNetworkInterfaceName(defaultIfaceRaw.split(/\r?\n/)[0] ?? "");
-    if (defaultIface && options.includes(defaultIface)) {
-      return defaultIface;
-    }
-
-    return options[0] ?? "eth0";
-  };
-
-  const probeMonitorSnapshot = async (connectionId: string): Promise<MonitorSnapshot> => {
-    // Resolve the current network interface first (may be cached in state)
-    const state = monitorStates.get(connectionId);
-    const cachedInterface = state?.selectedNetworkInterface;
-
-    // If we don't have a cached interface, run a lightweight pre-query
-    // to discover interfaces. Otherwise use the compound command directly.
-    let networkInterface: string;
-    let networkInterfaceOptions: string[];
-
-    if (cachedInterface) {
-      networkInterface = cachedInterface;
-      networkInterfaceOptions = state.networkInterfaceOptions ?? [cachedInterface];
-    } else {
-      // For the first call, we need interface list from the probe itself;
-      // use "eth0" as fallback in the compound command, then correct afterward.
-      networkInterface = "eth0";
-      networkInterfaceOptions = [];
-    }
-
-    const compoundCmd = buildSystemProbeCommand(networkInterface);
-    const raw = await runMonitorCommand(connectionId, compoundCmd);
-    const sections = parseCompoundOutput(raw);
-
-    // Parse interface list from compound output
-    const netIfacesRaw = sections.get("NETIFACES") ?? "";
-    const parsedOptions = parseNetworkInterfaceList(netIfacesRaw);
-    if (parsedOptions.length > 0) {
-      networkInterfaceOptions = parsedOptions;
-    }
-
-    // If we didn't have a cached interface, resolve one now from the probe data
-    if (!cachedInterface) {
-      const defaultIfaceRaw = sections.get("NETDEFAULT") ?? "";
-      const defaultIface = normalizeNetworkInterfaceName(defaultIfaceRaw.split(/\r?\n/)[0] ?? "");
-      if (defaultIface && networkInterfaceOptions.includes(defaultIface)) {
-        networkInterface = defaultIface;
-      } else if (networkInterfaceOptions.length > 0) {
-        networkInterface = networkInterfaceOptions[0]!;
-      }
-    }
-
-    const probe = parseMonitorProbe({
-      loadAverage: sections.get("LOADAVG") ?? "",
-      cpuStat: sections.get("CPUSTAT") ?? "",
-      cpuTop: sections.get("CPUTOP") ?? "",
-      meminfo: sections.get("MEMINFO") ?? "",
-      free: sections.get("FREE") ?? "",
-      disk: sections.get("DISK") ?? "",
-      networkInterface,
-      networkInterfaceOptions,
-      networkCounters: sections.get("NETCOUNTERS") ?? "",
-      process: sections.get("PROCESSES") ?? ""
-    });
-
-    return buildMonitorSnapshot(connectionId, probe);
-  };
-
   const startSystemMonitor = async (
     connectionId: string,
     sender: WebContents
@@ -3502,224 +2894,15 @@ export const createServiceContainer = (
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
     const runtime = await ensureSystemMonitorRuntime(connectionId);
-
-    if (runtime.systemTimerActive) {
-      return { ok: true };
-    }
-    runtime.systemTimerActive = true;
-
-    // ── Local delta state (isolated from monitorStates to avoid cross-contamination) ──
-    let tickCount = 0;
-    let networkInterface = "eth0";
-    let networkInterfaceOptions: string[] = [];
-    let interfaceResolved = false;
-
-    // Network delta (updated every tick = 1s)
-    let prevNetRx: number | undefined;
-    let prevNetTx: number | undefined;
-    let prevNetSampledAt: number | undefined;
-    let cachedNetInMbps = 0;
-    let cachedNetOutMbps = 0;
-
-    // CPU delta (updated every 3 ticks = 3s)
-    let prevCpuTotal: number | undefined;
-    let prevCpuIdle: number | undefined;
-    let cachedCpuPercent = 0;
-
-    // Cached values for fields that update at slower rates
-    let cachedLoadAvg: [number, number, number] = [0, 0, 0];
-    let cachedMemory = { memTotalKb: 0, memAvailableKb: 0, swapTotalKb: 0, swapFreeKb: 0 };
-    let cachedDisk = { diskTotalKb: 0, diskUsedKb: 0 };
-    let cachedProcesses: MonitorProcess[] = [];
-
-    const readInterfaceSelection = () => {
-      const state = monitorStates.get(connectionId);
-      if (state?.selectedNetworkInterface) {
-        networkInterface = state.selectedNetworkInterface;
-        networkInterfaceOptions = state.networkInterfaceOptions ?? [networkInterface];
-        interfaceResolved = true;
-      }
-    };
-    readInterfaceSelection();
-
-    const emitSnapshot = () => {
-      if (sender.isDestroyed()) {
-        runtime.systemTimerActive = false;
-        return;
-      }
-      const memoryUsedKb = Math.max(0, cachedMemory.memTotalKb - cachedMemory.memAvailableKb);
-      const swapUsedKb = Math.max(0, cachedMemory.swapTotalKb - cachedMemory.swapFreeKb);
-      const memoryPercent = cachedMemory.memTotalKb > 0 ? (memoryUsedKb / cachedMemory.memTotalKb) * 100 : 0;
-      const swapPercent = cachedMemory.swapTotalKb > 0 ? (swapUsedKb / cachedMemory.swapTotalKb) * 100 : 0;
-      const diskPercent = cachedDisk.diskTotalKb > 0 ? (cachedDisk.diskUsedKb / cachedDisk.diskTotalKb) * 100 : 0;
-
-      const snapshot: MonitorSnapshot = {
-        connectionId,
-        loadAverage: cachedLoadAvg,
-        cpuPercent: Number(cachedCpuPercent.toFixed(2)),
-        memoryPercent: Number(memoryPercent.toFixed(2)),
-        memoryUsedMb: Number((memoryUsedKb / 1024).toFixed(2)),
-        memoryTotalMb: Number((cachedMemory.memTotalKb / 1024).toFixed(2)),
-        swapPercent: Number(swapPercent.toFixed(2)),
-        swapUsedMb: Number((swapUsedKb / 1024).toFixed(2)),
-        swapTotalMb: Number((cachedMemory.swapTotalKb / 1024).toFixed(2)),
-        diskPercent: Number(diskPercent.toFixed(2)),
-        diskUsedGb: Number((cachedDisk.diskUsedKb / (1024 * 1024)).toFixed(2)),
-        diskTotalGb: Number((cachedDisk.diskTotalKb / (1024 * 1024)).toFixed(2)),
-        networkInMbps: Number(Math.max(0, cachedNetInMbps).toFixed(2)),
-        networkOutMbps: Number(Math.max(0, cachedNetOutMbps).toFixed(2)),
-        networkInterface,
-        networkInterfaceOptions,
-        processes: cachedProcesses,
-        capturedAt: new Date().toISOString()
-      };
-      sender.send(IPCChannel.MonitorSystemData, snapshot);
-    };
-
-    const resolveInterfaceFromSections = (sections: Map<string, string>) => {
-      const netIfacesRaw = sections.get("NETIFACES") ?? "";
-      const parsedOptions = parseNetworkInterfaceList(netIfacesRaw);
-      if (parsedOptions.length > 0) {
-        networkInterfaceOptions = parsedOptions;
-      }
-      if (!interfaceResolved) {
-        const defaultIfaceRaw = sections.get("NETDEFAULT") ?? "";
-        const defaultIface = normalizeNetworkInterfaceName(defaultIfaceRaw.split(/\r?\n/)[0] ?? "");
-        if (defaultIface && networkInterfaceOptions.includes(defaultIface)) {
-          networkInterface = defaultIface;
-        } else if (networkInterfaceOptions.length > 0) {
-          networkInterface = networkInterfaceOptions[0]!;
-        }
-        interfaceResolved = true;
-      }
-    };
-
-    const updateNetFromSections = (sections: Map<string, string>) => {
-      const counters = parseNetworkCounters(sections.get("NETCOUNTERS") ?? "");
-      const now = Date.now();
-      if (prevNetRx !== undefined && prevNetTx !== undefined && prevNetSampledAt !== undefined) {
-        const elapsed = (now - prevNetSampledAt) / 1000;
-        if (elapsed > 0) {
-          cachedNetInMbps = ((counters.rxBytes - prevNetRx) * 8) / (elapsed * 1e6);
-          cachedNetOutMbps = ((counters.txBytes - prevNetTx) * 8) / (elapsed * 1e6);
-        }
-      }
-      prevNetRx = counters.rxBytes;
-      prevNetTx = counters.txBytes;
-      prevNetSampledAt = now;
-
-      const currentState = monitorStates.get(connectionId);
-      monitorStates.set(connectionId, {
-        ...currentState,
-        netRxBytes: counters.rxBytes,
-        netTxBytes: counters.txBytes,
-        selectedNetworkInterface: networkInterface,
-        networkInterfaceOptions,
-        sampledAt: now
-      });
-    };
-
-    const updateCpuMemSwapFromSections = (sections: Map<string, string>) => {
-      const cpuTotals = parseCpuTotals(sections.get("CPUSTAT") ?? "");
-      if (
-        prevCpuTotal !== undefined && prevCpuIdle !== undefined &&
-        cpuTotals.cpuTotal !== undefined && cpuTotals.cpuIdle !== undefined
-      ) {
-        const deltaTotal = cpuTotals.cpuTotal - prevCpuTotal;
-        const deltaIdle = cpuTotals.cpuIdle - prevCpuIdle;
-        if (deltaTotal > 0) {
-          cachedCpuPercent = ((deltaTotal - deltaIdle) / deltaTotal) * 100;
-        }
-      } else {
-        cachedCpuPercent = parseCpuPercentFromTop(sections.get("CPUTOP") ?? "") ?? 0;
-      }
-      prevCpuTotal = cpuTotals.cpuTotal;
-      prevCpuIdle = cpuTotals.cpuIdle;
-
-      const currentState = monitorStates.get(connectionId);
-      monitorStates.set(connectionId, {
-        ...currentState,
-        cpuTotal: cpuTotals.cpuTotal,
-        cpuIdle: cpuTotals.cpuIdle
-      });
-
-      const memory = parseMemoryFromMeminfo(sections.get("MEMINFO") ?? "") ??
-        parseMemoryFromFree(sections.get("FREE") ?? "");
-      if (memory) {
-        cachedMemory = memory;
-      }
-
-      cachedLoadAvg = parseLoadAverage(sections.get("LOADAVG") ?? "");
-      cachedProcesses = parseMonitorProcesses(sections.get("PROCESSES") ?? "");
-    };
-
-    const updateDiskFromSections = (sections: Map<string, string>) => {
-      cachedDisk = parseDiskUsage(sections.get("DISK") ?? "");
-    };
-
-    // ── Initial full probe (warm up all cached values & establish baselines) ──
-    try {
-      const initCmd = buildDynamicProbeCommand(networkInterface, true, true);
-      const raw = await runMonitorCommand(connectionId, initCmd);
-      const sections = parseCompoundOutput(raw);
-
-      resolveInterfaceFromSections(sections);
-      updateNetFromSections(sections);
-      updateCpuMemSwapFromSections(sections);
-      updateDiskFromSections(sections);
-      emitSnapshot();
-    } catch (error) {
-      logger.warn("[SystemMonitor] initial probe failed", { connectionId, reason: normalizeError(error) });
-      runtime.systemTimerActive = false;
-      return { ok: true };
-    }
-
-    // ── Tick-based poll: single 1s timer, counters decide what to collect ──
-    const scheduleNext = () => {
-      if (runtime.disposed || !runtime.systemTimerActive) return;
-      runtime.pollTimer = setTimeout(() => void poll(), MONITOR_NET_SPEED_INTERVAL_MS);
-    };
-
-    const poll = async () => {
-      if (runtime.disposed || !runtime.systemTimerActive) return;
-      tickCount++;
-      readInterfaceSelection();
-
-      const collectCpuMemSwap = tickCount % 3 === 0;
-      const collectDisk = tickCount % 10 === 0;
-
-      try {
-        const cmd = buildDynamicProbeCommand(networkInterface, collectCpuMemSwap, collectDisk);
-        const raw = await runMonitorCommand(connectionId, cmd);
-        const sections = parseCompoundOutput(raw);
-
-        resolveInterfaceFromSections(sections);
-        updateNetFromSections(sections);
-        if (collectCpuMemSwap) updateCpuMemSwapFromSections(sections);
-        if (collectDisk) updateDiskFromSections(sections);
-
-        emitSnapshot();
-      } catch (error) {
-        logger.warn("[SystemMonitor] poll failed", { connectionId, reason: normalizeError(error) });
-      }
-
-      scheduleNext();
-    };
-
-    scheduleNext();
-    logger.info("[SystemMonitor] started (net 1s, cpu/mem/swap 3s, disk 10s)", { connectionId });
-    return { ok: true };
+    runtime.sender = sender;
+    return runtime.controller.start();
   };
 
   const stopSystemMonitor = (connectionId: string): { ok: true } => {
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
-      runtime.systemTimerActive = false;
-      if (runtime.pollTimer) {
-        clearTimeout(runtime.pollTimer);
-        runtime.pollTimer = undefined;
-      }
-      logger.info("[SystemMonitor] stopped", { connectionId });
+      runtime.sender = undefined;
+      void runtime.controller.stop();
     }
     return { ok: true };
   };
@@ -3730,38 +2913,8 @@ export const createServiceContainer = (
   ): Promise<{ ok: true }> => {
     assertMonitorEnabled(connectionId);
     assertVisibleTerminalAlive(connectionId);
-    await ensureSystemMonitorRuntime(connectionId);
-
-    const normalized = normalizeNetworkInterfaceName(networkInterface);
-    if (!normalized) {
-      throw new Error("无效网卡名称");
-    }
-
-    const optionsRaw = await runMonitorCommand(connectionId, MONITOR_NET_INTERFACES_COMMAND);
-    const options = parseNetworkInterfaceList(optionsRaw);
-    if (!options.includes(normalized)) {
-      throw new Error(`网卡不存在或不可用: ${normalized}`);
-    }
-
-    const previous = monitorStates.get(connectionId);
-    monitorStates.set(connectionId, {
-      ...previous,
-      selectedNetworkInterface: normalized,
-      networkInterfaceOptions: options,
-      // 切换网卡后重置速率基线，避免出现跨网卡跳变
-      netRxBytes: undefined,
-      netTxBytes: undefined,
-      sampledAt: undefined
-    });
-
-    return { ok: true };
-  };
-
-  const getMonitorSnapshot = async (connectionId: string): Promise<MonitorSnapshot> => {
-    assertMonitorEnabled(connectionId);
-    assertVisibleTerminalAlive(connectionId);
-    await ensureSystemMonitorRuntime(connectionId);
-    return probeMonitorSnapshot(connectionId);
+    const runtime = await ensureSystemMonitorRuntime(connectionId);
+    return runtime.controller.selectNetworkInterface(networkInterface);
   };
 
   const assertSystemInfoLinuxHost = async (connectionId: string): Promise<void> => {
@@ -5101,11 +4254,11 @@ export const createServiceContainer = (
     // Dispose all hidden sessions for every connection that has any
     const allConnectionIds = new Set([
       ...systemMonitorRuntimes.keys(),
+      ...systemMonitorConnections.keys(),
+      ...systemMonitorConnectionPromises.keys(),
       ...processMonitorRuntimes.keys(),
       ...networkMonitorRuntimes.keys(),
-      ...adhocSessionRuntimes.keys(),
-      ...monitorRuntimes.keys(),
-      ...monitorConnections.keys()
+      ...adhocSessionRuntimes.keys()
     ]);
 
     await Promise.all(
@@ -5156,7 +4309,6 @@ export const createServiceContainer = (
     writeSession,
     resizeSession,
     closeSession,
-    getMonitorSnapshot,
     getSystemInfoSnapshot,
     startSystemMonitor,
     stopSystemMonitor,
