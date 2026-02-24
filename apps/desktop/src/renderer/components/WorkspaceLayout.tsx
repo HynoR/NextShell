@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, message, Tabs, Tag } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type {
@@ -25,6 +25,7 @@ import { TransferQueuePanel } from "./TransferQueuePanel";
 import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
+import { formatErrorMessage } from "../utils/errorMessage";
 import { promptModal } from "../utils/promptModal";
 
 const SESSION_TYPE_ICON: Record<SessionType, string> = {
@@ -137,6 +138,7 @@ export const WorkspaceLayout = ({
     const [terminalSearchMode, setTerminalSearchMode] = useState(false);
     const [terminalSearchTerm, setTerminalSearchTerm] = useState("");
     const [addressCopied, setAddressCopied] = useState(false);
+    const [updateReleaseUrl, setUpdateReleaseUrl] = useState<string | null>(null);
     const bottomPanelRef = usePanelRef();
     const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
     const resizeFitRafRef = useRef(0);
@@ -212,6 +214,37 @@ export const WorkspaceLayout = ({
             .catch(() => undefined);
     }, [sidebarAddress]);
 
+    useEffect(() => {
+        let disposed = false;
+        void (async () => {
+            try {
+                const result = await window.nextshell.about.checkUpdate();
+                if (disposed) return;
+                setUpdateReleaseUrl(
+                    result.hasUpdate && result.releaseUrl ? result.releaseUrl : null,
+                );
+            } catch {
+                if (!disposed) {
+                    setUpdateReleaseUrl(null);
+                }
+            }
+        })();
+        return () => {
+            disposed = true;
+        };
+    }, []);
+
+    const handleOpenReleasePage = useCallback(async () => {
+        if (!updateReleaseUrl) return;
+        const result = await window.nextshell.dialog.openPath({
+            path: updateReleaseUrl,
+            revealInFolder: false,
+        });
+        if (!result.ok) {
+            void message.error(`打开链接失败：${formatErrorMessage(result.error, "请稍后重试")}`);
+        }
+    }, [updateReleaseUrl]);
+
     return (
         <div className="h-screen flex flex-col overflow-hidden">
             <header className="shell-header">
@@ -225,10 +258,22 @@ export const WorkspaceLayout = ({
                     />
                 </div>
                 <div className="header-actions">
-                    <Tag color="green" style={{ marginLeft: 8 }}>
-                        有更新
-                    </Tag>
-                    <span className="hdr-sep" />
+                    {updateReleaseUrl ? (
+                        <>
+                            <a
+                                href={updateReleaseUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    void handleOpenReleasePage();
+                                }}
+                            >
+                                <Tag color="green">有更新</Tag>
+                            </a>
+                            <span className="hdr-sep" />
+                        </>
+                    ) : null}
                     <button className="hdr-btn" onClick={onOpenManager} title="管理连接">
                         <i className="ri-links-line" aria-hidden="true" />
                         服务器
