@@ -46,8 +46,18 @@ const destroyTray = (): void => {
 };
 
 const createTray = (mainWindow: BrowserWindow): Tray => {
-  const icon = nativeImage.createEmpty();
-  const t = new Tray(icon);
+  const t = new Tray(nativeImage.createEmpty());
+  void app.getFileIcon(process.execPath, { size: "small" })
+    .then((icon) => {
+      if (!icon.isEmpty()) {
+        t.setImage(icon);
+      } else {
+        logger.warn("[Tray] default executable icon is empty");
+      }
+    })
+    .catch((error) => {
+      logger.warn("[Tray] failed to load default executable icon", error);
+    });
   if (process.platform === "darwin") {
     t.setTitle(">_");
   }
