@@ -1,18 +1,4 @@
-export type AuthType = "password" | "privateKey" | "agent" | "interactive";
-export type SshPortForwardType = "local" | "remote";
-
-export interface SshPortForwardRule {
-  id: string;
-  name?: string;
-  type: SshPortForwardType;
-  /** Listening endpoint. Local forward: local bind; Remote forward: remote bind. */
-  sourceHost: string;
-  sourcePort: number;
-  /** Destination endpoint. Local forward: remote target; Remote forward: local target. */
-  destinationHost: string;
-  destinationPort: number;
-  enabled: boolean;
-}
+export type AuthType = "password" | "privateKey" | "agent";
 export type ProxyType = "socks4" | "socks5";
 export type TerminalEncoding = "utf-8" | "gb18030" | "gbk" | "big5";
 export type BackspaceMode = "ascii-backspace" | "ascii-delete";
@@ -59,8 +45,6 @@ export interface ConnectionProfile {
   strictHostKeyChecking: boolean;
   /** 引用的代理实体 ID */
   proxyId?: string;
-  /** SSH 端口转发规则 */
-  portForwards: SshPortForwardRule[];
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
@@ -461,7 +445,6 @@ export interface ExportedConnection {
   username: string;
   authType: AuthType;
   password?: string;
-  portForwards?: SshPortForwardRule[];
   groupPath: string;
   tags: string[];
   notes?: string;

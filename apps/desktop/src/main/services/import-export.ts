@@ -57,7 +57,6 @@ export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImpo
       username: conn.username,
       authType: conn.authType,
       password,
-      portForwards: conn.portForwards ?? [],
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -108,7 +107,6 @@ const parseOneFinalShellEntry = (entry: FinalShellEntry): ConnectionImportEntry 
     ...(decryptedPassword !== undefined
       ? { password: decryptedPassword }
       : { passwordUnavailable: true }),
-    portForwards: [],
     groupPath: "/导入",
     tags: [],
     favorite: false,

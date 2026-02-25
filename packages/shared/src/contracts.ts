@@ -30,26 +30,14 @@ const trimAndFilterStringArray = (value: unknown): unknown => {
     .filter((item): item is string => typeof item === "string" && item.length > 0);
 };
 
-export const authTypeSchema = z.enum(["password", "privateKey", "agent", "interactive"]);
+export const authTypeSchema = z.enum(["password", "privateKey", "agent"]);
 export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
-export const portForwardTypeSchema = z.enum(["local", "remote"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
 export const backupConflictPolicySchema = z.enum(["skip", "force"]);
 export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
 export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
-
-const portForwardRuleSchema = z.object({
-  id: z.string().uuid(),
-  name: z.preprocess(trimToOptionalString, z.string().optional()),
-  type: portForwardTypeSchema,
-  sourceHost: z.preprocess(trimToString, z.string().min(1)),
-  sourcePort: z.coerce.number().int().min(1).max(65535),
-  destinationHost: z.preprocess(trimToString, z.string().min(1)),
-  destinationPort: z.coerce.number().int().min(1).max(65535),
-  enabled: z.boolean().default(true)
-});
 
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
@@ -69,7 +57,6 @@ export const connectionUpsertSchema = z.object({
   hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   strictHostKeyChecking: z.boolean().default(false),
   proxyId: z.string().uuid().optional(),
-  portForwards: z.array(portForwardRuleSchema).optional().default([]),
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
@@ -97,21 +84,21 @@ export const connectionRemoveSchema = z.object({
 
 export const sessionAuthOverrideSchema = z.object({
   username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  authType: z.enum(["password", "privateKey", "interactive"]),
+  authType: z.enum(["password", "privateKey"]),
   password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   sshKeyId: z.string().uuid().optional(),
   /** Temporary key content for retry (not persisted as entity) */
   privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 }).superRefine((value, ctx) => {
-  if ((value.authType === "password" || value.authType === "interactive") && !value.password) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "password is required when authType is password or interactive",
-      path: ["password"]
-    });
-  }
-});
+    if (value.authType === "password" && !value.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "password is required when authType is password",
+        path: ["password"]
+      });
+    }
+  });
 
 export const sessionOpenSchema = z.object({
   connectionId: z.string().uuid(),
@@ -627,7 +614,6 @@ export const connectionImportExecuteSchema = z.object({
     username: z.string(),
     authType: authTypeSchema,
     password: z.string().optional(),
-    portForwards: z.array(portForwardRuleSchema).optional().default([]),
     groupPath: z.string().min(1),
     tags: z.array(z.string()).default([]),
     notes: z.string().optional(),

@@ -33,7 +33,6 @@ export const toConnectionUpsertInput = (
   hostFingerprint: connection.hostFingerprint,
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
-  portForwards: connection.portForwards,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,
@@ -88,7 +87,7 @@ export const CredentialEditModal = ({
       form.setFieldsValue({ password: undefined, sshKeyId: undefined });
       return;
     }
-    if (authType === "password" || authType === "interactive") {
+    if (authType === "password") {
       form.setFieldValue("sshKeyId", undefined);
       return;
     }
@@ -114,11 +113,11 @@ export const CredentialEditModal = ({
       return;
     }
     if (
-      (values.authType === "password" || values.authType === "interactive") &&
-      (connection.authType !== "password" && connection.authType !== "interactive") &&
+      values.authType === "password" &&
+      connection.authType !== "password" &&
       !password
     ) {
-      message.error("切换到密码/交互式认证时需要提供密码。");
+      message.error("切换到密码认证时需要提供密码。");
       return;
     }
 
@@ -128,7 +127,7 @@ export const CredentialEditModal = ({
         toConnectionUpsertInput(connection, {
           username,
           authType: values.authType,
-          password: values.authType === "password" || values.authType === "interactive" ? password : undefined,
+          password: values.authType === "password" ? password : undefined,
           sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined
         })
       );
@@ -177,14 +176,13 @@ export const CredentialEditModal = ({
           <Select
             options={[
               { label: "密码", value: "password" },
-              { label: "交互式登录", value: "interactive" },
               { label: "私钥", value: "privateKey" },
               { label: "SSH Agent", value: "agent" }
             ]}
           />
         </Form.Item>
 
-        {authType === "password" || authType === "interactive" ? (
+        {authType === "password" ? (
           <Form.Item label="密码" name="password">
             <Input.Password placeholder="输入新密码（留空则不更新）" />
           </Form.Item>
