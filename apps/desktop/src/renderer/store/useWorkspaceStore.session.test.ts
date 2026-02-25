@@ -112,3 +112,10 @@ const resetStore = (): void => {
   assertEqual(state.activeSessionId, "s2", "setActiveSession should switch active session");
   assertEqual(state.activeConnectionId, "c2", "setActiveSession should align active connection");
 })();
+
+(() => {
+  resetStore();
+  useWorkspaceStore.getState().setBottomTab("quick-transfer");
+  const state = useWorkspaceStore.getState();
+  assertEqual(state.bottomTab, "quick-transfer", "setBottomTab should accept quick-transfer");
+})();

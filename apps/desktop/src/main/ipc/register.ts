@@ -39,6 +39,8 @@ import {
   sessionGetCwdSchema,
   sftpDeleteSchema,
   sftpDownloadSchema,
+  sftpDownloadPackedSchema,
+  sftpListLocalSchema,
   sftpMkdirSchema,
   sessionOpenSchema,
   sessionResizeSchema,
@@ -46,7 +48,9 @@ import {
   sftpListSchema,
   storageMigrationsSchema,
   sftpRenameSchema,
+  sftpTransferPackedSchema,
   sftpUploadSchema,
+  sftpUploadPackedSchema,
   savedCommandListSchema,
   savedCommandRemoveSchema,
   savedCommandUpsertSchema,
@@ -254,6 +258,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.listRemoteFiles(input.connectionId, input.path);
   });
 
+  ipcMain.handle(IPCChannel.SftpListLocal, (_event, payload) => {
+    const input = parsePayload(sftpListLocalSchema, payload, "本机文件列表");
+    return services.listLocalFiles(input.path);
+  });
+
   ipcMain.handle(IPCChannel.SftpUpload, (event, payload) => {
     const input = parsePayload(sftpUploadSchema, payload, "文件上传");
     return services.uploadRemoteFile(
@@ -265,12 +274,51 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     );
   });
 
+  ipcMain.handle(IPCChannel.SftpUploadPacked, (event, payload) => {
+    const input = parsePayload(sftpUploadPackedSchema, payload, "打包上传");
+    return services.uploadRemotePacked(
+      input.connectionId,
+      input.localPaths,
+      input.remoteDir,
+      input.archiveName,
+      event.sender,
+      input.taskId
+    );
+  });
+
   ipcMain.handle(IPCChannel.SftpDownload, (event, payload) => {
     const input = parsePayload(sftpDownloadSchema, payload, "文件下载");
     return services.downloadRemoteFile(
       input.connectionId,
       input.remotePath,
       input.localPath,
+      event.sender,
+      input.taskId
+    );
+  });
+
+  ipcMain.handle(IPCChannel.SftpDownloadPacked, (event, payload) => {
+    const input = parsePayload(sftpDownloadPackedSchema, payload, "打包下载");
+    return services.downloadRemotePacked(
+      input.connectionId,
+      input.remoteDir,
+      input.entryNames,
+      input.localDir,
+      input.archiveName,
+      event.sender,
+      input.taskId
+    );
+  });
+
+  ipcMain.handle(IPCChannel.SftpTransferPacked, (event, payload) => {
+    const input = parsePayload(sftpTransferPackedSchema, payload, "快传打包中转");
+    return services.transferRemotePacked(
+      input.sourceConnectionId,
+      input.sourceDir,
+      input.entryNames,
+      input.targetConnectionId,
+      input.targetDir,
+      input.archiveName,
       event.sender,
       input.taskId
     );

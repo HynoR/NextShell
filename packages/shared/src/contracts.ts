@@ -235,6 +235,44 @@ export const sftpDownloadSchema = z.object({
   taskId: z.string().uuid().optional()
 });
 
+const remoteEntryNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((name) => !name.includes("/"), { message: "文件名不能包含 /" })
+  .refine((name) => name !== "." && name !== "..", { message: "文件名无效" });
+
+export const sftpDownloadPackedSchema = z.object({
+  connectionId: z.string().uuid(),
+  remoteDir: z.string().min(1),
+  entryNames: z.array(remoteEntryNameSchema).min(1),
+  localDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
+export const sftpUploadPackedSchema = z.object({
+  connectionId: z.string().uuid(),
+  localPaths: z.array(z.string().min(1)).min(1),
+  remoteDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
+export const sftpListLocalSchema = z.object({
+  path: z.string().min(1)
+});
+
+export const sftpTransferPackedSchema = z.object({
+  sourceConnectionId: z.string().uuid(),
+  sourceDir: z.string().min(1),
+  entryNames: z.array(remoteEntryNameSchema).min(1),
+  targetConnectionId: z.string().uuid(),
+  targetDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
 export const sftpMkdirSchema = z.object({
   connectionId: z.string().uuid(),
   path: z.string().min(1)
@@ -331,7 +369,9 @@ export const appPreferencesSchema = z.object({
     editorMode: z.enum(["builtin", "external"]).default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
   }).default(DEFAULT_APP_PREFERENCES.remoteEdit),
   commandCenter: z.object({
-    rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams)
+    rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams),
+    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).default(DEFAULT_APP_PREFERENCES.commandCenter.batchMaxConcurrency),
+    batchRetryCount: z.coerce.number().int().min(0).max(5).default(DEFAULT_APP_PREFERENCES.commandCenter.batchRetryCount)
   }).default(DEFAULT_APP_PREFERENCES.commandCenter),
   terminal: z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
@@ -381,7 +421,9 @@ export const appPreferencesPatchSchema = z.object({
     editorMode: z.enum(["builtin", "external"]).optional()
   }).optional(),
   commandCenter: z.object({
-    rememberTemplateParams: z.boolean().optional()
+    rememberTemplateParams: z.boolean().optional(),
+    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).optional(),
+    batchRetryCount: z.coerce.number().int().min(0).max(5).optional()
   }).optional(),
   terminal: z.object({
     backgroundColor: terminalColorSchema.optional(),
@@ -627,6 +669,10 @@ export type StorageMigrationsInput = z.infer<typeof storageMigrationsSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;
+export type SftpUploadPackedInput = z.infer<typeof sftpUploadPackedSchema>;
+export type SftpDownloadPackedInput = z.infer<typeof sftpDownloadPackedSchema>;
+export type SftpListLocalInput = z.infer<typeof sftpListLocalSchema>;
+export type SftpTransferPackedInput = z.infer<typeof sftpTransferPackedSchema>;
 export type SftpMkdirInput = z.infer<typeof sftpMkdirSchema>;
 export type SftpRenameInput = z.infer<typeof sftpRenameSchema>;
 export type SftpDeleteInput = z.infer<typeof sftpDeleteSchema>;

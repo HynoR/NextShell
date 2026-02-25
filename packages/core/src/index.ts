@@ -310,6 +310,8 @@ export interface AppPreferences {
   };
   commandCenter: {
     rememberTemplateParams: boolean;
+    batchMaxConcurrency: number;
+    batchRetryCount: number;
   };
   terminal: {
     backgroundColor: string;
@@ -374,6 +376,8 @@ export interface AppPreferencesPatch {
   };
   commandCenter?: {
     rememberTemplateParams?: boolean;
+    batchMaxConcurrency?: number;
+    batchRetryCount?: number;
   };
   terminal?: {
     backgroundColor?: string;
@@ -507,10 +511,12 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     editorMode: "builtin"
   },
   commandCenter: {
-    rememberTemplateParams: true
+    rememberTemplateParams: true,
+    batchMaxConcurrency: 5,
+    batchRetryCount: 1
   },
   terminal: {
-    backgroundColor: "#0b2740",
+    backgroundColor: "#000000",
     foregroundColor: "#d8eaff",
     fontSize: 14,
     lineHeight: 1.2
@@ -545,4 +551,24 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   audit: {
     retentionDays: 7
   }
+};
+
+export const normalizeBatchMaxConcurrency = (
+  value: number | undefined,
+  fallback: number
+): number => {
+  if (!Number.isInteger(value) || (value ?? 0) < 1 || (value ?? 0) > 50) {
+    return fallback;
+  }
+  return value as number;
+};
+
+export const normalizeBatchRetryCount = (
+  value: number | undefined,
+  fallback: number
+): number => {
+  if (!Number.isInteger(value) || (value ?? 0) < 0 || (value ?? 0) > 5) {
+    return fallback;
+  }
+  return value as number;
 };

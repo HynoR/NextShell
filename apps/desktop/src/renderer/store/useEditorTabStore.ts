@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { EditorSyntaxMode } from "../utils/detectLanguage";
 
 export interface EditorTabMeta {
   sessionId: string;
@@ -6,6 +7,7 @@ export interface EditorTabMeta {
   remotePath: string;
   editId: string;
   initialContent: string;
+  syntaxMode: EditorSyntaxMode;
   dirty: boolean;
   saving: boolean;
 }
@@ -16,6 +18,7 @@ interface EditorTabState {
   closeTab: (sessionId: string) => void;
   setDirty: (sessionId: string, dirty: boolean) => void;
   setSaving: (sessionId: string, saving: boolean) => void;
+  setSyntaxMode: (sessionId: string, syntaxMode: EditorSyntaxMode) => void;
   findByRemotePath: (connectionId: string, remotePath: string) => EditorTabMeta | undefined;
   getTab: (sessionId: string) => EditorTabMeta | undefined;
 }
@@ -51,6 +54,15 @@ export const useEditorTabStore = create<EditorTabState>((set, get) => ({
       if (!tab) return state;
       const next = new Map(state.tabs);
       next.set(sessionId, { ...tab, saving });
+      return { tabs: next };
+    });
+  },
+  setSyntaxMode: (sessionId, syntaxMode) => {
+    set((state) => {
+      const tab = state.tabs.get(sessionId);
+      if (!tab || tab.syntaxMode === syntaxMode) return state;
+      const next = new Map(state.tabs);
+      next.set(sessionId, { ...tab, syntaxMode });
       return { tabs: next };
     });
   },

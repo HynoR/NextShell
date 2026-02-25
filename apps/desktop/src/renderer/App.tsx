@@ -265,6 +265,7 @@ export const App = () => {
           remotePath,
           editId: result.editId,
           initialContent: result.content,
+          syntaxMode: "auto",
           dirty: false,
           saving: false
         });
@@ -305,6 +306,7 @@ export const App = () => {
   const handleRetryTransferTask = useCallback(async (taskId: string) => {
     const failedTask = getTransferTask(taskId);
     if (!failedTask || failedTask.status !== "failed") return;
+    if (failedTask.retryable === false) return;
 
     const retryTask = enqueueTransferTask({
       direction: failedTask.direction,
@@ -341,10 +343,10 @@ export const App = () => {
   const handleOpenTransferLocalFile = useCallback(async (localPath: string) => {
     const result = await window.nextshell.dialog.openPath({
       path: localPath,
-      revealInFolder: false
+      revealInFolder: true
     });
     if (!result.ok) {
-      message.error(`打开文件失败：${formatErrorMessage(result.error, "请检查文件路径")}`);
+      message.error(`打开所在目录失败：${formatErrorMessage(result.error, "请检查文件路径")}`);
     }
   }, []);
 
@@ -475,6 +477,7 @@ export const App = () => {
             if (
               tab === "commands" ||
               tab === "files" ||
+              tab === "quick-transfer" ||
               tab === "connections" ||
               tab === "live-edit" ||
               tab === "port-forward" ||

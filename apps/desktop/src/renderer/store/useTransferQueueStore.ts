@@ -17,6 +17,7 @@ export interface TransferTask {
   error?: string;
   message?: string;
   retryOfTaskId?: string;
+  retryable?: boolean;
 }
 
 interface EnqueueTransferInput {
@@ -26,6 +27,7 @@ interface EnqueueTransferInput {
   localPath: string;
   remotePath: string;
   retryOfTaskId?: string;
+  retryable?: boolean;
 }
 
 interface TransferQueueState {
@@ -55,7 +57,8 @@ const createTask = (input: EnqueueTransferInput): TransferTask => {
     progress: 0,
     createdAt: now,
     updatedAt: now,
-    retryOfTaskId: input.retryOfTaskId
+    retryOfTaskId: input.retryOfTaskId,
+    retryable: input.retryable ?? true
   };
 };
 

@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import { EditorView, basicSetup } from "codemirror";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { getLanguageSupport } from "../utils/detectLanguage";
+import { getLanguageSupport, type EditorSyntaxMode } from "../utils/detectLanguage";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { useEditorTabStore } from "../store/useEditorTabStore";
 
@@ -13,12 +13,29 @@ interface EditorPaneProps {
   session: SessionDescriptor;
 }
 
+const SYNTAX_MODE_OPTIONS: Array<{ value: EditorSyntaxMode; label: string }> = [
+  { value: "auto", label: "自动" },
+  { value: "plain", label: "纯文本" },
+  { value: "javascript", label: "JavaScript" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+  { value: "json", label: "JSON" },
+  { value: "markdown", label: "Markdown" },
+  { value: "yaml", label: "YAML" },
+  { value: "toml", label: "TOML" },
+  { value: "python", label: "Python" },
+  { value: "shell", label: "Shell" },
+  { value: "php", label: "PHP" },
+];
+
 export const EditorPane = ({ session }: EditorPaneProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const languageCompartmentRef = useRef(new Compartment());
   const tab = useEditorTabStore((s) => s.getTab(session.id));
   const setDirty = useEditorTabStore((s) => s.setDirty);
   const setSaving = useEditorTabStore((s) => s.setSaving);
+  const setSyntaxMode = useEditorTabStore((s) => s.setSyntaxMode);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
 
   const handleSave = useCallback(async () => {
@@ -47,11 +64,12 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
   useEffect(() => {
     if (!containerRef.current || !tab) return;
 
-    const langSupport = getLanguageSupport(tab.remotePath);
+    const langSupport = getLanguageSupport(tab.remotePath, tab.syntaxMode);
     const extensions = [
       basicSetup,
       oneDark,
       EditorView.lineWrapping,
+      languageCompartmentRef.current.of(langSupport ?? []),
       EditorView.theme({ "&": { fontSize: "14px" } }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -69,10 +87,6 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
       }]),
     ];
 
-    if (langSupport) {
-      extensions.push(langSupport);
-    }
-
     const state = EditorState.create({
       doc: tab.initialContent,
       extensions,
@@ -87,6 +101,14 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab?.sessionId]);
+
+  useEffect(() => {
+    if (!tab || !viewRef.current) return;
+    const langSupport = getLanguageSupport(tab.remotePath, tab.syntaxMode);
+    viewRef.current.dispatch({
+      effects: languageCompartmentRef.current.reconfigure(langSupport ?? [])
+    });
+  }, [tab?.remotePath, tab?.syntaxMode]);
 
   if (!tab) {
     return <div className="flex-1 flex items-center justify-center text-[var(--t3)]">编辑器数据加载中...</div>;
@@ -106,6 +128,19 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
           {saveStatus === "saved" && <><i className="ri-check-line" aria-hidden="true" /> 已保存</>}
           {saveStatus === "unsaved" && <><i className="ri-edit-circle-line" aria-hidden="true" /> 未保存</>}
         </span>
+        <label className="editor-toolbar-lang">
+          <i className="ri-code-box-line" aria-hidden="true" />
+          <select
+            className="editor-toolbar-lang-select"
+            value={tab.syntaxMode}
+            onChange={(e) => setSyntaxMode(session.id, e.target.value as EditorSyntaxMode)}
+            title="强制指定语法高亮类型"
+          >
+            {SYNTAX_MODE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
         <button
           className="editor-toolbar-save-btn"
           onClick={() => void handleSave()}
