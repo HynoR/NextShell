@@ -37,6 +37,7 @@ import type {
   SavedCommand,
   SessionDescriptor,
   SessionStatus,
+  SshPortForwardRule,
   SystemInfoSnapshot,
   SshKeyProfile,
   TerminalEncoding
@@ -956,6 +957,7 @@ export const createServiceContainer = (
   const activeSessions = new Map<string, ActiveSession>();
   const activeConnections = new Map<string, SshConnection>();
   const connectionPromises = new Map<string, Promise<SshConnection>>();
+  const activePortForwards = new Map<string, Map<string, { rule: SshPortForwardRule; close: () => Promise<void> }>>();
   // ─── Hidden Session Maps ──────────────────────────────────────────────
   const systemMonitorRuntimes = new Map<string, SystemMonitorRuntime>();
   const systemMonitorConnections = new Map<string, SshConnection>();
@@ -1149,6 +1151,64 @@ export const createServiceContainer = (
     sendSessionStatus(active.sender, { sessionId, status, reason });
   };
 
+  const stopPortForwards = async (connectionId: string): Promise<void> => {
+    const forwards = activePortForwards.get(connectionId);
+    if (!forwards) {
+      return;
+    }
+    activePortForwards.delete(connectionId);
+    await Promise.all(
+      Array.from(forwards.values()).map(async ({ rule, close }) => {
+        try {
+          await close();
+        } catch (error) {
+          logger.warn("[SSH] failed to stop port forward", {
+            connectionId,
+            rule,
+            reason: normalizeError(error)
+          });
+        }
+      })
+    );
+  };
+
+  const applyPortForwards = async (
+    connectionId: string,
+    profile: ConnectionProfile,
+    client: SshConnection
+  ): Promise<void> => {
+    await stopPortForwards(connectionId);
+    const rules = (profile.portForwards ?? []).filter((rule) => rule.enabled);
+    if (rules.length === 0) {
+      return;
+    }
+
+    const active = new Map<string, { rule: SshPortForwardRule; close: () => Promise<void> }>();
+    for (const rule of rules) {
+      try {
+        const handle = await client.startPortForward(rule);
+        active.set(rule.id, { rule, close: handle.close });
+      } catch (error) {
+        const reason = normalizeError(error);
+        logger.warn("[SSH] failed to start port forward", { connectionId, rule, reason });
+        connections.appendAuditLog({
+          action: "connection.port_forward_failed",
+          level: "warn",
+          connectionId,
+          message: "Failed to start port forward",
+          metadata: {
+            rule,
+            reason
+          }
+        });
+      }
+    }
+
+    if (active.size > 0) {
+      activePortForwards.set(connectionId, active);
+    }
+  };
+
   const establishConnection = async (
     connectionId: string,
     profile: ConnectionProfile,
@@ -1158,11 +1218,13 @@ export const createServiceContainer = (
     const ssh = await SshConnection.connect(await resolveConnectOptions(profile, authOverride));
     ssh.onClose(() => {
       activeConnections.delete(connectionId);
+      void stopPortForwards(connectionId);
       void remoteEditManager.cleanupByConnectionId(connectionId);
       logger.info("[SSH] disconnected", { connectionId });
     });
     activeConnections.set(connectionId, ssh);
     logger.info("[SSH] connected", { connectionId });
+    await applyPortForwards(connectionId, profile, ssh);
     return ssh;
   };
 
@@ -1969,6 +2031,7 @@ export const createServiceContainer = (
     }
 
     const normalizedUsername = input.username.trim();
+    const portForwards = input.portForwards ?? current?.portForwards ?? [];
 
     let credentialRef = current?.credentialRef;
 
@@ -2000,6 +2063,7 @@ export const createServiceContainer = (
       hostFingerprint: input.hostFingerprint,
       strictHostKeyChecking: input.strictHostKeyChecking,
       proxyId: input.proxyId,
+      portForwards,
       terminalEncoding: input.terminalEncoding,
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
@@ -2014,6 +2078,13 @@ export const createServiceContainer = (
     };
 
     connections.save(profile);
+
+    if (input.portForwards !== undefined) {
+      const client = activeConnections.get(profile.id);
+      if (client) {
+        await applyPortForwards(profile.id, profile, client);
+      }
+    }
 
     if (!profile.monitorSession) {
       await disposeAllMonitorSessions(profile.id);
@@ -2120,6 +2191,7 @@ export const createServiceContainer = (
     }
 
     await disposeAllMonitorSessions(connectionId);
+    await stopPortForwards(connectionId);
 
     const client = activeConnections.get(connectionId);
     if (!client) {
@@ -2580,6 +2652,7 @@ export const createServiceContainer = (
       username: conn.username,
       authType: conn.authType,
       password,
+      portForwards: conn.portForwards,
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -2741,6 +2814,7 @@ export const createServiceContainer = (
               authType: entry.authType,
               password: entry.password,
               strictHostKeyChecking: false,
+              portForwards: entry.portForwards,
               groupPath: entry.groupPath,
               tags: entry.tags,
               notes: entry.notes,
@@ -2767,6 +2841,7 @@ export const createServiceContainer = (
           authType: entry.authType,
           password: entry.password,
           strictHostKeyChecking: false,
+          portForwards: entry.portForwards,
           groupPath: entry.groupPath,
           tags: entry.tags,
           notes: entry.notes,
@@ -3935,6 +4010,9 @@ export const createServiceContainer = (
 
     const sessionIds = Array.from(activeSessions.keys());
     await Promise.all(sessionIds.map((sessionId) => closeSession(sessionId)));
+
+    const forwardIds = Array.from(activePortForwards.keys());
+    await Promise.all(forwardIds.map((connectionId) => stopPortForwards(connectionId)));
 
     const sshConnections = Array.from(activeConnections.values());
     activeConnections.clear();

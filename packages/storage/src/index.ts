@@ -15,7 +15,8 @@ import type {
   MigrationRecord,
   ProxyProfile,
   SavedCommand,
-  SshKeyProfile
+  SshKeyProfile,
+  SshPortForwardRule
 } from "../../core/src/index";
 import { DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
@@ -38,6 +39,7 @@ interface ConnectionRow {
   host_fingerprint: string | null;
   strict_host_key_checking: number;
   proxy_id: string | null;
+  port_forwards: string | null;
   terminal_encoding: "utf-8" | "gb18030" | "gbk" | "big5" | null;
   backspace_mode: "ascii-backspace" | "ascii-delete" | null;
   delete_mode: "vt220-delete" | "ascii-delete" | "ascii-backspace" | null;
@@ -141,6 +143,55 @@ const fromJSON = (value: string): string[] => {
   }
 };
 
+const parsePortForwards = (value: string | null | undefined): SshPortForwardRule[] => {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") {
+        return [];
+      }
+      const raw = item as Partial<SshPortForwardRule>;
+      const type = raw.type === "local" || raw.type === "remote" ? raw.type : undefined;
+      const sourceHost = typeof raw.sourceHost === "string" ? raw.sourceHost.trim() : "";
+      const destinationHost = typeof raw.destinationHost === "string" ? raw.destinationHost.trim() : "";
+      const sourcePort = Number(raw.sourcePort);
+      const destinationPort = Number(raw.destinationPort);
+      if (
+        !type ||
+        !sourceHost ||
+        !destinationHost ||
+        !Number.isInteger(sourcePort) ||
+        sourcePort < 1 ||
+        sourcePort > 65535 ||
+        !Number.isInteger(destinationPort) ||
+        destinationPort < 1 ||
+        destinationPort > 65535
+      ) {
+        return [];
+      }
+      const id = typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id : randomUUID();
+      return [{
+        id,
+        name: typeof raw.name === "string" ? raw.name : undefined,
+        type,
+        sourceHost,
+        sourcePort,
+        destinationHost,
+        destinationPort,
+        enabled: raw.enabled !== false
+      }];
+    });
+  } catch {
+    return [];
+  }
+};
+
 const fromMetadataJSON = (value: string | null): Record<string, unknown> | undefined => {
   if (!value) {
     return undefined;
@@ -188,6 +239,7 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     hostFingerprint: row.host_fingerprint ?? undefined,
     strictHostKeyChecking: row.strict_host_key_checking === 1,
     proxyId: row.proxy_id ?? undefined,
+    portForwards: parsePortForwards(row.port_forwards),
     terminalEncoding:
       row.terminal_encoding === "gb18030" ||
       row.terminal_encoding === "gbk" ||
@@ -530,6 +582,7 @@ const migrations: MigrationDefinition[] = [
           proxy_port INTEGER,
           proxy_username TEXT,
           proxy_credential_ref TEXT,
+          port_forwards TEXT,
           terminal_encoding TEXT NOT NULL DEFAULT 'utf-8',
           backspace_mode TEXT NOT NULL DEFAULT 'ascii-backspace',
           delete_mode TEXT NOT NULL DEFAULT 'vt220-delete',
@@ -758,6 +811,13 @@ const migrations: MigrationDefinition[] = [
       ensureColumn(db, "connections", "ssh_key_id", "ssh_key_id TEXT");
       ensureColumn(db, "connections", "proxy_id", "proxy_id TEXT");
     }
+  },
+  {
+    version: 14,
+    name: "add_connection_port_forwards",
+    apply: (db) => {
+      ensureColumn(db, "connections", "port_forwards", "port_forwards TEXT");
+    }
   }
 ];
 
@@ -911,6 +971,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            port_forwards,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -957,6 +1018,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            port_forwards,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -980,6 +1042,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             @host_fingerprint,
             @strict_host_key_checking,
             @proxy_id,
+            @port_forwards,
             @terminal_encoding,
             @backspace_mode,
             @delete_mode,
@@ -1003,6 +1066,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint = excluded.host_fingerprint,
             strict_host_key_checking = excluded.strict_host_key_checking,
             proxy_id = excluded.proxy_id,
+            port_forwards = excluded.port_forwards,
             terminal_encoding = excluded.terminal_encoding,
             backspace_mode = excluded.backspace_mode,
             delete_mode = excluded.delete_mode,
@@ -1028,6 +1092,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         host_fingerprint: connection.hostFingerprint ?? null,
         strict_host_key_checking: connection.strictHostKeyChecking ? 1 : 0,
         proxy_id: connection.proxyId ?? null,
+        port_forwards: JSON.stringify(connection.portForwards ?? []),
         terminal_encoding: connection.terminalEncoding,
         backspace_mode: connection.backspaceMode,
         delete_mode: connection.deleteMode,
@@ -1062,6 +1127,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            port_forwards,
             terminal_encoding,
             backspace_mode,
             delete_mode,

@@ -79,6 +79,7 @@ const toQuickUpsertInput = (
   hostFingerprint: connection.hostFingerprint,
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
+  portForwards: connection.portForwards,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,

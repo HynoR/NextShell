@@ -477,6 +477,7 @@ export const App = () => {
               tab === "files" ||
               tab === "connections" ||
               tab === "live-edit" ||
+              tab === "port-forward" ||
               tab === "system-info" ||
               tab === "traceroute"
             ) {

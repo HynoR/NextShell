@@ -32,12 +32,24 @@ const trimAndFilterStringArray = (value: unknown): unknown => {
 
 export const authTypeSchema = z.enum(["password", "privateKey", "agent", "interactive"]);
 export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
+export const portForwardTypeSchema = z.enum(["local", "remote"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
 export const backupConflictPolicySchema = z.enum(["skip", "force"]);
 export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
 export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
+
+const portForwardRuleSchema = z.object({
+  id: z.string().uuid(),
+  name: z.preprocess(trimToOptionalString, z.string().optional()),
+  type: portForwardTypeSchema,
+  sourceHost: z.preprocess(trimToString, z.string().min(1)),
+  sourcePort: z.coerce.number().int().min(1).max(65535),
+  destinationHost: z.preprocess(trimToString, z.string().min(1)),
+  destinationPort: z.coerce.number().int().min(1).max(65535),
+  enabled: z.boolean().default(true)
+});
 
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
@@ -57,6 +69,7 @@ export const connectionUpsertSchema = z.object({
   hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   strictHostKeyChecking: z.boolean().default(false),
   proxyId: z.string().uuid().optional(),
+  portForwards: z.array(portForwardRuleSchema).optional().default([]),
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
@@ -572,6 +585,7 @@ export const connectionImportExecuteSchema = z.object({
     username: z.string(),
     authType: authTypeSchema,
     password: z.string().optional(),
+    portForwards: z.array(portForwardRuleSchema).optional().default([]),
     groupPath: z.string().min(1),
     tags: z.array(z.string()).default([]),
     notes: z.string().optional(),
