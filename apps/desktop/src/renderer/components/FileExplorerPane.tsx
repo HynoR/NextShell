@@ -56,6 +56,13 @@ const joinLocalPath = (base: string, next: string): string => {
   return `${base}/${next}`;
 };
 
+const ensureTarGzName = (name: string): string => {
+  const trimmed = name.trim();
+  if (!trimmed) return "archive.tar.gz";
+  if (trimmed.toLowerCase().endsWith(".tar.gz")) return trimmed;
+  return `${trimmed}.tar.gz`;
+};
+
 // ── Format helpers ────────────────────────────────────────
 const formatFileSize = (size: number, isDir: boolean): string => {
   if (isDir) return "";
@@ -116,7 +123,9 @@ interface ContextMenuProps {
   onClose: () => void;
   onRefresh: () => void;
   onDownload: (entries: RemoteFileEntry[]) => void;
+  onPackedDownload: (entries: RemoteFileEntry[]) => void;
   onUpload: () => void;
+  onPackedUpload: () => void;
   onCopyPath: (entries: RemoteFileEntry[]) => void;
   onCopy: (entries: RemoteFileEntry[]) => void;
   onCut: (entries: RemoteFileEntry[]) => void;
@@ -136,7 +145,9 @@ const ContextMenu = ({
   onClose,
   onRefresh,
   onDownload,
+  onPackedDownload,
   onUpload,
+  onPackedUpload,
   onCopyPath,
   onCopy,
   onCut,
@@ -228,8 +239,18 @@ const ContextMenu = ({
       >
         <span className="fe-ctx-icon"><i className="ri-download-2-line" aria-hidden="true" /></span> 下载
       </button>
+      <button
+        className="fe-ctx-item"
+        disabled={!hasEntries}
+        onClick={() => run(() => onPackedDownload(entries))}
+      >
+        <span className="fe-ctx-icon"><i className="ri-file-zip-line" aria-hidden="true" /></span> 打包下载
+      </button>
       <button className="fe-ctx-item" onClick={() => run(onUpload)}>
         <span className="fe-ctx-icon"><i className="ri-upload-2-line" aria-hidden="true" /></span> 上传…
+      </button>
+      <button className="fe-ctx-item" onClick={() => run(onPackedUpload)}>
+        <span className="fe-ctx-icon"><i className="ri-inbox-archive-line" aria-hidden="true" /></span> 打包上传…
       </button>
 
       <div className="fe-ctx-divider" />
@@ -769,6 +790,70 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
     }
   };
 
+  const handlePackedUpload = async (): Promise<void> => {
+    if (!connection) return;
+
+    try {
+      const picked = await window.nextshell.dialog.openFiles({
+        title: "选择要打包上传的本地文件",
+        defaultPath: preferences.transfer.uploadDefaultDir,
+        multi: true
+      });
+      if (picked.canceled || picked.filePaths.length === 0) {
+        return;
+      }
+
+      const firstFile = picked.filePaths[0]!;
+      const firstDir = firstFile.replace(/[\\/][^\\/]+$/, "");
+      if (firstDir && firstDir !== preferences.transfer.uploadDefaultDir) {
+        void updatePreferences({
+          transfer: {
+            uploadDefaultDir: firstDir
+          }
+        });
+      }
+
+      const archiveBase = picked.filePaths.length === 1
+        ? inferName(firstFile)
+        : `upload-bundle-${Date.now()}`;
+      const archiveName = ensureTarGzName(archiveBase);
+      const remotePath = normalizeRemotePath(joinRemotePath(pathName, archiveName));
+      const localDisplayPath = picked.filePaths.length === 1
+        ? firstFile
+        : `${firstFile} (+${picked.filePaths.length - 1} files)`;
+
+      setBusy(true);
+      const task = enqueueTask({
+        direction: "upload",
+        connectionId: connection.id,
+        localPath: localDisplayPath,
+        remotePath,
+        retryable: false
+      });
+
+      try {
+        await window.nextshell.sftp.uploadPacked({
+          connectionId: connection.id,
+          localPaths: picked.filePaths,
+          remoteDir: normalizeRemotePath(pathName),
+          archiveName,
+          taskId: task.id
+        });
+        markSuccess(task.id);
+        message.success("打包上传完成");
+        await loadFiles();
+      } catch (error) {
+        const reason = formatErrorMessage(error, "打包上传失败");
+        markFailed(task.id, reason);
+        message.error(`打包上传失败：${reason}`);
+      }
+    } catch (error) {
+      message.error(`打包上传失败：${formatErrorMessage(error, "请稍后重试")}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDownload = useCallback(
     async (
       entries: RemoteFileEntry[],
@@ -830,6 +915,74 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       enqueueTask,
       markFailed,
       markSuccess,
+      preferences.transfer.downloadDefaultDir,
+      updatePreferences
+    ]
+  );
+
+  const handlePackedDownload = useCallback(
+    async (
+      entries: RemoteFileEntry[],
+      targetBaseDir?: string,
+      persistDefaultDir = false
+    ): Promise<void> => {
+      if (!connection || entries.length === 0) return;
+      const localBasePath = (targetBaseDir || preferences.transfer.downloadDefaultDir).trim();
+      if (!localBasePath) return;
+
+      if (persistDefaultDir && localBasePath !== preferences.transfer.downloadDefaultDir) {
+        void updatePreferences({
+          transfer: {
+            downloadDefaultDir: localBasePath
+          }
+        });
+      }
+
+      const normalizedCurrentPath = normalizeRemotePath(pathName);
+      const pathSegment = normalizedCurrentPath === "/"
+        ? "root"
+        : normalizedCurrentPath.split("/").filter(Boolean).at(-1) ?? "bundle";
+      const archiveBase = entries.length === 1
+        ? entries[0]!.name
+        : `${pathSegment}-bundle-${Date.now()}`;
+      const archiveName = ensureTarGzName(archiveBase);
+      const localArchivePath = joinLocalPath(localBasePath, archiveName);
+      const remoteArchivePath = normalizeRemotePath(joinRemotePath(pathName, archiveName));
+
+      setBusy(true);
+      const task = enqueueTask({
+        direction: "download",
+        connectionId: connection.id,
+        localPath: localArchivePath,
+        remotePath: remoteArchivePath,
+        retryable: false
+      });
+
+      try {
+        await window.nextshell.sftp.downloadPacked({
+          connectionId: connection.id,
+          remoteDir: normalizedCurrentPath,
+          entryNames: entries.map((entry) => entry.name),
+          localDir: localBasePath,
+          archiveName,
+          taskId: task.id
+        });
+        markSuccess(task.id);
+        message.success(`打包下载完成 → ${localArchivePath}`);
+      } catch (error) {
+        const reason = formatErrorMessage(error, "打包下载失败");
+        markFailed(task.id, reason);
+        message.error(`打包下载失败：${reason}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [
+      connection,
+      enqueueTask,
+      markFailed,
+      markSuccess,
+      pathName,
       preferences.transfer.downloadDefaultDir,
       updatePreferences
     ]
@@ -1193,6 +1346,9 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
             <Tooltip title="上传">
               <button className="fe-icon-btn" onClick={() => void handleUpload()} disabled={busy} aria-label="上传"><i className="ri-upload-2-line" aria-hidden="true" /></button>
             </Tooltip>
+            <Tooltip title="打包上传（自动解包）">
+              <button className="fe-icon-btn" onClick={() => void handlePackedUpload()} disabled={busy} aria-label="打包上传"><i className="ri-inbox-archive-line" aria-hidden="true" /></button>
+            </Tooltip>
             <Tooltip title={`下载到默认目录（${preferences.transfer.downloadDefaultDir}）`}>
               <span className="inline-flex">
                 <button
@@ -1202,6 +1358,18 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
                   disabled={selectedEntries.length === 0 || busy}
                 >
                   <i className="ri-download-2-line" aria-hidden="true" />
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip title={`打包下载到默认目录（${preferences.transfer.downloadDefaultDir}）`}>
+              <span className="inline-flex">
+                <button
+                  className="fe-icon-btn"
+                  aria-label="打包下载到默认目录"
+                  onClick={() => void handlePackedDownload(selectedEntries)}
+                  disabled={selectedEntries.length === 0 || busy}
+                >
+                  <i className="ri-file-zip-line" aria-hidden="true" />
                 </button>
               </span>
             </Tooltip>
@@ -1312,7 +1480,9 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
           onClose={() => setContextMenu(null)}
           onRefresh={() => void loadFiles()}
           onDownload={(entries) => void handleDownload(entries)}
+          onPackedDownload={(entries) => void handlePackedDownload(entries)}
           onUpload={() => void handleUpload()}
+          onPackedUpload={() => void handlePackedUpload()}
           onCopyPath={handleCopyPath}
           onCopy={handleCopy}
           onCut={handleCut}

@@ -107,7 +107,7 @@ export const TransferQueuePanel = ({
                       <span className="path-value" title={task.remotePath}>{task.remotePath}</span>
                     </div>
                   </div>
-                  {task.status === "failed" ? (
+                  {task.status === "failed" && task.retryable !== false ? (
                     <div className="transfer-task-actions">
                       <Button size="small" type="primary" onClick={() => onRetry(task.id)}>
                         重试

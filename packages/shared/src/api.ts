@@ -87,6 +87,7 @@ import type {
   SessionWriteInput,
   SftpDeleteInput,
   SftpDownloadInput,
+  SftpDownloadPackedInput,
   SftpEditOpenInput,
   SftpEditOpenBuiltinInput,
   SftpEditSaveBuiltinInput,
@@ -98,6 +99,7 @@ import type {
   SftpRenameInput,
   SftpTransferStatusEvent,
   SftpUploadInput,
+  SftpUploadPackedInput,
   SshKeyListInput,
   SshKeyRemoveInput,
   SshKeyUpsertInput,
@@ -180,6 +182,8 @@ export interface NextShellApi {
     list: (payload: SftpListInput) => Promise<RemoteFileEntry[]>;
     upload: (payload: SftpUploadInput) => Promise<{ ok: true }>;
     download: (payload: SftpDownloadInput) => Promise<{ ok: true }>;
+    uploadPacked: (payload: SftpUploadPackedInput) => Promise<{ ok: true }>;
+    downloadPacked: (payload: SftpDownloadPackedInput) => Promise<{ ok: true; localArchivePath: string }>;
     mkdir: (payload: SftpMkdirInput) => Promise<{ ok: true }>;
     rename: (payload: SftpRenameInput) => Promise<{ ok: true }>;
     remove: (payload: SftpDeleteInput) => Promise<{ ok: true }>;

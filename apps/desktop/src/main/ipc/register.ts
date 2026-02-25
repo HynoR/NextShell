@@ -39,6 +39,7 @@ import {
   sessionGetCwdSchema,
   sftpDeleteSchema,
   sftpDownloadSchema,
+  sftpDownloadPackedSchema,
   sftpMkdirSchema,
   sessionOpenSchema,
   sessionResizeSchema,
@@ -47,6 +48,7 @@ import {
   storageMigrationsSchema,
   sftpRenameSchema,
   sftpUploadSchema,
+  sftpUploadPackedSchema,
   savedCommandListSchema,
   savedCommandRemoveSchema,
   savedCommandUpsertSchema,
@@ -265,12 +267,37 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     );
   });
 
+  ipcMain.handle(IPCChannel.SftpUploadPacked, (event, payload) => {
+    const input = parsePayload(sftpUploadPackedSchema, payload, "打包上传");
+    return services.uploadRemotePacked(
+      input.connectionId,
+      input.localPaths,
+      input.remoteDir,
+      input.archiveName,
+      event.sender,
+      input.taskId
+    );
+  });
+
   ipcMain.handle(IPCChannel.SftpDownload, (event, payload) => {
     const input = parsePayload(sftpDownloadSchema, payload, "文件下载");
     return services.downloadRemoteFile(
       input.connectionId,
       input.remotePath,
       input.localPath,
+      event.sender,
+      input.taskId
+    );
+  });
+
+  ipcMain.handle(IPCChannel.SftpDownloadPacked, (event, payload) => {
+    const input = parsePayload(sftpDownloadPackedSchema, payload, "打包下载");
+    return services.downloadRemotePacked(
+      input.connectionId,
+      input.remoteDir,
+      input.entryNames,
+      input.localDir,
+      input.archiveName,
       event.sender,
       input.taskId
     );

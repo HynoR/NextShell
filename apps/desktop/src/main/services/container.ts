@@ -118,6 +118,16 @@ import {
   obfuscatePassword
 } from "./connection-export-crypto";
 import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
+import {
+  assertLocalTarAvailable,
+  buildRemoteRemoveFileCommand,
+  buildRemoteTarCheckCommand,
+  buildRemoteTarCreateCommand,
+  buildRemoteTarExtractCommand,
+  createLocalTarGzArchive,
+  normalizeArchiveName,
+  normalizeRemoteEntryNames
+} from "./sftp-archive-utils";
 import { logger } from "../logger";
 import { applyAppearanceToAllWindows } from "../window-theme";
 import {
@@ -265,6 +275,23 @@ export interface ServiceContainer {
     sender?: WebContents,
     taskId?: string
   ) => Promise<{ ok: true }>;
+  uploadRemotePacked: (
+    connectionId: string,
+    localPaths: string[],
+    remoteDir: string,
+    archiveName?: string,
+    sender?: WebContents,
+    taskId?: string
+  ) => Promise<{ ok: true }>;
+  downloadRemotePacked: (
+    connectionId: string,
+    remoteDir: string,
+    entryNames: string[],
+    localDir: string,
+    archiveName?: string,
+    sender?: WebContents,
+    taskId?: string
+  ) => Promise<{ ok: true; localArchivePath: string }>;
   createRemoteDirectory: (connectionId: string, pathName: string) => Promise<{ ok: true }>;
   renameRemoteFile: (connectionId: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
   deleteRemoteFile: (
@@ -3392,6 +3419,333 @@ export const createServiceContainer = (
     }
   };
 
+  const ensureRemoteTarAvailable = async (
+    connection: SshConnection,
+    actionLabel: string
+  ): Promise<void> => {
+    const result = await connection.exec(buildRemoteTarCheckCommand());
+    if (result.exitCode !== 0) {
+      throw new Error(`${actionLabel}失败：远端缺少 tar/gzip 命令`);
+    }
+  };
+
+  const pickRemoteCommandError = (stdout: string, stderr: string, exitCode: number): string => {
+    return stderr.trim() || stdout.trim() || `exit ${exitCode}`;
+  };
+
+  const uploadRemotePacked = async (
+    connectionId: string,
+    localPaths: string[],
+    remoteDir: string,
+    archiveName?: string,
+    sender?: WebContents,
+    taskId?: string
+  ): Promise<{ ok: true }> => {
+    getConnectionOrThrow(connectionId);
+    const resolvedLocalPaths = localPaths.map((localPath) => resolveLocalPath(localPath));
+    const defaultArchiveBase = resolvedLocalPaths.length === 1
+      ? path.basename(resolvedLocalPaths[0]!)
+      : `upload-bundle-${Date.now()}`;
+    const finalArchiveName = normalizeArchiveName(archiveName, defaultArchiveBase);
+    const normalizedRemoteDir = remoteDir.trim() || "/";
+    const remoteDisplayPath = joinRemotePath(normalizedRemoteDir, finalArchiveName);
+    const localDisplayPath = resolvedLocalPaths.length === 1
+      ? resolvedLocalPaths[0]!
+      : `${resolvedLocalPaths[0] ?? ""} (+${resolvedLocalPaths.length - 1} files)`;
+    const localArchivePath = path.join(os.tmpdir(), `nextshell-upload-${randomUUID()}-${finalArchiveName}`);
+    const remoteArchivePath = `/tmp/nextshell-upload-${randomUUID()}.tar.gz`;
+    let localArchiveCreated = false;
+    let remoteArchiveCleaned = false;
+    let connection: SshConnection | undefined;
+
+    const cleanupRemoteArchive = async (): Promise<void> => {
+      if (!connection || remoteArchiveCleaned) {
+        return;
+      }
+
+      try {
+        await connection.exec(buildRemoteRemoveFileCommand(remoteArchivePath));
+        remoteArchiveCleaned = true;
+      } catch (error) {
+        logger.warn("[SFTP Packed Upload] failed to cleanup remote archive", {
+          connectionId,
+          remoteArchivePath,
+          reason: normalizeError(error)
+        });
+      }
+    };
+
+    sendTransferStatus(sender, {
+      taskId,
+      direction: "upload",
+      connectionId,
+      localPath: localDisplayPath,
+      remotePath: remoteDisplayPath,
+      status: "running",
+      progress: 5,
+      message: "开始打包上传"
+    });
+
+    try {
+      await assertLocalTarAvailable();
+      connection = await ensureConnection(connectionId);
+      await ensureRemoteTarAvailable(connection, "打包上传");
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 20,
+        message: "tar 环境检查通过"
+      });
+
+      await createLocalTarGzArchive(resolvedLocalPaths, localArchivePath);
+      localArchiveCreated = true;
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 45,
+        message: "本地打包完成"
+      });
+
+      await connection.upload(localArchivePath, remoteArchivePath);
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 75,
+        message: "压缩包上传完成"
+      });
+
+      const extractResult = await connection.exec(
+        buildRemoteTarExtractCommand(remoteArchivePath, normalizedRemoteDir)
+      );
+      if (extractResult.exitCode !== 0) {
+        throw new Error(`远端解包失败：${pickRemoteCommandError(
+          extractResult.stdout,
+          extractResult.stderr,
+          extractResult.exitCode
+        )}`);
+      }
+
+      await cleanupRemoteArchive();
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 90,
+        message: "远端解包完成"
+      });
+
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "success",
+        progress: 100
+      });
+      connections.appendAuditLog({
+        action: "sftp.upload.packed",
+        level: "info",
+        connectionId,
+        message: "Uploaded packed files to remote host",
+        metadata: {
+          localPaths: resolvedLocalPaths,
+          remoteDir: normalizedRemoteDir,
+          archiveName: finalArchiveName
+        }
+      });
+      return { ok: true };
+    } catch (error) {
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "upload",
+        connectionId,
+        localPath: localDisplayPath,
+        remotePath: remoteDisplayPath,
+        status: "failed",
+        progress: 100,
+        error: normalizeError(error)
+      });
+      throw error;
+    } finally {
+      await cleanupRemoteArchive();
+      if (localArchiveCreated || fs.existsSync(localArchivePath)) {
+        try {
+          fs.rmSync(localArchivePath, { force: true });
+        } catch (error) {
+          logger.warn("[SFTP Packed Upload] failed to cleanup local archive", {
+            localArchivePath,
+            reason: normalizeError(error)
+          });
+        }
+      }
+    }
+  };
+
+  const downloadRemotePacked = async (
+    connectionId: string,
+    remoteDir: string,
+    entryNames: string[],
+    localDir: string,
+    archiveName?: string,
+    sender?: WebContents,
+    taskId?: string
+  ): Promise<{ ok: true; localArchivePath: string }> => {
+    getConnectionOrThrow(connectionId);
+    const normalizedRemoteDir = remoteDir.trim() || "/";
+    const normalizedEntryNames = normalizeRemoteEntryNames(entryNames);
+    const defaultArchiveBase = normalizedEntryNames.length === 1
+      ? normalizedEntryNames[0]!
+      : `download-bundle-${Date.now()}`;
+    const finalArchiveName = normalizeArchiveName(archiveName, defaultArchiveBase);
+    const resolvedLocalDir = resolveLocalPath(localDir);
+    const localArchivePath = path.join(resolvedLocalDir, finalArchiveName);
+    const remoteArchivePath = `/tmp/nextshell-download-${randomUUID()}.tar.gz`;
+    const remoteDisplayPath = joinRemotePath(normalizedRemoteDir, finalArchiveName);
+    let connection: SshConnection | undefined;
+    let remoteArchiveCleaned = false;
+
+    const cleanupRemoteArchive = async (): Promise<void> => {
+      if (!connection || remoteArchiveCleaned) {
+        return;
+      }
+
+      try {
+        await connection.exec(buildRemoteRemoveFileCommand(remoteArchivePath));
+        remoteArchiveCleaned = true;
+      } catch (error) {
+        logger.warn("[SFTP Packed Download] failed to cleanup remote archive", {
+          connectionId,
+          remoteArchivePath,
+          reason: normalizeError(error)
+        });
+      }
+    };
+
+    sendTransferStatus(sender, {
+      taskId,
+      direction: "download",
+      connectionId,
+      localPath: localArchivePath,
+      remotePath: remoteDisplayPath,
+      status: "running",
+      progress: 5,
+      message: "开始打包下载"
+    });
+
+    try {
+      connection = await ensureConnection(connectionId);
+      await ensureRemoteTarAvailable(connection, "打包下载");
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 20,
+        message: "远端 tar 环境检查通过"
+      });
+
+      const packResult = await connection.exec(
+        buildRemoteTarCreateCommand(normalizedRemoteDir, remoteArchivePath, normalizedEntryNames)
+      );
+      if (packResult.exitCode !== 0) {
+        throw new Error(`远端打包失败：${pickRemoteCommandError(
+          packResult.stdout,
+          packResult.stderr,
+          packResult.exitCode
+        )}`);
+      }
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 45,
+        message: "远端打包完成"
+      });
+
+      fs.mkdirSync(path.dirname(localArchivePath), { recursive: true });
+      await connection.download(remoteArchivePath, localArchivePath);
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 75,
+        message: "压缩包下载完成"
+      });
+
+      await cleanupRemoteArchive();
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "running",
+        progress: 90,
+        message: "远端临时文件已清理"
+      });
+
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "success",
+        progress: 100
+      });
+      connections.appendAuditLog({
+        action: "sftp.download.packed",
+        level: "info",
+        connectionId,
+        message: "Downloaded packed files from remote host",
+        metadata: {
+          remoteDir: normalizedRemoteDir,
+          entryNames: normalizedEntryNames,
+          localArchivePath
+        }
+      });
+      return { ok: true, localArchivePath };
+    } catch (error) {
+      sendTransferStatus(sender, {
+        taskId,
+        direction: "download",
+        connectionId,
+        localPath: localArchivePath,
+        remotePath: remoteDisplayPath,
+        status: "failed",
+        progress: 100,
+        error: normalizeError(error)
+      });
+      throw error;
+    } finally {
+      await cleanupRemoteArchive();
+    }
+  };
+
   const createRemoteDirectory = async (
     connectionId: string,
     pathName: string
@@ -3975,6 +4329,8 @@ export const createServiceContainer = (
     listRemoteFiles,
     uploadRemoteFile,
     downloadRemoteFile,
+    uploadRemotePacked,
+    downloadRemotePacked,
     createRemoteDirectory,
     renameRemoteFile,
     deleteRemoteFile,

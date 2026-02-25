@@ -306,6 +306,7 @@ export const App = () => {
   const handleRetryTransferTask = useCallback(async (taskId: string) => {
     const failedTask = getTransferTask(taskId);
     if (!failedTask || failedTask.status !== "failed") return;
+    if (failedTask.retryable === false) return;
 
     const retryTask = enqueueTransferTask({
       direction: failedTask.direction,

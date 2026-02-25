@@ -222,6 +222,30 @@ export const sftpDownloadSchema = z.object({
   taskId: z.string().uuid().optional()
 });
 
+const remoteEntryNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((name) => !name.includes("/"), { message: "文件名不能包含 /" })
+  .refine((name) => name !== "." && name !== "..", { message: "文件名无效" });
+
+export const sftpDownloadPackedSchema = z.object({
+  connectionId: z.string().uuid(),
+  remoteDir: z.string().min(1),
+  entryNames: z.array(remoteEntryNameSchema).min(1),
+  localDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
+export const sftpUploadPackedSchema = z.object({
+  connectionId: z.string().uuid(),
+  localPaths: z.array(z.string().min(1)).min(1),
+  remoteDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
 export const sftpMkdirSchema = z.object({
   connectionId: z.string().uuid(),
   path: z.string().min(1)
@@ -617,6 +641,8 @@ export type StorageMigrationsInput = z.infer<typeof storageMigrationsSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;
+export type SftpUploadPackedInput = z.infer<typeof sftpUploadPackedSchema>;
+export type SftpDownloadPackedInput = z.infer<typeof sftpDownloadPackedSchema>;
 export type SftpMkdirInput = z.infer<typeof sftpMkdirSchema>;
 export type SftpRenameInput = z.infer<typeof sftpRenameSchema>;
 export type SftpDeleteInput = z.infer<typeof sftpDeleteSchema>;
