@@ -34,6 +34,8 @@ const buildUpsertInput = (
   hostFingerprint: connection.hostFingerprint,
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
+  keepAliveEnabled: connection.keepAliveEnabled,
+  keepAliveIntervalSec: connection.keepAliveIntervalSec,
   portForwards: connection.portForwards,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,

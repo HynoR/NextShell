@@ -43,6 +43,8 @@ interface ConnectionRow {
   host_fingerprint: string | null;
   strict_host_key_checking: number;
   proxy_id: string | null;
+  keepalive_enabled: number | null;
+  keepalive_interval_sec: number | null;
   port_forwards: string | null;
   terminal_encoding: "utf-8" | "gb18030" | "gbk" | "big5" | null;
   backspace_mode: "ascii-backspace" | "ascii-delete" | null;
@@ -231,6 +233,16 @@ const parseGroupPath = (raw: string | null | undefined): string => {
 };
 
 const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
+  const rawKeepAliveEnabled = (row as ConnectionRow & { keepalive_enabled?: number | null }).keepalive_enabled;
+  const keepAliveEnabled =
+    rawKeepAliveEnabled === 1 ? true : rawKeepAliveEnabled === 0 ? false : undefined;
+  const rawKeepAliveInterval = (row as ConnectionRow & { keepalive_interval_sec?: number | null }).keepalive_interval_sec;
+  const keepAliveIntervalSec =
+    typeof rawKeepAliveInterval === "number" &&
+    Number.isInteger(rawKeepAliveInterval) &&
+    rawKeepAliveInterval > 0
+      ? rawKeepAliveInterval
+      : undefined;
   return {
     id: row.id,
     name: row.name,
@@ -243,6 +255,8 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     hostFingerprint: row.host_fingerprint ?? undefined,
     strictHostKeyChecking: row.strict_host_key_checking === 1,
     proxyId: row.proxy_id ?? undefined,
+    keepAliveEnabled,
+    keepAliveIntervalSec,
     portForwards: parsePortForwards(row.port_forwards),
     terminalEncoding:
       row.terminal_encoding === "gb18030" ||
@@ -330,6 +344,7 @@ const cloneDefaultPreferences = (): AppPreferences => {
     remoteEdit: { ...DEFAULT_APP_PREFERENCES_VALUE.remoteEdit },
     commandCenter: { ...DEFAULT_APP_PREFERENCES_VALUE.commandCenter },
     terminal: { ...DEFAULT_APP_PREFERENCES_VALUE.terminal },
+    ssh: { ...DEFAULT_APP_PREFERENCES_VALUE.ssh },
     backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
@@ -424,6 +439,19 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.terminal.lineHeight <= 2
             ? parsed.terminal.lineHeight
             : fallback.terminal.lineHeight
+      },
+      ssh: {
+        keepAliveEnabled:
+          typeof parsed.ssh?.keepAliveEnabled === "boolean"
+            ? parsed.ssh.keepAliveEnabled
+            : fallback.ssh.keepAliveEnabled,
+        keepAliveIntervalSec:
+          typeof parsed.ssh?.keepAliveIntervalSec === "number" &&
+          Number.isInteger(parsed.ssh.keepAliveIntervalSec) &&
+          parsed.ssh.keepAliveIntervalSec >= 5 &&
+          parsed.ssh.keepAliveIntervalSec <= 600
+            ? parsed.ssh.keepAliveIntervalSec
+            : fallback.ssh.keepAliveIntervalSec
       },
       backup: {
         remotePath:
@@ -560,6 +588,13 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
 const hasColumn = (db: Database.Database, table: string, column: string): boolean => {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   return rows.some((row) => row.name === column);
+};
+
+const hasTable = (db: Database.Database, table: string): boolean => {
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(table) as { name?: string } | undefined;
+  return row?.name === table;
 };
 
 const ensureColumn = (
@@ -834,6 +869,14 @@ const migrations: MigrationDefinition[] = [
     apply: (db) => {
       ensureColumn(db, "connections", "port_forwards", "port_forwards TEXT");
     }
+  },
+  {
+    version: 15,
+    name: "add_connection_keepalive_columns",
+    apply: (db) => {
+      ensureColumn(db, "connections", "keepalive_enabled", "keepalive_enabled INTEGER");
+      ensureColumn(db, "connections", "keepalive_interval_sec", "keepalive_interval_sec INTEGER");
+    }
   }
 ];
 
@@ -946,6 +989,11 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
       tx();
     }
+
+    if (hasTable(this.db, "connections")) {
+      ensureColumn(this.db, "connections", "keepalive_enabled", "keepalive_enabled INTEGER");
+      ensureColumn(this.db, "connections", "keepalive_interval_sec", "keepalive_interval_sec INTEGER");
+    }
   }
 
   seedIfEmpty(connections: ConnectionProfile[]): void {
@@ -987,6 +1035,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            keepalive_enabled,
+            keepalive_interval_sec,
             port_forwards,
             terminal_encoding,
             backspace_mode,
@@ -1034,6 +1084,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            keepalive_enabled,
+            keepalive_interval_sec,
             port_forwards,
             terminal_encoding,
             backspace_mode,
@@ -1058,6 +1110,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             @host_fingerprint,
             @strict_host_key_checking,
             @proxy_id,
+            @keepalive_enabled,
+            @keepalive_interval_sec,
             @port_forwards,
             @terminal_encoding,
             @backspace_mode,
@@ -1082,6 +1136,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint = excluded.host_fingerprint,
             strict_host_key_checking = excluded.strict_host_key_checking,
             proxy_id = excluded.proxy_id,
+            keepalive_enabled = excluded.keepalive_enabled,
+            keepalive_interval_sec = excluded.keepalive_interval_sec,
             port_forwards = excluded.port_forwards,
             terminal_encoding = excluded.terminal_encoding,
             backspace_mode = excluded.backspace_mode,
@@ -1108,6 +1164,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         host_fingerprint: connection.hostFingerprint ?? null,
         strict_host_key_checking: connection.strictHostKeyChecking ? 1 : 0,
         proxy_id: connection.proxyId ?? null,
+        keepalive_enabled:
+          connection.keepAliveEnabled === undefined ? null : connection.keepAliveEnabled ? 1 : 0,
+        keepalive_interval_sec: connection.keepAliveIntervalSec ?? null,
         port_forwards: JSON.stringify(connection.portForwards ?? []),
         terminal_encoding: connection.terminalEncoding,
         backspace_mode: connection.backspaceMode,
@@ -1143,6 +1202,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             host_fingerprint,
             strict_host_key_checking,
             proxy_id,
+            keepalive_enabled,
+            keepalive_interval_sec,
             port_forwards,
             terminal_encoding,
             backspace_mode,

@@ -59,6 +59,10 @@ export interface ConnectionProfile {
   strictHostKeyChecking: boolean;
   /** 引用的代理实体 ID */
   proxyId?: string;
+  /** 是否覆盖全局 keepalive 设置（空表示跟随全局） */
+  keepAliveEnabled?: boolean;
+  /** Keepalive 间隔（秒），空表示跟随全局 */
+  keepAliveIntervalSec?: number;
   /** SSH 端口转发规则 */
   portForwards: SshPortForwardRule[];
   terminalEncoding: TerminalEncoding;
@@ -319,6 +323,12 @@ export interface AppPreferences {
     fontSize: number;
     lineHeight: number;
   };
+  ssh: {
+    /** 是否对所有连接启用 keepalive（发送空包） */
+    keepAliveEnabled: boolean;
+    /** Keepalive 间隔（秒） */
+    keepAliveIntervalSec: number;
+  };
   backup: {
     remotePath: string;
     /** 留空表示直接使用 PATH 中的 rclone（macOS/Linux），Windows 用户可填绝对路径 */
@@ -384,6 +394,10 @@ export interface AppPreferencesPatch {
     foregroundColor?: string;
     fontSize?: number;
     lineHeight?: number;
+  };
+  ssh?: {
+    keepAliveEnabled?: boolean;
+    keepAliveIntervalSec?: number;
   };
   backup?: {
     remotePath?: string;
@@ -461,6 +475,8 @@ export interface ExportedConnection {
   username: string;
   authType: AuthType;
   password?: string;
+  keepAliveEnabled?: boolean;
+  keepAliveIntervalSec?: number;
   portForwards?: SshPortForwardRule[];
   groupPath: string;
   tags: string[];
@@ -520,6 +536,10 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     foregroundColor: "#d8eaff",
     fontSize: 14,
     lineHeight: 1.2
+  },
+  ssh: {
+    keepAliveEnabled: true,
+    keepAliveIntervalSec: 15
   },
   backup: {
     remotePath: "",
