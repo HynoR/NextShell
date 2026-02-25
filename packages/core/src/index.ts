@@ -1,5 +1,6 @@
 export type AuthType = "password" | "privateKey" | "agent" | "interactive";
 export type SshPortForwardType = "local" | "remote";
+export type SshKeepaliveMode = "inherit" | "enabled" | "disabled";
 
 export interface SshPortForwardRule {
   id: string;
@@ -64,6 +65,10 @@ export interface ConnectionProfile {
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
+  /** 发送空包保活：inherit=跟随全局，enabled=强制启用，disabled=强制禁用 */
+  keepaliveMode?: SshKeepaliveMode;
+  /** 空包保活间隔（秒），留空表示跟随全局 */
+  keepaliveIntervalSeconds?: number;
   /** 分组路径，如 /server/hk，以 / 分隔层级 */
   groupPath: string;
   tags: string[];
@@ -357,6 +362,12 @@ export interface AppPreferences {
     /** PoW 服务商（国内用户建议选 sakura） */
     powProvider: "api.nxtrace.org" | "sakura";
   };
+  ssh: {
+    /** 全局启用空包保活 */
+    keepaliveEnabled: boolean;
+    /** 全局空包保活间隔（秒） */
+    keepaliveIntervalSeconds: number;
+  };
   audit: {
     /** 审计日志保留天数，0 表示永不清理 */
     retentionDays: number;
@@ -408,6 +419,10 @@ export interface AppPreferencesPatch {
     language?: "cn" | "en";
     powProvider?: "api.nxtrace.org" | "sakura";
   };
+  ssh?: {
+    keepaliveEnabled?: boolean;
+    keepaliveIntervalSeconds?: number;
+  };
   audit?: {
     retentionDays?: number;
   };
@@ -458,6 +473,8 @@ export interface ExportedConnection {
   authType: AuthType;
   password?: string;
   portForwards?: SshPortForwardRule[];
+  keepaliveMode?: SshKeepaliveMode;
+  keepaliveIntervalSeconds?: number;
   groupPath: string;
   tags: string[];
   notes?: string;
@@ -541,6 +558,10 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     noRdns: false,
     language: "cn",
     powProvider: "api.nxtrace.org"
+  },
+  ssh: {
+    keepaliveEnabled: true,
+    keepaliveIntervalSeconds: 15
   },
   audit: {
     retentionDays: 7

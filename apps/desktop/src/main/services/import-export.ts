@@ -58,6 +58,8 @@ export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImpo
       authType: conn.authType,
       password,
       portForwards: conn.portForwards ?? [],
+      keepaliveMode: conn.keepaliveMode,
+      keepaliveIntervalSeconds: conn.keepaliveIntervalSeconds,
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -115,6 +117,8 @@ const parseOneFinalShellEntry = (entry: FinalShellEntry): ConnectionImportEntry 
     terminalEncoding: mapFinalShellEncoding(entry.terminal_encoding),
     backspaceMode: mapFinalShellBackspace(entry.backspace_key_sequence),
     deleteMode: "vt220-delete" as DeleteMode,
+    keepaliveMode: "inherit",
+    keepaliveIntervalSeconds: undefined,
     monitorSession: false,
     sourceFormat: "finalshell"
   };

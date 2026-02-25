@@ -80,6 +80,8 @@ const toQuickUpsertInput = (
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
   portForwards: connection.portForwards,
+  keepaliveMode: connection.keepaliveMode,
+  keepaliveIntervalSeconds: connection.keepaliveIntervalSeconds,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,
@@ -331,6 +333,8 @@ const FIELD_TAB_MAP: Record<string, FormTab> = {
   proxyId: "network",
   monitorSession: "advanced",
   terminalEncoding: "advanced",
+  keepaliveMode: "advanced",
+  keepaliveIntervalSeconds: "advanced",
   backspaceMode: "advanced",
   deleteMode: "advanced"
 };
@@ -342,6 +346,7 @@ const DEFAULT_VALUES = {
   terminalEncoding: "utf-8" as const,
   backspaceMode: "ascii-backspace" as const,
   deleteMode: "vt220-delete" as const,
+  keepaliveMode: "inherit" as const,
   groupPath: "/server",
   tags: [],
   favorite: false,
@@ -495,6 +500,8 @@ export const ConnectionManagerModal = ({
       terminalEncoding: connection.terminalEncoding,
       backspaceMode: connection.backspaceMode,
       deleteMode: connection.deleteMode,
+      keepaliveMode: connection.keepaliveMode ?? "inherit",
+      keepaliveIntervalSeconds: connection.keepaliveIntervalSeconds,
       groupPath: connection.groupPath,
       tags: connection.tags,
       notes: connection.notes,
@@ -590,6 +597,12 @@ export const ConnectionManagerModal = ({
     const terminalEncoding = values.terminalEncoding ?? "utf-8";
     const backspaceMode = values.backspaceMode ?? "ascii-backspace";
     const deleteMode = values.deleteMode ?? "vt220-delete";
+    const keepaliveMode = values.keepaliveMode ?? "inherit";
+    const rawKeepaliveInterval = values.keepaliveIntervalSeconds;
+    const keepaliveIntervalSeconds =
+      typeof rawKeepaliveInterval === "number" && Number.isInteger(rawKeepaliveInterval)
+        ? rawKeepaliveInterval
+        : undefined;
 
     if (values.authType === "privateKey" && !values.sshKeyId) {
       message.error("私钥认证需要选择一个 SSH 密钥。");
@@ -606,6 +619,15 @@ export const ConnectionManagerModal = ({
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
       message.error("端口必须是 1-65535 的整数。");
       setFormTab("basic");
+      return undefined;
+    }
+
+    if (
+      keepaliveIntervalSeconds !== undefined &&
+      (keepaliveIntervalSeconds < 5 || keepaliveIntervalSeconds > 600)
+    ) {
+      message.error("空包保活间隔需在 5-600 秒内。");
+      setFormTab("advanced");
       return undefined;
     }
 
@@ -633,6 +655,8 @@ export const ConnectionManagerModal = ({
         terminalEncoding,
         backspaceMode,
         deleteMode,
+        keepaliveMode,
+        keepaliveIntervalSeconds,
         tags,
         groupPath,
         notes,
@@ -1758,6 +1782,32 @@ export const ConnectionManagerModal = ({
                           { label: "GBK", value: "gbk" },
                           { label: "Big5", value: "big5" }
                         ]}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      label="空包保活"
+                      name="keepaliveMode"
+                    >
+                      <Select
+                        options={[
+                          { label: "跟随全局设置", value: "inherit" },
+                          { label: "启用", value: "enabled" },
+                          { label: "禁用", value: "disabled" }
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <Form.Item
+                      label="空包保活间隔（秒）"
+                      name="keepaliveIntervalSeconds"
+                    >
+                      <InputNumber
+                        min={5}
+                        max={600}
+                        precision={0}
+                        style={{ width: "100%" }}
+                        placeholder="留空则跟随全局"
                       />
                     </Form.Item>
 

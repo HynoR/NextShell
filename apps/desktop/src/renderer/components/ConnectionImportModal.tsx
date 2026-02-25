@@ -102,6 +102,8 @@ export const ConnectionImportModal = ({
           terminalEncoding: e.terminalEncoding,
           backspaceMode: e.backspaceMode,
           deleteMode: e.deleteMode,
+          keepaliveMode: e.keepaliveMode,
+          keepaliveIntervalSeconds: e.keepaliveIntervalSeconds,
           monitorSession: e.monitorSession
         })),
         conflictPolicy

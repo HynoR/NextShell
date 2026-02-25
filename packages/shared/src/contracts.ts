@@ -33,6 +33,7 @@ const trimAndFilterStringArray = (value: unknown): unknown => {
 export const authTypeSchema = z.enum(["password", "privateKey", "agent", "interactive"]);
 export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
 export const portForwardTypeSchema = z.enum(["local", "remote"]);
+export const keepaliveModeSchema = z.enum(["inherit", "enabled", "disabled"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
@@ -70,6 +71,8 @@ export const connectionUpsertSchema = z.object({
   strictHostKeyChecking: z.boolean().default(false),
   proxyId: z.string().uuid().optional(),
   portForwards: z.array(portForwardRuleSchema).optional().default([]),
+  keepaliveMode: keepaliveModeSchema.default("inherit"),
+  keepaliveIntervalSeconds: z.coerce.number().int().min(5).max(600).optional(),
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
@@ -366,6 +369,11 @@ export const appPreferencesSchema = z.object({
     language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).default(DEFAULT_APP_PREFERENCES.traceroute.powProvider)
   }).default(DEFAULT_APP_PREFERENCES.traceroute),
+  ssh: z.object({
+    keepaliveEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ssh.keepaliveEnabled),
+    keepaliveIntervalSeconds: z.coerce.number().int().min(5).max(600)
+      .default(DEFAULT_APP_PREFERENCES.ssh.keepaliveIntervalSeconds)
+  }).default(DEFAULT_APP_PREFERENCES.ssh),
   audit: z.object({
     retentionDays: z.coerce.number().int().min(0).max(365).default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
   }).default(DEFAULT_APP_PREFERENCES.audit)
@@ -415,6 +423,10 @@ export const appPreferencesPatchSchema = z.object({
     noRdns: z.boolean().optional(),
     language: z.enum(["cn", "en"]).optional(),
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional()
+  }).optional(),
+  ssh: z.object({
+    keepaliveEnabled: z.boolean().optional(),
+    keepaliveIntervalSeconds: z.coerce.number().int().min(5).max(600).optional()
   }).optional(),
   audit: z.object({
     retentionDays: z.coerce.number().int().min(0).max(365).optional()
@@ -586,6 +598,8 @@ export const connectionImportExecuteSchema = z.object({
     authType: authTypeSchema,
     password: z.string().optional(),
     portForwards: z.array(portForwardRuleSchema).optional().default([]),
+    keepaliveMode: keepaliveModeSchema.optional().default("inherit"),
+    keepaliveIntervalSeconds: z.coerce.number().int().min(5).max(600).optional(),
     groupPath: z.string().min(1),
     tags: z.array(z.string()).default([]),
     notes: z.string().optional(),

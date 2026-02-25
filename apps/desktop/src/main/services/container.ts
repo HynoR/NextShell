@@ -677,6 +677,13 @@ const mergePreferences = (
     return rounded;
   };
 
+  const normalizeKeepaliveIntervalSeconds = (value: number | undefined, fallback: number): number => {
+    if (!Number.isInteger(value) || (value ?? 0) < 5 || (value ?? 0) > 600) {
+      return fallback;
+    }
+    return value as number;
+  };
+
   return {
     transfer: {
       uploadDefaultDir:
@@ -778,6 +785,14 @@ const mergePreferences = (
       powProvider: patch.traceroute?.powProvider !== undefined
         ? patch.traceroute.powProvider
         : current.traceroute.powProvider
+    },
+    ssh: {
+      keepaliveEnabled:
+        patch.ssh?.keepaliveEnabled ?? current.ssh.keepaliveEnabled,
+      keepaliveIntervalSeconds: normalizeKeepaliveIntervalSeconds(
+        patch.ssh?.keepaliveIntervalSeconds,
+        current.ssh.keepaliveIntervalSeconds
+      )
     },
     audit: {
       retentionDays:
@@ -1023,13 +1038,33 @@ export const createServiceContainer = (
       throw new Error("SSH username is required.");
     }
 
+    const prefs = connections.getAppPreferences();
+    const keepaliveMode = profile.keepaliveMode ?? "inherit";
+    const rawKeepaliveInterval =
+      typeof profile.keepaliveIntervalSeconds === "number"
+        ? profile.keepaliveIntervalSeconds
+        : prefs.ssh.keepaliveIntervalSeconds;
+    const keepaliveIntervalSeconds =
+      Number.isInteger(rawKeepaliveInterval) && rawKeepaliveInterval > 0
+        ? rawKeepaliveInterval
+        : prefs.ssh.keepaliveIntervalSeconds;
+    const keepaliveIntervalMs = keepaliveIntervalSeconds * 1000;
+    const keepaliveEnabled =
+      keepaliveMode === "enabled"
+        ? true
+        : keepaliveMode === "disabled"
+          ? false
+          : prefs.ssh.keepaliveEnabled;
+
     const base: Omit<SshConnectOptions, "authType"> = {
       host: profile.host,
       port: profile.port,
       username,
       hostFingerprint: profile.hostFingerprint,
       strictHostKeyChecking: profile.strictHostKeyChecking,
-      proxy
+      proxy,
+      keepaliveEnabled,
+      keepaliveIntervalMs
     };
 
     const secret = profile.credentialRef
@@ -2064,6 +2099,11 @@ export const createServiceContainer = (
       strictHostKeyChecking: input.strictHostKeyChecking,
       proxyId: input.proxyId,
       portForwards,
+      keepaliveMode: input.keepaliveMode ?? current?.keepaliveMode ?? "inherit",
+      keepaliveIntervalSeconds:
+        typeof input.keepaliveIntervalSeconds === "number"
+          ? input.keepaliveIntervalSeconds
+          : current?.keepaliveIntervalSeconds,
       terminalEncoding: input.terminalEncoding,
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
@@ -2152,6 +2192,8 @@ export const createServiceContainer = (
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
+      keepaliveMode: latest.keepaliveMode ?? "inherit",
+      keepaliveIntervalSeconds: latest.keepaliveIntervalSeconds,
       groupPath: latest.groupPath,
       tags: latest.tags,
       notes: latest.notes,
@@ -2653,6 +2695,8 @@ export const createServiceContainer = (
       authType: conn.authType,
       password,
       portForwards: conn.portForwards,
+      keepaliveMode: conn.keepaliveMode,
+      keepaliveIntervalSeconds: conn.keepaliveIntervalSeconds,
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -2815,6 +2859,8 @@ export const createServiceContainer = (
               password: entry.password,
               strictHostKeyChecking: false,
               portForwards: entry.portForwards,
+              keepaliveMode: entry.keepaliveMode,
+              keepaliveIntervalSeconds: entry.keepaliveIntervalSeconds,
               groupPath: entry.groupPath,
               tags: entry.tags,
               notes: entry.notes,
@@ -2842,6 +2888,8 @@ export const createServiceContainer = (
           password: entry.password,
           strictHostKeyChecking: false,
           portForwards: entry.portForwards,
+          keepaliveMode: entry.keepaliveMode,
+          keepaliveIntervalSeconds: entry.keepaliveIntervalSeconds,
           groupPath: entry.groupPath,
           tags: entry.tags,
           notes: entry.notes,

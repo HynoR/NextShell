@@ -457,6 +457,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           nexttracePath={nexttracePath}
           setNexttracePath={setNexttracePath}
           traceroute={preferences.traceroute}
+          sshKeepaliveEnabled={preferences.ssh.keepaliveEnabled}
+          sshKeepaliveIntervalSeconds={preferences.ssh.keepaliveIntervalSeconds}
           save={save}
           message={message}
         />;
@@ -1311,16 +1313,50 @@ const TerminalSection = ({
 };
 
 const NetworkSection = ({
-  loading, nexttracePath, setNexttracePath, traceroute, save, message: msg,
+  loading,
+  nexttracePath,
+  setNexttracePath,
+  traceroute,
+  sshKeepaliveEnabled,
+  sshKeepaliveIntervalSeconds,
+  save,
+  message: msg,
 }: {
   loading: boolean;
   nexttracePath: string;
   setNexttracePath: (v: string) => void;
   traceroute: import("@nextshell/core").AppPreferences["traceroute"];
+  sshKeepaliveEnabled: boolean;
+  sshKeepaliveIntervalSeconds: number;
   save: (patch: Record<string, unknown>) => void;
   message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => (
   <>
+    <SettingsCard title="SSH 连接" description="全局空包保活设置">
+      <SettingsSwitchRow
+        label="启用空包保活"
+        hint="定期发送空包保持 SSH 会话在线"
+        checked={sshKeepaliveEnabled}
+        disabled={loading}
+        onChange={(v) => save({ ssh: { keepaliveEnabled: v } })}
+      />
+      <SettingsRow label="空包保活间隔（秒）" hint="默认 15，范围 5-600">
+        <InputNumber
+          style={{ width: "100%" }}
+          min={5}
+          max={600}
+          precision={0}
+          value={sshKeepaliveIntervalSeconds}
+          disabled={loading}
+          onChange={(v) => {
+            if (typeof v === "number" && v >= 5 && v <= 600) {
+              save({ ssh: { keepaliveIntervalSeconds: v } });
+            }
+          }}
+        />
+      </SettingsRow>
+    </SettingsCard>
+
     <SettingsCard title="路由追踪工具" description="配置 nexttrace 可执行文件路径">
       <SettingsRow label="nexttrace 可执行文件路径">
         <div className="flex gap-2">

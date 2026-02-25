@@ -123,6 +123,8 @@ export interface SshConnectOptions {
   hostFingerprint?: string;
   strictHostKeyChecking?: boolean;
   proxy?: SshProxyOptions;
+  keepaliveEnabled?: boolean;
+  keepaliveIntervalMs?: number;
 }
 
 export interface ShellOpenOptions {
@@ -289,13 +291,19 @@ export class SshConnection {
   }
 
   private async buildConfig(): Promise<ConnectConfig> {
+    const keepaliveEnabled = this.options.keepaliveEnabled ?? true;
+    const requestedInterval = this.options.keepaliveIntervalMs;
+    const keepaliveIntervalMs =
+      typeof requestedInterval === "number" && requestedInterval > 0
+        ? requestedInterval
+        : 15000;
     const config: ConnectConfig = {
       host: this.options.host,
       port: this.options.port,
       username: this.options.username,
       readyTimeout: DEFAULT_READY_TIMEOUT_MS,
-      keepaliveInterval: 15000,
-      keepaliveCountMax: 3
+      keepaliveInterval: keepaliveEnabled ? keepaliveIntervalMs : 0,
+      keepaliveCountMax: keepaliveEnabled ? 3 : 0
     };
 
     const proxySocket = await this.createProxySocket();

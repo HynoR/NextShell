@@ -40,6 +40,8 @@ interface ConnectionRow {
   strict_host_key_checking: number;
   proxy_id: string | null;
   port_forwards: string | null;
+  keepalive_mode: "inherit" | "enabled" | "disabled" | null;
+  keepalive_interval: number | null;
   terminal_encoding: "utf-8" | "gb18030" | "gbk" | "big5" | null;
   backspace_mode: "ascii-backspace" | "ascii-delete" | null;
   delete_mode: "vt220-delete" | "ascii-delete" | "ascii-backspace" | null;
@@ -240,6 +242,16 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     strictHostKeyChecking: row.strict_host_key_checking === 1,
     proxyId: row.proxy_id ?? undefined,
     portForwards: parsePortForwards(row.port_forwards),
+    keepaliveMode:
+      row.keepalive_mode === "enabled" || row.keepalive_mode === "disabled"
+        ? row.keepalive_mode
+        : "inherit",
+    keepaliveIntervalSeconds:
+      typeof row.keepalive_interval === "number" &&
+      Number.isInteger(row.keepalive_interval) &&
+      row.keepalive_interval > 0
+        ? row.keepalive_interval
+        : undefined,
     terminalEncoding:
       row.terminal_encoding === "gb18030" ||
       row.terminal_encoding === "gbk" ||
@@ -329,6 +341,7 @@ const cloneDefaultPreferences = (): AppPreferences => {
     backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
+    ssh: { ...DEFAULT_APP_PREFERENCES_VALUE.ssh },
     audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit }
   };
 };
@@ -526,6 +539,19 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
             ? parsed.traceroute.powProvider
             : fallback.traceroute.powProvider
       },
+      ssh: {
+        keepaliveEnabled:
+          typeof parsed.ssh?.keepaliveEnabled === "boolean"
+            ? parsed.ssh.keepaliveEnabled
+            : fallback.ssh.keepaliveEnabled,
+        keepaliveIntervalSeconds:
+          typeof parsed.ssh?.keepaliveIntervalSeconds === "number" &&
+          Number.isInteger(parsed.ssh.keepaliveIntervalSeconds) &&
+          parsed.ssh.keepaliveIntervalSeconds >= 5 &&
+          parsed.ssh.keepaliveIntervalSeconds <= 600
+            ? parsed.ssh.keepaliveIntervalSeconds
+            : fallback.ssh.keepaliveIntervalSeconds
+      },
       audit: {
         retentionDays:
           typeof parsed.audit?.retentionDays === "number" &&
@@ -583,6 +609,8 @@ const migrations: MigrationDefinition[] = [
           proxy_username TEXT,
           proxy_credential_ref TEXT,
           port_forwards TEXT,
+          keepalive_mode TEXT NOT NULL DEFAULT 'inherit',
+          keepalive_interval INTEGER,
           terminal_encoding TEXT NOT NULL DEFAULT 'utf-8',
           backspace_mode TEXT NOT NULL DEFAULT 'ascii-backspace',
           delete_mode TEXT NOT NULL DEFAULT 'vt220-delete',
@@ -818,6 +846,30 @@ const migrations: MigrationDefinition[] = [
     apply: (db) => {
       ensureColumn(db, "connections", "port_forwards", "port_forwards TEXT");
     }
+  },
+  {
+    version: 15,
+    name: "add_connection_keepalive_mode",
+    apply: (db) => {
+      ensureColumn(
+        db,
+        "connections",
+        "keepalive_mode",
+        "keepalive_mode TEXT NOT NULL DEFAULT 'inherit'"
+      );
+    }
+  },
+  {
+    version: 16,
+    name: "add_connection_keepalive_interval",
+    apply: (db) => {
+      ensureColumn(
+        db,
+        "connections",
+        "keepalive_interval",
+        "keepalive_interval INTEGER"
+      );
+    }
   }
 ];
 
@@ -972,6 +1024,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             strict_host_key_checking,
             proxy_id,
             port_forwards,
+            keepalive_mode,
+            keepalive_interval,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -1019,6 +1073,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             strict_host_key_checking,
             proxy_id,
             port_forwards,
+            keepalive_mode,
+            keepalive_interval,
             terminal_encoding,
             backspace_mode,
             delete_mode,
@@ -1043,6 +1099,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             @strict_host_key_checking,
             @proxy_id,
             @port_forwards,
+            @keepalive_mode,
+            @keepalive_interval,
             @terminal_encoding,
             @backspace_mode,
             @delete_mode,
@@ -1067,6 +1125,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             strict_host_key_checking = excluded.strict_host_key_checking,
             proxy_id = excluded.proxy_id,
             port_forwards = excluded.port_forwards,
+            keepalive_mode = excluded.keepalive_mode,
+            keepalive_interval = excluded.keepalive_interval,
             terminal_encoding = excluded.terminal_encoding,
             backspace_mode = excluded.backspace_mode,
             delete_mode = excluded.delete_mode,
@@ -1093,6 +1153,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         strict_host_key_checking: connection.strictHostKeyChecking ? 1 : 0,
         proxy_id: connection.proxyId ?? null,
         port_forwards: JSON.stringify(connection.portForwards ?? []),
+        keepalive_mode: connection.keepaliveMode ?? "inherit",
+        keepalive_interval: connection.keepaliveIntervalSeconds ?? null,
         terminal_encoding: connection.terminalEncoding,
         backspace_mode: connection.backspaceMode,
         delete_mode: connection.deleteMode,
@@ -1128,6 +1190,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             strict_host_key_checking,
             proxy_id,
             port_forwards,
+            keepalive_mode,
+            keepalive_interval,
             terminal_encoding,
             backspace_mode,
             delete_mode,
