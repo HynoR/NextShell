@@ -195,6 +195,15 @@ export class BackupService {
         throw new Error("数据库快照无效：快照文件为空。");
       }
 
+      // 审计日志为本机运维数据，不纳入云备份
+      try {
+        const BetterSqlite3 = require(`better-sqlite${3}`);
+        const snapshotDb = new BetterSqlite3(snapshotPath);
+        snapshotDb.exec("DELETE FROM audit_logs");
+        snapshotDb.exec("VACUUM");
+        snapshotDb.close();
+      } catch { /* non-fatal */ }
+
       // 2. Read snapshot and create manifest
       const timestamp = new Date().toISOString();
       const deviceId = getDeviceId();

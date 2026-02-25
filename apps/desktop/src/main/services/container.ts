@@ -773,6 +773,15 @@ const mergePreferences = (
       powProvider: patch.traceroute?.powProvider !== undefined
         ? patch.traceroute.powProvider
         : current.traceroute.powProvider
+    },
+    audit: {
+      retentionDays:
+        patch.audit?.retentionDays !== undefined &&
+        Number.isInteger(patch.audit.retentionDays) &&
+        patch.audit.retentionDays >= 0 &&
+        patch.audit.retentionDays <= 365
+          ? patch.audit.retentionDays
+          : current.audit.retentionDays
     }
   };
 };
@@ -920,6 +929,25 @@ export const createServiceContainer = (
     repo: connections,
     getMasterPassword: () => masterPassword
   });
+
+  // ─── Audit log auto-purge ──────────────────────────────────────────────
+  const purgeExpiredAuditLogs = (): void => {
+    try {
+      const prefs = connections.getAppPreferences();
+      const days = prefs.audit.retentionDays;
+      if (days > 0) {
+        const deleted = connections.purgeExpiredAuditLogs(days);
+        if (deleted > 0) {
+          logger.info(`[Audit] purged ${deleted} expired audit log(s) (retention=${days}d)`);
+        }
+      }
+    } catch (error) {
+      logger.warn("[Audit] failed to purge expired logs", error);
+    }
+  };
+
+  purgeExpiredAuditLogs();
+  const auditPurgeTimer = setInterval(purgeExpiredAuditLogs, 6 * 3600_000);
 
   const activeSessions = new Map<string, ActiveSession>();
   const activeConnections = new Map<string, SshConnection>();
@@ -1782,6 +1810,10 @@ export const createServiceContainer = (
 
     if (patch.window?.appearance !== undefined) {
       applyAppearanceToAllWindows(saved.window.appearance);
+    }
+
+    if (patch.audit?.retentionDays !== undefined) {
+      purgeExpiredAuditLogs();
     }
 
     return saved;
@@ -3847,6 +3879,8 @@ export const createServiceContainer = (
   const dispose = async (): Promise<void> => {
     // 先同步 flush 所有缓冲写入，避免后续 await 链未跑完就退出导致丢失
     connections.flush();
+
+    clearInterval(auditPurgeTimer);
 
     // Dispose all hidden sessions for every connection that has any
     const allConnectionIds = new Set([

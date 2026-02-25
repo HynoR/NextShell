@@ -341,6 +341,10 @@ export interface AppPreferences {
     /** PoW 服务商（国内用户建议选 sakura） */
     powProvider: "api.nxtrace.org" | "sakura";
   };
+  audit: {
+    /** 审计日志保留天数，0 表示永不清理 */
+    retentionDays: number;
+  };
 }
 
 export interface AppPreferencesPatch {
@@ -387,6 +391,9 @@ export interface AppPreferencesPatch {
     noRdns?: boolean;
     language?: "cn" | "en";
     powProvider?: "api.nxtrace.org" | "sakura";
+  };
+  audit?: {
+    retentionDays?: number;
   };
 }
 
@@ -517,5 +524,8 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     noRdns: false,
     language: "cn",
     powProvider: "api.nxtrace.org"
+  },
+  audit: {
+    retentionDays: 7
   }
 };

@@ -37,6 +37,7 @@ type SettingsSection =
   | "terminal"
   | "network"
   | "backup"
+  | "security"
   | "about";
 
 const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string }> = [
@@ -47,6 +48,7 @@ const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string }> = [
   { key: "terminal", label: "终端主题", icon: "ri-palette-line" },
   { key: "network", label: "网络工具", icon: "ri-route-line" },
   { key: "backup", label: "云存档", icon: "ri-cloud-line" },
+  { key: "security", label: "安全与审计", icon: "ri-shield-keyhole-line" },
   { key: "about", label: "关于", icon: "ri-information-line" },
 ];
 
@@ -196,6 +198,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const [restoreConflictPolicy, setRestoreConflictPolicy] = useState<"skip_older" | "force">(
     preferences.backup.defaultRestoreConflictPolicy
   );
+
+  const [auditRetentionDays, setAuditRetentionDays] = useState(preferences.audit.retentionDays);
 
   const [pwdStatus, setPwdStatus] = useState<{
     isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean;
@@ -373,6 +377,24 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   // ─── Memoized section content ───────────────────────────────────────
   const sectionContent = useMemo(() => {
     switch (activeSection) {
+      case "security":
+        return <SecuritySection
+          pwdStatus={pwdStatus}
+          pwdStatusLoading={pwdStatusLoading}
+          pwdInput={pwdInput}
+          pwdConfirm={pwdConfirm}
+          pwdBusy={pwdBusy}
+          backupRememberPassword={preferences.backup.rememberPassword}
+          loading={loading}
+          auditRetentionDays={auditRetentionDays}
+          setAuditRetentionDays={setAuditRetentionDays}
+          setPwdInput={setPwdInput}
+          setPwdConfirm={setPwdConfirm}
+          onSetPassword={() => void handleSetPassword()}
+          onUnlockPassword={() => void handleUnlockPassword()}
+          onClearRemembered={() => void handleClearRemembered()}
+          save={save}
+        />;
       case "window":
         return <WindowSection
           loading={loading}
@@ -1723,5 +1745,116 @@ const BackupSection = ({
         )}
       </Modal>
     </SettingsCard>
+  </>
+);
+
+const SecuritySection = ({
+  pwdStatus, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
+  backupRememberPassword, loading,
+  auditRetentionDays, setAuditRetentionDays,
+  setPwdInput, setPwdConfirm,
+  onSetPassword, onUnlockPassword, onClearRemembered,
+  save,
+}: {
+  pwdStatus: { isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean };
+  pwdStatusLoading: boolean;
+  pwdInput: string;
+  pwdConfirm: string;
+  pwdBusy: boolean;
+  backupRememberPassword: boolean;
+  loading: boolean;
+  auditRetentionDays: number;
+  setAuditRetentionDays: (v: number) => void;
+  setPwdInput: (v: string) => void;
+  setPwdConfirm: (v: string) => void;
+  onSetPassword: () => void;
+  onUnlockPassword: () => void;
+  onClearRemembered: () => void;
+  save: (patch: Record<string, unknown>) => void;
+}) => (
+  <>
+  <SettingsCard title="主密码" description="用于云同步备份、导出加密默认填充和连接密码查看授权">
+    <div className="flex items-center gap-2 mb-2">
+      <Typography.Text style={{ fontSize: 12 }}>状态: </Typography.Text>
+      {pwdStatusLoading ? (
+        <Skeleton.Input active size="small" style={{ width: 120 }} />
+      ) : pwdStatus.isSet ? (
+        pwdStatus.isUnlocked ? (
+          <Badge status="success" text="已设置 · 本次已解锁" />
+        ) : (
+          <Badge status="processing" text="已设置" />
+        )
+      ) : (
+        <Badge status="default" text="未设置" />
+      )}
+      {pwdStatus.keytarAvailable && (
+        <Tag color="blue" style={{ marginLeft: 4 }}>钥匙串可用</Tag>
+      )}
+    </div>
+
+    <SettingsRow label={pwdStatus.isSet ? "输入主密码" : "设置主密码"}>
+      <Input.Password
+        value={pwdInput}
+        onChange={(e) => setPwdInput(e.target.value)}
+        placeholder={pwdStatus.isSet ? "输入主密码以解锁" : "新主密码（至少 6 个字符）"}
+        disabled={pwdBusy}
+      />
+      {!pwdStatus.isSet && (
+        <>
+          <div style={{ marginTop: 8 }}>
+            <Typography.Text style={{ fontSize: 12 }}>确认密码</Typography.Text>
+          </div>
+          <Input.Password
+            value={pwdConfirm}
+            onChange={(e) => setPwdConfirm(e.target.value)}
+            placeholder="再次输入密码"
+            disabled={pwdBusy}
+            style={{ marginTop: 4 }}
+          />
+        </>
+      )}
+      <Space style={{ marginTop: 8 }}>
+        {pwdStatus.isSet ? (
+          <Button type="primary" loading={pwdBusy} disabled={pwdStatus.isUnlocked} onClick={onUnlockPassword}>
+            解锁
+          </Button>
+        ) : (
+          <Button type="primary" loading={pwdBusy} onClick={onSetPassword}>
+            设置主密码
+          </Button>
+        )}
+        {pwdStatus.keytarAvailable && pwdStatus.isSet && (
+          <Button onClick={onClearRemembered}>清除钥匙串缓存</Button>
+        )}
+      </Space>
+    </SettingsRow>
+
+    <SettingsSwitchRow
+      label="使用系统钥匙串记住主密码"
+      checked={backupRememberPassword}
+      disabled={loading || !pwdStatus.keytarAvailable}
+      onChange={(v) => save({ backup: { rememberPassword: v } })}
+    />
+  </SettingsCard>
+
+  <SettingsCard title="审计日志" description="设置操作日志的自动清理策略">
+    <SettingsRow label="日志保留天数" hint="设为 0 表示永不清理">
+      <InputNumber
+        min={0} max={365} precision={0}
+        value={auditRetentionDays}
+        disabled={loading}
+        onChange={(v) => {
+          if (typeof v === "number" && v >= 0 && v <= 365) {
+            setAuditRetentionDays(v);
+            save({ audit: { retentionDays: v } });
+          }
+        }}
+        addonAfter="天"
+      />
+    </SettingsRow>
+    <div className="stg-note">
+      超过保留天数的审计日志将在应用启动时自动清理。审计日志不包含在云同步备份中。
+    </div>
+  </SettingsCard>
   </>
 );

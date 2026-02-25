@@ -276,7 +276,8 @@ const cloneDefaultPreferences = (): AppPreferences => {
     terminal: { ...DEFAULT_APP_PREFERENCES_VALUE.terminal },
     backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
-    traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute }
+    traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
+    audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit }
   };
 };
 
@@ -472,6 +473,15 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.traceroute?.powProvider === "sakura"
             ? parsed.traceroute.powProvider
             : fallback.traceroute.powProvider
+      },
+      audit: {
+        retentionDays:
+          typeof parsed.audit?.retentionDays === "number" &&
+          Number.isInteger(parsed.audit.retentionDays) &&
+          parsed.audit.retentionDays >= 0 &&
+          parsed.audit.retentionDays <= 365
+            ? parsed.audit.retentionDays
+            : fallback.audit.retentionDays
       }
     };
   } catch {
@@ -775,6 +785,7 @@ export interface ConnectionRepository {
   seedIfEmpty: (connections: ConnectionProfile[]) => void;
   appendAuditLog: (payload: AppendAuditLogInput) => AuditLogRecord;
   listAuditLogs: (limit?: number) => AuditLogRecord[];
+  purgeExpiredAuditLogs: (retentionDays: number) => number;
   listMigrations: () => MigrationRecord[];
   listCommandHistory: () => CommandHistoryEntry[];
   pushCommandHistory: (command: string) => CommandHistoryEntry;
@@ -1137,6 +1148,15 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     ).all({ limit }) as AuditLogRow[];
 
     return rows.map(rowToAuditLog);
+  }
+
+  purgeExpiredAuditLogs(retentionDays: number): number {
+    if (retentionDays <= 0) return 0;
+    const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
+    const result = this.db.prepare(
+      "DELETE FROM audit_logs WHERE created_at < @cutoff"
+    ).run({ cutoff });
+    return result.changes;
   }
 
   listMigrations(): MigrationRecord[] {

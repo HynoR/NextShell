@@ -352,7 +352,10 @@ export const appPreferencesSchema = z.object({
     noRdns: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.noRdns),
     language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).default(DEFAULT_APP_PREFERENCES.traceroute.powProvider)
-  }).default(DEFAULT_APP_PREFERENCES.traceroute)
+  }).default(DEFAULT_APP_PREFERENCES.traceroute),
+  audit: z.object({
+    retentionDays: z.coerce.number().int().min(0).max(365).default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
+  }).default(DEFAULT_APP_PREFERENCES.audit)
 }).default(DEFAULT_APP_PREFERENCES);
 
 export const appPreferencesPatchSchema = z.object({
@@ -399,6 +402,9 @@ export const appPreferencesPatchSchema = z.object({
     noRdns: z.boolean().optional(),
     language: z.enum(["cn", "en"]).optional(),
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional()
+  }).optional(),
+  audit: z.object({
+    retentionDays: z.coerce.number().int().min(0).max(365).optional()
   }).optional()
 });
 
