@@ -246,6 +246,20 @@ export const sftpUploadPackedSchema = z.object({
   taskId: z.string().uuid().optional()
 });
 
+export const sftpListLocalSchema = z.object({
+  path: z.string().min(1)
+});
+
+export const sftpTransferPackedSchema = z.object({
+  sourceConnectionId: z.string().uuid(),
+  sourceDir: z.string().min(1),
+  entryNames: z.array(remoteEntryNameSchema).min(1),
+  targetConnectionId: z.string().uuid(),
+  targetDir: z.string().min(1),
+  archiveName: z.string().trim().min(1).optional(),
+  taskId: z.string().uuid().optional()
+});
+
 export const sftpMkdirSchema = z.object({
   connectionId: z.string().uuid(),
   path: z.string().min(1)
@@ -643,6 +657,8 @@ export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;
 export type SftpUploadPackedInput = z.infer<typeof sftpUploadPackedSchema>;
 export type SftpDownloadPackedInput = z.infer<typeof sftpDownloadPackedSchema>;
+export type SftpListLocalInput = z.infer<typeof sftpListLocalSchema>;
+export type SftpTransferPackedInput = z.infer<typeof sftpTransferPackedSchema>;
 export type SftpMkdirInput = z.infer<typeof sftpMkdirSchema>;
 export type SftpRenameInput = z.infer<typeof sftpRenameSchema>;
 export type SftpDeleteInput = z.infer<typeof sftpDeleteSchema>;

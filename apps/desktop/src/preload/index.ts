@@ -126,10 +126,12 @@ const api: NextShellApi = {
   },
   sftp: {
     list: (payload) => ipcRenderer.invoke(IPCChannel.SftpList, payload),
+    listLocal: (payload) => ipcRenderer.invoke(IPCChannel.SftpListLocal, payload),
     upload: (payload) => ipcRenderer.invoke(IPCChannel.SftpUpload, payload),
     download: (payload) => ipcRenderer.invoke(IPCChannel.SftpDownload, payload),
     uploadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpUploadPacked, payload),
     downloadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpDownloadPacked, payload),
+    transferPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpTransferPacked, payload),
     mkdir: (payload) => ipcRenderer.invoke(IPCChannel.SftpMkdir, payload),
     rename: (payload) => ipcRenderer.invoke(IPCChannel.SftpRename, payload),
     remove: (payload) => ipcRenderer.invoke(IPCChannel.SftpDelete, payload),

@@ -79,7 +79,7 @@ export const TransferQueuePanel = ({
                 <div
                   key={task.id}
                   className={`transfer-task-item${canOpenLocal ? " openable" : ""}`}
-                  title={canOpenLocal ? "双击打开本地文件" : undefined}
+                  title={canOpenLocal ? "双击打开所在目录" : undefined}
                   onDoubleClick={() => {
                     if (canOpenLocal) {
                       onOpenLocalFile?.(task);

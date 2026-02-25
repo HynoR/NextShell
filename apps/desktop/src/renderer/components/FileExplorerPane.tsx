@@ -163,6 +163,8 @@ const ContextMenu = ({
   const hasEntries = entries.length > 0;
   const single = entries.length === 1 ? entries[0] : undefined;
   const hasPaste = Boolean(clipboard);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
 
@@ -232,26 +234,57 @@ const ContextMenu = ({
 
       <div className="fe-ctx-divider" />
 
-      <button
-        className="fe-ctx-item"
-        disabled={!hasEntries}
-        onClick={() => run(() => onDownload(entries))}
+      <div
+        className="fe-ctx-item fe-ctx-submenu-trigger"
+        onMouseEnter={() => {
+          setDownloadOpen(true);
+          setUploadOpen(false);
+        }}
+        onMouseLeave={() => setDownloadOpen(false)}
       >
         <span className="fe-ctx-icon"><i className="ri-download-2-line" aria-hidden="true" /></span> 下载
-      </button>
-      <button
-        className="fe-ctx-item"
-        disabled={!hasEntries}
-        onClick={() => run(() => onPackedDownload(entries))}
+        <span className="fe-ctx-arrow">›</span>
+        {downloadOpen && (
+          <div className="fe-ctx-submenu">
+            <button
+              className="fe-ctx-item"
+              disabled={!hasEntries}
+              onClick={() => run(() => onDownload(entries))}
+            >
+              <span className="fe-ctx-icon"><i className="ri-download-line" aria-hidden="true" /></span> 逐个下载
+            </button>
+            <button
+              className="fe-ctx-item"
+              disabled={!hasEntries}
+              onClick={() => run(() => onPackedDownload(entries))}
+            >
+              <span className="fe-ctx-icon"><i className="ri-file-zip-line" aria-hidden="true" /></span> 打包下载
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div
+        className="fe-ctx-item fe-ctx-submenu-trigger"
+        onMouseEnter={() => {
+          setUploadOpen(true);
+          setDownloadOpen(false);
+        }}
+        onMouseLeave={() => setUploadOpen(false)}
       >
-        <span className="fe-ctx-icon"><i className="ri-file-zip-line" aria-hidden="true" /></span> 打包下载
-      </button>
-      <button className="fe-ctx-item" onClick={() => run(onUpload)}>
-        <span className="fe-ctx-icon"><i className="ri-upload-2-line" aria-hidden="true" /></span> 上传…
-      </button>
-      <button className="fe-ctx-item" onClick={() => run(onPackedUpload)}>
-        <span className="fe-ctx-icon"><i className="ri-inbox-archive-line" aria-hidden="true" /></span> 打包上传…
-      </button>
+        <span className="fe-ctx-icon"><i className="ri-upload-2-line" aria-hidden="true" /></span> 上传
+        <span className="fe-ctx-arrow">›</span>
+        {uploadOpen && (
+          <div className="fe-ctx-submenu">
+            <button className="fe-ctx-item" onClick={() => run(onUpload)}>
+              <span className="fe-ctx-icon"><i className="ri-upload-line" aria-hidden="true" /></span> 逐个上传
+            </button>
+            <button className="fe-ctx-item" onClick={() => run(onPackedUpload)}>
+              <span className="fe-ctx-icon"><i className="ri-inbox-archive-line" aria-hidden="true" /></span> 打包上传
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="fe-ctx-divider" />
 

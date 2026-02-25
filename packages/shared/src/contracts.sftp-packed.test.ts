@@ -1,5 +1,7 @@
 import {
+  sftpListLocalSchema,
   sftpDownloadPackedSchema,
+  sftpTransferPackedSchema,
   sftpUploadPackedSchema
 } from "./contracts";
 
@@ -57,4 +59,23 @@ const assert = (condition: boolean, message: string): void => {
     remoteDir: "/var/www"
   });
   assert(!parsed.success, "sftpUploadPackedSchema should reject empty localPaths");
+})();
+
+(() => {
+  const parsed = sftpListLocalSchema.safeParse({
+    path: "/tmp"
+  });
+  assert(parsed.success, "sftpListLocalSchema should accept valid payload");
+})();
+
+(() => {
+  const parsed = sftpTransferPackedSchema.safeParse({
+    sourceConnectionId: "11111111-1111-4111-8111-111111111111",
+    sourceDir: "/var/src",
+    entryNames: ["a.txt", "dir-a"],
+    targetConnectionId: "22222222-2222-4222-8222-222222222222",
+    targetDir: "/var/dst",
+    taskId: "33333333-3333-4333-8333-333333333333"
+  });
+  assert(parsed.success, "sftpTransferPackedSchema should accept valid payload");
 })();

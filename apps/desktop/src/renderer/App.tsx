@@ -343,10 +343,10 @@ export const App = () => {
   const handleOpenTransferLocalFile = useCallback(async (localPath: string) => {
     const result = await window.nextshell.dialog.openPath({
       path: localPath,
-      revealInFolder: false
+      revealInFolder: true
     });
     if (!result.ok) {
-      message.error(`打开文件失败：${formatErrorMessage(result.error, "请检查文件路径")}`);
+      message.error(`打开所在目录失败：${formatErrorMessage(result.error, "请检查文件路径")}`);
     }
   }, []);
 
@@ -477,6 +477,7 @@ export const App = () => {
             if (
               tab === "commands" ||
               tab === "files" ||
+              tab === "quick-transfer" ||
               tab === "connections" ||
               tab === "live-edit" ||
               tab === "system-info" ||

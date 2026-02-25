@@ -14,6 +14,7 @@ import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionTreePanel } from "./ConnectionTreePanel";
 import { EditorPane } from "./EditorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
+import { QuickTransferPane } from "./QuickTransferPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
@@ -657,6 +658,21 @@ export const WorkspaceLayout = ({
                                                             onOpenEditorTab={onOpenEditorTab}
                                                         />
                                                     ),
+                                                },
+                                                {
+                                                    key: "quick-transfer",
+                                                    label: "文件快传",
+                                                    children: bottomTab === "quick-transfer" ? (
+                                                        <QuickTransferPane
+                                                            sourceConnection={activeConnection}
+                                                            connected={
+                                                                isActiveConnectionTerminalConnected
+                                                            }
+                                                            active
+                                                            connections={connections}
+                                                            sessions={sessions}
+                                                        />
+                                                    ) : null,
                                                 },
                                                 {
                                                     key: "live-edit",

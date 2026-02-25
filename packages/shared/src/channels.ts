@@ -32,6 +32,8 @@ export const IPCChannel = {
   SftpDownload: "nextshell:sftp:download",
   SftpUploadPacked: "nextshell:sftp:upload-packed",
   SftpDownloadPacked: "nextshell:sftp:download-packed",
+  SftpListLocal: "nextshell:sftp:list-local",
+  SftpTransferPacked: "nextshell:sftp:transfer-packed",
   SftpMkdir: "nextshell:sftp:mkdir",
   SftpRename: "nextshell:sftp:rename",
   SftpDelete: "nextshell:sftp:delete",

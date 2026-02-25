@@ -40,6 +40,7 @@ import {
   sftpDeleteSchema,
   sftpDownloadSchema,
   sftpDownloadPackedSchema,
+  sftpListLocalSchema,
   sftpMkdirSchema,
   sessionOpenSchema,
   sessionResizeSchema,
@@ -47,6 +48,7 @@ import {
   sftpListSchema,
   storageMigrationsSchema,
   sftpRenameSchema,
+  sftpTransferPackedSchema,
   sftpUploadSchema,
   sftpUploadPackedSchema,
   savedCommandListSchema,
@@ -256,6 +258,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.listRemoteFiles(input.connectionId, input.path);
   });
 
+  ipcMain.handle(IPCChannel.SftpListLocal, (_event, payload) => {
+    const input = parsePayload(sftpListLocalSchema, payload, "本机文件列表");
+    return services.listLocalFiles(input.path);
+  });
+
   ipcMain.handle(IPCChannel.SftpUpload, (event, payload) => {
     const input = parsePayload(sftpUploadSchema, payload, "文件上传");
     return services.uploadRemoteFile(
@@ -297,6 +304,20 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
       input.remoteDir,
       input.entryNames,
       input.localDir,
+      input.archiveName,
+      event.sender,
+      input.taskId
+    );
+  });
+
+  ipcMain.handle(IPCChannel.SftpTransferPacked, (event, payload) => {
+    const input = parsePayload(sftpTransferPackedSchema, payload, "快传打包中转");
+    return services.transferRemotePacked(
+      input.sourceConnectionId,
+      input.sourceDir,
+      input.entryNames,
+      input.targetConnectionId,
+      input.targetDir,
       input.archiveName,
       event.sender,
       input.taskId
