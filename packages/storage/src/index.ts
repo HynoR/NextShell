@@ -253,7 +253,8 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     keepaliveIntervalSeconds:
       typeof row.keepalive_interval === "number" &&
       Number.isInteger(row.keepalive_interval) &&
-      row.keepalive_interval > 0
+      row.keepalive_interval >= 5 &&
+      row.keepalive_interval <= 600
         ? row.keepalive_interval
         : undefined,
     terminalEncoding:

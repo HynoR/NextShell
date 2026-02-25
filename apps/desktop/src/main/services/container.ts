@@ -1095,7 +1095,9 @@ export const createServiceContainer = (
         ? profile.keepaliveIntervalSeconds
         : prefs.ssh.keepaliveIntervalSeconds;
     const keepaliveIntervalSeconds =
-      Number.isInteger(rawKeepaliveInterval) && rawKeepaliveInterval > 0
+      Number.isInteger(rawKeepaliveInterval) &&
+      rawKeepaliveInterval >= 5 &&
+      rawKeepaliveInterval <= 600
         ? rawKeepaliveInterval
         : prefs.ssh.keepaliveIntervalSeconds;
     const keepaliveIntervalMs = keepaliveIntervalSeconds * 1000;
@@ -2239,6 +2241,7 @@ export const createServiceContainer = (
       hostFingerprint: latest.hostFingerprint,
       strictHostKeyChecking: latest.strictHostKeyChecking,
       proxyId: latest.proxyId,
+      portForwards: latest.portForwards ?? [],
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
