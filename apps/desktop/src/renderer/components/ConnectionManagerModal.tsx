@@ -65,10 +65,10 @@ const groupKeyToPath = (key: string): string => {
   return "/" + raw;
 };
 
-const toQuickUpsertInput = (
-  connection: ConnectionProfile,
-  patch: Partial<ConnectionUpsertInput>
-): ConnectionUpsertInput => ({
+  const toQuickUpsertInput = (
+    connection: ConnectionProfile,
+    patch: Partial<ConnectionUpsertInput>
+  ): ConnectionUpsertInput => ({
   id: connection.id,
   name: connection.name,
   host: connection.host,
@@ -77,9 +77,11 @@ const toQuickUpsertInput = (
   authType: connection.authType,
   sshKeyId: connection.sshKeyId,
   hostFingerprint: connection.hostFingerprint,
-  strictHostKeyChecking: connection.strictHostKeyChecking,
-  proxyId: connection.proxyId,
-  portForwards: connection.portForwards,
+    strictHostKeyChecking: connection.strictHostKeyChecking,
+    proxyId: connection.proxyId,
+    keepAliveEnabled: connection.keepAliveEnabled,
+    keepAliveIntervalSec: connection.keepAliveIntervalSec,
+    portForwards: connection.portForwards,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,
@@ -329,6 +331,8 @@ const FIELD_TAB_MAP: Record<string, FormTab> = {
   notes: "property",
   favorite: "property",
   proxyId: "network",
+  keepAliveEnabled: "network",
+  keepAliveIntervalSec: "network",
   monitorSession: "advanced",
   terminalEncoding: "advanced",
   backspaceMode: "advanced",
@@ -383,6 +387,7 @@ export const ConnectionManagerModal = ({
   const revealPasswordTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
+  const keepAliveSetting = Form.useWatch("keepAliveEnabled", form);
   const appliedFocusConnectionIdRef = useRef<string | undefined>(undefined);
 
   const tree = useMemo(
@@ -492,6 +497,8 @@ export const ConnectionManagerModal = ({
       hostFingerprint: connection.hostFingerprint,
       strictHostKeyChecking: connection.strictHostKeyChecking,
       proxyId: connection.proxyId,
+      keepAliveEnabled: connection.keepAliveEnabled,
+      keepAliveIntervalSec: connection.keepAliveIntervalSec,
       terminalEncoding: connection.terminalEncoding,
       backspaceMode: connection.backspaceMode,
       deleteMode: connection.deleteMode,
@@ -590,6 +597,9 @@ export const ConnectionManagerModal = ({
     const terminalEncoding = values.terminalEncoding ?? "utf-8";
     const backspaceMode = values.backspaceMode ?? "ascii-backspace";
     const deleteMode = values.deleteMode ?? "vt220-delete";
+    const rawKeepAliveInterval = values.keepAliveIntervalSec as unknown as number | null | undefined;
+    const keepAliveIntervalSec = rawKeepAliveInterval == null ? undefined : Number(rawKeepAliveInterval);
+    const keepAliveEnabled = values.keepAliveEnabled ?? undefined;
 
     if (values.authType === "privateKey" && !values.sshKeyId) {
       message.error("私钥认证需要选择一个 SSH 密钥。");
@@ -614,6 +624,15 @@ export const ConnectionManagerModal = ({
       setFormTab("basic");
       return undefined;
     }
+
+    if (
+      keepAliveIntervalSec !== undefined &&
+      (!Number.isInteger(keepAliveIntervalSec) || keepAliveIntervalSec < 5 || keepAliveIntervalSec > 600)
+    ) {
+      message.error("Keepalive 间隔需为 5-600 秒的整数。");
+      setFormTab("network");
+      return undefined;
+    }
     const username = (values.username ?? "").trim();
 
     setSaving(true);
@@ -630,6 +649,8 @@ export const ConnectionManagerModal = ({
         hostFingerprint,
         strictHostKeyChecking: values.strictHostKeyChecking ?? false,
         proxyId: values.proxyId,
+        keepAliveEnabled,
+        keepAliveIntervalSec,
         terminalEncoding,
         backspaceMode,
         deleteMode,
@@ -1729,6 +1750,34 @@ export const ConnectionManagerModal = ({
                         }
                       />
                     </Form.Item>
+
+                    <div className="mgr-section-label mgr-section-gap">连接保活</div>
+
+                    <Form.Item label="Keepalive（发送空包）" name="keepAliveEnabled">
+                      <Select
+                        placeholder="跟随全局设置"
+                        allowClear
+                        options={[
+                          { label: "启用", value: true },
+                          { label: "禁用", value: false }
+                        ]}
+                      />
+                    </Form.Item>
+
+                    <Form.Item label="保活间隔（秒）" name="keepAliveIntervalSec">
+                      <InputNumber
+                        min={5}
+                        max={600}
+                        precision={0}
+                        style={{ width: "100%" }}
+                        placeholder="留空跟随全局"
+                        disabled={keepAliveSetting === false}
+                      />
+                    </Form.Item>
+
+                    <div className="mgr-form-subtitle">
+                      留空表示跟随全局设置，修改后需重连会话生效。
+                    </div>
                 </div>
 
                 {/* ── Tab: 高级 ──── */}

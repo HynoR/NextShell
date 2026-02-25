@@ -458,6 +458,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           loading={loading}
           nexttracePath={nexttracePath}
           setNexttracePath={setNexttracePath}
+          ssh={preferences.ssh}
           traceroute={preferences.traceroute}
           save={save}
           message={message}
@@ -1343,11 +1344,12 @@ const TerminalSection = ({
 };
 
 const NetworkSection = ({
-  loading, nexttracePath, setNexttracePath, traceroute, save, message: msg,
+  loading, nexttracePath, setNexttracePath, ssh, traceroute, save, message: msg,
 }: {
   loading: boolean;
   nexttracePath: string;
   setNexttracePath: (v: string) => void;
+  ssh: import("@nextshell/core").AppPreferences["ssh"];
   traceroute: import("@nextshell/core").AppPreferences["traceroute"];
   save: (patch: Record<string, unknown>) => void;
   message: ReturnType<typeof AntdApp.useApp>["message"];
@@ -1392,6 +1394,30 @@ const NetworkSection = ({
         </Typography.Link>
         {" "}下载安装。
       </div>
+    </SettingsCard>
+
+    <SettingsCard title="SSH Keepalive" description="发送空包保持 SSH 连接稳定">
+      <SettingsSwitchRow
+        label="启用 Keepalive"
+        hint="对所有连接生效（可在连接管理器中单独覆盖）"
+        checked={ssh.keepAliveEnabled}
+        disabled={loading}
+        onChange={(v) => save({ ssh: { keepAliveEnabled: v } })}
+      />
+      <SettingsRow label="保活间隔（秒）" hint="范围 5–600">
+        <InputNumber
+          style={{ width: "100%" }}
+          min={5} max={600} precision={0}
+          value={ssh.keepAliveIntervalSec}
+          disabled={loading || !ssh.keepAliveEnabled}
+          onChange={(v) => {
+            if (typeof v === "number" && Number.isInteger(v)) {
+              save({ ssh: { keepAliveIntervalSec: v } });
+            }
+          }}
+        />
+      </SettingsRow>
+      <div className="stg-note">修改后新连接生效，已连接会话需重连。</div>
     </SettingsCard>
 
     <SettingsCard title="探测参数" description="下次点击「开始追踪」时生效">

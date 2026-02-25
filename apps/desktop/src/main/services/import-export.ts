@@ -57,6 +57,8 @@ export const parseNextShellImport = (data: ConnectionExportFile): ConnectionImpo
       username: conn.username,
       authType: conn.authType,
       password,
+      keepAliveEnabled: conn.keepAliveEnabled,
+      keepAliveIntervalSec: conn.keepAliveIntervalSec,
       portForwards: conn.portForwards ?? [],
       groupPath: conn.groupPath,
       tags: conn.tags,
