@@ -675,6 +675,7 @@ export const WorkspaceLayout = ({
                                                                 isActiveConnectionTerminalConnected
                                                             }
                                                             connections={connections}
+                                                            sessions={sessions}
                                                             onExecuteCommand={handleExecuteCommand}
                                                         />
                                                     ),

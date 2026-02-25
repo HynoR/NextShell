@@ -66,7 +66,7 @@ const EDITOR_PRESETS: Array<{ label: string; value: string }> = [
 const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 const CUSTOM_THEME_PRESET = "custom";
 const TERMINAL_THEME_PRESETS = [
-  { label: "默认深蓝", value: "default", backgroundColor: "#0b2740", foregroundColor: "#d8eaff" },
+  { label: "默认", value: "default", backgroundColor: "#000000", foregroundColor: "#d8eaff" },
   { label: "Dracula", value: "dracula", backgroundColor: "#282a36", foregroundColor: "#f8f8f2" },
   { label: "Solarized Dark", value: "solarized-dark", backgroundColor: "#002b36", foregroundColor: "#93a1a1" },
   { label: "Gruvbox Dark", value: "gruvbox-dark", backgroundColor: "#282828", foregroundColor: "#ebdbb2" },
@@ -430,6 +430,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
         return <CommandSection
           loading={loading}
           rememberTemplateParams={preferences.commandCenter.rememberTemplateParams}
+          batchMaxConcurrency={preferences.commandCenter.batchMaxConcurrency}
+          batchRetryCount={preferences.commandCenter.batchRetryCount}
           save={save}
         />;
 
@@ -744,19 +746,49 @@ const EditorSection = ({
 );
 
 const CommandSection = ({
-  loading, rememberTemplateParams, save,
+  loading, rememberTemplateParams, batchMaxConcurrency, batchRetryCount, save,
 }: {
   loading: boolean;
   rememberTemplateParams: boolean;
+  batchMaxConcurrency: number;
+  batchRetryCount: number;
   save: (patch: Record<string, unknown>) => void;
 }) => (
-  <SettingsCard title="模板参数" description="是否记住模板命令参数输入">
+  <SettingsCard title="命令中心" description="模板参数与批量执行默认参数">
     <SettingsSwitchRow
       label="记住模板参数"
       checked={rememberTemplateParams}
       disabled={loading}
       onChange={(v) => save({ commandCenter: { rememberTemplateParams: v } })}
     />
+    <SettingsRow label="批量并发" hint="命令库批量执行时每轮并发数量（1-50）">
+      <InputNumber
+        min={1}
+        max={50}
+        precision={0}
+        value={batchMaxConcurrency}
+        disabled={loading}
+        onChange={(value) => {
+          if (value === null) return;
+          const next = Math.min(50, Math.max(1, Number(value) || 1));
+          save({ commandCenter: { batchMaxConcurrency: next } });
+        }}
+      />
+    </SettingsRow>
+    <SettingsRow label="批量重试" hint="命令库批量执行失败时的额外重试次数（0-5）">
+      <InputNumber
+        min={0}
+        max={5}
+        precision={0}
+        value={batchRetryCount}
+        disabled={loading}
+        onChange={(value) => {
+          if (value === null) return;
+          const next = Math.min(5, Math.max(0, Number(value) || 0));
+          save({ commandCenter: { batchRetryCount: next } });
+        }}
+      />
+    </SettingsRow>
   </SettingsCard>
 );
 
@@ -1235,13 +1267,13 @@ const TerminalSection = ({
                 debouncedSaveTerminal({ backgroundColor: terminalBackgroundColor.trim() });
               }
             }}
-            placeholder="#0b2740"
+            placeholder="#000000"
           />
           <input
             className="settings-color-input"
             type="color"
             disabled={loading}
-            value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#0b2740"}
+            value={HEX_COLOR_PATTERN.test(terminalBackgroundColor) ? terminalBackgroundColor : "#000000"}
             onChange={(e) => {
               setTerminalBackgroundColor(e.target.value);
               debouncedSaveTerminal({ backgroundColor: e.target.value });

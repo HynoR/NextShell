@@ -2664,7 +2664,16 @@ body {
   background: rgba(77, 159, 255, 0.12);
 }
 
-.cc-action-btn.primary:disabled {
+.cc-action-btn.secondary {
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+.cc-action-btn.secondary:hover {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.cc-action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
@@ -2673,41 +2682,6 @@ body {
   color: var(--err);
   border-color: rgba(248, 113, 113, 0.3);
   background: rgba(248, 113, 113, 0.08);
-}
-
-/* Batch */
-.cc-batch-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cc-batch-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.cc-batch-options {
-  flex-wrap: wrap;
-}
-
-.cc-batch-footer {
-  justify-content: space-between;
-}
-
-.cc-batch-params {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.cc-batch-param {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--t3);
 }
 
 .cc-batch-result {
@@ -2743,6 +2717,10 @@ body {
 .cc-batch-items::-webkit-scrollbar { width: 4px; }
 .cc-batch-items::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
 .cc-batch-items::-webkit-scrollbar-track { background: transparent; }
+
+.cc-batch-drawer .cc-batch-items {
+  max-height: calc(100vh - 240px);
+}
 
 /* Result item (shared for batch + history) */
 .cc-result-item {
@@ -3778,10 +3756,6 @@ body {
 
   .file-pathbar {
     grid-template-columns: 1fr;
-  }
-
-  .cc-batch-options {
-    flex-direction: column;
   }
 }
 
@@ -5178,6 +5152,25 @@ body {
   gap: 4px;
   color: var(--t3);
   font-size: 11px;
+}
+.editor-toolbar-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--t3);
+}
+.editor-toolbar-lang-select {
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--t2);
+  padding: 0 6px;
+  font-size: 12px;
+  outline: none;
+}
+.editor-toolbar-lang-select:focus {
+  border-color: var(--accent);
 }
 .editor-toolbar-save-btn {
   display: flex;

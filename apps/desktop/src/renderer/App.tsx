@@ -265,6 +265,7 @@ export const App = () => {
           remotePath,
           editId: result.editId,
           initialContent: result.content,
+          syntaxMode: "auto",
           dirty: false,
           saving: false
         });

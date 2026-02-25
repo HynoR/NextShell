@@ -318,7 +318,9 @@ export const appPreferencesSchema = z.object({
     editorMode: z.enum(["builtin", "external"]).default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
   }).default(DEFAULT_APP_PREFERENCES.remoteEdit),
   commandCenter: z.object({
-    rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams)
+    rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams),
+    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).default(DEFAULT_APP_PREFERENCES.commandCenter.batchMaxConcurrency),
+    batchRetryCount: z.coerce.number().int().min(0).max(5).default(DEFAULT_APP_PREFERENCES.commandCenter.batchRetryCount)
   }).default(DEFAULT_APP_PREFERENCES.commandCenter),
   terminal: z.object({
     backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
@@ -368,7 +370,9 @@ export const appPreferencesPatchSchema = z.object({
     editorMode: z.enum(["builtin", "external"]).optional()
   }).optional(),
   commandCenter: z.object({
-    rememberTemplateParams: z.boolean().optional()
+    rememberTemplateParams: z.boolean().optional(),
+    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).optional(),
+    batchRetryCount: z.coerce.number().int().min(0).max(5).optional()
   }).optional(),
   terminal: z.object({
     backgroundColor: terminalColorSchema.optional(),

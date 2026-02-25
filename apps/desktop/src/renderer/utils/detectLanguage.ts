@@ -13,6 +13,20 @@ import { shell } from "@codemirror/legacy-modes/mode/shell";
 
 type LangFactory = () => LanguageSupport;
 
+export type EditorSyntaxMode =
+  | "auto"
+  | "plain"
+  | "javascript"
+  | "html"
+  | "css"
+  | "json"
+  | "markdown"
+  | "yaml"
+  | "toml"
+  | "python"
+  | "shell"
+  | "php";
+
 const EXTENSION_MAP: Record<string, LangFactory> = {
   js: () => javascript(),
   mjs: () => javascript(),
@@ -36,7 +50,20 @@ const EXTENSION_MAP: Record<string, LangFactory> = {
   php: () => php(),
 };
 
-export const getLanguageSupport = (filePath: string): LanguageSupport | undefined => {
+const SYNTAX_MODE_MAP: Record<Exclude<EditorSyntaxMode, "auto" | "plain">, LangFactory> = {
+  javascript: () => javascript({ jsx: true }),
+  html: () => html(),
+  css: () => css(),
+  json: () => json(),
+  markdown: () => markdown(),
+  yaml: () => yaml(),
+  toml: () => StreamLanguage.define(toml) as unknown as LanguageSupport,
+  python: () => python(),
+  shell: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  php: () => php(),
+};
+
+const resolveByExtension = (filePath: string): LanguageSupport | undefined => {
   const fileName = filePath.split("/").pop() ?? "";
   const lower = fileName.toLowerCase();
 
@@ -50,4 +77,17 @@ export const getLanguageSupport = (filePath: string): LanguageSupport | undefine
   const ext = lower.slice(dotIndex + 1);
   const factory = EXTENSION_MAP[ext];
   return factory?.();
+};
+
+export const getLanguageSupport = (
+  filePath: string,
+  mode: EditorSyntaxMode = "auto"
+): LanguageSupport | undefined => {
+  if (mode === "plain") {
+    return undefined;
+  }
+  if (mode !== "auto") {
+    return SYNTAX_MODE_MAP[mode]?.();
+  }
+  return resolveByExtension(filePath);
 };

@@ -42,6 +42,10 @@ import type {
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
 import {
+  normalizeBatchMaxConcurrency,
+  normalizeBatchRetryCount
+} from "../../../../../packages/core/src/index";
+import {
   SshConnection,
   type RemotePathType,
   type SshConnectOptions,
@@ -689,7 +693,15 @@ const mergePreferences = (
     },
     commandCenter: {
       rememberTemplateParams:
-        patch.commandCenter?.rememberTemplateParams ?? current.commandCenter.rememberTemplateParams
+        patch.commandCenter?.rememberTemplateParams ?? current.commandCenter.rememberTemplateParams,
+      batchMaxConcurrency: normalizeBatchMaxConcurrency(
+        patch.commandCenter?.batchMaxConcurrency,
+        current.commandCenter.batchMaxConcurrency
+      ),
+      batchRetryCount: normalizeBatchRetryCount(
+        patch.commandCenter?.batchRetryCount,
+        current.commandCenter.batchRetryCount
+      )
     },
     terminal: {
       backgroundColor: normalizeTerminalColor(

@@ -17,7 +17,11 @@ import type {
   SavedCommand,
   SshKeyProfile
 } from "../../core/src/index";
-import { DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE } from "../../core/src/index";
+import {
+  DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE,
+  normalizeBatchMaxConcurrency,
+  normalizeBatchRetryCount
+} from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
 
 const require = createRequire(import.meta.url);
@@ -329,7 +333,19 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
         rememberTemplateParams:
           typeof parsed.commandCenter?.rememberTemplateParams === "boolean"
             ? parsed.commandCenter.rememberTemplateParams
-            : fallback.commandCenter.rememberTemplateParams
+            : fallback.commandCenter.rememberTemplateParams,
+        batchMaxConcurrency: normalizeBatchMaxConcurrency(
+          typeof parsed.commandCenter?.batchMaxConcurrency === "number"
+            ? parsed.commandCenter.batchMaxConcurrency
+            : undefined,
+          fallback.commandCenter.batchMaxConcurrency
+        ),
+        batchRetryCount: normalizeBatchRetryCount(
+          typeof parsed.commandCenter?.batchRetryCount === "number"
+            ? parsed.commandCenter.batchRetryCount
+            : undefined,
+          fallback.commandCenter.batchRetryCount
+        )
       },
       terminal: {
         backgroundColor:
