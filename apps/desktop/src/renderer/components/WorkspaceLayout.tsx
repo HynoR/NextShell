@@ -17,7 +17,6 @@ import { FileExplorerPane } from "./FileExplorerPane";
 import { QuickTransferPane } from "./QuickTransferPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
-import { PortForwardPane } from "./PortForwardPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
 import { PingCard } from "./PingCard";
 import { SystemInfoPanel } from "./SystemInfoPanel";
@@ -680,17 +679,6 @@ export const WorkspaceLayout = ({
                                                     label: "实时编辑",
                                                     children: (
                                                         <LiveEditPane connections={connections} />
-                                                    ),
-                                                },
-                                                {
-                                                    key: "port-forward",
-                                                    label: "端口转发",
-                                                    children: (
-                                                        <PortForwardPane
-                                                            connection={activeConnection}
-                                                            connected={isActiveConnectionTerminalConnected}
-                                                            onSaveConnection={onTreeQuickSaveConnection}
-                                                        />
                                                     ),
                                                 },
                                                 {

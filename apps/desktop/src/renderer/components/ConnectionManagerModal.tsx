@@ -79,7 +79,6 @@ const toQuickUpsertInput = (
   hostFingerprint: connection.hostFingerprint,
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
-  portForwards: connection.portForwards,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,
@@ -438,7 +437,7 @@ export const ConnectionManagerModal = ({
       return;
     }
 
-    if (authType === "password" || authType === "interactive") {
+    if (authType === "password") {
       form.setFieldValue("sshKeyId", undefined);
       return;
     }
@@ -981,8 +980,8 @@ export const ConnectionManagerModal = ({
     if (!selectedConnection || !selectedConnectionId) {
       return;
     }
-    if (selectedConnection.authType !== "password" && selectedConnection.authType !== "interactive") {
-      message.warning("仅密码/交互式认证连接支持查看登录密码。");
+    if (selectedConnection.authType !== "password") {
+      message.warning("仅密码认证连接支持查看登录密码。");
       return;
     }
 
@@ -1583,7 +1582,6 @@ export const ConnectionManagerModal = ({
                         <Select
                           options={[
                             { label: "密码", value: "password" },
-                            { label: "交互式登录", value: "interactive" },
                             { label: "私钥文件", value: "privateKey" },
                             { label: "SSH Agent", value: "agent" }
                           ]}
@@ -1610,7 +1608,7 @@ export const ConnectionManagerModal = ({
                       </Form.Item>
                     ) : null}
 
-                    {authType === "password" || authType === "interactive" ? (
+                    {authType === "password" ? (
                       <>
                         <Form.Item
                           label="密码"
@@ -1619,10 +1617,7 @@ export const ConnectionManagerModal = ({
                         >
                           <Input.Password placeholder="输入密码（留空则不更新）" />
                         </Form.Item>
-                        {mode === "edit" && (
-                          selectedConnection?.authType === "password" ||
-                          selectedConnection?.authType === "interactive"
-                        ) ? (
+                        {mode === "edit" && selectedConnection?.authType === "password" ? (
                           <Form.Item label="已保存的登录密码" preserve={false}>
                             <div style={{ display: "grid", gap: 8 }}>
                               <button

@@ -2,7 +2,6 @@ import { once } from "node:events";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import { connect, createServer, type Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
@@ -14,7 +13,7 @@ import type {
   Stats
 } from "ssh2";
 
-type AuthType = "password" | "privateKey" | "agent" | "interactive";
+type AuthType = "password" | "privateKey" | "agent";
 type ProxyType = "socks4" | "socks5";
 
 const DEFAULT_READY_TIMEOUT_MS = 10000;
@@ -96,20 +95,6 @@ export interface SshProxyOptions {
   password?: string;
 }
 
-export type PortForwardType = "local" | "remote";
-
-export interface PortForwardRule {
-  type: PortForwardType;
-  sourceHost: string;
-  sourcePort: number;
-  destinationHost: string;
-  destinationPort: number;
-}
-
-export interface PortForwardHandle {
-  close: () => Promise<void>;
-}
-
 export interface SshConnectOptions {
   host: string;
   port: number;
@@ -151,19 +136,6 @@ export interface SshDirectoryEntry {
 export type SshShellChannel = ClientChannel;
 export type RemotePathType = "file" | "directory" | "link";
 
-interface TcpConnectionInfo {
-  destIP: string;
-  destPort: number;
-  srcIP: string;
-  srcPort: number;
-}
-
-interface RemoteForwardRuntime {
-  rule: PortForwardRule;
-  sockets: Set<Socket>;
-  channels: Set<ClientChannel>;
-}
-
 const expandHomePath = (rawPath: string): string => {
   if (rawPath === "~") {
     return os.homedir();
@@ -180,73 +152,10 @@ export class SshConnection {
   private readonly client: Client;
   private readonly readyPromise: Promise<void>;
   private closed = false;
-  private readonly remoteForwards = new Map<number, RemoteForwardRuntime>();
-  private remoteForwardListenerAttached = false;
-  private readonly handleTcpConnection = (
-    info: TcpConnectionInfo,
-    accept: () => ClientChannel,
-    reject: () => void
-  ) => {
-    const runtime = this.remoteForwards.get(info.destPort);
-    if (!runtime) {
-      reject();
-      return;
-    }
-
-    const channel = accept();
-    const socket = connect({
-      host: runtime.rule.destinationHost,
-      port: runtime.rule.destinationPort
-    });
-
-    runtime.channels.add(channel);
-    runtime.sockets.add(socket);
-
-    const cleanup = () => {
-      runtime.channels.delete(channel);
-      runtime.sockets.delete(socket);
-      channel.end();
-      socket.destroy();
-    };
-
-    const onClose = () => {
-      runtime.channels.delete(channel);
-      runtime.sockets.delete(socket);
-    };
-
-    socket.on("error", cleanup);
-    channel.on("error", cleanup);
-    socket.on("close", onClose);
-    channel.on("close", onClose);
-
-    socket.pipe(channel).pipe(socket);
-  };
 
   private constructor(private readonly options: SshConnectOptions) {
     const ssh2 = loadSsh2();
     this.client = new ssh2.Client();
-    if (this.options.authType === "interactive") {
-      this.client.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
-        const password = this.options.password ?? "";
-        const responses = prompts.map((prompt, index) => {
-          if (!password) {
-            return "";
-          }
-          if (prompts.length === 1) {
-            return password;
-          }
-          const lower = prompt.prompt.toLowerCase();
-          if (lower.includes("password") || lower.includes("passcode") || lower.includes("passphrase")) {
-            return password;
-          }
-          if (!prompt.echo && index === 0) {
-            return password;
-          }
-          return "";
-        });
-        finish(responses);
-      });
-    }
     this.readyPromise = this.connect();
   }
 
@@ -354,15 +263,6 @@ export class SshConnection {
       return config;
     }
 
-    if (this.options.authType === "interactive") {
-      if (!this.options.password) {
-        throw new Error("Interactive auth requires password");
-      }
-      config.password = this.options.password;
-      config.tryKeyboard = true;
-      return config;
-    }
-
     config.agent = this.options.agentSock ?? process.env.SSH_AUTH_SOCK;
     if (!config.agent) {
       throw new Error("SSH agent auth requires SSH_AUTH_SOCK");
@@ -431,134 +331,6 @@ export class SshConnection {
         }
       );
     });
-  }
-
-  async startPortForward(rule: PortForwardRule): Promise<PortForwardHandle> {
-    if (rule.type === "remote") {
-      return this.startRemoteForward(rule);
-    }
-    return this.startLocalForward(rule);
-  }
-
-  private ensureRemoteForwardListener(): void {
-    if (this.remoteForwardListenerAttached) {
-      return;
-    }
-    this.remoteForwardListenerAttached = true;
-    this.client.on("tcp connection", this.handleTcpConnection);
-  }
-
-  private async startRemoteForward(rule: PortForwardRule): Promise<PortForwardHandle> {
-    await this.readyPromise;
-    if (this.closed) {
-      throw new Error("SSH connection is closed");
-    }
-    if (this.remoteForwards.has(rule.sourcePort)) {
-      throw new Error(`Remote port ${rule.sourcePort} is already forwarded`);
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      this.client.forwardIn(rule.sourceHost, rule.sourcePort, (error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-
-    const runtime: RemoteForwardRuntime = {
-      rule,
-      sockets: new Set(),
-      channels: new Set()
-    };
-    this.remoteForwards.set(rule.sourcePort, runtime);
-    this.ensureRemoteForwardListener();
-
-    return {
-      close: async () => {
-        this.remoteForwards.delete(rule.sourcePort);
-        for (const socket of runtime.sockets) {
-          socket.destroy();
-        }
-        for (const channel of runtime.channels) {
-          channel.end();
-        }
-        await new Promise<void>((resolve) => {
-          let settled = false;
-          const finalize = () => {
-            if (settled) return;
-            settled = true;
-            resolve();
-          };
-          const timer = setTimeout(finalize, 500);
-          this.client.unforwardIn(rule.sourceHost, rule.sourcePort, () => {
-            clearTimeout(timer);
-            finalize();
-          });
-        });
-      }
-    };
-  }
-
-  private async startLocalForward(rule: PortForwardRule): Promise<PortForwardHandle> {
-    await this.readyPromise;
-    if (this.closed) {
-      throw new Error("SSH connection is closed");
-    }
-
-    const sockets = new Set<Socket>();
-    const server = createServer((socket) => {
-      sockets.add(socket);
-      socket.on("close", () => sockets.delete(socket));
-
-      const srcAddr = socket.remoteAddress ?? "127.0.0.1";
-      const srcPort = socket.remotePort ?? 0;
-      this.client.forwardOut(
-        srcAddr,
-        srcPort,
-        rule.destinationHost,
-        rule.destinationPort,
-        (error, stream) => {
-          if (error || !stream) {
-            socket.destroy();
-            return;
-          }
-          socket.pipe(stream).pipe(socket);
-          stream.on("error", () => socket.destroy());
-          stream.on("close", () => socket.destroy());
-          socket.on("error", () => stream.end());
-        }
-      );
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error) => {
-        cleanup();
-        reject(error);
-      };
-      const onListening = () => {
-        cleanup();
-        resolve();
-      };
-      const cleanup = () => {
-        server.off("error", onError);
-        server.off("listening", onListening);
-      };
-      server.once("error", onError);
-      server.listen(rule.sourcePort, rule.sourceHost, onListening);
-    });
-
-    return {
-      close: async () => {
-        for (const socket of sockets) {
-          socket.destroy();
-        }
-        await new Promise<void>((resolve) => {
-          server.close(() => resolve());
-        });
-      }
-    };
   }
 
   async exec(command: string): Promise<ExecResult> {
@@ -887,11 +659,6 @@ export class SshConnection {
     }
 
     this.closed = true;
-    if (this.remoteForwardListenerAttached) {
-      this.client.off("tcp connection", this.handleTcpConnection);
-      this.remoteForwardListenerAttached = false;
-    }
-    this.remoteForwards.clear();
     this.client.end();
 
     await Promise.race([

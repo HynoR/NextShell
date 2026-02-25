@@ -118,7 +118,6 @@ export const buildQuickConnectUpsertInput = (
   username: target.username,
   authType: "password",
   strictHostKeyChecking: false,
-  portForwards: [],
   terminalEncoding: "utf-8",
   backspaceMode: "ascii-backspace",
   deleteMode: "vt220-delete",
