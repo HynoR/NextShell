@@ -240,9 +240,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       }
 
       const { username, password, nonce } = consumed.submit;
+      const authType = connection?.authType === "interactive" ? "interactive" : "password";
       void onRetrySessionAuthRef.current(targetSessionId, {
         username,
-        authType: "password",
+        authType,
         password
       }).then((result) => {
         const latest = authStateBySessionRef.current.get(targetSessionId);
@@ -276,7 +277,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 
       return true;
     },
-    [writeLocalOutput]
+    [connection?.authType, writeLocalOutput]
   );
 
   const replaySessionOutput = useCallback((targetSessionId: string) => {

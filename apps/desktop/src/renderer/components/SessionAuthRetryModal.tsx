@@ -71,7 +71,7 @@ export const SessionAuthRetryModal = ({
       return;
     }
 
-    if (authType === "password") {
+    if (authType === "password" || authType === "interactive") {
       form.setFieldsValue({
         sshKeyId: undefined,
         privateKeyContent: undefined,
@@ -129,8 +129,8 @@ export const SessionAuthRetryModal = ({
             return;
           }
 
-          if (authTypeValue === "password" && !password) {
-            message.error("密码认证必须输入密码。");
+          if ((authTypeValue === "password" || authTypeValue === "interactive") && !password) {
+            message.error("密码/交互式认证必须输入密码。");
             return;
           }
 
@@ -144,7 +144,7 @@ export const SessionAuthRetryModal = ({
             await onSubmit({
               username,
               authType: authTypeValue,
-              password: authTypeValue === "password" ? password : undefined,
+              password: authTypeValue === "password" || authTypeValue === "interactive" ? password : undefined,
               sshKeyId: authTypeValue === "privateKey" ? values.sshKeyId : undefined,
               privateKeyContent: authTypeValue === "privateKey" ? privateKeyContent : undefined,
               passphrase: authTypeValue === "privateKey" ? passphrase : undefined
@@ -168,12 +168,13 @@ export const SessionAuthRetryModal = ({
           <Select
             options={[
               { label: "密码", value: "password" },
+              { label: "交互式登录", value: "interactive" },
               { label: "私钥", value: "privateKey" }
             ]}
           />
         </Form.Item>
 
-        {authType === "password" ? (
+        {authType === "password" || authType === "interactive" ? (
           <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
             <Input.Password placeholder="请输入密码" />
           </Form.Item>

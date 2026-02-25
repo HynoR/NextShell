@@ -1,4 +1,4 @@
-export type AuthType = "password" | "privateKey" | "agent";
+export type AuthType = "password" | "privateKey" | "agent" | "interactive";
 export type ProxyType = "socks4" | "socks5";
 export type TerminalEncoding = "utf-8" | "gb18030" | "gbk" | "big5";
 export type BackspaceMode = "ascii-backspace" | "ascii-delete";

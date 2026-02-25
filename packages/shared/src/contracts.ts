@@ -30,7 +30,7 @@ const trimAndFilterStringArray = (value: unknown): unknown => {
     .filter((item): item is string => typeof item === "string" && item.length > 0);
 };
 
-export const authTypeSchema = z.enum(["password", "privateKey", "agent"]);
+export const authTypeSchema = z.enum(["password", "privateKey", "agent", "interactive"]);
 export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
@@ -84,21 +84,21 @@ export const connectionRemoveSchema = z.object({
 
 export const sessionAuthOverrideSchema = z.object({
   username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  authType: z.enum(["password", "privateKey"]),
+  authType: z.enum(["password", "privateKey", "interactive"]),
   password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   sshKeyId: z.string().uuid().optional(),
   /** Temporary key content for retry (not persisted as entity) */
   privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 }).superRefine((value, ctx) => {
-    if (value.authType === "password" && !value.password) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "password is required when authType is password",
-        path: ["password"]
-      });
-    }
-  });
+  if ((value.authType === "password" || value.authType === "interactive") && !value.password) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "password is required when authType is password or interactive",
+      path: ["password"]
+    });
+  }
+});
 
 export const sessionOpenSchema = z.object({
   connectionId: z.string().uuid(),

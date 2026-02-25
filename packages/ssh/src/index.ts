@@ -13,7 +13,7 @@ import type {
   Stats
 } from "ssh2";
 
-type AuthType = "password" | "privateKey" | "agent";
+type AuthType = "password" | "privateKey" | "agent" | "interactive";
 type ProxyType = "socks4" | "socks5";
 
 const DEFAULT_READY_TIMEOUT_MS = 10000;
@@ -156,6 +156,28 @@ export class SshConnection {
   private constructor(private readonly options: SshConnectOptions) {
     const ssh2 = loadSsh2();
     this.client = new ssh2.Client();
+    if (this.options.authType === "interactive") {
+      this.client.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
+        const password = this.options.password ?? "";
+        const responses = prompts.map((prompt, index) => {
+          if (!password) {
+            return "";
+          }
+          if (prompts.length === 1) {
+            return password;
+          }
+          const lower = prompt.prompt.toLowerCase();
+          if (lower.includes("password") || lower.includes("passcode") || lower.includes("passphrase")) {
+            return password;
+          }
+          if (!prompt.echo && index === 0) {
+            return password;
+          }
+          return "";
+        });
+        finish(responses);
+      });
+    }
     this.readyPromise = this.connect();
   }
 
@@ -260,6 +282,15 @@ export class SshConnection {
       if (this.options.passphrase) {
         config.passphrase = this.options.passphrase;
       }
+      return config;
+    }
+
+    if (this.options.authType === "interactive") {
+      if (!this.options.password) {
+        throw new Error("Interactive auth requires password");
+      }
+      config.password = this.options.password;
+      config.tryKeyboard = true;
       return config;
     }
 
