@@ -2,8 +2,21 @@ name: Release Electron App
 
 on:
   push:
+    branches:
+      - "**"
     tags:
       - "*"
+  workflow_dispatch:
+    inputs:
+      build_version:
+        description: "SemVer for CI build (e.g. 0.0.0-dev.1). Leave empty to auto-generate."
+        required: false
+        default: ""
+      allow_non_main:
+        description: "Allow running build on non-main branches"
+        type: boolean
+        required: false
+        default: true
 
 concurrency:
   group: release-${{ github.ref }}
@@ -29,7 +42,52 @@ jobs:
       - name: Verify tag commit is on main
         id: check
         shell: bash
+        env:
+          INPUT_BUILD_VERSION: ${{ inputs.build_version }}
+          INPUT_ALLOW_NON_MAIN: ${{ inputs.allow_non_main }}
         run: |
+          semver_regex='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            release_version="${INPUT_BUILD_VERSION}"
+            if [[ -z "${release_version}" ]]; then
+              release_version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            fi
+            if [[ ! "${release_version}" =~ ${semver_regex} ]]; then
+              echo "::error::Build version '${release_version}' is invalid. Use SemVer like 0.0.0-dev.1."
+              exit 1
+            fi
+            echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+            if [[ "${release_version}" == *-* ]]; then
+              echo "is_prerelease=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "is_prerelease=false" >> "${GITHUB_OUTPUT}"
+            fi
+            if [[ "${INPUT_ALLOW_NON_MAIN}" == "true" ]]; then
+              echo "on_main=true" >> "${GITHUB_OUTPUT}"
+              echo "Manual dispatch: allow non-main build."
+            else
+              git fetch origin main --no-tags --depth=1
+              if git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+                echo "on_main=true" >> "${GITHUB_OUTPUT}"
+                echo "Branch commit is on origin/main."
+              else
+                echo "on_main=false" >> "${GITHUB_OUTPUT}"
+                echo "Branch commit is not on origin/main. Skipping build."
+              fi
+            fi
+            exit 0
+          fi
+
+          if [[ "${GITHUB_REF}" != refs/tags/* ]]; then
+            release_version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+            echo "release_version=${release_version}" >> "${GITHUB_OUTPUT}"
+            echo "is_prerelease=true" >> "${GITHUB_OUTPUT}"
+            echo "on_main=true" >> "${GITHUB_OUTPUT}"
+            echo "Branch push build for ${GITHUB_REF_NAME}."
+            exit 0
+          fi
+
           tag_name="${GITHUB_REF_NAME}"
           release_version="${tag_name#v}"
           semver_regex='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
@@ -124,6 +182,7 @@ jobs:
     needs:
       - build
       - verify-main-tag
+    if: needs.verify-main-tag.outputs.on_main == 'true' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
