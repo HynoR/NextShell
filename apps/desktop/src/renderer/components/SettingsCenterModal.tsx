@@ -73,6 +73,31 @@ const TERMINAL_THEME_PRESETS = [
   { label: "Nord", value: "nord", backgroundColor: "#2e3440", foregroundColor: "#d8dee9" },
 ] as const;
 
+const TERMINAL_FONT_OPTIONS = [
+  { label: "系统默认", value: "monospace" },
+  { label: "JetBrains Mono", value: "JetBrains Mono" },
+  { label: "Fira Code", value: "Fira Code" },
+  { label: "Cascadia Mono", value: "Cascadia Mono" },
+  { label: "Consolas", value: "Consolas" },
+  { label: "Menlo", value: "Menlo" },
+  { label: "Monaco", value: "Monaco" },
+  { label: "SF Mono", value: "SF Mono" },
+  { label: "Source Code Pro", value: "Source Code Pro" },
+  { label: "Ubuntu Mono", value: "Ubuntu Mono" },
+  { label: "DejaVu Sans Mono", value: "DejaVu Sans Mono" },
+  { label: "Noto Sans Mono", value: "Noto Sans Mono" },
+  { label: "Roboto Mono", value: "Roboto Mono" },
+  { label: "Courier New", value: "Courier New" }
+];
+
+const SUPPORTED_FONT_EXTENSIONS = ["ttf", "otf", "woff", "woff2", "ttc"];
+
+const getFontFileStem = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/");
+  const base = normalized.split("/").pop() ?? "";
+  return base.replace(/\.[^.]+$/, "") || base;
+};
+
 const appVersion = __APP_VERSION__;
 const githubRepo = __GITHUB_REPO__;
 const normalizedRepo = githubRepo.trim();
@@ -182,6 +207,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   );
   const [terminalBackgroundColor, setTerminalBackgroundColor] = useState(preferences.terminal.backgroundColor);
   const [terminalForegroundColor, setTerminalForegroundColor] = useState(preferences.terminal.foregroundColor);
+  const [terminalFontFamily, setTerminalFontFamily] = useState(preferences.terminal.fontFamily);
+  const [terminalCustomFontPath, setTerminalCustomFontPath] = useState(preferences.terminal.customFontPath ?? "");
   const [terminalThemePreset, setTerminalThemePreset] = useState<string>(
     resolvePresetByColors(preferences.terminal.backgroundColor, preferences.terminal.foregroundColor)
   );
@@ -229,6 +256,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setEditorMode(preferences.remoteEdit.editorMode ?? "builtin");
     setTerminalBackgroundColor(preferences.terminal.backgroundColor);
     setTerminalForegroundColor(preferences.terminal.foregroundColor);
+    setTerminalFontFamily(preferences.terminal.fontFamily);
+    setTerminalCustomFontPath(preferences.terminal.customFontPath ?? "");
     setTerminalThemePreset(
       resolvePresetByColors(preferences.terminal.backgroundColor, preferences.terminal.foregroundColor)
     );
@@ -441,6 +470,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           terminalBackgroundColor={terminalBackgroundColor}
           terminalForegroundColor={terminalForegroundColor}
           terminalThemePreset={terminalThemePreset}
+          terminalFontFamily={terminalFontFamily}
+          terminalCustomFontPath={terminalCustomFontPath}
           terminalFontSize={preferences.terminal.fontSize}
           terminalLineHeight={preferences.terminal.lineHeight}
           appBackgroundImagePath={appBackgroundImagePath}
@@ -448,6 +479,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           setTerminalBackgroundColor={setTerminalBackgroundColor}
           setTerminalForegroundColor={setTerminalForegroundColor}
           setTerminalThemePreset={setTerminalThemePreset}
+          setTerminalFontFamily={setTerminalFontFamily}
+          setTerminalCustomFontPath={setTerminalCustomFontPath}
           setAppBackgroundImagePath={setAppBackgroundImagePath}
           save={save}
           message={message}
@@ -1090,16 +1123,19 @@ const TERMINAL_DEBOUNCE_MS = 3000;
 
 const TerminalSection = ({
   loading, terminalBackgroundColor, terminalForegroundColor,
-  terminalThemePreset, terminalFontSize, terminalLineHeight,
+  terminalThemePreset, terminalFontFamily, terminalCustomFontPath,
+  terminalFontSize, terminalLineHeight,
   appBackgroundImagePath, appBackgroundOpacity,
   setTerminalBackgroundColor, setTerminalForegroundColor,
-  setTerminalThemePreset, setAppBackgroundImagePath,
-  save, message: msg,
+  setTerminalThemePreset, setTerminalFontFamily, setTerminalCustomFontPath,
+  setAppBackgroundImagePath, save, message: msg,
 }: {
   loading: boolean;
   terminalBackgroundColor: string;
   terminalForegroundColor: string;
   terminalThemePreset: string;
+  terminalFontFamily: string;
+  terminalCustomFontPath: string;
   terminalFontSize: number;
   terminalLineHeight: number;
   appBackgroundImagePath: string;
@@ -1107,6 +1143,8 @@ const TerminalSection = ({
   setTerminalBackgroundColor: (v: string) => void;
   setTerminalForegroundColor: (v: string) => void;
   setTerminalThemePreset: (v: string) => void;
+  setTerminalFontFamily: (v: string) => void;
+  setTerminalCustomFontPath: (v: string) => void;
   setAppBackgroundImagePath: (v: string) => void;
   save: (patch: Record<string, unknown>) => void;
   message: ReturnType<typeof AntdApp.useApp>["message"];
@@ -1311,7 +1349,58 @@ const TerminalSection = ({
       </SettingsRow>
     </SettingsCard>
 
-    <SettingsCard title="终端排版" description="字号和行距设置（修改后 3 秒生效）">
+    <SettingsCard title="终端排版" description="字体、字号和行距设置（修改后 3 秒生效）">
+      <SettingsRow label="终端字体" hint="选择一个字体">
+        <div className="flex gap-2 items-center">
+          <Select
+            style={{ flex: 1 }}
+            value={terminalFontFamily}
+            disabled={loading}
+            placeholder="选择字体"
+            options={TERMINAL_FONT_OPTIONS}
+            onChange={(value) => {
+              const next = String(value);
+              setTerminalFontFamily(next);
+              debouncedSaveTerminal({ fontFamily: next });
+            }}
+          />
+          <Button
+            onClick={() =>
+              void (async () => {
+                try {
+                  const result = await window.nextshell.dialog.openFiles({
+                    title: "选择字体文件",
+                    filters: [{ name: "字体文件", extensions: SUPPORTED_FONT_EXTENSIONS }],
+                    multi: false
+                  });
+                  if (!result.canceled && result.filePaths[0]) {
+                    setTerminalCustomFontPath(result.filePaths[0]);
+                    save({ terminal: { customFontPath: result.filePaths[0] } });
+                  }
+                } catch { msg.error("打开文件选择器失败"); }
+              })()
+            }
+          >
+            ...
+          </Button>
+          {terminalCustomFontPath ? (
+            <Button
+              danger
+              onClick={() => {
+                setTerminalCustomFontPath("");
+                save({ terminal: { customFontPath: "" } });
+              }}
+            >
+              删除
+            </Button>
+          ) : null}
+        </div>
+        {terminalCustomFontPath ? (
+          <div className="stg-note">
+            自定义字体：{getFontFileStem(terminalCustomFontPath)}
+          </div>
+        ) : null}
+      </SettingsRow>
       <SettingsRow label="终端字号">
         <InputNumber
           style={{ width: "100%" }}

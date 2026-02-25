@@ -708,6 +708,22 @@ const mergePreferences = (
     return value as number;
   };
 
+  const normalizeTerminalFontFamily = (value: string | undefined, fallback: string): string => {
+    if (value === undefined) {
+      return fallback;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  };
+
+  const normalizeTerminalCustomFontPath = (value: string | undefined, fallback: string | undefined): string | undefined => {
+    if (value === undefined) {
+      return fallback;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  };
+
   const normalizeKeepAliveIntervalSec = (value: number | undefined, fallback: number): number => {
     if (!Number.isInteger(value) || (value ?? 0) < 5 || (value ?? 0) > 600) {
       return fallback;
@@ -761,6 +777,14 @@ const mergePreferences = (
       foregroundColor: normalizeTerminalColor(
         patch.terminal?.foregroundColor,
         current.terminal.foregroundColor
+      ),
+      fontFamily: normalizeTerminalFontFamily(
+        patch.terminal?.fontFamily,
+        current.terminal.fontFamily
+      ),
+      customFontPath: normalizeTerminalCustomFontPath(
+        patch.terminal?.customFontPath,
+        current.terminal.customFontPath
       ),
       fontSize: normalizeTerminalFontSize(
         patch.terminal?.fontSize,

@@ -62,6 +62,55 @@ const DEFAULT_TERMINAL_OPTIONS: FrozenTerminalOptions = {
   deleteMode: "vt220-delete"
 };
 
+const CUSTOM_FONT_PREFIX = "NextShell Custom";
+const customFontCache = new Map<string, string>();
+
+const getFontFileStem = (filePath: string): string => {
+  const normalized = filePath.replace(/\\/g, "/");
+  const base = normalized.split("/").pop() ?? "";
+  return base.replace(/\.[^.]+$/, "").trim();
+};
+
+const deriveCustomFontFamily = (filePath: string): string => {
+  const stem = getFontFileStem(filePath);
+  if (!stem) {
+    return CUSTOM_FONT_PREFIX;
+  }
+  return `${CUSTOM_FONT_PREFIX} ${stem}`;
+};
+
+const buildAssetUrl = (filePath: string): string => {
+  return `nextshell-asset://local${encodeURI(filePath)}`;
+};
+
+const ensureCustomFontLoaded = async (filePath: string): Promise<string> => {
+  const cached = customFontCache.get(filePath);
+  if (cached) {
+    return cached;
+  }
+  const family = deriveCustomFontFamily(filePath);
+  try {
+    const face = new FontFace(family, `url("${buildAssetUrl(filePath)}")`);
+    await face.load();
+    document.fonts.add(face);
+  } catch {
+    // ignore loading errors; fall back to system fonts
+  }
+  customFontCache.set(filePath, family);
+  return family;
+};
+
+const buildTerminalFontFamily = (
+  fontFamily: string,
+  customFontPath?: string
+): string => {
+  if (customFontPath) {
+    return deriveCustomFontFamily(customFontPath);
+  }
+  const trimmed = fontFamily.trim();
+  return trimmed.length > 0 ? trimmed : "monospace";
+};
+
 const sequenceByBackspaceMode = (
   mode: ConnectionProfile["backspaceMode"]
 ): string => {
@@ -155,6 +204,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 }, ref) => {
   const { message } = AntdApp.useApp();
   const terminalPreferences = usePreferencesStore((state) => state.preferences.terminal);
+  const terminalFontFamily = buildTerminalFontFamily(
+    terminalPreferences.fontFamily,
+    terminalPreferences.customFontPath
+  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -469,12 +522,16 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       return;
     }
 
+    if (terminalPreferences.customFontPath) {
+      void ensureCustomFontLoaded(terminalPreferences.customFontPath);
+    }
+
     const terminalBg = terminalPreferences.backgroundColor;
     const terminal = new Terminal({
       cursorBlink: true,
       fontSize: terminalPreferences.fontSize,
       lineHeight: terminalPreferences.lineHeight,
-      fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
+      fontFamily: terminalFontFamily,
       theme: {
         background: terminalBg,
         foreground: terminalPreferences.foregroundColor,
@@ -668,6 +725,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   }, [handleLocalAuthInput]);
 
   useEffect(() => {
+    if (terminalPreferences.customFontPath) {
+      void ensureCustomFontLoaded(terminalPreferences.customFontPath);
+    }
+
     const terminal = terminalRef.current;
     if (!terminal) {
       return;
@@ -680,6 +741,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       foreground: terminalPreferences.foregroundColor,
       cursor: terminalPreferences.foregroundColor
     };
+    terminal.options.fontFamily = terminalFontFamily;
     terminal.options.fontSize = terminalPreferences.fontSize;
     terminal.options.lineHeight = terminalPreferences.lineHeight;
 
@@ -697,6 +759,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   }, [
     terminalPreferences.backgroundColor,
     terminalPreferences.foregroundColor,
+    terminalPreferences.fontFamily,
+    terminalPreferences.customFontPath,
+    terminalFontFamily,
     terminalPreferences.fontSize,
     terminalPreferences.lineHeight
   ]);

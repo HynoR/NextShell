@@ -1,4 +1,5 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type Database from "better-sqlite3";
@@ -147,6 +148,25 @@ const fromJSON = (value: string): string[] => {
   } catch {
     return [];
   }
+};
+
+const pickFirstFontFamily = (value: unknown): string | undefined => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "string") {
+        const trimmed = item.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+    }
+    return undefined;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  return undefined;
 };
 
 const parsePortForwards = (value: string | null | undefined): SshPortForwardRule[] => {
@@ -364,6 +384,22 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
       return fallback;
     }
 
+    const fallbackFontFamily = fallback.terminal.fontFamily;
+    const legacyFontFamilies = (parsed as { terminal?: { fontFamilies?: unknown } }).terminal?.fontFamilies;
+    const fontFamily = pickFirstFontFamily(parsed.terminal?.fontFamily)
+      ?? pickFirstFontFamily(legacyFontFamilies)
+      ?? fallbackFontFamily;
+
+    const rawCustomFontPath = typeof parsed.terminal?.customFontPath === "string"
+      ? parsed.terminal.customFontPath.trim()
+      : "";
+    const customFontPath = rawCustomFontPath && existsSync(rawCustomFontPath)
+      ? rawCustomFontPath
+      : undefined;
+    const normalizedFontFamily = !customFontPath && rawCustomFontPath
+      ? fallbackFontFamily
+      : fontFamily;
+
     const legacyBackgroundImagePath = ((): string | undefined => {
       const legacyTerminal = (parsed as { terminal?: { backgroundImagePath?: unknown } }).terminal;
       if (typeof legacyTerminal?.backgroundImagePath === "string") {
@@ -425,6 +461,8 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           /^#[0-9a-fA-F]{6}$/.test(parsed.terminal.foregroundColor.trim())
             ? parsed.terminal.foregroundColor.trim()
             : fallback.terminal.foregroundColor,
+        fontFamily: normalizedFontFamily,
+        customFontPath,
         fontSize:
           typeof parsed.terminal?.fontSize === "number" &&
           Number.isInteger(parsed.terminal.fontSize) &&

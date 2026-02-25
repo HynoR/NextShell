@@ -320,6 +320,9 @@ export interface AppPreferences {
   terminal: {
     backgroundColor: string;
     foregroundColor: string;
+    fontFamily: string;
+    /** 自定义字体文件路径（空表示使用系统字体） */
+    customFontPath?: string;
     fontSize: number;
     lineHeight: number;
   };
@@ -392,6 +395,8 @@ export interface AppPreferencesPatch {
   terminal?: {
     backgroundColor?: string;
     foregroundColor?: string;
+    fontFamily?: string;
+    customFontPath?: string;
     fontSize?: number;
     lineHeight?: number;
   };
@@ -534,6 +539,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   terminal: {
     backgroundColor: "#000000",
     foregroundColor: "#d8eaff",
+    fontFamily: "monospace",
     fontSize: 14,
     lineHeight: 1.2
   },
