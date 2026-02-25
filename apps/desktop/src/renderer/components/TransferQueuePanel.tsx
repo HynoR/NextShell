@@ -79,7 +79,7 @@ export const TransferQueuePanel = ({
                 <div
                   key={task.id}
                   className={`transfer-task-item${canOpenLocal ? " openable" : ""}`}
-                  title={canOpenLocal ? "双击打开本地文件" : undefined}
+                  title={canOpenLocal ? "双击打开所在目录" : undefined}
                   onDoubleClick={() => {
                     if (canOpenLocal) {
                       onOpenLocalFile?.(task);
@@ -107,7 +107,7 @@ export const TransferQueuePanel = ({
                       <span className="path-value" title={task.remotePath}>{task.remotePath}</span>
                     </div>
                   </div>
-                  {task.status === "failed" ? (
+                  {task.status === "failed" && task.retryable !== false ? (
                     <div className="transfer-task-actions">
                       <Button size="small" type="primary" onClick={() => onRetry(task.id)}>
                         重试

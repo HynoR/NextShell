@@ -12,11 +12,13 @@ import type {
 export type BottomTab =
   | "connections"
   | "files"
+  | "quick-transfer"
   | "live-edit"
   | "commands"
   | "port-forward"
   | "system-info"
   | "traceroute";
+
 
 export interface NetworkPoint {
   inMbps: number;
@@ -236,6 +238,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       bottomTab:
         tab === "commands" ||
         tab === "files" ||
+        tab === "quick-transfer" ||
         tab === "connections" ||
         tab === "live-edit" ||
         tab === "port-forward" ||

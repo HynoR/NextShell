@@ -9,7 +9,6 @@ import {
   Button,
   Drawer,
   Input,
-  InputNumber,
   Modal,
   Select,
   Space,
@@ -21,14 +20,18 @@ import {
 import type {
   BatchCommandExecutionResult,
   ConnectionProfile,
-  SavedCommand
+  SavedCommand,
+  SessionDescriptor
 } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { getBatchTargetConnectionIds } from "../utils/batchTargets";
 
 const CMD_PARAMS_STORAGE_PREFIX = "nextshell:cmdParams:";
 
 const TEMPLATE_PLACEHOLDER_REGEX = /\[#(\w+)\]/g;
+
+type TemplateExecutionMode = "single" | "batch";
 
 function extractPlaceholderKeys(command: string): string[] {
   const keys: string[] = [];
@@ -85,22 +88,27 @@ interface CommandCenterPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
   connections: ConnectionProfile[];
+  sessions: SessionDescriptor[];
   onExecuteCommand?: (command: string) => void;
 }
-
-const toGroupPath = (connection: ConnectionProfile): string => {
-  return connection.groupPath || "/";
-};
 
 export const CommandCenterPane = ({
   connection,
   connected,
   connections,
+  sessions,
   onExecuteCommand
 }: CommandCenterPaneProps) => {
   const rememberTemplateParams = usePreferencesStore(
     (state) => state.preferences.commandCenter.rememberTemplateParams
   );
+  const batchMaxConcurrency = usePreferencesStore(
+    (state) => state.preferences.commandCenter.batchMaxConcurrency
+  );
+  const batchRetryCount = usePreferencesStore(
+    (state) => state.preferences.commandCenter.batchRetryCount
+  );
+
   const [allCommands, setAllCommands] = useState<SavedCommand[]>([]);
   const [keyword, setKeyword] = useState("");
   const [groupFilter, setGroupFilter] = useState<string | undefined>(undefined);
@@ -115,25 +123,14 @@ export const CommandCenterPane = ({
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
   const [templateCommand, setTemplateCommand] = useState<SavedCommand | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
-  const [batchCommand, setBatchCommand] = useState("");
-  const [batchGroup, setBatchGroup] = useState<string | undefined>(undefined);
-  const [batchConnectionIds, setBatchConnectionIds] = useState<string[]>([]);
-  const [batchRetryCount, setBatchRetryCount] = useState(1);
-  const [batchConcurrency, setBatchConcurrency] = useState(5);
+  const [templateExecutionMode, setTemplateExecutionMode] = useState<TemplateExecutionMode>("single");
   const [batchResult, setBatchResult] = useState<BatchCommandExecutionResult | undefined>(
     undefined
   );
+  const [batchResultDrawerOpen, setBatchResultDrawerOpen] = useState(false);
   const [batchRunning, setBatchRunning] = useState(false);
 
-  const groupOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const item of connections) {
-      set.add(toGroupPath(item));
-    }
-    return Array.from(set)
-      .sort((a, b) => a.localeCompare(b))
-      .map((item) => ({ label: item, value: item }));
-  }, [connections]);
+  const targetConnectionIds = useMemo(() => getBatchTargetConnectionIds(sessions), [sessions]);
 
   // Client-side filtering — avoids IPC on every keystroke
   const savedCommands = useMemo(() => {
@@ -166,7 +163,6 @@ export const CommandCenterPane = ({
   const loadSavedCommands = useCallback(async () => {
     setLoading(true);
     try {
-      // Load all commands without filters
       const list = await window.nextshell.savedCommand.list({});
       setAllCommands(list);
     } catch (error) {
@@ -179,10 +175,6 @@ export const CommandCenterPane = ({
   useEffect(() => {
     void loadSavedCommands();
   }, [loadSavedCommands]);
-
-  useEffect(() => {
-    if (connection) setBatchGroup(toGroupPath(connection));
-  }, [connection]);
 
   const openCreateModal = () => {
     setEditingCommand(null);
@@ -222,7 +214,6 @@ export const CommandCenterPane = ({
       });
       message.success(editingCommand ? "命令已更新" : "命令已添加");
       setEditModalOpen(false);
-      // Refresh all commands from DB to get new/updated item
       void loadSavedCommands();
     } catch (error) {
       message.error(`保存命令失败：${formatErrorMessage(error, "请稍后重试")}`);
@@ -230,7 +221,6 @@ export const CommandCenterPane = ({
   };
 
   const removeSavedCommand = async (cmd: SavedCommand) => {
-    // Optimistic: remove from UI immediately
     const prev = [...allCommands];
     setAllCommands((commands) => commands.filter((c) => c.id !== cmd.id));
     try {
@@ -238,7 +228,6 @@ export const CommandCenterPane = ({
       message.success("已删除");
     } catch (error) {
       message.error(`删除命令失败：${formatErrorMessage(error, "请稍后重试")}`);
-      // Rollback
       setAllCommands(prev);
     }
   };
@@ -257,7 +246,36 @@ export const CommandCenterPane = ({
     onExecuteCommand?.(normalized);
   };
 
-  const openTemplateDrawer = (cmd: SavedCommand) => {
+  const runBatchCommand = useCallback(
+    async (command: string): Promise<void> => {
+      const normalized = command.trim();
+      if (!normalized) {
+        return;
+      }
+      if (targetConnectionIds.length === 0) {
+        message.warning("当前没有打开标签页，无法批量执行。");
+        return;
+      }
+      try {
+        setBatchRunning(true);
+        const result = await window.nextshell.command.execBatch({
+          command: normalized,
+          connectionIds: targetConnectionIds,
+          maxConcurrency: batchMaxConcurrency,
+          retryCount: batchRetryCount
+        });
+        setBatchResult(result);
+        setBatchResultDrawerOpen(true);
+      } catch (error) {
+        message.error(`批量执行失败：${formatErrorMessage(error, "请检查连接状态")}`);
+      } finally {
+        setBatchRunning(false);
+      }
+    },
+    [batchMaxConcurrency, batchRetryCount, targetConnectionIds]
+  );
+
+  const openTemplateDrawer = (cmd: SavedCommand, mode: TemplateExecutionMode) => {
     const keys = extractPlaceholderKeys(cmd.command);
     const initial = rememberTemplateParams ? loadParamsFromStorage(cmd.id) : {};
     const params: Record<string, string> = {};
@@ -266,6 +284,7 @@ export const CommandCenterPane = ({
     }
     setTemplateCommand(cmd);
     setTemplateParams(params);
+    setTemplateExecutionMode(mode);
     setTemplateDrawerOpen(true);
   };
 
@@ -279,49 +298,27 @@ export const CommandCenterPane = ({
     }
     setTemplateDrawerOpen(false);
     setTemplateCommand(null);
+    if (templateExecutionMode === "batch") {
+      void runBatchCommand(resolved);
+      return;
+    }
     runCommand(resolved);
   };
 
   const runSavedCommand = (cmd: SavedCommand) => {
     if (cmd.isTemplate) {
-      openTemplateDrawer(cmd);
+      openTemplateDrawer(cmd, "single");
       return;
     }
     runCommand(cmd.command);
   };
 
-  const runBatch = async (): Promise<void> => {
-    const command = batchCommand.trim();
-    if (!command) {
-      message.warning("请输入批量命令。");
+  const runBatchForSavedCommand = async (cmd: SavedCommand): Promise<void> => {
+    if (cmd.isTemplate) {
+      openTemplateDrawer(cmd, "batch");
       return;
     }
-    const targetIds =
-      batchConnectionIds.length > 0
-        ? batchConnectionIds
-        : batchGroup
-          ? connections.filter((c) => toGroupPath(c) === batchGroup).map((c) => c.id)
-          : connection
-            ? [connection.id]
-            : [];
-    if (targetIds.length === 0) {
-      message.warning("请选择至少一个目标连接或分组。");
-      return;
-    }
-    try {
-      setBatchRunning(true);
-      const result = await window.nextshell.command.execBatch({
-        command,
-        connectionIds: targetIds,
-        maxConcurrency: batchConcurrency,
-        retryCount: batchRetryCount
-      });
-      setBatchResult(result);
-    } catch (error) {
-      message.error(`批量执行失败：${formatErrorMessage(error, "请检查连接状态")}`);
-    } finally {
-      setBatchRunning(false);
-    }
+    await runBatchCommand(cmd.command);
   };
 
   const groupOptionsForFilter = useMemo(() => {
@@ -335,8 +332,7 @@ export const CommandCenterPane = ({
   const templateKeys = templateCommand ? extractPlaceholderKeys(templateCommand.command) : [];
 
   const [sectionCollapsed, setSectionCollapsed] = useState<Record<string, boolean>>({
-    library: false,
-    batch: true
+    library: false
   });
 
   const toggleSection = (key: string) => {
@@ -356,7 +352,6 @@ export const CommandCenterPane = ({
 
   return (
     <div className="cc-pane">
-      {/* ── Section 1: Command Library ── */}
       <div className="cc-section">
         <div
           role="button"
@@ -444,6 +439,14 @@ export const CommandCenterPane = ({
                               <i className="ri-play-line" aria-hidden="true" />
                             </button>
                             <button
+                              className="cc-action-btn secondary"
+                              disabled={batchRunning}
+                              onClick={() => void runBatchForSavedCommand(cmd)}
+                              title="批量执行"
+                            >
+                              <i className="ri-stack-line" aria-hidden="true" />
+                            </button>
+                            <button
                               className="cc-action-btn"
                               onClick={() => openEditModal(cmd)}
                               title="编辑"
@@ -465,118 +468,6 @@ export const CommandCenterPane = ({
                 ))}
               </div>
             )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Section 2: Batch Execution ── */}
-      <div className="cc-section">
-        <div
-          role="button"
-          tabIndex={0}
-          aria-expanded={!sectionCollapsed.batch}
-          className="cc-section-header"
-          onClick={() => toggleSection("batch")}
-          onKeyDown={(event) => onSectionHeaderKeyDown(event, "batch")}
-        >
-          <i
-            className={sectionCollapsed.batch ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
-            aria-hidden="true"
-          />
-          <i className="ri-stack-line cc-section-icon" aria-hidden="true" />
-          <span className="cc-section-title">批量执行</span>
-          {batchRunning && <Tag color="processing" style={{ margin: 0, lineHeight: "18px", fontSize: 10 }}>执行中</Tag>}
-        </div>
-
-        {!sectionCollapsed.batch && (
-          <div className="cc-section-body cc-batch-body">
-            <div className="cc-batch-row">
-              <Input
-                value={batchCommand}
-                onChange={(e) => setBatchCommand(e.target.value)}
-                placeholder="输入批量执行的命令"
-                onPressEnter={() => void runBatch()}
-                size="small"
-              />
-            </div>
-            <div className="cc-batch-row cc-batch-options">
-              <Select
-                allowClear
-                value={batchGroup}
-                onChange={setBatchGroup}
-                placeholder="选择分组"
-                options={groupOptions}
-                size="small"
-                style={{ flex: 1, minWidth: 120 }}
-              />
-              <Select
-                mode="multiple"
-                allowClear
-                value={batchConnectionIds}
-                onChange={setBatchConnectionIds}
-                placeholder="或选择连接"
-                options={connections.map((c) => ({ label: `${c.name} (${c.host})`, value: c.id }))}
-                size="small"
-                style={{ flex: 2, minWidth: 160 }}
-              />
-            </div>
-            <div className="cc-batch-row cc-batch-footer">
-              <div className="cc-batch-params">
-                <span className="cc-batch-param">
-                  并发
-                  <InputNumber
-                    min={1} max={50}
-                    value={batchConcurrency}
-                    onChange={(v) => setBatchConcurrency(Number(v) || 1)}
-                    size="small"
-                    style={{ width: 56 }}
-                  />
-                </span>
-                <span className="cc-batch-param">
-                  重试
-                  <InputNumber
-                    min={0} max={5}
-                    value={batchRetryCount}
-                    onChange={(v) => setBatchRetryCount(Number(v) || 0)}
-                    size="small"
-                    style={{ width: 56 }}
-                  />
-                </span>
-              </div>
-              <Button type="primary" size="small" loading={batchRunning} onClick={() => void runBatch()}>
-                执行
-              </Button>
-            </div>
-
-            {batchResult ? (
-              <div className="cc-batch-result">
-                <div className="cc-batch-summary">
-                  <span>总计 <strong>{batchResult.total}</strong></span>
-                  <span className="cc-batch-ok">成功 {batchResult.successCount}</span>
-                  <span className="cc-batch-fail">失败 {batchResult.failedCount}</span>
-                  <span>{batchResult.durationMs}ms</span>
-                </div>
-                <div className="cc-batch-items">
-                  {batchResult.results.map((item) => {
-                    const target = connections.find((c) => c.id === item.connectionId);
-                    return (
-                      <div key={`${item.connectionId}-${item.executedAt}`} className="cc-result-item">
-                        <div className="cc-result-item-head">
-                          <span>{target?.name ?? item.connectionId}</span>
-                          <Tag color={item.success ? "green" : "red"} style={{ margin: 0, lineHeight: "18px", fontSize: 10 }}>
-                            {item.success ? "成功" : "失败"} / {item.attempts}次
-                          </Tag>
-                        </div>
-                        <pre className="cc-output">{item.stdout || "(empty)"}</pre>
-                        {(item.stderr || item.error) ? (
-                          <pre className="cc-output error">{item.stderr || item.error}</pre>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
           </div>
         )}
       </div>
@@ -638,8 +529,9 @@ export const CommandCenterPane = ({
         onClose={() => {
           setTemplateDrawerOpen(false);
           setTemplateCommand(null);
+          setTemplateExecutionMode("single");
         }}
-        size={400}
+        width={400}
         footer={
           <Button type="primary" onClick={() => runTemplateFromDrawer()}>
             执行
@@ -651,7 +543,7 @@ export const CommandCenterPane = ({
             {templateKeys.length > 0 ? (
               <>
                 <Typography.Text type="secondary">
-                  填写参数后执行，
+                  填写参数后{templateExecutionMode === "batch" ? "将对当前打开标签页服务器批量执行，" : "执行，"}
                   {rememberTemplateParams ? "将自动记住本次输入。" : "本次输入不会被记住。"}
                 </Typography.Text>
                 {templateKeys.map((key) => (
@@ -671,6 +563,45 @@ export const CommandCenterPane = ({
               <Typography.Text type="secondary">无需参数，点击「执行」直接运行。</Typography.Text>
             )}
           </Space>
+        )}
+      </Drawer>
+
+      <Drawer
+        title={batchResult ? `批量执行结果：${batchResult.command}` : "批量执行结果"}
+        open={batchResultDrawerOpen}
+        onClose={() => setBatchResultDrawerOpen(false)}
+        width={560}
+      >
+        {batchResult ? (
+          <div className="cc-batch-result cc-batch-drawer">
+            <div className="cc-batch-summary">
+              <span>总计 <strong>{batchResult.total}</strong></span>
+              <span className="cc-batch-ok">成功 {batchResult.successCount}</span>
+              <span className="cc-batch-fail">失败 {batchResult.failedCount}</span>
+              <span>{batchResult.durationMs}ms</span>
+            </div>
+            <div className="cc-batch-items">
+              {batchResult.results.map((item) => {
+                const target = connections.find((c) => c.id === item.connectionId);
+                return (
+                  <div key={`${item.connectionId}-${item.executedAt}`} className="cc-result-item">
+                    <div className="cc-result-item-head">
+                      <span>{target?.name ?? item.connectionId}</span>
+                      <Tag color={item.success ? "green" : "red"} style={{ margin: 0, lineHeight: "18px", fontSize: 10 }}>
+                        {item.success ? "成功" : "失败"} / {item.attempts}次
+                      </Tag>
+                    </div>
+                    <pre className="cc-output">{item.stdout || "(empty)"}</pre>
+                    {(item.stderr || item.error) ? (
+                      <pre className="cc-output error">{item.stderr || item.error}</pre>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <Typography.Text type="secondary">暂无批量执行结果。</Typography.Text>
         )}
       </Drawer>
     </div>
