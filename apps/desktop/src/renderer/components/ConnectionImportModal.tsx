@@ -97,6 +97,7 @@ export const ConnectionImportModal = ({
           password: e.password,
           keepAliveEnabled: e.keepAliveEnabled,
           keepAliveIntervalSec: e.keepAliveIntervalSec,
+          portForwards: e.portForwards ?? [],
           groupPath: e.groupPath,
           tags: e.tags,
           notes: e.notes,

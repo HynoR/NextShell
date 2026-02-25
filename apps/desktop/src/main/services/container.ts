@@ -2229,6 +2229,7 @@ export const createServiceContainer = (
       proxyId: latest.proxyId,
       keepAliveEnabled: latest.keepAliveEnabled,
       keepAliveIntervalSec: latest.keepAliveIntervalSec,
+      portForwards: latest.portForwards,
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
