@@ -37,6 +37,7 @@ import type {
   SavedCommand,
   SessionDescriptor,
   SessionStatus,
+  SshPortForwardRule,
   SystemInfoSnapshot,
   SshKeyProfile,
   TerminalEncoding
@@ -423,6 +424,10 @@ const toAuthRequiredReason = (message: string): string | undefined => {
   }
 
   if (lower.includes("password auth requires password")) {
+    return "缺少密码，请输入密码后重试。";
+  }
+
+  if (lower.includes("interactive auth requires password")) {
     return "缺少密码，请输入密码后重试。";
   }
 
@@ -1002,6 +1007,7 @@ export const createServiceContainer = (
   const activeSessions = new Map<string, ActiveSession>();
   const activeConnections = new Map<string, SshConnection>();
   const connectionPromises = new Map<string, Promise<SshConnection>>();
+  const activePortForwards = new Map<string, Map<string, { rule: SshPortForwardRule; close: () => Promise<void> }>>();
   // ─── Hidden Session Maps ──────────────────────────────────────────────
   const systemMonitorRuntimes = new Map<string, SystemMonitorRuntime>();
   const systemMonitorConnections = new Map<string, SshConnection>();
@@ -1100,6 +1106,25 @@ export const createServiceContainer = (
       };
     }
 
+    if (effectiveAuthType === "interactive") {
+      const password =
+        authOverride?.authType === "interactive"
+          ? authOverride.password
+          : profile.authType === "interactive"
+            ? secret
+            : undefined;
+
+      if (!password) {
+        throw new Error("Interactive auth requires password");
+      }
+
+      return {
+        ...base,
+        authType: "interactive",
+        password
+      };
+    }
+
     if (effectiveAuthType === "privateKey") {
       // Resolve SSH key entity
       const effectiveKeyId = authOverride?.sshKeyId ?? profile.sshKeyId;
@@ -1176,6 +1201,64 @@ export const createServiceContainer = (
     sendSessionStatus(active.sender, { sessionId, status, reason });
   };
 
+  const stopPortForwards = async (connectionId: string): Promise<void> => {
+    const forwards = activePortForwards.get(connectionId);
+    if (!forwards) {
+      return;
+    }
+    activePortForwards.delete(connectionId);
+    await Promise.all(
+      Array.from(forwards.values()).map(async ({ rule, close }) => {
+        try {
+          await close();
+        } catch (error) {
+          logger.warn("[SSH] failed to stop port forward", {
+            connectionId,
+            rule,
+            reason: normalizeError(error)
+          });
+        }
+      })
+    );
+  };
+
+  const applyPortForwards = async (
+    connectionId: string,
+    profile: ConnectionProfile,
+    client: SshConnection
+  ): Promise<void> => {
+    await stopPortForwards(connectionId);
+    const rules = (profile.portForwards ?? []).filter((rule) => rule.enabled);
+    if (rules.length === 0) {
+      return;
+    }
+
+    const active = new Map<string, { rule: SshPortForwardRule; close: () => Promise<void> }>();
+    for (const rule of rules) {
+      try {
+        const handle = await client.startPortForward(rule);
+        active.set(rule.id, { rule, close: handle.close });
+      } catch (error) {
+        const reason = normalizeError(error);
+        logger.warn("[SSH] failed to start port forward", { connectionId, rule, reason });
+        connections.appendAuditLog({
+          action: "connection.port_forward_failed",
+          level: "warn",
+          connectionId,
+          message: "Failed to start port forward",
+          metadata: {
+            rule,
+            reason
+          }
+        });
+      }
+    }
+
+    if (active.size > 0) {
+      activePortForwards.set(connectionId, active);
+    }
+  };
+
   const establishConnection = async (
     connectionId: string,
     profile: ConnectionProfile,
@@ -1185,11 +1268,13 @@ export const createServiceContainer = (
     const ssh = await SshConnection.connect(await resolveConnectOptions(profile, authOverride));
     ssh.onClose(() => {
       activeConnections.delete(connectionId);
+      void stopPortForwards(connectionId);
       void remoteEditManager.cleanupByConnectionId(connectionId);
       logger.info("[SSH] disconnected", { connectionId });
     });
     activeConnections.set(connectionId, ssh);
     logger.info("[SSH] connected", { connectionId });
+    await applyPortForwards(connectionId, profile, ssh);
     return ssh;
   };
 
@@ -1974,6 +2059,7 @@ export const createServiceContainer = (
     const current = connections.getById(id);
     const isNew = !current;
     const authTypeChanged = Boolean(current && current.authType !== input.authType);
+    const needsPasswordCredential = input.authType === "password" || input.authType === "interactive";
     const shouldDropPreviousCredential = input.authType === "agent" || authTypeChanged;
 
     if (input.authType === "privateKey" && !input.sshKeyId) {
@@ -1995,6 +2081,7 @@ export const createServiceContainer = (
     }
 
     const normalizedUsername = input.username.trim();
+    const portForwards = input.portForwards ?? current?.portForwards ?? [];
 
     let credentialRef = current?.credentialRef;
 
@@ -2003,7 +2090,7 @@ export const createServiceContainer = (
       credentialRef = undefined;
     }
 
-    if (input.authType === "password") {
+    if (needsPasswordCredential) {
       if (input.password) {
         credentialRef = await vault.storeCredential(`conn-${id}`, input.password);
       }
@@ -2021,11 +2108,12 @@ export const createServiceContainer = (
       port: input.port,
       username: normalizedUsername,
       authType: input.authType,
-      credentialRef: input.authType === "password" ? credentialRef : undefined,
+      credentialRef: needsPasswordCredential ? credentialRef : undefined,
       sshKeyId: input.authType === "privateKey" ? input.sshKeyId : undefined,
       hostFingerprint: input.hostFingerprint,
       strictHostKeyChecking: input.strictHostKeyChecking,
       proxyId: input.proxyId,
+      portForwards,
       terminalEncoding: input.terminalEncoding,
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
@@ -2040,6 +2128,13 @@ export const createServiceContainer = (
     };
 
     connections.save(profile);
+
+    if (input.portForwards !== undefined) {
+      const client = activeConnections.get(profile.id);
+      if (client) {
+        await applyPortForwards(profile.id, profile, client);
+      }
+    }
 
     if (!profile.monitorSession) {
       await disposeAllMonitorSessions(profile.id);
@@ -2097,7 +2192,9 @@ export const createServiceContainer = (
       port: latest.port,
       username: authOverride.username?.trim() || latest.username,
       authType: authOverride.authType,
-      password: authOverride.authType === "password" ? authOverride.password : undefined,
+      password: authOverride.authType === "password" || authOverride.authType === "interactive"
+        ? authOverride.password
+        : undefined,
       sshKeyId: authOverride.authType === "privateKey" ? effectiveSshKeyId : undefined,
       hostFingerprint: latest.hostFingerprint,
       strictHostKeyChecking: latest.strictHostKeyChecking,
@@ -2144,6 +2241,7 @@ export const createServiceContainer = (
     }
 
     await disposeAllMonitorSessions(connectionId);
+    await stopPortForwards(connectionId);
 
     const client = activeConnections.get(connectionId);
     if (!client) {
@@ -2589,7 +2687,7 @@ export const createServiceContainer = (
 
   const buildExportedConnection = async (conn: ConnectionProfile): Promise<ExportedConnection> => {
     let password: string | undefined;
-    if (conn.authType === "password" && conn.credentialRef) {
+    if ((conn.authType === "password" || conn.authType === "interactive") && conn.credentialRef) {
       try {
         password = await vault.readCredential(conn.credentialRef);
       } catch {
@@ -2604,6 +2702,7 @@ export const createServiceContainer = (
       username: conn.username,
       authType: conn.authType,
       password,
+      portForwards: conn.portForwards,
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -2765,6 +2864,7 @@ export const createServiceContainer = (
               authType: entry.authType,
               password: entry.password,
               strictHostKeyChecking: false,
+              portForwards: entry.portForwards,
               groupPath: entry.groupPath,
               tags: entry.tags,
               notes: entry.notes,
@@ -2775,7 +2875,7 @@ export const createServiceContainer = (
               monitorSession: entry.monitorSession
             });
             result.overwritten++;
-            if (!entry.password && entry.authType === "password") {
+            if (!entry.password && (entry.authType === "password" || entry.authType === "interactive")) {
               result.passwordsUnavailable++;
             }
             continue;
@@ -2791,6 +2891,7 @@ export const createServiceContainer = (
           authType: entry.authType,
           password: entry.password,
           strictHostKeyChecking: false,
+          portForwards: entry.portForwards,
           groupPath: entry.groupPath,
           tags: entry.tags,
           notes: entry.notes,
@@ -2801,7 +2902,7 @@ export const createServiceContainer = (
           monitorSession: entry.monitorSession
         });
         result.created++;
-        if (!entry.password && entry.authType === "password") {
+        if (!entry.password && (entry.authType === "password" || entry.authType === "interactive")) {
           result.passwordsUnavailable++;
         }
       } catch (error) {
@@ -4456,8 +4557,8 @@ export const createServiceContainer = (
     if (!connection) {
       throw new Error("连接不存在。");
     }
-    if (connection.authType !== "password") {
-      throw new Error("该连接未使用密码认证。");
+    if (connection.authType !== "password" && connection.authType !== "interactive") {
+      throw new Error("该连接未使用密码/交互式认证。");
     }
     if (!connection.credentialRef) {
       throw new Error("该连接未保存登录密码。");
@@ -4548,6 +4649,9 @@ export const createServiceContainer = (
 
     const sessionIds = Array.from(activeSessions.keys());
     await Promise.all(sessionIds.map((sessionId) => closeSession(sessionId)));
+
+    const forwardIds = Array.from(activePortForwards.keys());
+    await Promise.all(forwardIds.map((connectionId) => stopPortForwards(connectionId)));
 
     const sshConnections = Array.from(activeConnections.values());
     activeConnections.clear();

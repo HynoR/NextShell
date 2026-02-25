@@ -9,7 +9,16 @@ import type {
   ProxyProfile
 } from "@nextshell/core";
 
-export type BottomTab = "connections" | "files" | "quick-transfer" | "live-edit" | "commands" | "system-info" | "traceroute";
+export type BottomTab =
+  | "connections"
+  | "files"
+  | "quick-transfer"
+  | "live-edit"
+  | "commands"
+  | "port-forward"
+  | "system-info"
+  | "traceroute";
+
 
 export interface NetworkPoint {
   inMbps: number;
@@ -232,6 +241,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         tab === "quick-transfer" ||
         tab === "connections" ||
         tab === "live-edit" ||
+        tab === "port-forward" ||
         tab === "system-info" ||
         tab === "traceroute"
           ? tab

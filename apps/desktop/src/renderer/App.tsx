@@ -480,6 +480,7 @@ export const App = () => {
               tab === "quick-transfer" ||
               tab === "connections" ||
               tab === "live-edit" ||
+              tab === "port-forward" ||
               tab === "system-info" ||
               tab === "traceroute"
             ) {

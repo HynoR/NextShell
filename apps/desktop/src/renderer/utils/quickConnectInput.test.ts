@@ -30,6 +30,7 @@ const makeConnection = (patch: Partial<ConnectionProfile>): ConnectionProfile =>
   hostFingerprint: patch.hostFingerprint,
   strictHostKeyChecking: patch.strictHostKeyChecking ?? false,
   proxyId: patch.proxyId,
+  portForwards: patch.portForwards ?? [],
   terminalEncoding: patch.terminalEncoding ?? "utf-8",
   backspaceMode: patch.backspaceMode ?? "ascii-backspace",
   deleteMode: patch.deleteMode ?? "vt220-delete",
