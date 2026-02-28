@@ -2102,6 +2102,7 @@ export const createServiceContainer = (
       hostFingerprint: latest.hostFingerprint,
       strictHostKeyChecking: latest.strictHostKeyChecking,
       proxyId: latest.proxyId,
+      portForwards: latest.portForwards,
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
