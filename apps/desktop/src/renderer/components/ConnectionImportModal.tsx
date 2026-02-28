@@ -95,6 +95,7 @@ export const ConnectionImportModal = ({
           username: e.username,
           authType: e.authType,
           password: e.password,
+          portForwards: e.portForwards ?? [],
           groupPath: e.groupPath,
           tags: e.tags,
           notes: e.notes,

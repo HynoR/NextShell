@@ -630,6 +630,7 @@ export const ConnectionManagerModal = ({
         hostFingerprint,
         strictHostKeyChecking: values.strictHostKeyChecking ?? false,
         proxyId: values.proxyId,
+        portForwards: selectedConnection?.portForwards ?? [],
         terminalEncoding,
         backspaceMode,
         deleteMode,
@@ -653,7 +654,7 @@ export const ConnectionManagerModal = ({
     } finally {
       setSaving(false);
     }
-  }, [form, onConnectionSaved, selectedConnectionId, setFormTab]);
+  }, [form, onConnectionSaved, selectedConnection, selectedConnectionId, setFormTab]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (saving || connectingFromForm) {
