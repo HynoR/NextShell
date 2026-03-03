@@ -477,12 +477,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           rclonePath={rclonePath}
           backupConflictPolicy={backupConflictPolicy}
           restoreConflictPolicy={restoreConflictPolicy}
-          backupRememberPassword={preferences.backup.rememberPassword}
           pwdStatus={pwdStatus}
-          pwdStatusLoading={pwdStatusLoading}
-          pwdInput={pwdInput}
-          pwdConfirm={pwdConfirm}
-          pwdBusy={pwdBusy}
           backupRunning={backupRunning}
           archiveList={archiveList}
           archiveListVisible={archiveListVisible}
@@ -493,12 +488,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           setRclonePath={setRclonePath}
           setBackupConflictPolicy={setBackupConflictPolicy}
           setRestoreConflictPolicy={setRestoreConflictPolicy}
-          setPwdInput={setPwdInput}
-          setPwdConfirm={setPwdConfirm}
           setArchiveListVisible={setArchiveListVisible}
-          onSetPassword={() => void handleSetPassword()}
-          onUnlockPassword={() => void handleUnlockPassword()}
-          onClearRemembered={() => void handleClearRemembered()}
+          onOpenSecurity={() => setActiveSection("security")}
           onRunBackup={() => void handleRunBackup()}
           onListArchives={() => void handleListArchives()}
           onRestore={(id) => void handleRestore(id)}
@@ -1615,14 +1606,12 @@ const NetworkSection = ({
 
 const BackupSection = ({
   loading, backupRemotePath, rclonePath,
-  backupConflictPolicy, restoreConflictPolicy, backupRememberPassword,
-  pwdStatus, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
+  backupConflictPolicy, restoreConflictPolicy, pwdStatus,
   backupRunning, archiveList, archiveListVisible, archiveListLoading,
   restoring, lastBackupAt,
   setBackupRemotePath, setRclonePath,
   setBackupConflictPolicy, setRestoreConflictPolicy,
-  setPwdInput, setPwdConfirm, setArchiveListVisible,
-  onSetPassword, onUnlockPassword, onClearRemembered,
+  setArchiveListVisible, onOpenSecurity,
   onRunBackup, onListArchives, onRestore,
   save, message: msg,
 }: {
@@ -1631,12 +1620,7 @@ const BackupSection = ({
   rclonePath: string;
   backupConflictPolicy: "skip" | "force";
   restoreConflictPolicy: "skip_older" | "force";
-  backupRememberPassword: boolean;
   pwdStatus: { isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean };
-  pwdStatusLoading: boolean;
-  pwdInput: string;
-  pwdConfirm: string;
-  pwdBusy: boolean;
   backupRunning: boolean;
   archiveList: BackupArchiveMeta[];
   archiveListVisible: boolean;
@@ -1647,12 +1631,8 @@ const BackupSection = ({
   setRclonePath: (v: string) => void;
   setBackupConflictPolicy: (v: "skip" | "force") => void;
   setRestoreConflictPolicy: (v: "skip_older" | "force") => void;
-  setPwdInput: (v: string) => void;
-  setPwdConfirm: (v: string) => void;
   setArchiveListVisible: (v: boolean) => void;
-  onSetPassword: () => void;
-  onUnlockPassword: () => void;
-  onClearRemembered: () => void;
+  onOpenSecurity: () => void;
   onRunBackup: () => void;
   onListArchives: () => void;
   onRestore: (id: string) => void;
@@ -1660,61 +1640,8 @@ const BackupSection = ({
   message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => (
   <>
-    <SettingsCard title="主密码" description="用于云存档备份、导出加密默认填充和连接密码查看授权">
-      <div className="flex items-center gap-2 mb-2">
-        <Typography.Text style={{ fontSize: 12 }}>状态: </Typography.Text>
-        {pwdStatusLoading ? (
-          <Skeleton.Input active size="small" style={{ width: 120 }} />
-        ) : pwdStatus.isSet ? (
-          pwdStatus.isUnlocked ? (
-            <Badge status="success" text="已设置 · 本次已解锁" />
-          ) : (
-            <Badge status="processing" text="已设置" />
-          )
-        ) : (
-          <Badge status="default" text="未设置" />
-        )}
-        {pwdStatus.keytarAvailable && (
-          <Tag color="blue" style={{ marginLeft: 4 }}>钥匙串可用</Tag>
-        )}
-      </div>
-
-      <SettingsRow label={pwdStatus.isSet ? "输入主密码" : "设置主密码"}>
-        <Input.Password
-          value={pwdInput}
-          onChange={(e) => setPwdInput(e.target.value)}
-          placeholder={pwdStatus.isSet ? "输入主密码以解锁" : "新主密码（至少 6 个字符）"}
-          disabled={pwdBusy}
-        />
-        {!pwdStatus.isSet && (
-          <>
-            <div style={{ marginTop: 8 }}>
-              <Typography.Text style={{ fontSize: 12 }}>确认密码</Typography.Text>
-            </div>
-            <Input.Password
-              value={pwdConfirm}
-              onChange={(e) => setPwdConfirm(e.target.value)}
-              placeholder="再次输入密码"
-              disabled={pwdBusy}
-              style={{ marginTop: 4 }}
-            />
-          </>
-        )}
-        <Space style={{ marginTop: 8 }}>
-          {pwdStatus.isSet ? (
-            <Button type="primary" loading={pwdBusy} disabled={pwdStatus.isUnlocked} onClick={onUnlockPassword}>
-              解锁
-            </Button>
-          ) : (
-            <Button type="primary" loading={pwdBusy} onClick={onSetPassword}>
-              设置主密码
-            </Button>
-          )}
-          {pwdStatus.keytarAvailable && pwdStatus.isSet && (
-            <Button onClick={onClearRemembered}>清除钥匙串缓存</Button>
-          )}
-        </Space>
-      </SettingsRow>
+    <SettingsCard title="主密码" description="主密码由“安全与审计”统一管理">
+      <Button onClick={onOpenSecurity}>前往安全与审计</Button>
     </SettingsCard>
 
     <SettingsCard title="远端配置" description="配置 rclone 路径和冲突策略">
@@ -1756,13 +1683,6 @@ const BackupSection = ({
           </Button>
         </div>
       </SettingsRow>
-
-      <SettingsSwitchRow
-        label="使用系统钥匙串记住主密码"
-        checked={backupRememberPassword}
-        disabled={loading || !pwdStatus.keytarAvailable}
-        onChange={(v) => save({ backup: { rememberPassword: v } })}
-      />
 
       <div className="flex gap-4 mt-2">
         <SettingsRow label="备份冲突策略">
