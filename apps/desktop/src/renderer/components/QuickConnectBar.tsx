@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
+import { Form, Input, InputNumber, Modal, Select } from "antd";
+import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nextshell/core";
+import type { QuickCreateConnectionInput } from "../utils/quickConnectInput";
 
 interface QuickConnectBarProps {
   connections: ConnectionProfile[];
+  sshKeys: SshKeyProfile[];
   sessions: SessionDescriptor[];
   onConnect: (connectionId: string) => void;
   onQuickConnectInput: (raw: string) => Promise<boolean>;
+  onQuickCreateConnection: (input: QuickCreateConnectionInput) => Promise<boolean>;
 }
 
 interface ResultItem {
@@ -13,20 +17,47 @@ interface ResultItem {
   isConnected: boolean;
 }
 
+interface QuickCreateFormValues {
+  name?: string;
+  host: string;
+  port: number;
+  username?: string;
+  authType: "password" | "privateKey";
+  password?: string;
+  sshKeyId?: string;
+}
+
+type DisplayItem =
+  | { type: "create-action"; id: "create-action" }
+  | { type: "quick-input-action"; id: "quick-input-action" }
+  | { type: "connection"; item: ResultItem };
+
 const MAX_RECENT = 6;
+const QUICK_CREATE_DEFAULT_VALUES: Pick<QuickCreateFormValues, "port" | "authType"> = {
+  port: 22,
+  authType: "password"
+};
 
 export const QuickConnectBar = ({
   connections,
+  sshKeys,
   sessions,
   onConnect,
   onQuickConnectInput,
+  onQuickCreateConnection
 }: QuickConnectBarProps) => {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [submitting, setSubmitting] = useState(false);
+  const [quickInputMode, setQuickInputMode] = useState(false);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [quickCreateSaving, setQuickCreateSaving] = useState(false);
+  const [quickCreateForm] = Form.useForm<QuickCreateFormValues>();
+  const quickCreateAuthType = Form.useWatch("authType", quickCreateForm);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isPlusPrefixed = keyword.trimStart().startsWith("+");
 
   const connectedIds = useMemo(
     () =>
@@ -63,6 +94,31 @@ export const QuickConnectBar = ({
       .map((c) => ({ connection: c, isConnected: connectedIds.has(c.id) }));
   }, [keyword, connections, connectedIds, recentConnections]);
 
+  const displayItems = useMemo<DisplayItem[]>(() => {
+    if (quickInputMode) {
+      return [];
+    }
+
+    if (isPlusPrefixed) {
+      return [{ type: "quick-input-action", id: "quick-input-action" }];
+    }
+
+    if (keyword.trim()) {
+      return filteredResults.map((item) => ({
+        type: "connection",
+        item
+      }));
+    }
+
+    return [
+      { type: "create-action", id: "create-action" },
+      ...filteredResults.map((item) => ({
+        type: "connection" as const,
+        item
+      }))
+    ];
+  }, [filteredResults, isPlusPrefixed, keyword, quickInputMode]);
+
   const handleOpen = useCallback(() => {
     setOpen(true);
     setActiveIndex(-1);
@@ -73,6 +129,7 @@ export const QuickConnectBar = ({
     setKeyword("");
     setActiveIndex(-1);
     setSubmitting(false);
+    setQuickInputMode(false);
     inputRef.current?.blur();
   }, []);
 
@@ -81,28 +138,117 @@ export const QuickConnectBar = ({
       onConnect(connectionId);
       handleClose();
     },
-    [onConnect, handleClose],
+    [handleClose, onConnect]
   );
+
+  const handleOpenQuickCreateDialog = useCallback(() => {
+    quickCreateForm.resetFields();
+    quickCreateForm.setFieldsValue(QUICK_CREATE_DEFAULT_VALUES);
+    setQuickCreateOpen(true);
+    setOpen(false);
+    setActiveIndex(-1);
+  }, [quickCreateForm]);
+
+  const handleOpenQuickInputMode = useCallback(() => {
+    setQuickInputMode(true);
+    setKeyword("");
+    setActiveIndex(-1);
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!quickCreateOpen || !quickCreateAuthType) {
+      return;
+    }
+
+    if (quickCreateAuthType === "password") {
+      quickCreateForm.setFieldValue("sshKeyId", undefined);
+      return;
+    }
+
+    quickCreateForm.setFieldValue("password", undefined);
+  }, [quickCreateAuthType, quickCreateForm, quickCreateOpen]);
+
+  const handleSubmitQuickCreate = useCallback(async (): Promise<void> => {
+    if (quickCreateSaving) {
+      return;
+    }
+
+    let values: QuickCreateFormValues;
+    try {
+      values = await quickCreateForm.validateFields();
+    } catch {
+      return;
+    }
+
+    const nextPort = Number(values.port);
+    if (!Number.isInteger(nextPort) || nextPort < 1 || nextPort > 65535) {
+      return;
+    }
+    if (values.authType === "privateKey" && !values.sshKeyId) {
+      quickCreateForm.setFields([
+        {
+          name: "sshKeyId",
+          errors: ["请选择一个 SSH 密钥"]
+        }
+      ]);
+      return;
+    }
+
+    setQuickCreateSaving(true);
+    try {
+      const accepted = await onQuickCreateConnection({
+        name: values.name,
+        host: values.host,
+        port: nextPort,
+        username: values.username,
+        authType: values.authType,
+        password: values.password,
+        sshKeyId: values.sshKeyId
+      });
+      if (!accepted) {
+        return;
+      }
+      setQuickCreateOpen(false);
+      quickCreateForm.resetFields();
+      handleClose();
+    } finally {
+      setQuickCreateSaving(false);
+    }
+  }, [
+    handleClose,
+    onQuickCreateConnection,
+    quickCreateForm,
+    quickCreateSaving
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!open) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActiveIndex((i) => Math.min(i + 1, filteredResults.length - 1));
+        setActiveIndex((i) => Math.min(i + 1, displayItems.length - 1));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActiveIndex((i) => Math.max(i - 1, 0));
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const item = filteredResults[activeIndex];
-        if (item) {
-          handleSelect(item.connection.id);
+        const item = displayItems[activeIndex];
+        if (item?.type === "create-action") {
+          handleOpenQuickCreateDialog();
+          return;
+        }
+        if (item?.type === "quick-input-action") {
+          handleOpenQuickInputMode();
+          return;
+        }
+        if (item?.type === "connection") {
+          handleSelect(item.item.connection.id);
           return;
         }
 
         const raw = keyword.trim();
-        if (!raw || submitting) {
+        if (!quickInputMode || !raw || submitting) {
           return;
         }
 
@@ -123,12 +269,15 @@ export const QuickConnectBar = ({
     },
     [
       activeIndex,
-      filteredResults,
+      displayItems,
       handleClose,
+      handleOpenQuickCreateDialog,
+      handleOpenQuickInputMode,
       handleSelect,
       keyword,
       onQuickConnectInput,
       open,
+      quickInputMode,
       submitting,
     ],
   );
@@ -151,6 +300,10 @@ export const QuickConnectBar = ({
   const sectionLabel = keyword.trim()
     ? `${filteredResults.length} 个结果`
     : "最近连接";
+  const firstConnectionIndex = displayItems.findIndex((item) => item.type === "connection");
+  const inputPlaceholder = quickInputMode
+    ? "输入 username@host[:port] 后按 Enter 连接…"
+    : "快速连接服务器…";
 
   return (
     <div
@@ -162,7 +315,7 @@ export const QuickConnectBar = ({
         <input
           ref={inputRef}
           className="qcb-input"
-          placeholder="快速连接服务器…"
+          placeholder={inputPlaceholder}
           value={keyword}
           onFocus={handleOpen}
           onChange={(e) => {
@@ -194,38 +347,227 @@ export const QuickConnectBar = ({
 
       {open && (
         <div className="qcb-dropdown">
-          {filteredResults.length === 0 ? (
+          {quickInputMode ? (
+            <>
+              <div className="qcb-section-label">快速输入服务器</div>
+              <div className="qcb-empty qcb-empty-hint">
+                <i className="ri-terminal-box-line" aria-hidden="true" />
+                <span>输入 username@host[:port] 后按 Enter 连接</span>
+              </div>
+              <div className="qcb-footer">
+                <span>↵ 连接</span>
+                <span>Esc 关闭</span>
+              </div>
+            </>
+          ) : keyword.trim() && filteredResults.length === 0 && !isPlusPrefixed ? (
             <div className="qcb-empty">
               <i className="ri-server-line" aria-hidden="true" />
               <span>
-                {keyword.trim() ? "未找到匹配的服务器" : "暂无最近连接记录"}
+                未找到匹配的服务器
               </span>
             </div>
           ) : (
             <>
-              <div className="qcb-section-label">{sectionLabel}</div>
-              {filteredResults.map((item, idx) => (
-                <QuickConnectItem
-                  key={item.connection.id}
-                  item={item}
-                  isActive={idx === activeIndex}
-                  keyword={keyword}
-                  onSelect={() => handleSelect(item.connection.id)}
-                  onMouseEnter={() => setActiveIndex(idx)}
-                />
-              ))}
+              {displayItems.map((item, idx) => {
+                if (item.type === "create-action") {
+                  return (
+                    <QuickCreateActionItem
+                      key={item.id}
+                      isActive={idx === activeIndex}
+                      onSelect={handleOpenQuickCreateDialog}
+                      onMouseEnter={() => setActiveIndex(idx)}
+                    />
+                  );
+                }
+                if (item.type === "quick-input-action") {
+                  return (
+                    <QuickInputActionItem
+                      key={item.id}
+                      isActive={idx === activeIndex}
+                      onSelect={handleOpenQuickInputMode}
+                      onMouseEnter={() => setActiveIndex(idx)}
+                    />
+                  );
+                }
+
+                const node = (
+                  <QuickConnectItem
+                    key={item.item.connection.id}
+                    item={item.item}
+                    isActive={idx === activeIndex}
+                    keyword={keyword}
+                    onSelect={() => handleSelect(item.item.connection.id)}
+                    onMouseEnter={() => setActiveIndex(idx)}
+                  />
+                );
+
+                if (idx === firstConnectionIndex) {
+                  return (
+                    <div key={`section-${item.item.connection.id}`}>
+                      <div className="qcb-section-label">{sectionLabel}</div>
+                      {node}
+                    </div>
+                  );
+                }
+
+                return node;
+              })}
               <div className="qcb-footer">
                 <span>↑↓ 导航</span>
-                <span>↵ 连接/输入地址</span>
+                <span>↵ 打开/连接</span>
                 <span>Esc 关闭</span>
               </div>
             </>
           )}
         </div>
       )}
+
+      <Modal
+        open={quickCreateOpen}
+        title="添加新服务器"
+        okText="保存并连接"
+        cancelText="取消"
+        confirmLoading={quickCreateSaving}
+        destroyOnHidden
+        onCancel={() => {
+          if (quickCreateSaving) return;
+          setQuickCreateOpen(false);
+        }}
+        onOk={() => {
+          void handleSubmitQuickCreate();
+        }}
+      >
+        <Form
+          form={quickCreateForm}
+          layout="vertical"
+          requiredMark={false}
+          initialValues={QUICK_CREATE_DEFAULT_VALUES}
+          onFinish={() => {
+            void handleSubmitQuickCreate();
+          }}
+        >
+          <Form.Item label="名称" name="name">
+            <Input placeholder="可选，留空使用 host:port" />
+          </Form.Item>
+          <div className="qcb-create-row">
+            <Form.Item
+              label="Host / IP"
+              name="host"
+              rules={[
+                { required: true, message: "请输入主机地址" },
+                {
+                  validator: (_, value: string | undefined) => {
+                    if (typeof value === "string" && value.trim().length > 0) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(new Error("请输入主机地址"));
+                  }
+                }
+              ]}
+              style={{ flex: 1 }}
+            >
+              <Input placeholder="192.168.1.10 或 example.com" autoFocus />
+            </Form.Item>
+            <Form.Item
+              label="端口"
+              name="port"
+              rules={[{ required: true, message: "请输入端口" }]}
+              className="qcb-create-port"
+            >
+              <InputNumber min={1} max={65535} precision={0} style={{ width: "100%" }} />
+            </Form.Item>
+          </div>
+          <Form.Item label="用户名" name="username">
+            <Input placeholder="可选，默认留空" />
+          </Form.Item>
+          <Form.Item label="登录方式" name="authType" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { label: "密码登录", value: "password" },
+                { label: "密钥登录", value: "privateKey" }
+              ]}
+            />
+          </Form.Item>
+          {quickCreateAuthType === "password" ? (
+            <Form.Item label="密码" name="password">
+              <Input.Password placeholder="可选，留空后首次连接时再输入" />
+            </Form.Item>
+          ) : null}
+          {quickCreateAuthType === "privateKey" ? (
+            <Form.Item
+              label="SSH 密钥"
+              name="sshKeyId"
+              rules={[{ required: true, message: "请选择一个 SSH 密钥" }]}
+            >
+              <Select
+                placeholder="选择密钥..."
+                allowClear
+                options={sshKeys.map((key) => ({ label: key.name, value: key.id }))}
+                notFoundContent={
+                  <div style={{ textAlign: "center", padding: "8px 0", color: "var(--text-muted)" }}>
+                    暂无密钥，请先在连接管理器添加
+                  </div>
+                }
+              />
+            </Form.Item>
+          ) : null}
+        </Form>
+      </Modal>
     </div>
   );
 };
+
+const QuickCreateActionItem = ({
+  isActive,
+  onSelect,
+  onMouseEnter
+}: {
+  isActive: boolean;
+  onSelect: () => void;
+  onMouseEnter: () => void;
+}) => (
+  <button
+    type="button"
+    className={`qcb-item qcb-item-create${isActive ? " active" : ""}`}
+    onMouseDown={(e) => e.preventDefault()}
+    onClick={onSelect}
+    onMouseEnter={onMouseEnter}
+  >
+    <span className="qcb-dot qcb-dot-create">
+      <i className="ri-add-circle-line" aria-hidden="true" />
+    </span>
+    <span className="qcb-item-body">
+      <span className="qcb-item-name">添加新服务器</span>
+      <span className="qcb-item-group">快速创建并立即连接</span>
+    </span>
+  </button>
+);
+
+const QuickInputActionItem = ({
+  isActive,
+  onSelect,
+  onMouseEnter
+}: {
+  isActive: boolean;
+  onSelect: () => void;
+  onMouseEnter: () => void;
+}) => (
+  <button
+    type="button"
+    className={`qcb-item qcb-item-quick-input${isActive ? " active" : ""}`}
+    onMouseDown={(e) => e.preventDefault()}
+    onClick={onSelect}
+    onMouseEnter={onMouseEnter}
+  >
+    <span className="qcb-dot qcb-dot-quick-input">
+      <i className="ri-keyboard-box-line" aria-hidden="true" />
+    </span>
+    <span className="qcb-item-body">
+      <span className="qcb-item-name">快速输入服务器</span>
+      <span className="qcb-item-group">输入 username@host[:port] 进行连接</span>
+    </span>
+  </button>
+);
 
 interface QuickConnectItemProps {
   item: ResultItem;

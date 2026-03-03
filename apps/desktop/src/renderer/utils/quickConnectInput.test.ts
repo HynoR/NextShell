@@ -1,5 +1,6 @@
 import type { ConnectionProfile } from "@nextshell/core";
 import {
+  buildQuickCreateUpsertInput,
   buildQuickConnectUpsertInput,
   DEFAULT_QUICK_CONNECT_PORT,
   findExistingByAddress,
@@ -108,4 +109,46 @@ const makeConnection = (patch: Partial<ConnectionProfile>): ConnectionProfile =>
   assertEqual(payload.authType, "password", "default authType should be password");
   assertEqual(payload.groupPath, "/server", "default group path should be /server");
   assertEqual(payload.monitorSession, true, "default monitor session should be true");
+})();
+
+(() => {
+  const payload = buildQuickCreateUpsertInput({
+    host: "prod.internal",
+    port: 22
+  });
+
+  assertEqual(payload.name, "prod.internal:22", "default name should fallback to host:port");
+  assertEqual(payload.username, "", "default username should be empty string");
+  assertEqual(payload.authType, "password", "default authType should be password");
+  assertEqual(payload.groupPath, "/server", "default group path should be /server");
+  assertEqual(payload.monitorSession, true, "default monitor session should be true");
+})();
+
+(() => {
+  const payload = buildQuickCreateUpsertInput({
+    name: "  ",
+    host: "  server.example.com  ",
+    port: 2202,
+    username: "  root  ",
+    password: "  secret  "
+  });
+
+  assertEqual(payload.name, "server.example.com:2202", "blank name should fallback to host:port");
+  assertEqual(payload.host, "server.example.com", "host should be trimmed");
+  assertEqual(payload.username, "root", "username should be trimmed");
+  assertEqual(payload.password, "secret", "password should be trimmed");
+})();
+
+(() => {
+  const payload = buildQuickCreateUpsertInput({
+    host: "key-login.internal",
+    port: 22,
+    authType: "privateKey",
+    sshKeyId: "f4e1ac73-420b-49ea-9b07-c0ac9f98d5f5",
+    password: "should-be-ignored"
+  });
+
+  assertEqual(payload.authType, "privateKey", "authType should support privateKey");
+  assertEqual(payload.sshKeyId, "f4e1ac73-420b-49ea-9b07-c0ac9f98d5f5", "sshKeyId should be forwarded for privateKey auth");
+  assertEqual(payload.password, undefined, "password should be omitted for privateKey auth");
 })();

@@ -27,6 +27,7 @@ import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import type { TransferTask } from "../store/useTransferQueueStore";
 import { formatErrorMessage } from "../utils/errorMessage";
+import type { QuickCreateConnectionInput } from "../utils/quickConnectInput";
 import { promptModal } from "../utils/promptModal";
 
 const SESSION_TYPE_ICON: Record<SessionType, string> = {
@@ -65,6 +66,7 @@ interface WorkspaceLayoutProps {
     onTreeConnect: (connectionId: string) => void;
     onTreeQuickSaveConnection: (payload: ConnectionUpsertInput) => Promise<void>;
     onTitlebarQuickConnect: (raw: string) => Promise<boolean>;
+    onTitlebarQuickCreateConnection: (input: QuickCreateConnectionInput) => Promise<boolean>;
     onTreeEditServer: (connectionId: string) => void;
     onCloseSession: (sessionId: string) => void;
     onReconnectSession: (sessionId: string) => void;
@@ -114,6 +116,7 @@ export const WorkspaceLayout = ({
     onTreeConnect,
     onTreeQuickSaveConnection,
     onTitlebarQuickConnect,
+    onTitlebarQuickCreateConnection,
     onTreeEditServer,
     onCloseSession,
     onReconnectSession,
@@ -253,9 +256,11 @@ export const WorkspaceLayout = ({
                 <div className="titlebar-center">
                     <QuickConnectBar
                         connections={connections}
+                        sshKeys={sshKeys}
                         sessions={sessions}
                         onConnect={(connectionId) => void onTreeConnect(connectionId)}
                         onQuickConnectInput={onTitlebarQuickConnect}
+                        onQuickCreateConnection={onTitlebarQuickCreateConnection}
                     />
                 </div>
                 <div className="header-actions">

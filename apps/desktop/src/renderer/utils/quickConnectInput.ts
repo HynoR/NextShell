@@ -9,6 +9,16 @@ export interface QuickConnectAddress {
   port: number;
 }
 
+export interface QuickCreateConnectionInput {
+  name?: string;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  authType?: "password" | "privateKey";
+  sshKeyId?: string;
+}
+
 export type QuickConnectParseErrorCode =
   | "empty"
   | "format"
@@ -126,3 +136,40 @@ export const buildQuickConnectUpsertInput = (
   favorite: false,
   monitorSession: true
 });
+
+const toOptionalTrimmed = (value: string | undefined): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+export const buildQuickCreateUpsertInput = (
+  input: QuickCreateConnectionInput
+): ConnectionUpsertInput => {
+  const host = input.host.trim();
+  const port = input.port;
+  const username = (input.username ?? "").trim();
+  const authType = input.authType ?? "password";
+  const customName = toOptionalTrimmed(input.name);
+  const name = customName ?? `${host}:${port}`;
+
+  return {
+    name,
+    host,
+    port,
+    username,
+    authType,
+    password: authType === "password" ? toOptionalTrimmed(input.password) : undefined,
+    sshKeyId: authType === "privateKey" ? input.sshKeyId : undefined,
+    strictHostKeyChecking: false,
+    terminalEncoding: "utf-8",
+    backspaceMode: "ascii-backspace",
+    deleteMode: "vt220-delete",
+    groupPath: "/server",
+    tags: [],
+    favorite: false,
+    monitorSession: true
+  };
+};
