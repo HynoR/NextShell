@@ -13,7 +13,7 @@ import type {
   Stats
 } from "ssh2";
 
-type AuthType = "password" | "privateKey" | "agent";
+type AuthType = "password" | "privateKey" | "agent" | "interactive";
 type ProxyType = "socks4" | "socks5";
 
 const DEFAULT_READY_TIMEOUT_MS = 10000;
@@ -250,6 +250,21 @@ export class SshConnection {
         throw new Error("Password auth requires password");
       }
       config.password = this.options.password;
+      return config;
+    }
+
+    if (this.options.authType === "interactive") {
+      if (!this.options.password) {
+        throw new Error("Interactive auth requires password");
+      }
+
+      this.client.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
+        const responses = prompts.map(() => this.options.password ?? "");
+        finish(responses);
+      });
+
+      config.password = this.options.password;
+      config.tryKeyboard = true;
       return config;
     }
 
