@@ -1,0 +1,101 @@
+name: Update Homebrew Cask
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Release tag to sync (for example v0.2.6)
+        required: true
+        type: string
+
+concurrency:
+  group: update-cask-${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.event.release.tag_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-cask:
+    name: Update Cask File
+    if: github.event_name != 'release' || github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version and checksum
+        id: vars
+        shell: bash
+        env:
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.event.release.tag_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [[ "${TAG_NAME}" != v* ]]; then
+            echo "::error::Tag must start with v (for example v1.2.3) to match the Cask URL pattern."
+            exit 1
+          fi
+
+          version="${TAG_NAME#v}"
+          asset_url="https://github.com/${REPOSITORY}/releases/download/${TAG_NAME}/NextShell-${version}-mac-arm64.dmg"
+          sha256="$(curl -fsSL "${asset_url}" | shasum -a 256 | awk '{print $1}')"
+
+          if [[ -z "${sha256}" ]]; then
+            echo "::error::Failed to compute SHA256 for ${asset_url}"
+            exit 1
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "sha256=${sha256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update cask file
+        shell: bash
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          SHA256: ${{ steps.vars.outputs.sha256 }}
+        run: |
+          cat > Casks/nextshell.rb <<EOF
+          cask "nextshell" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/HynoR/NextShell/releases/download/v#{version}/NextShell-#{version}-mac-arm64.dmg"
+            name "NextShell"
+            desc "Terminal workspace for development workflows"
+            homepage "https://github.com/HynoR/NextShell"
+
+            livecheck do
+              url "https://github.com/HynoR/NextShell/releases/latest"
+              strategy :github_latest
+            end
+
+            depends_on arch: :arm64
+
+            app "NextShell.app"
+
+            zap trash: [
+              "~/Library/Application Support/NextShell",
+              "~/Library/Preferences/com.nextshell.desktop.plist",
+              "~/Library/Saved Application State/com.nextshell.desktop.savedState",
+            ]
+          end
+          EOF
+
+      - name: Commit and push
+        shell: bash
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          if git diff --quiet -- Casks/nextshell.rb; then
+            echo "Cask already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/nextshell.rb
+          git commit -m "chore(cask): bump nextshell to ${VERSION}"
+          git push
