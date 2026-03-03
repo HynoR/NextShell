@@ -714,6 +714,13 @@ const mergePreferences = (
     return rounded;
   };
 
+  const normalizeKeepAliveIntervalSec = (value: number | undefined, fallback: number): number => {
+    if (!Number.isInteger(value) || (value ?? 0) < 5 || (value ?? 0) > 600) {
+      return fallback;
+    }
+    return value as number;
+  };
+
   return {
     transfer: {
       uploadDefaultDir:
@@ -757,6 +764,13 @@ const mergePreferences = (
       lineHeight: normalizeTerminalLineHeight(
         patch.terminal?.lineHeight,
         current.terminal.lineHeight
+      )
+    },
+    ssh: {
+      keepAliveEnabled: patch.ssh?.keepAliveEnabled ?? current.ssh.keepAliveEnabled,
+      keepAliveIntervalSec: normalizeKeepAliveIntervalSec(
+        patch.ssh?.keepAliveIntervalSec,
+        current.ssh.keepAliveIntervalSec
       )
     },
     backup: {
@@ -1067,13 +1081,25 @@ export const createServiceContainer = (
       throw new Error("SSH username is required.");
     }
 
+    const prefs = connections.getAppPreferences();
+    const keepAliveEnabled = profile.keepAliveEnabled ?? prefs.ssh.keepAliveEnabled;
+    const intervalCandidate = profile.keepAliveIntervalSec ?? prefs.ssh.keepAliveIntervalSec;
+    const keepAliveIntervalSec =
+      Number.isInteger(intervalCandidate) &&
+      intervalCandidate >= 5 &&
+      intervalCandidate <= 600
+        ? intervalCandidate
+        : prefs.ssh.keepAliveIntervalSec;
+    const keepaliveInterval = keepAliveEnabled ? keepAliveIntervalSec * 1000 : 0;
+
     const base: Omit<SshConnectOptions, "authType"> = {
       host: profile.host,
       port: profile.port,
       username,
       hostFingerprint: profile.hostFingerprint,
       strictHostKeyChecking: profile.strictHostKeyChecking,
-      proxy
+      proxy,
+      keepaliveInterval
     };
 
     const secret = profile.credentialRef
@@ -1995,6 +2021,13 @@ export const createServiceContainer = (
     }
 
     const normalizedUsername = input.username.trim();
+    const keepAliveEnabled = input.keepAliveEnabled;
+    const keepAliveIntervalSec =
+      Number.isInteger(input.keepAliveIntervalSec) &&
+      (input.keepAliveIntervalSec as number) >= 5 &&
+      (input.keepAliveIntervalSec as number) <= 600
+        ? input.keepAliveIntervalSec
+        : undefined;
 
     let credentialRef = current?.credentialRef;
 
@@ -2026,6 +2059,8 @@ export const createServiceContainer = (
       hostFingerprint: input.hostFingerprint,
       strictHostKeyChecking: input.strictHostKeyChecking,
       proxyId: input.proxyId,
+      keepAliveEnabled,
+      keepAliveIntervalSec,
       terminalEncoding: input.terminalEncoding,
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
@@ -2102,6 +2137,8 @@ export const createServiceContainer = (
       hostFingerprint: latest.hostFingerprint,
       strictHostKeyChecking: latest.strictHostKeyChecking,
       proxyId: latest.proxyId,
+      keepAliveEnabled: latest.keepAliveEnabled,
+      keepAliveIntervalSec: latest.keepAliveIntervalSec,
       terminalEncoding: latest.terminalEncoding,
       backspaceMode: latest.backspaceMode,
       deleteMode: latest.deleteMode,
@@ -2604,6 +2641,8 @@ export const createServiceContainer = (
       username: conn.username,
       authType: conn.authType,
       password,
+      keepAliveEnabled: conn.keepAliveEnabled,
+      keepAliveIntervalSec: conn.keepAliveIntervalSec,
       groupPath: conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
@@ -2765,6 +2804,8 @@ export const createServiceContainer = (
               authType: entry.authType,
               password: entry.password,
               strictHostKeyChecking: false,
+              keepAliveEnabled: entry.keepAliveEnabled,
+              keepAliveIntervalSec: entry.keepAliveIntervalSec,
               groupPath: entry.groupPath,
               tags: entry.tags,
               notes: entry.notes,
@@ -2791,6 +2832,8 @@ export const createServiceContainer = (
           authType: entry.authType,
           password: entry.password,
           strictHostKeyChecking: false,
+          keepAliveEnabled: entry.keepAliveEnabled,
+          keepAliveIntervalSec: entry.keepAliveIntervalSec,
           groupPath: entry.groupPath,
           tags: entry.tags,
           notes: entry.notes,

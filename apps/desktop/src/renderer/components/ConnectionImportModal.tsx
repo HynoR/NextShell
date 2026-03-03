@@ -95,6 +95,8 @@ export const ConnectionImportModal = ({
           username: e.username,
           authType: e.authType,
           password: e.password,
+          keepAliveEnabled: e.keepAliveEnabled,
+          keepAliveIntervalSec: e.keepAliveIntervalSec,
           groupPath: e.groupPath,
           tags: e.tags,
           notes: e.notes,

@@ -18,6 +18,8 @@ type ProxyType = "socks4" | "socks5";
 
 const DEFAULT_READY_TIMEOUT_MS = 10000;
 const CONNECTION_CLOSE_TIMEOUT_MS = 2000;
+const DEFAULT_KEEPALIVE_INTERVAL_MS = 15000;
+const DEFAULT_KEEPALIVE_COUNT_MAX = 3;
 const require = createRequire(import.meta.url);
 
 interface RawSftpEntry {
@@ -108,6 +110,8 @@ export interface SshConnectOptions {
   hostFingerprint?: string;
   strictHostKeyChecking?: boolean;
   proxy?: SshProxyOptions;
+  /** SSH keepalive interval in milliseconds. 0 disables keepalive. */
+  keepaliveInterval?: number;
 }
 
 export interface ShellOpenOptions {
@@ -202,10 +206,13 @@ export class SshConnection {
       host: this.options.host,
       port: this.options.port,
       username: this.options.username,
-      readyTimeout: DEFAULT_READY_TIMEOUT_MS,
-      keepaliveInterval: 15000,
-      keepaliveCountMax: 3
+      readyTimeout: DEFAULT_READY_TIMEOUT_MS
     };
+    const keepaliveInterval = this.options.keepaliveInterval ?? DEFAULT_KEEPALIVE_INTERVAL_MS;
+    if (keepaliveInterval > 0) {
+      config.keepaliveInterval = keepaliveInterval;
+      config.keepaliveCountMax = DEFAULT_KEEPALIVE_COUNT_MAX;
+    }
 
     const proxySocket = await this.createProxySocket();
     if (proxySocket) {

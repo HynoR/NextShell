@@ -33,6 +33,8 @@ export const toConnectionUpsertInput = (
   hostFingerprint: connection.hostFingerprint,
   strictHostKeyChecking: connection.strictHostKeyChecking,
   proxyId: connection.proxyId,
+  keepAliveEnabled: connection.keepAliveEnabled,
+  keepAliveIntervalSec: connection.keepAliveIntervalSec,
   terminalEncoding: connection.terminalEncoding,
   backspaceMode: connection.backspaceMode,
   deleteMode: connection.deleteMode,

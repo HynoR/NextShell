@@ -57,6 +57,8 @@ export const connectionUpsertSchema = z.object({
   hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   strictHostKeyChecking: z.boolean().default(false),
   proxyId: z.string().uuid().optional(),
+  keepAliveEnabled: z.boolean().optional(),
+  keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
   terminalEncoding: terminalEncodingSchema.default("utf-8"),
   backspaceMode: backspaceModeSchema.default("ascii-backspace"),
   deleteMode: deleteModeSchema.default("vt220-delete"),
@@ -366,6 +368,10 @@ export const appPreferencesSchema = z.object({
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
     lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
+  ssh: z.object({
+    keepAliveEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ssh.keepAliveEnabled),
+    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).default(DEFAULT_APP_PREFERENCES.ssh.keepAliveIntervalSec)
+  }).default(DEFAULT_APP_PREFERENCES.ssh),
   backup: z.object({
     remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
     rclonePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.rclonePath),
@@ -417,6 +423,10 @@ export const appPreferencesPatchSchema = z.object({
     foregroundColor: terminalColorSchema.optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
     lineHeight: z.coerce.number().min(1).max(2).optional()
+  }).optional(),
+  ssh: z.object({
+    keepAliveEnabled: z.boolean().optional(),
+    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional()
   }).optional(),
   backup: z.object({
     remotePath: z.string().optional(),
@@ -614,6 +624,8 @@ export const connectionImportExecuteSchema = z.object({
     username: z.string(),
     authType: authTypeSchema,
     password: z.string().optional(),
+    keepAliveEnabled: z.boolean().optional(),
+    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
     groupPath: z.string().min(1),
     tags: z.array(z.string()).default([]),
     notes: z.string().optional(),
