@@ -459,7 +459,15 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           Math.round(parsed.window.backgroundOpacity) >= 30 &&
           Math.round(parsed.window.backgroundOpacity) <= 80
             ? Math.round(parsed.window.backgroundOpacity)
-            : fallback.window.backgroundOpacity
+            : fallback.window.backgroundOpacity,
+        leftSidebarDefaultCollapsed:
+          typeof parsed.window?.leftSidebarDefaultCollapsed === "boolean"
+            ? parsed.window.leftSidebarDefaultCollapsed
+            : fallback.window.leftSidebarDefaultCollapsed,
+        bottomWorkbenchDefaultCollapsed:
+          typeof parsed.window?.bottomWorkbenchDefaultCollapsed === "boolean"
+            ? parsed.window.bottomWorkbenchDefaultCollapsed
+            : fallback.window.bottomWorkbenchDefaultCollapsed
       },
       traceroute: {
         nexttracePath:

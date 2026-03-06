@@ -386,7 +386,9 @@ export const appPreferencesSchema = z.object({
     minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
     confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose),
     backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.window.backgroundImagePath),
-    backgroundOpacity: z.coerce.number().int().min(30).max(80).default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity)
+    backgroundOpacity: z.coerce.number().int().min(30).max(80).default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity),
+    leftSidebarDefaultCollapsed: z.boolean().default(DEFAULT_APP_PREFERENCES.window.leftSidebarDefaultCollapsed),
+    bottomWorkbenchDefaultCollapsed: z.boolean().default(DEFAULT_APP_PREFERENCES.window.bottomWorkbenchDefaultCollapsed)
   }).default(DEFAULT_APP_PREFERENCES.window),
   traceroute: z.object({
     nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
@@ -443,7 +445,9 @@ export const appPreferencesPatchSchema = z.object({
     minimizeToTray: z.boolean().optional(),
     confirmBeforeClose: z.boolean().optional(),
     backgroundImagePath: z.string().optional(),
-    backgroundOpacity: z.coerce.number().int().min(30).max(80).optional()
+    backgroundOpacity: z.coerce.number().int().min(30).max(80).optional(),
+    leftSidebarDefaultCollapsed: z.boolean().optional(),
+    bottomWorkbenchDefaultCollapsed: z.boolean().optional()
   }).optional(),
   traceroute: z.object({
     nexttracePath: z.string().optional(),

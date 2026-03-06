@@ -406,6 +406,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           appearance={preferences.window.appearance}
           minimizeToTray={preferences.window.minimizeToTray}
           confirmBeforeClose={preferences.window.confirmBeforeClose}
+          leftSidebarDefaultCollapsed={preferences.window.leftSidebarDefaultCollapsed}
+          bottomWorkbenchDefaultCollapsed={preferences.window.bottomWorkbenchDefaultCollapsed}
           save={save}
         />;
 
@@ -555,12 +557,20 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 // ═══════════════════════════════════════════════════════════════════════
 
 const WindowSection = ({
-  loading, appearance, minimizeToTray, confirmBeforeClose, save,
+  loading,
+  appearance,
+  minimizeToTray,
+  confirmBeforeClose,
+  leftSidebarDefaultCollapsed,
+  bottomWorkbenchDefaultCollapsed,
+  save,
 }: {
   loading: boolean;
   appearance: WindowAppearance;
   minimizeToTray: boolean;
   confirmBeforeClose: boolean;
+  leftSidebarDefaultCollapsed: boolean;
+  bottomWorkbenchDefaultCollapsed: boolean;
   save: (patch: Record<string, unknown>) => void;
 }) => (
   <>
@@ -599,6 +609,21 @@ const WindowSection = ({
           关闭按钮将隐藏窗口到系统托盘；可从托盘菜单中退出应用。
         </div>
       )}
+    </SettingsCard>
+
+    <SettingsCard title="工作区布局" description="默认值仅在首次使用或无历史折叠状态时生效">
+      <SettingsSwitchRow
+        label="左侧栏默认折叠"
+        checked={leftSidebarDefaultCollapsed}
+        disabled={loading}
+        onChange={(value) => save({ window: { leftSidebarDefaultCollapsed: value } })}
+      />
+      <SettingsSwitchRow
+        label="底部工作区默认折叠"
+        checked={bottomWorkbenchDefaultCollapsed}
+        disabled={loading}
+        onChange={(value) => save({ window: { bottomWorkbenchDefaultCollapsed: value } })}
+      />
     </SettingsCard>
   </>
 );
