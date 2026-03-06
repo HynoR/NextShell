@@ -23,6 +23,34 @@ function networkRateHistoryKey(connectionId: string, iface: string): string {
   return `${connectionId}:${iface}`;
 }
 
+function omitConnectionSnapshot<T>(snapshots: Record<string, T>, connectionId: string): Record<string, T> {
+  if (!(connectionId in snapshots)) {
+    return snapshots;
+  }
+
+  const nextSnapshots = { ...snapshots };
+  delete nextSnapshots[connectionId];
+  return nextSnapshots;
+}
+
+function pruneNetworkRateHistory(
+  networkRateHistory: Record<string, NetworkPoint[]>,
+  connectionId: string
+): Record<string, NetworkPoint[]> {
+  const prefix = `${connectionId}:`;
+  let changed = false;
+  const nextHistory = { ...networkRateHistory };
+
+  for (const key of Object.keys(nextHistory)) {
+    if (key.startsWith(prefix)) {
+      delete nextHistory[key];
+      changed = true;
+    }
+  }
+
+  return changed ? nextHistory : networkRateHistory;
+}
+
 interface WorkspaceState {
   connections: ConnectionProfile[];
   sshKeys: SshKeyProfile[];
@@ -102,6 +130,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     })),
   removeSession: (sessionId) =>
     set((state) => {
+      const target = state.sessions.find((session) => session.id === sessionId);
       const sessions = state.sessions.filter((session) => session.id !== sessionId);
       const candidateActiveSessionId =
         state.activeSessionId === sessionId ? sessions.at(-1)?.id : state.activeSessionId;
@@ -109,10 +138,21 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
 
+      const processSnapshots =
+        target?.type === "processManager"
+          ? omitConnectionSnapshot(state.processSnapshots, target.connectionId)
+          : state.processSnapshots;
+      const networkSnapshots =
+        target?.type === "networkMonitor"
+          ? omitConnectionSnapshot(state.networkSnapshots, target.connectionId)
+          : state.networkSnapshots;
+
       return {
         sessions,
         activeSessionId: nextActiveSession?.id,
-        activeConnectionId: nextActiveSession?.connectionId
+        activeConnectionId: nextActiveSession?.connectionId,
+        processSnapshots,
+        networkSnapshots
       };
     }),
   removeSessionsByConnection: (connectionId) =>
@@ -128,19 +168,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
 
-      const prefix = `${connectionId}:`;
-      const networkRateHistory = { ...state.networkRateHistory };
-      for (const key of Object.keys(networkRateHistory)) {
-        if (key.startsWith(prefix)) {
-          delete networkRateHistory[key];
-        }
-      }
-
       return {
         sessions,
         activeSessionId: nextActiveSession?.id,
         activeConnectionId: nextActiveSession?.connectionId,
-        networkRateHistory
+        processSnapshots: omitConnectionSnapshot(state.processSnapshots, connectionId),
+        networkSnapshots: omitConnectionSnapshot(state.networkSnapshots, connectionId),
+        networkRateHistory: pruneNetworkRateHistory(state.networkRateHistory, connectionId)
       };
     }),
   reorderSession: (sourceSessionId, targetSessionId) =>
@@ -215,14 +249,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
   clearNetworkRateHistory: (connectionId) =>
     set((state) => {
-      const prefix = `${connectionId}:`;
-      const networkRateHistory = { ...state.networkRateHistory };
-      for (const key of Object.keys(networkRateHistory)) {
-        if (key.startsWith(prefix)) {
-          delete networkRateHistory[key];
-        }
-      }
-      return { networkRateHistory };
+      return {
+        networkRateHistory: pruneNetworkRateHistory(state.networkRateHistory, connectionId)
+      };
     }),
   setBottomTab: (tab) =>
     set({
