@@ -21,7 +21,7 @@ const assertRejects = async (run: () => Promise<unknown>, expectedMessage: strin
 await (async () => {
   const original = "old-password";
   const next = "new-password";
-  let currentMeta = createMasterKeyMeta(original);
+  let currentMeta = await createMasterKeyMeta(original);
   let unlockedPassword = original;
   const rememberCalls: string[] = [];
   const auditRecords: Array<{ action: string; level: string; metadata?: Record<string, unknown> }> = [];
@@ -41,8 +41,8 @@ await (async () => {
   });
 
   assert(unlockedPassword === next, "should keep runtime unlocked password as new password");
-  assert(verifyMasterPassword(next, currentMeta), "new password should verify updated meta");
-  assert(!verifyMasterPassword(original, currentMeta), "old password should not verify updated meta");
+  assert(await verifyMasterPassword(next, currentMeta), "new password should verify updated meta");
+  assert(!(await verifyMasterPassword(original, currentMeta)), "old password should not verify updated meta");
   assert(rememberCalls[0] === `change:${next}`, "should remember new password with change phase");
   assert(auditRecords[0]?.action === "master_password.change", "should append change audit log");
   assert(auditRecords[0]?.metadata?.["sameAsOld"] === false, "audit should mark sameAsOld=false");
@@ -50,7 +50,7 @@ await (async () => {
 
 await (async () => {
   const password = "same-password";
-  let currentMeta = createMasterKeyMeta(password);
+  let currentMeta = await createMasterKeyMeta(password);
   let unlockedPassword = password;
   const auditRecords: Array<{ metadata?: Record<string, unknown> }> = [];
 
@@ -72,7 +72,7 @@ await (async () => {
 
 await (async () => {
   const original = "correct-password";
-  const currentMeta = createMasterKeyMeta(original);
+  const currentMeta = await createMasterKeyMeta(original);
   await assertRejects(
     () => changeMasterPassword({
       oldPassword: "wrong-password",

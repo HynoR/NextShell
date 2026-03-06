@@ -1,5 +1,9 @@
 import type { MasterKeyMeta } from "../../../../../packages/core/src/index";
-import { createMasterKeyMeta, verifyMasterPassword } from "../../../../../packages/security/src/index";
+import {
+  clearDerivedKeyCache,
+  createMasterKeyMeta,
+  verifyMasterPassword
+} from "../../../../../packages/security/src/index";
 
 type PasswordChangePhase = "set" | "unlock" | "change";
 
@@ -25,12 +29,13 @@ export const changeMasterPassword = async (options: ChangeMasterPasswordOptions)
   if (!meta) {
     throw new Error("尚未设置主密码。请先设置主密码。");
   }
-  if (!verifyMasterPassword(options.oldPassword, meta)) {
+  if (!(await verifyMasterPassword(options.oldPassword, meta))) {
     throw new Error("原密码错误，请重试。");
   }
 
   const sameAsOld = options.oldPassword === options.newPassword;
-  const nextMeta = createMasterKeyMeta(options.newPassword);
+  clearDerivedKeyCache();
+  const nextMeta = await createMasterKeyMeta(options.newPassword);
   options.saveMasterKeyMeta(nextMeta);
   options.setMasterPassword(options.newPassword);
   await options.rememberPasswordBestEffort(options.newPassword, "change");

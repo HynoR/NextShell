@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { randomBytes, scryptSync, createCipheriv, createDecipheriv, createHash } from "node:crypto";
+import { randomBytes, scrypt, createCipheriv, createDecipheriv, createHash } from "node:crypto";
 import type { MasterKeyMeta } from "../../core/src/index";
 
 const require = createRequire(import.meta.url);
@@ -31,23 +31,126 @@ const KDF_N = 16384;
 const KDF_R = 8;
 const KDF_P = 1;
 const KEY_LENGTH = 32;
+const SALT_LENGTH = 32;
+const DERIVED_KEY_CACHE_LIMIT = 32;
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 const ALGORITHM = "aes-256-gcm";
 
-export const deriveKey = (
+type ScryptImplementation = (
+  password: string,
+  salt: Buffer,
+  keyLength: number,
+  options: { N: number; r: number; p: number }
+) => Promise<Buffer>;
+
+const createCacheKey = (password: string, salt: Buffer, n: number, r: number, p: number): string => {
+  const passwordDigest = createHash("sha256").update(password, "utf8").digest("hex");
+  return `${passwordDigest}:${salt.toString("hex")}:${n}:${r}:${p}`;
+};
+
+const cloneBuffer = (value: Buffer): Buffer => Buffer.from(value);
+
+const wipeBuffer = (value: Buffer): void => {
+  value.fill(0);
+};
+
+const resolvedDerivedKeys = new Map<string, Buffer>();
+const inFlightDerivedKeys = new Map<string, Promise<Buffer>>();
+let cacheGeneration = 0;
+
+const defaultScryptImplementation: ScryptImplementation = (password, salt, keyLength, options) => {
+  return new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, keyLength, options, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(Buffer.from(derivedKey));
+    });
+  });
+};
+
+let scryptImplementation: ScryptImplementation = defaultScryptImplementation;
+
+const touchResolvedKey = (cacheKey: string, derivedKey: Buffer): void => {
+  if (resolvedDerivedKeys.has(cacheKey)) {
+    resolvedDerivedKeys.delete(cacheKey);
+  }
+  resolvedDerivedKeys.set(cacheKey, derivedKey);
+  if (resolvedDerivedKeys.size <= DERIVED_KEY_CACHE_LIMIT) {
+    return;
+  }
+  const oldestKey = resolvedDerivedKeys.keys().next().value;
+  if (oldestKey) {
+    const oldestDerivedKey = resolvedDerivedKeys.get(oldestKey);
+    resolvedDerivedKeys.delete(oldestKey);
+    if (oldestDerivedKey) {
+      wipeBuffer(oldestDerivedKey);
+    }
+  }
+};
+
+export const clearDerivedKeyCache = (): void => {
+  cacheGeneration += 1;
+  for (const derivedKey of resolvedDerivedKeys.values()) {
+    wipeBuffer(derivedKey);
+  }
+  resolvedDerivedKeys.clear();
+  inFlightDerivedKeys.clear();
+};
+
+export const __setScryptImplForTesting = (implementation: ScryptImplementation): void => {
+  scryptImplementation = implementation;
+  clearDerivedKeyCache();
+};
+
+export const __resetScryptImplForTesting = (): void => {
+  scryptImplementation = defaultScryptImplementation;
+  clearDerivedKeyCache();
+};
+
+export const deriveKey = async (
   password: string,
   salt: Buffer,
   n = KDF_N,
   r = KDF_R,
   p = KDF_P
-): Buffer => {
-  return scryptSync(password, salt, KEY_LENGTH, { N: n, r, p });
+): Promise<Buffer> => {
+  const cacheKey = createCacheKey(password, salt, n, r, p);
+  const cached = resolvedDerivedKeys.get(cacheKey);
+  if (cached) {
+    touchResolvedKey(cacheKey, cached);
+    return cloneBuffer(cached);
+  }
+
+  const inFlight = inFlightDerivedKeys.get(cacheKey);
+  if (inFlight) {
+    return cloneBuffer(await inFlight);
+  }
+
+  const currentGeneration = cacheGeneration;
+  const derivationPromise = scryptImplementation(password, salt, KEY_LENGTH, { N: n, r, p }).then((derivedKey) => {
+    const normalized = cloneBuffer(derivedKey);
+    if (currentGeneration === cacheGeneration && inFlightDerivedKeys.get(cacheKey) === derivationPromise) {
+      touchResolvedKey(cacheKey, normalized);
+      inFlightDerivedKeys.delete(cacheKey);
+    }
+    return normalized;
+  }).catch((error) => {
+    if (inFlightDerivedKeys.get(cacheKey) === derivationPromise) {
+      inFlightDerivedKeys.delete(cacheKey);
+    }
+    throw error;
+  });
+
+  inFlightDerivedKeys.set(cacheKey, derivationPromise);
+  return cloneBuffer(await derivationPromise);
 };
 
-export const createMasterKeyMeta = (password: string): MasterKeyMeta => {
-  const salt = randomBytes(32);
-  const key = deriveKey(password, salt);
+export const createMasterKeyMeta = async (password: string): Promise<MasterKeyMeta> => {
+  const salt = randomBytes(SALT_LENGTH);
+  const key = await deriveKey(password, salt);
   const verifier = createHash("sha256").update(key).digest("hex");
 
   return {
@@ -59,14 +162,14 @@ export const createMasterKeyMeta = (password: string): MasterKeyMeta => {
   };
 };
 
-export const verifyMasterPassword = (password: string, meta: MasterKeyMeta): boolean => {
+export const verifyMasterPassword = async (password: string, meta: MasterKeyMeta): Promise<boolean> => {
   const salt = Buffer.from(meta.salt, "hex");
-  const key = deriveKey(password, salt, meta.n, meta.r, meta.p);
+  const key = await deriveKey(password, salt, meta.n, meta.r, meta.p);
   const computedVerifier = createHash("sha256").update(key).digest("hex");
   return computedVerifier === meta.verifier;
 };
 
-export const deriveMasterKey = (password: string, meta: MasterKeyMeta): Buffer => {
+export const deriveMasterKey = async (password: string, meta: MasterKeyMeta): Promise<Buffer> => {
   const salt = Buffer.from(meta.salt, "hex");
   return deriveKey(password, salt, meta.n, meta.r, meta.p);
 };
@@ -117,9 +220,9 @@ export const decryptAesGcm = (
   return decrypted.toString("utf8");
 };
 
-export const encryptBackupPayload = (data: Buffer, password: string): Buffer => {
-  const salt = randomBytes(32);
-  const key = deriveKey(password, salt);
+export const encryptBackupPayload = async (data: Buffer, password: string): Promise<Buffer> => {
+  const salt = randomBytes(SALT_LENGTH);
+  const key = await deriveKey(password, salt);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   cipher.setAAD(Buffer.from("nextshell-backup", "utf8"));
@@ -130,17 +233,17 @@ export const encryptBackupPayload = (data: Buffer, password: string): Buffer => 
   return Buffer.concat([salt, iv, tag, encrypted]);
 };
 
-export const decryptBackupPayload = (data: Buffer, password: string): Buffer => {
-  if (data.length < 32 + IV_LENGTH + AUTH_TAG_LENGTH) {
+export const decryptBackupPayload = async (data: Buffer, password: string): Promise<Buffer> => {
+  if (data.length < SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH) {
     throw new Error("Backup data too short");
   }
 
-  const salt = data.subarray(0, 32);
-  const iv = data.subarray(32, 32 + IV_LENGTH);
-  const tag = data.subarray(32 + IV_LENGTH, 32 + IV_LENGTH + AUTH_TAG_LENGTH);
-  const ciphertext = data.subarray(32 + IV_LENGTH + AUTH_TAG_LENGTH);
+  const salt = data.subarray(0, SALT_LENGTH);
+  const iv = data.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+  const tag = data.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
+  const ciphertext = data.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
-  const key = deriveKey(password, salt);
+  const key = await deriveKey(password, salt);
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAAD(Buffer.from("nextshell-backup", "utf8"));
   decipher.setAuthTag(tag);

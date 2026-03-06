@@ -96,6 +96,7 @@ import {
   KeytarPasswordCache,
   generateDeviceKey,
   createMasterKeyMeta,
+  clearDerivedKeyCache,
   verifyMasterPassword
 } from "../../../../../packages/security/src/index";
 import {
@@ -811,7 +812,7 @@ export const createServiceContainer = (
     if (!meta) return;
     const cached = await keytarCache.recall();
     if (!cached) return;
-    if (verifyMasterPassword(cached, meta)) {
+    if (await verifyMasterPassword(cached, meta)) {
       masterPassword = cached;
       logger.info("[Security] recalled master password from keytar");
     }
@@ -4368,7 +4369,7 @@ export const createServiceContainer = (
   };
 
   const masterPasswordSet = async (password: string): Promise<{ ok: true }> => {
-    const meta = createMasterKeyMeta(password);
+    const meta = await createMasterKeyMeta(password);
     connections.saveMasterKeyMeta(meta);
     masterPassword = password;
     await rememberPasswordBestEffort(password, "set");
@@ -4382,7 +4383,7 @@ export const createServiceContainer = (
 
   const masterPasswordUnlock = async (password: string): Promise<{ ok: true }> => {
     const meta = getMasterKeyMetaOrThrow();
-    if (!verifyMasterPassword(password, meta)) {
+    if (!(await verifyMasterPassword(password, meta))) {
       throw new Error("主密码错误。");
     }
     masterPassword = password;
@@ -4408,6 +4409,7 @@ export const createServiceContainer = (
 
   const masterPasswordClearRemembered = async (): Promise<{ ok: true }> => {
     await keytarCache.clear();
+    clearDerivedKeyCache();
     return { ok: true };
   };
 
@@ -4431,7 +4433,7 @@ export const createServiceContainer = (
     const input = candidate?.trim();
     if (input) {
       const meta = getMasterKeyMetaOrThrow();
-      if (!verifyMasterPassword(input, meta)) {
+      if (!(await verifyMasterPassword(input, meta))) {
         throw new Error("主密码错误。");
       }
       masterPassword = input;

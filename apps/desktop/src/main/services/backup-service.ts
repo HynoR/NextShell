@@ -226,7 +226,7 @@ export class BackupService {
       const payload = Buffer.concat([manifestLenBuf, manifestBuf, snapshotData]);
 
       // 4. Encrypt
-      const encrypted = encryptBackupPayload(payload, password);
+      const encrypted = await encryptBackupPayload(payload, password);
       fileName = `${timestamp.replace(/[:.]/g, "-")}-${deviceId}-${archiveId}${NSBK_EXTENSION}`;
       const encryptedPath = path.join(tmpDir, fileName);
       fs.writeFileSync(encryptedPath, encrypted);
@@ -328,7 +328,7 @@ export class BackupService {
       const encrypted = fs.readFileSync(downloadPath);
       let payload: Buffer;
       try {
-        payload = decryptBackupPayload(encrypted, password);
+        payload = await decryptBackupPayload(encrypted, password);
       } catch {
         throw new Error("解密失败：云存档密码错误或数据已损坏。");
       }
