@@ -7,6 +7,7 @@ import type {
   NetworkSnapshot,
   SessionDescriptor
 } from "@nextshell/core";
+import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { TableSkeleton } from "./LoadingSkeletons";
@@ -88,6 +89,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
 
   useEffect(() => {
     if (selectedListenerKey && !selectedListener) {
+      detailRequestIdRef.current += 1;
       setSelectedListenerKey(undefined);
       setPortConnections([]);
       setDetailCapturedAt(undefined);
@@ -95,6 +97,12 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
       setDetailLoading(false);
     }
   }, [selectedListener, selectedListenerKey]);
+
+  useEffect(() => {
+    return () => {
+      detailRequestIdRef.current += 1;
+    };
+  }, []);
 
   const fetchPortConnections = useCallback(
     async (listener: NetworkListener, silent: boolean) => {
@@ -142,19 +150,16 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
     [fetchPortConnections]
   );
 
-  useEffect(() => {
-    if (!selectedListener) {
-      return;
+  useScheduledPoll({
+    enabled: Boolean(selectedListener),
+    intervalMs: DETAIL_POLL_INTERVAL_MS,
+    task: async () => {
+      if (!selectedListener) {
+        return;
+      }
+      await fetchPortConnections(selectedListener, true);
     }
-
-    const timer = window.setInterval(() => {
-      void fetchPortConnections(selectedListener, true);
-    }, DETAIL_POLL_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [fetchPortConnections, selectedListener]);
+  });
 
   const listenerColumns: ColumnsType<NetworkListener> = [
     {
