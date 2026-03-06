@@ -131,6 +131,11 @@ export interface AppendAuditLogInput {
   metadata?: Record<string, unknown>;
 }
 
+export type CommandHistoryMutationInput =
+  | { type: "push"; command: string }
+  | { type: "remove"; command: string }
+  | { type: "clear" };
+
 const loadDatabaseDriver = (): BetterSqlite3Module => {
   const moduleName = `better-sqlite${3}`;
   return require(moduleName) as BetterSqlite3Module;
@@ -1220,6 +1225,50 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     return record;
   }
 
+  appendAuditLogs(payloads: AppendAuditLogInput[]): void {
+    if (payloads.length === 0) {
+      return;
+    }
+
+    const insertAuditLog = this.db.prepare(
+      `
+        INSERT INTO audit_logs (
+          id,
+          action,
+          level,
+          connection_id,
+          message,
+          metadata_json,
+          created_at
+        ) VALUES (
+          @id,
+          @action,
+          @level,
+          @connection_id,
+          @message,
+          @metadata_json,
+          @created_at
+        )
+      `
+    );
+
+    const tx = this.db.transaction((batch: AppendAuditLogInput[]) => {
+      for (const payload of batch) {
+        insertAuditLog.run({
+          id: randomUUID(),
+          action: payload.action,
+          level: payload.level,
+          connection_id: payload.connectionId ?? null,
+          message: payload.message,
+          metadata_json: toMetadataJSON(payload.metadata),
+          created_at: new Date().toISOString()
+        });
+      }
+    });
+
+    tx(payloads);
+  }
+
   listAuditLogs(limit = 100): AuditLogRecord[] {
     const rows = this.db.prepare(
       `
@@ -1303,6 +1352,40 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   clearCommandHistory(): void {
     this.db.exec("DELETE FROM command_history");
+  }
+
+  applyCommandHistoryBatch(mutations: CommandHistoryMutationInput[]): void {
+    if (mutations.length === 0) {
+      return;
+    }
+
+    const upsertCommand = this.db.prepare(
+      `
+        INSERT INTO command_history (command, use_count, last_used_at)
+        VALUES (@command, 1, @now)
+        ON CONFLICT(command) DO UPDATE SET
+          use_count = use_count + 1,
+          last_used_at = @now
+      `
+    );
+    const removeCommand = this.db.prepare("DELETE FROM command_history WHERE command = ?");
+    const clearCommands = this.db.prepare("DELETE FROM command_history");
+
+    const tx = this.db.transaction((batch: CommandHistoryMutationInput[]) => {
+      for (const mutation of batch) {
+        if (mutation.type === "push") {
+          upsertCommand.run({ command: mutation.command, now: new Date().toISOString() });
+        } else if (mutation.type === "remove") {
+          removeCommand.run(mutation.command);
+        } else {
+          clearCommands.run();
+        }
+      }
+
+      this.evictCommandHistory();
+    });
+
+    tx(mutations);
   }
 
   private evictCommandHistory(): void {
