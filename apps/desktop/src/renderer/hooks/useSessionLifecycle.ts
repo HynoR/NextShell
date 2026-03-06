@@ -14,6 +14,7 @@ import {
   isSessionGenerationCurrent,
   normalizeOpenError
 } from "./useSessionLifecycle.helpers";
+import { deleteSessionFromCollections } from "../utils/sessionScopedCollections";
 
 type RetrySessionAuthResult =
   | { ok: true }
@@ -99,10 +100,25 @@ export function useSessionLifecycle() {
     window.nextshell.session.close({ sessionId }).catch(() => undefined);
   }, []);
 
-  const clearSessionTracking = useCallback((sessionId: string): void => {
-    cancelledSessionIdsRef.current.delete(sessionId);
-    sessionGenerationRef.current.delete(sessionId);
-    statusToastKeyBySessionRef.current.delete(sessionId);
+  const clearSessionTracking = useCallback((
+    sessionId: string,
+    options?: {
+      preserveCancellation?: boolean;
+      preserveRetryPromise?: boolean;
+    }
+  ): void => {
+    deleteSessionFromCollections(sessionId, [statusToastKeyBySessionRef.current]);
+
+    if (!options?.preserveCancellation) {
+      deleteSessionFromCollections(sessionId, [
+        cancelledSessionIdsRef.current,
+        sessionGenerationRef.current
+      ]);
+    }
+
+    if (!options?.preserveRetryPromise) {
+      deleteSessionFromCollections(sessionId, [inFlightAuthRetryBySessionRef.current]);
+    }
   }, []);
 
   const refreshConnectionsOnce = useCallback((): Promise<void> => {
@@ -420,9 +436,10 @@ export function useSessionLifecycle() {
 
       cancelSessionGeneration(sessionId);
       removeSession(sessionId);
-      if (!keepCancellation) {
-        clearSessionTracking(sessionId);
-      }
+      clearSessionTracking(sessionId, {
+        preserveCancellation: keepCancellation,
+        preserveRetryPromise: keepCancellation
+      });
       window.nextshell.session.close({ sessionId }).catch((error) => {
         message.warning(formatErrorMessage(error, "关闭会话失败"));
       });

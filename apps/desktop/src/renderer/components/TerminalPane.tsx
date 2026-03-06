@@ -21,6 +21,10 @@ import {
   toReplayChunks,
   type SessionOutputBuffer
 } from "../utils/sessionOutputBuffer";
+import {
+  retainSessionsInCollections,
+  setBoundedSessionMapEntry
+} from "../utils/sessionScopedCollections";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { shouldReconnectOnInput } from "../utils/terminal-reconnect";
@@ -63,6 +67,7 @@ const DEFAULT_TERMINAL_OPTIONS: FrozenTerminalOptions = {
   backspaceMode: "ascii-backspace",
   deleteMode: "vt220-delete"
 };
+const MAX_BUFFERED_SESSION_COUNT = 32;
 
 const sequenceByBackspaceMode = (
   mode: ConnectionProfile["backspaceMode"]
@@ -198,7 +203,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 
     const existing = bufferBySessionRef.current.get(targetSessionId) ?? createEmptyBuffer();
     const next = appendWithLimit(existing, text, MAX_SESSION_OUTPUT_BYTES);
-    bufferBySessionRef.current.set(targetSessionId, next);
+    setBoundedSessionMapEntry(
+      bufferBySessionRef.current,
+      targetSessionId,
+      next,
+      MAX_BUFFERED_SESSION_COUNT,
+      sessionIdRef.current ? [sessionIdRef.current] : []
+    );
   }, []);
 
   const writeLocalOutput = useCallback(
@@ -321,6 +332,14 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     if (!buffer) {
       return;
     }
+
+    setBoundedSessionMapEntry(
+      bufferBySessionRef.current,
+      targetSessionId,
+      buffer,
+      MAX_BUFFERED_SESSION_COUNT,
+      [targetSessionId]
+    );
 
     const replay = toReplayChunks(buffer).join("");
     if (replay) {
@@ -445,7 +464,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }
     terminal.reset();
     if (sessionId) {
-      bufferBySessionRef.current.set(sessionId, createEmptyBuffer());
+      setBoundedSessionMapEntry(
+        bufferBySessionRef.current,
+        sessionId,
+        createEmptyBuffer(),
+        MAX_BUFFERED_SESSION_COUNT,
+        [sessionId]
+      );
     }
     setCtxMenu(null);
   }, []);
@@ -474,35 +499,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     const knownSessionIds = new Set(sessionIds);
     knownSessionIdsRef.current = knownSessionIds;
 
-    for (const sessionId of Array.from(bufferBySessionRef.current.keys())) {
-      if (!knownSessionIds.has(sessionId)) {
-        bufferBySessionRef.current.delete(sessionId);
-      }
-    }
-
-    for (const sessionId of Array.from(lastStatusKeyBySessionRef.current.keys())) {
-      if (!knownSessionIds.has(sessionId)) {
-        lastStatusKeyBySessionRef.current.delete(sessionId);
-      }
-    }
-
-    for (const sessionId of Array.from(authStateBySessionRef.current.keys())) {
-      if (!knownSessionIds.has(sessionId)) {
-        authStateBySessionRef.current.delete(sessionId);
-      }
-    }
-
-    for (const sessionId of Array.from(sessionStatusBySessionRef.current.keys())) {
-      if (!knownSessionIds.has(sessionId)) {
-        sessionStatusBySessionRef.current.delete(sessionId);
-      }
-    }
-
-    for (const sessionId of Array.from(reconnectPendingSessionIdsRef.current)) {
-      if (!knownSessionIds.has(sessionId)) {
-        reconnectPendingSessionIdsRef.current.delete(sessionId);
-      }
-    }
+    retainSessionsInCollections(knownSessionIds, [
+      bufferBySessionRef.current,
+      lastStatusKeyBySessionRef.current,
+      authStateBySessionRef.current,
+      sessionStatusBySessionRef.current,
+      reconnectPendingSessionIdsRef.current
+    ]);
   }, [sessionIds]);
 
   useEffect(() => {
