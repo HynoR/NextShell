@@ -127,9 +127,33 @@ export const sessionGetCwdSchema = z.object({
   connectionId: z.string().uuid()
 });
 
+export const streamKindSchema = z.enum([
+  "session",
+  "monitor-system",
+  "monitor-process",
+  "monitor-network"
+]);
+
+export const streamDeliveryAckSchema = z.object({
+  streamKind: streamKindSchema,
+  streamId: z.string().min(1),
+  deliveryId: z.number().int().min(1),
+  consumedBytes: z.number().int().min(0).optional()
+}).superRefine((value, ctx) => {
+  if (value.streamKind === "session" && typeof value.consumedBytes !== "number") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "consumedBytes is required when streamKind is session",
+      path: ["consumedBytes"]
+    });
+  }
+});
+
 export const sessionDataEventSchema = z.object({
   sessionId: z.string().uuid(),
-  data: z.string()
+  data: z.string(),
+  deliveryId: z.number().int().min(1),
+  byteLength: z.number().int().min(0)
 });
 
 export const sessionStatusEventSchema = z.object({
@@ -653,6 +677,8 @@ export type SessionWriteInput = z.infer<typeof sessionWriteSchema>;
 export type SessionResizeInput = z.infer<typeof sessionResizeSchema>;
 export type SessionCloseInput = z.infer<typeof sessionCloseSchema>;
 export type SessionGetCwdInput = z.infer<typeof sessionGetCwdSchema>;
+export type StreamKind = z.infer<typeof streamKindSchema>;
+export type StreamDeliveryAckInput = z.infer<typeof streamDeliveryAckSchema>;
 export type SessionDataEvent = z.infer<typeof sessionDataEventSchema>;
 export type SessionStatusEvent = z.infer<typeof sessionStatusEventSchema>;
 export type MonitorSystemInfoSnapshotInput = z.infer<typeof monitorSystemInfoSnapshotSchema>;

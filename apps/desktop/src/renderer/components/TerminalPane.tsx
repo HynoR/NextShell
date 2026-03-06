@@ -99,6 +99,19 @@ const runSessionAction = (action: Promise<unknown>): void => {
   action.catch(swallowSessionActionError);
 };
 
+const ackSessionDelivery = (
+  sessionId: string,
+  deliveryId: number,
+  byteLength: number
+): void => {
+  runSessionAction(window.nextshell.session.ackData({
+    streamKind: "session",
+    streamId: sessionId,
+    deliveryId,
+    consumedBytes: byteLength
+  }));
+};
+
 const statusMessage = (
   status: SessionDescriptor["status"],
   reason?: string
@@ -751,13 +764,20 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   useEffect(() => {
     const offData = window.nextshell.session.onData((event) => {
       if (!knownSessionIdsRef.current.has(event.sessionId)) {
+        ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
         return;
       }
 
       appendSessionOutput(event.sessionId, event.data);
-      if (event.sessionId === sessionIdRef.current) {
-        terminalRef.current?.write(event.data);
+      const terminal = terminalRef.current;
+      if (event.sessionId === sessionIdRef.current && terminal) {
+        terminal.write(event.data, () => {
+          ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
+        });
+        return;
       }
+
+      ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
     });
 
     const offStatus = window.nextshell.session.onStatus((event) => {

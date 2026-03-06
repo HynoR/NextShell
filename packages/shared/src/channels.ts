@@ -9,6 +9,7 @@ export const IPCChannel = {
   SessionData: "nextshell:session:data",
   SessionStatus: "nextshell:session:status",
   SessionGetCwd: "nextshell:session:get-cwd",
+  StreamDeliveryAck: "nextshell:stream:delivery:ack",
   MonitorSystemInfoSnapshot: "nextshell:monitor:system-info:snapshot",
   MonitorSystemStart: "nextshell:monitor:system:start",
   MonitorSystemStop: "nextshell:monitor:system:stop",

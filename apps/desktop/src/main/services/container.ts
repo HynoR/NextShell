@@ -26,6 +26,7 @@ import type {
   DeleteMode,
   ExportedConnection,
   MigrationRecord,
+  MonitorSnapshot,
   NetworkConnection,
   NetworkSnapshot,
   ProcessDetailSnapshot,
@@ -82,7 +83,14 @@ import {
   AUTH_REQUIRED_PREFIX,
   CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX
 } from "../../../../../packages/shared/src/index";
-import type { UpdateCheckResult, PingResult, TracerouteEvent } from "../../../../../packages/shared/src/index";
+import type {
+  PingResult,
+  SessionDataEvent,
+  StreamDeliveryAckInput,
+  StreamDeliveryEnvelope,
+  TracerouteEvent,
+  UpdateCheckResult
+} from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
@@ -150,6 +158,10 @@ import {
   type NetworkProbeExecutionLog,
   type NetworkTool,
 } from "./monitor/network-monitor-controller";
+import {
+  createLatestOnlyDispatcher,
+  createOrderedBytesDispatcher
+} from "./ipc-stream-dispatcher";
 
 interface ActiveSession {
   descriptor: SessionDescriptor;
@@ -243,6 +255,7 @@ export interface ServiceContainer {
     sessionId?: string,
     authOverride?: SessionAuthOverrideInput
   ) => Promise<SessionDescriptor>;
+  ackStreamDelivery: (input: StreamDeliveryAckInput) => { ok: true };
   writeSession: (sessionId: string, data: string) => { ok: true };
   resizeSession: (sessionId: string, cols: number, rows: number) => { ok: true };
   closeSession: (sessionId: string) => Promise<{ ok: true }>;
@@ -989,67 +1002,38 @@ export const createServiceContainer = (
     };
   };
 
-  const sessionDataThrottle = (() => {
-    const FLUSH_INTERVAL_MS = 16;
-    const IMMEDIATE_THRESHOLD = 64 * 1024;
-    const buffers = new Map<string, { data: string; sender: WebContents }>();
-    let timer: ReturnType<typeof setInterval> | null = null;
+  const sessionDataDispatcher = createOrderedBytesDispatcher<SessionDataEvent>({
+    channel: IPCChannel.SessionData,
+    flushIntervalMs: 16,
+    targetChunkBytes: 64 * 1024,
+    highWaterBytes: 512 * 1024,
+    lowWaterBytes: 256 * 1024,
+    buildPayload: ({ streamId, deliveryId, chunk }) => ({
+      sessionId: streamId,
+      data: chunk,
+      deliveryId,
+      byteLength: Buffer.byteLength(chunk, "utf8")
+    })
+  });
 
-    const flushAll = () => {
-      for (const [sessionId, entry] of buffers) {
-        if (entry.data.length > 0 && !entry.sender.isDestroyed()) {
-          entry.sender.send(IPCChannel.SessionData, { sessionId, data: entry.data });
-          entry.data = "";
-        }
-      }
-    };
+  const createMonitorDispatcher = <TSnapshot>(channel: string) =>
+    createLatestOnlyDispatcher<StreamDeliveryEnvelope<TSnapshot>, TSnapshot>({
+      channel,
+      buildPayload: ({ deliveryId, payload }) => ({
+        deliveryId,
+        payload
+      })
+    });
 
-    const ensureTimer = () => {
-      if (!timer) {
-        timer = setInterval(() => {
-          flushAll();
-          if (buffers.size === 0 && timer) {
-            clearInterval(timer);
-            timer = null;
-          }
-        }, FLUSH_INTERVAL_MS);
-      }
-    };
-
-    return {
-      push(sessionId: string, data: string, sender: WebContents) {
-        let entry = buffers.get(sessionId);
-        if (!entry) {
-          entry = { data: "", sender };
-          buffers.set(sessionId, entry);
-        }
-        entry.data += data;
-        if (entry.data.length >= IMMEDIATE_THRESHOLD) {
-          if (!sender.isDestroyed()) {
-            sender.send(IPCChannel.SessionData, { sessionId, data: entry.data });
-          }
-          entry.data = "";
-        } else {
-          ensureTimer();
-        }
-      },
-      flush(sessionId: string) {
-        const entry = buffers.get(sessionId);
-        if (entry && entry.data.length > 0 && !entry.sender.isDestroyed()) {
-          entry.sender.send(IPCChannel.SessionData, { sessionId, data: entry.data });
-          entry.data = "";
-        }
-      },
-      dispose(sessionId: string) {
-        this.flush(sessionId);
-        buffers.delete(sessionId);
-        if (buffers.size === 0 && timer) {
-          clearInterval(timer);
-          timer = null;
-        }
-      }
-    };
-  })();
+  const systemMonitorDispatcher = createMonitorDispatcher<MonitorSnapshot>(
+    IPCChannel.MonitorSystemData
+  );
+  const processMonitorDispatcher = createMonitorDispatcher<ProcessSnapshot>(
+    IPCChannel.MonitorProcessData
+  );
+  const networkMonitorDispatcher = createMonitorDispatcher<NetworkSnapshot>(
+    IPCChannel.MonitorNetworkData
+  );
 
   const sendSessionStatus = (sender: WebContents, payload: SessionStatusEvent): void => {
     if (!sender.isDestroyed()) {
@@ -1068,14 +1052,60 @@ export const createServiceContainer = (
     sender.send(IPCChannel.SftpTransferStatus, payload);
   };
 
-  const updateSessionStatus = (sessionId: string, status: SessionStatus, reason?: string): void => {
+  const ackStreamDelivery = (input: StreamDeliveryAckInput): { ok: true } => {
+    switch (input.streamKind) {
+      case "session":
+        sessionDataDispatcher.ack({
+          streamId: input.streamId,
+          deliveryId: input.deliveryId,
+          consumedBytes: input.consumedBytes
+        });
+        break;
+      case "monitor-system":
+        systemMonitorDispatcher.ack({
+          streamId: input.streamId,
+          deliveryId: input.deliveryId
+        });
+        break;
+      case "monitor-process":
+        processMonitorDispatcher.ack({
+          streamId: input.streamId,
+          deliveryId: input.deliveryId
+        });
+        break;
+      case "monitor-network":
+        networkMonitorDispatcher.ack({
+          streamId: input.streamId,
+          deliveryId: input.deliveryId
+        });
+        break;
+    }
+
+    return { ok: true };
+  };
+
+  const finalizeRemoteSession = (
+    sessionId: string,
+    status: Extract<SessionStatus, "disconnected" | "failed">,
+    reason?: string
+  ): void => {
     const active = activeSessions.get(sessionId);
     if (!active) {
       return;
     }
 
     active.descriptor.status = status;
-    sendSessionStatus(active.sender, { sessionId, status, reason });
+    sessionDataDispatcher.closeWhenDrained(sessionId, () => {
+      const drained = activeSessions.get(sessionId);
+      if (!drained) {
+        return;
+      }
+
+      activeSessions.delete(sessionId);
+      drained.descriptor.status = status;
+      sendSessionStatus(drained.sender, { sessionId, status, reason });
+      void closeConnectionIfIdle(drained.connectionId);
+    });
   };
 
   const establishConnection = async (
@@ -1157,6 +1187,7 @@ export const createServiceContainer = (
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
+      systemMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       systemMonitorRuntimes.delete(connectionId);
     }
@@ -1169,6 +1200,7 @@ export const createServiceContainer = (
     const runtime = processMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
+      processMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       processMonitorRuntimes.delete(connectionId);
     }
@@ -1182,6 +1214,7 @@ export const createServiceContainer = (
     const runtime = networkMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
+      networkMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       networkMonitorRuntimes.delete(connectionId);
     }
@@ -1457,7 +1490,11 @@ export const createServiceContainer = (
       isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
       emitSnapshot: (snapshot) => {
         if (runtime.sender && !runtime.sender.isDestroyed()) {
-          runtime.sender.send(IPCChannel.MonitorSystemData, snapshot);
+          systemMonitorDispatcher.publish({
+            streamId: connectionId,
+            sender: runtime.sender,
+            payload: snapshot
+          });
         }
       },
       readSelection: () => monitorStates.get(connectionId),
@@ -1519,7 +1556,11 @@ export const createServiceContainer = (
         isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
         emitSnapshot: (snapshot) => {
           if (runtime.sender && !runtime.sender.isDestroyed()) {
-            runtime.sender.send(IPCChannel.MonitorProcessData, snapshot);
+            processMonitorDispatcher.publish({
+              streamId: connectionId,
+              sender: runtime.sender,
+              payload: snapshot
+            });
           }
         },
         logger,
@@ -1598,7 +1639,11 @@ export const createServiceContainer = (
         isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
         emitSnapshot: (snapshot) => {
           if (runtime.sender && !runtime.sender.isDestroyed()) {
-            runtime.sender.send(IPCChannel.MonitorNetworkData, snapshot);
+            networkMonitorDispatcher.publish({
+              streamId: connectionId,
+              sender: runtime.sender,
+              payload: snapshot
+            });
           }
         },
         readToolCache: () => networkToolCache.get(connectionId),
@@ -2799,40 +2844,42 @@ export const createServiceContainer = (
 
       shell.on("data", (chunk: Buffer | string) => {
         const active = activeSessions.get(descriptor.id);
-        const encoding = active?.terminalEncoding ?? profile.terminalEncoding;
-        sessionDataThrottle.push(descriptor.id, decodeTerminalData(chunk, encoding), sender);
+        if (!active) {
+          return;
+        }
+        sessionDataDispatcher.push({
+          streamId: descriptor.id,
+          sender: active.sender,
+          chunk: decodeTerminalData(chunk, active.terminalEncoding),
+          onPause: () => shell.pause(),
+          onResume: () => shell.resume()
+        });
       });
 
       shell.stderr.on("data", (chunk: Buffer | string) => {
         const active = activeSessions.get(descriptor.id);
-        const encoding = active?.terminalEncoding ?? profile.terminalEncoding;
-        sessionDataThrottle.push(descriptor.id, decodeTerminalData(chunk, encoding), sender);
+        if (!active) {
+          return;
+        }
+        sessionDataDispatcher.push({
+          streamId: descriptor.id,
+          sender: active.sender,
+          chunk: decodeTerminalData(chunk, active.terminalEncoding),
+          onPause: () => shell.pause(),
+          onResume: () => shell.resume()
+        });
       });
 
       shell.on("close", () => {
         shell.removeAllListeners();
         shell.stderr.removeAllListeners();
-        sessionDataThrottle.dispose(descriptor.id);
-        const active = activeSessions.get(descriptor.id);
-        if (active) {
-          activeSessions.delete(descriptor.id);
-          sendSessionStatus(active.sender, {
-            sessionId: descriptor.id,
-            status: "disconnected"
-          });
-          void closeConnectionIfIdle(connectionId);
-        }
+        finalizeRemoteSession(descriptor.id, "disconnected");
       });
 
       shell.on("error", (error: unknown) => {
         shell.removeAllListeners();
         shell.stderr.removeAllListeners();
-        sessionDataThrottle.dispose(descriptor.id);
-        const active = activeSessions.get(descriptor.id);
-        if (active) {
-          activeSessions.delete(descriptor.id);
-        }
-        updateSessionStatus(descriptor.id, "failed", normalizeError(error));
+        finalizeRemoteSession(descriptor.id, "failed", normalizeError(error));
       });
 
       let connectedReason = await warmupSftp(connectionId, connection);
@@ -2939,7 +2986,7 @@ export const createServiceContainer = (
     }
 
     logger.info("[Session] closing", { sessionId, connectionId: active.connectionId });
-    sessionDataThrottle.dispose(sessionId);
+    sessionDataDispatcher.clear(sessionId);
     active.channel.removeAllListeners();
     if (active.channel.stderr) {
       active.channel.stderr.removeAllListeners();
@@ -2993,6 +3040,7 @@ export const createServiceContainer = (
     assertVisibleTerminalAlive(connectionId);
     const runtime = await ensureSystemMonitorRuntime(connectionId);
     runtime.sender = sender;
+    systemMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   };
 
@@ -3000,6 +3048,7 @@ export const createServiceContainer = (
     const runtime = systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
+      systemMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };
@@ -4153,6 +4202,7 @@ export const createServiceContainer = (
 
     const runtime = await ensureProcessMonitorRuntime(connectionId);
     runtime.sender = sender;
+    processMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   };
 
@@ -4160,6 +4210,7 @@ export const createServiceContainer = (
     const runtime = processMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
+      processMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };
@@ -4244,6 +4295,7 @@ export const createServiceContainer = (
 
     const runtime = await ensureNetworkMonitorRuntime(connectionId);
     runtime.sender = sender;
+    networkMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   };
 
@@ -4251,6 +4303,7 @@ export const createServiceContainer = (
     const runtime = networkMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
+      networkMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };
@@ -4519,6 +4572,7 @@ export const createServiceContainer = (
     openDirectoryDialog,
     openLocalPath,
     openSession,
+    ackStreamDelivery,
     writeSession,
     resizeSession,
     closeSession,

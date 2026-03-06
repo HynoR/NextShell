@@ -83,6 +83,7 @@ import type {
   SessionOpenInput,
   SessionResizeInput,
   SessionStatusEvent,
+  StreamDeliveryAckInput,
   StorageMigrationsInput,
   SessionWriteInput,
   SftpDeleteInput,
@@ -116,6 +117,10 @@ import type {
 } from "./contracts";
 
 export type SessionEventUnsubscribe = () => void;
+export interface StreamDeliveryEnvelope<T> {
+  deliveryId: number;
+  payload: T;
+}
 
 export interface NextShellApi {
   /** Current OS platform, set synchronously from process.platform in the preload. */
@@ -142,6 +147,7 @@ export interface NextShellApi {
     resize: (payload: SessionResizeInput) => Promise<{ ok: true }>;
     close: (payload: SessionCloseInput) => Promise<{ ok: true }>;
     getCwd: (payload: SessionGetCwdInput) => Promise<{ cwd: string } | null>;
+    ackData: (payload: StreamDeliveryAckInput) => Promise<{ ok: true }>;
     onData: (listener: (event: SessionDataEvent) => void) => SessionEventUnsubscribe;
     onStatus: (listener: (event: SessionStatusEvent) => void) => SessionEventUnsubscribe;
   };

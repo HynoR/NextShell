@@ -37,6 +37,7 @@ import {
   settingsUpdateSchema,
   sessionCloseSchema,
   sessionGetCwdSchema,
+  streamDeliveryAckSchema,
   sftpDeleteSchema,
   sftpDownloadSchema,
   sftpDownloadPackedSchema,
@@ -211,6 +212,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.SessionGetCwd, (_event, payload) => {
     const input = parsePayload(sessionGetCwdSchema, payload, "获取终端工作目录");
     return services.getSessionCwd(input.connectionId);
+  });
+
+  ipcMain.handle(IPCChannel.StreamDeliveryAck, (_event, payload) => {
+    const input = parsePayload(streamDeliveryAckSchema, payload, "流式消息确认");
+    return services.ackStreamDelivery(input);
   });
 
   ipcMain.handle(IPCChannel.MonitorSystemInfoSnapshot, (_event, payload) => {
