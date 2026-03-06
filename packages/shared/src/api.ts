@@ -49,6 +49,7 @@ import type {
   ConnectionImportFinalShellPreviewInput,
   ConnectionImportPreviewInput,
   MasterPasswordCachedResult,
+  MasterPasswordChangeInput,
   MasterPasswordClearRememberedInput,
   MasterPasswordGetCachedInput,
   MasterPasswordSetInput,
@@ -233,6 +234,7 @@ export interface NextShellApi {
   masterPassword: {
     setPassword: (payload: MasterPasswordSetInput) => Promise<{ ok: true }>;
     unlockPassword: (payload: MasterPasswordUnlockInput) => Promise<{ ok: true }>;
+    changePassword: (payload: MasterPasswordChangeInput) => Promise<{ ok: true }>;
     clearRemembered: (payload?: MasterPasswordClearRememberedInput) => Promise<{ ok: true }>;
     passwordStatus: (payload?: MasterPasswordStatusInput) => Promise<MasterPasswordStatusResult>;
     getCached: (payload?: MasterPasswordGetCachedInput) => Promise<MasterPasswordCachedResult>;

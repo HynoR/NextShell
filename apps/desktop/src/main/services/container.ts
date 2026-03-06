@@ -109,6 +109,7 @@ import {
 import { RemoteEditManager } from "./remote-edit-manager";
 import { mergePreferences } from "./preferences";
 import { BackupService, applyPendingRestore } from "./backup-service";
+import { changeMasterPassword } from "./master-password-change";
 import {
   isFinalShellFormat,
   isNextShellFormat,
@@ -348,6 +349,7 @@ export interface ServiceContainer {
   backupRestore: (archiveId: string, conflictPolicy: RestoreConflictPolicy) => Promise<{ ok: true }>;
   masterPasswordSet: (password: string) => Promise<{ ok: true }>;
   masterPasswordUnlock: (password: string) => Promise<{ ok: true }>;
+  masterPasswordChange: (oldPassword: string, newPassword: string) => Promise<{ ok: true }>;
   masterPasswordClearRemembered: () => Promise<{ ok: true }>;
   masterPasswordStatus: () => Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }>;
   masterPasswordGetCached: () => Promise<{ password?: string }>;
@@ -4336,7 +4338,7 @@ export const createServiceContainer = (
 
   const rememberPasswordBestEffort = async (
     password: string,
-    phase: "set" | "unlock"
+    phase: "set" | "unlock" | "change"
   ): Promise<void> => {
     const prefs = connections.getAppPreferences();
     if (!prefs.backup.rememberPassword) {
@@ -4386,6 +4388,22 @@ export const createServiceContainer = (
     masterPassword = password;
     await rememberPasswordBestEffort(password, "unlock");
     return { ok: true };
+  };
+
+  const masterPasswordChange = async (oldPassword: string, newPassword: string): Promise<{ ok: true }> => {
+    return changeMasterPassword({
+      oldPassword,
+      newPassword,
+      getMasterKeyMeta: () => connections.getMasterKeyMeta(),
+      saveMasterKeyMeta: (meta) => connections.saveMasterKeyMeta(meta),
+      setMasterPassword: (password) => {
+        masterPassword = password;
+      },
+      rememberPasswordBestEffort,
+      appendAuditLog: (payload) => {
+        connections.appendAuditLog(payload);
+      }
+    });
   };
 
   const masterPasswordClearRemembered = async (): Promise<{ ok: true }> => {
@@ -4620,6 +4638,7 @@ export const createServiceContainer = (
     backupRestore,
     masterPasswordSet,
     masterPasswordUnlock,
+    masterPasswordChange,
     masterPasswordClearRemembered,
     masterPasswordStatus,
     masterPasswordGetCached,

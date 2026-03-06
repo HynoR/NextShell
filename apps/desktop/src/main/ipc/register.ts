@@ -68,6 +68,7 @@ import {
   backupPasswordStatusSchema,
   masterPasswordSetSchema,
   masterPasswordUnlockSchema,
+  masterPasswordChangeSchema,
   masterPasswordClearRememberedSchema,
   masterPasswordStatusSchema,
   masterPasswordGetCachedSchema,
@@ -470,6 +471,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.MasterPasswordUnlock, (_event, payload) => {
     const input = parsePayload(masterPasswordUnlockSchema, payload, "解锁主密码");
     return services.masterPasswordUnlock(input.password);
+  });
+
+  ipcMain.handle(IPCChannel.MasterPasswordChange, (_event, payload) => {
+    const input = parsePayload(masterPasswordChangeSchema, payload, "修改主密码");
+    return services.masterPasswordChange(input.oldPassword, input.newPassword);
   });
 
   ipcMain.handle(IPCChannel.MasterPasswordClearRemembered, (_event, payload) => {

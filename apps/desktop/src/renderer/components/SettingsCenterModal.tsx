@@ -3,6 +3,7 @@ import {
   App as AntdApp,
   Badge,
   Button,
+  Checkbox,
   Input,
   InputNumber,
   List,
@@ -213,6 +214,11 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const [pwdInput, setPwdInput] = useState("");
   const [pwdConfirm, setPwdConfirm] = useState("");
   const [pwdBusy, setPwdBusy] = useState(false);
+  const [changeOldPwd, setChangeOldPwd] = useState("");
+  const [changeNewPwd, setChangeNewPwd] = useState("");
+  const [changeConfirmPwd, setChangeConfirmPwd] = useState("");
+  const [changeAckRisk, setChangeAckRisk] = useState(false);
+  const [changeBusy, setChangeBusy] = useState(false);
 
   const [backupRunning, setBackupRunning] = useState(false);
   const [archiveList, setArchiveList] = useState<BackupArchiveMeta[]>([]);
@@ -243,6 +249,10 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setNexttracePath(preferences.traceroute.nexttracePath);
     setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
     setRestoreConflictPolicy(preferences.backup.defaultRestoreConflictPolicy);
+    setChangeOldPwd("");
+    setChangeNewPwd("");
+    setChangeConfirmPwd("");
+    setChangeAckRisk(false);
   }, [open, preferences]);
 
   useEffect(() => {
@@ -339,6 +349,53 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     }
   };
 
+  const handleChangePassword = async (): Promise<void> => {
+    if (!changeOldPwd) {
+      message.warning("请输入原密码。");
+      return;
+    }
+    if (!changeNewPwd || changeNewPwd.length < 6) {
+      message.warning("新密码至少需要 6 个字符。");
+      return;
+    }
+    if (changeNewPwd !== changeConfirmPwd) {
+      message.warning("两次输入的新密码不一致。");
+      return;
+    }
+    if (!changeAckRisk) {
+      message.warning("请先确认已知晓修改主密码对云存档的影响。");
+      return;
+    }
+
+    const sameAsOld = changeOldPwd === changeNewPwd;
+    if (sameAsOld) {
+      message.warning("新密码与原密码相同，将按原密码重新设置。");
+    }
+
+    setChangeBusy(true);
+    try {
+      await window.nextshell.masterPassword.changePassword({
+        oldPassword: changeOldPwd,
+        newPassword: changeNewPwd,
+        confirmPassword: changeConfirmPwd
+      });
+      if (sameAsOld) {
+        message.success("主密码已更新（与原密码相同）。");
+      } else {
+        message.success("主密码已修改。旧云存档可能无法还原，请重新备份。");
+      }
+      setChangeOldPwd("");
+      setChangeNewPwd("");
+      setChangeConfirmPwd("");
+      setChangeAckRisk(false);
+      await refreshPasswordStatus();
+    } catch (error) {
+      message.error(`修改主密码失败：${formatErrorMessage(error, "请检查输入内容")}`);
+    } finally {
+      setChangeBusy(false);
+    }
+  };
+
   const handleRunBackup = async (): Promise<void> => {
     setBackupRunning(true);
     try {
@@ -389,14 +446,24 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           pwdInput={pwdInput}
           pwdConfirm={pwdConfirm}
           pwdBusy={pwdBusy}
+          changeOldPwd={changeOldPwd}
+          changeNewPwd={changeNewPwd}
+          changeConfirmPwd={changeConfirmPwd}
+          changeAckRisk={changeAckRisk}
+          changeBusy={changeBusy}
           backupRememberPassword={preferences.backup.rememberPassword}
           loading={loading}
           auditRetentionDays={auditRetentionDays}
           setAuditRetentionDays={setAuditRetentionDays}
           setPwdInput={setPwdInput}
           setPwdConfirm={setPwdConfirm}
+          setChangeOldPwd={setChangeOldPwd}
+          setChangeNewPwd={setChangeNewPwd}
+          setChangeConfirmPwd={setChangeConfirmPwd}
+          setChangeAckRisk={setChangeAckRisk}
           onSetPassword={() => void handleSetPassword()}
           onUnlockPassword={() => void handleUnlockPassword()}
+          onChangePassword={() => void handleChangePassword()}
           onClearRemembered={() => void handleClearRemembered()}
           save={save}
         />;
@@ -509,6 +576,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     appBackgroundImagePath, nexttracePath,
     backupRemotePath, rclonePath, backupConflictPolicy, restoreConflictPolicy,
     pwdStatus, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
+    changeOldPwd, changeNewPwd, changeConfirmPwd, changeAckRisk, changeBusy,
     backupRunning, archiveList, archiveListVisible, archiveListLoading, restoring,
     save, pickDirectory, message, modal,
   ]);
@@ -1821,10 +1889,12 @@ const BackupSection = ({
 
 const SecuritySection = ({
   pwdStatus, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
+  changeOldPwd, changeNewPwd, changeConfirmPwd, changeAckRisk, changeBusy,
   backupRememberPassword, loading,
   auditRetentionDays, setAuditRetentionDays,
   setPwdInput, setPwdConfirm,
-  onSetPassword, onUnlockPassword, onClearRemembered,
+  setChangeOldPwd, setChangeNewPwd, setChangeConfirmPwd, setChangeAckRisk,
+  onSetPassword, onUnlockPassword, onChangePassword, onClearRemembered,
   save,
 }: {
   pwdStatus: { isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean };
@@ -1832,14 +1902,24 @@ const SecuritySection = ({
   pwdInput: string;
   pwdConfirm: string;
   pwdBusy: boolean;
+  changeOldPwd: string;
+  changeNewPwd: string;
+  changeConfirmPwd: string;
+  changeAckRisk: boolean;
+  changeBusy: boolean;
   backupRememberPassword: boolean;
   loading: boolean;
   auditRetentionDays: number;
   setAuditRetentionDays: (v: number) => void;
   setPwdInput: (v: string) => void;
   setPwdConfirm: (v: string) => void;
+  setChangeOldPwd: (v: string) => void;
+  setChangeNewPwd: (v: string) => void;
+  setChangeConfirmPwd: (v: string) => void;
+  setChangeAckRisk: (v: boolean) => void;
   onSetPassword: () => void;
   onUnlockPassword: () => void;
+  onChangePassword: () => void;
   onClearRemembered: () => void;
   save: (patch: Record<string, unknown>) => void;
 }) => (
@@ -1906,6 +1986,60 @@ const SecuritySection = ({
       disabled={loading || !pwdStatus.keytarAvailable}
       onChange={(v) => save({ backup: { rememberPassword: v } })}
     />
+
+    {pwdStatus.isSet && (
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--border)" }}>
+        <Typography.Text style={{ fontSize: 12, fontWeight: 600 }}>
+          修改主密码
+        </Typography.Text>
+        <div className="stg-note" style={{ marginTop: 4 }}>
+          修改后旧云存档可能无法还原，建议尽快重新备份。
+        </div>
+
+        <SettingsRow label="原密码">
+          <Input.Password
+            value={changeOldPwd}
+            onChange={(e) => setChangeOldPwd(e.target.value)}
+            placeholder="请输入当前主密码"
+            disabled={changeBusy}
+          />
+        </SettingsRow>
+
+        <SettingsRow label="新密码">
+          <Input.Password
+            value={changeNewPwd}
+            onChange={(e) => setChangeNewPwd(e.target.value)}
+            placeholder="请输入新主密码（至少 6 个字符）"
+            disabled={changeBusy}
+          />
+        </SettingsRow>
+
+        <SettingsRow label="确认新密码">
+          <Input.Password
+            value={changeConfirmPwd}
+            onChange={(e) => setChangeConfirmPwd(e.target.value)}
+            placeholder="请再次输入新主密码"
+            disabled={changeBusy}
+          />
+        </SettingsRow>
+
+        <div style={{ marginTop: 8 }}>
+          <Checkbox
+            checked={changeAckRisk}
+            disabled={changeBusy}
+            onChange={(e) => setChangeAckRisk(e.target.checked)}
+          >
+            我已知晓修改后旧云存档可能无法还原，需要重新备份。
+          </Checkbox>
+        </div>
+
+        <Space style={{ marginTop: 8 }}>
+          <Button type="primary" loading={changeBusy} onClick={onChangePassword}>
+            修改主密码
+          </Button>
+        </Space>
+      </div>
+    )}
   </SettingsCard>
 
   <SettingsCard title="审计日志" description="设置操作日志的自动清理策略">

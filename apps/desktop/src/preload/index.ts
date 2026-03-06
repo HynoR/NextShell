@@ -23,6 +23,7 @@ import { WINDOWS_TITLEBAR_SAFE_TOP } from "../shared/window-ui";
 const masterPasswordApi: NextShellApi["masterPassword"] = {
   setPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordSet, payload),
   unlockPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordUnlock, payload),
+  changePassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordChange, payload),
   clearRemembered: () => ipcRenderer.invoke(IPCChannel.MasterPasswordClearRemembered, {}),
   passwordStatus: () => ipcRenderer.invoke(IPCChannel.MasterPasswordStatus, {}),
   getCached: () => ipcRenderer.invoke(IPCChannel.MasterPasswordGetCached, {})

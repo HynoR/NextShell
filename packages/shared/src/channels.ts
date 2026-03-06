@@ -66,6 +66,7 @@ export const IPCChannel = {
   MasterPasswordClearRemembered: "nextshell:master-password:clear-remembered",
   MasterPasswordStatus: "nextshell:master-password:status",
   MasterPasswordGetCached: "nextshell:master-password:get-cached",
+  MasterPasswordChange: "nextshell:master-password:change",
   BackupPasswordSet: "nextshell:backup:password:set",
   BackupPasswordUnlock: "nextshell:backup:password:unlock",
   BackupPasswordClearRemembered: "nextshell:backup:password:clear-remembered",

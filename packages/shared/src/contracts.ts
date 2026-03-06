@@ -562,6 +562,14 @@ export const masterPasswordUnlockSchema = backupPasswordUnlockSchema;
 export const masterPasswordClearRememberedSchema = backupPasswordClearRememberedSchema;
 export const masterPasswordStatusSchema = backupPasswordStatusSchema;
 export const masterPasswordGetCachedSchema = z.object({});
+export const masterPasswordChangeSchema = z.object({
+  oldPassword: z.string().min(1, "原密码不能为空"),
+  newPassword: z.string().min(6, "新密码至少6个字符"),
+  confirmPassword: z.string().min(1)
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: "两次输入的新密码不一致",
+  path: ["confirmPassword"]
+});
 
 export const templateParamsListSchema = z.object({
   commandId: z.string().uuid().optional()
@@ -739,6 +747,7 @@ export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchem
 export type MasterPasswordClearRememberedInput = z.infer<typeof masterPasswordClearRememberedSchema>;
 export type MasterPasswordStatusInput = z.infer<typeof masterPasswordStatusSchema>;
 export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
+export type MasterPasswordChangeInput = z.infer<typeof masterPasswordChangeSchema>;
 export type TemplateParamsListInput = z.infer<typeof templateParamsListSchema>;
 export type TemplateParamsUpsertInput = z.infer<typeof templateParamsUpsertSchema>;
 export type TemplateParamsClearInput = z.infer<typeof templateParamsClearSchema>;
