@@ -841,6 +841,7 @@ export const WorkspaceLayout = ({
                                                             connected={
                                                                 isActiveConnectionTerminalConnected
                                                             }
+                                                            active={bottomTab === "files"}
                                                             onOpenSettings={onOpenSettings}
                                                             onOpenEditorTab={onOpenEditorTab}
                                                         />
@@ -865,7 +866,10 @@ export const WorkspaceLayout = ({
                                                     key: "live-edit",
                                                     label: "实时编辑",
                                                     children: (
-                                                        <LiveEditPane connections={connections} />
+                                                        <LiveEditPane
+                                                            active={bottomTab === "live-edit"}
+                                                            connections={connections}
+                                                        />
                                                     ),
                                                 },
                                                 {

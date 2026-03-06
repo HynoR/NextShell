@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { Spin, Tag, Tooltip, message } from "antd";
 import type { ConnectionProfile } from "@nextshell/core";
+import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { useEditSessionStore } from "../store/useEditSessionStore";
 import { PanelSkeleton } from "./LoadingSkeletons";
 
 interface LiveEditPaneProps {
+  active: boolean;
   connections: ConnectionProfile[];
 }
 
@@ -26,7 +28,7 @@ const statusTag = (status: string): { color: string; text: string } => {
   }
 };
 
-export const LiveEditPane = ({ connections }: LiveEditPaneProps) => {
+export const LiveEditPane = ({ active, connections }: LiveEditPaneProps) => {
   const { sessions, loading, fetchSessions, applyEvent, stopSession, stopAllSessions } =
     useEditSessionStore();
 
@@ -39,13 +41,13 @@ export const LiveEditPane = ({ connections }: LiveEditPaneProps) => {
     return unsub;
   }, [applyEvent, fetchSessions]);
 
-  // Periodically refresh to keep "time ago" fresh + catch any missed events
-  useEffect(() => {
-    const timer = setInterval(() => {
-      void fetchSessions();
-    }, 30_000);
-    return () => clearInterval(timer);
-  }, [fetchSessions]);
+  useScheduledPoll({
+    enabled: active,
+    intervalMs: 30_000,
+    task: async () => {
+      await fetchSessions();
+    }
+  });
 
   const connMap = useMemo(() => {
     const map = new Map<string, ConnectionProfile>();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Table, Typography, message } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { CommandExecutionResult, ConnectionProfile } from "@nextshell/core";
+import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { TableSkeleton } from "./LoadingSkeletons";
 import { formatDiskSize, parseDfOutput, type DiskUsageEntry } from "../utils/diskUsage";
 import { formatErrorMessage } from "../utils/errorMessage";
@@ -63,6 +64,9 @@ export const DiskMonitorPane = ({
   const requestIdRef = useRef(0);
   const lastAttemptRef = useRef<Record<string, number>>({});
   const cacheRef = useRef<Record<string, DiskCacheSnapshot>>({});
+  const pollEnabled = Boolean(
+    active && cacheKey && connectionId && monitorEnabled && connected && connectedTerminalSessionId
+  );
 
   useEffect(() => {
     if (!cacheKey) {
@@ -98,7 +102,7 @@ export const DiskMonitorPane = ({
       const now = Date.now();
       const lastAttemptAt = lastAttemptRef.current[cacheKey] ?? 0;
       const elapsed = now - lastAttemptAt;
-      if (elapsed < REFRESH_INTERVAL_MS) {
+      if (trigger !== "enter" && elapsed < REFRESH_INTERVAL_MS) {
         if (trigger === "manual") {
           const waitSec = Math.ceil((REFRESH_INTERVAL_MS - elapsed) / 1000);
           message.info(`磁盘数据每 60 秒更新一次，请 ${waitSec} 秒后重试`);
@@ -171,23 +175,23 @@ export const DiskMonitorPane = ({
   );
 
   useEffect(() => {
-    if (!active || !cacheKey || !connectionId || !monitorEnabled || !connected || !connectedTerminalSessionId) {
-      requestIdRef.current += 1;
-      setLoading(false);
-      setRefreshing(false);
+    if (pollEnabled) {
+      void fetchDiskData(false, "enter");
       return;
     }
 
-    void fetchDiskData(false, "enter");
-    const timer = window.setInterval(() => {
-      void fetchDiskData(true, "auto");
-    }, 1000);
+    requestIdRef.current += 1;
+    setLoading(false);
+    setRefreshing(false);
+  }, [fetchDiskData, pollEnabled]);
 
-    return () => {
-      requestIdRef.current += 1;
-      window.clearInterval(timer);
-    };
-  }, [active, cacheKey, connected, connectedTerminalSessionId, connectionId, fetchDiskData, monitorEnabled]);
+  useScheduledPoll({
+    enabled: pollEnabled,
+    intervalMs: REFRESH_INTERVAL_MS,
+    task: async () => {
+      await fetchDiskData(true, "auto");
+    }
+  });
 
   const columns = useMemo<ColumnsType<DiskUsageEntry>>(
     () => [

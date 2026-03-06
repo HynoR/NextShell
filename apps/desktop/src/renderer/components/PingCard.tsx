@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useScheduledPoll } from "../hooks/useScheduledPoll";
 
 const PING_INTERVAL_MS = 1000;
 const PING_CHART_HEIGHT = 84;
@@ -30,64 +31,79 @@ export const PingCard = ({ host }: PingCardProps) => {
   >(null);
   const [loading, setLoading] = useState(false);
   const [pingHistory, setPingHistory] = useState<number[]>([]);
-  /** 当前 host 下是否已因「展开」而启用过 ping；换 host 时重置，折叠不重置 */
-  const pingEnabledForHostRef = useRef(false);
   const prevHostRef = useRef<string | undefined>(undefined);
+  const requestIdRef = useRef(0);
+  const pollEnabled = Boolean(host && !collapsed);
 
   useEffect(() => {
-    if (!host || !window.nextshell?.ping?.probe) {
+    if (!host) {
+      requestIdRef.current += 1;
+      prevHostRef.current = host;
       setResult(null);
       setPingHistory([]);
+      setLoading(false);
       return;
     }
     if (prevHostRef.current !== host) {
+      requestIdRef.current += 1;
       prevHostRef.current = host;
-      pingEnabledForHostRef.current = false;
-    }
-    const shouldRun =
-      !collapsed || pingEnabledForHostRef.current;
-    if (!shouldRun) {
+      setLoading(false);
       setResult(null);
       setPingHistory([]);
+    }
+  }, [host]);
+
+  useEffect(() => {
+    if (pollEnabled) {
       return;
     }
-    if (!collapsed) {
-      pingEnabledForHostRef.current = true;
+    requestIdRef.current += 1;
+    setLoading(false);
+  }, [pollEnabled]);
+
+  const runPing = useCallback(async () => {
+    if (!host) {
+      return;
     }
 
-    let cancelled = false;
-    const run = async () => {
-      if (cancelled) return;
-      setLoading(true);
-      try {
-        const res = await window.nextshell.ping.probe({ host });
-        if (cancelled) return;
-        if (res.ok === true) {
-          setResult(res);
-          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), res.avgMs]);
-        } else {
-          console.warn("[PingCard]", host, res.error);
-          setResult({ ok: true, avgMs: 0 });
-          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          console.warn("[PingCard]", host, err);
-          setResult({ ok: true, avgMs: 0 });
-          setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setLoading(true);
+    try {
+      const res = await window.nextshell.ping.probe({ host });
+      if (requestIdRef.current !== requestId) return;
+      if (res.ok === true) {
+        setResult(res);
+        setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), res.avgMs]);
+      } else {
+        console.warn("[PingCard]", host, res.error);
+        setResult({ ok: true, avgMs: 0 });
+        setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
       }
-    };
+    } catch (err) {
+      if (requestIdRef.current !== requestId) return;
+      console.warn("[PingCard]", host, err);
+      setResult({ ok: true, avgMs: 0 });
+      setPingHistory((prev) => [...prev.slice(-(PING_HISTORY_CAP - 1)), 0]);
+    } finally {
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+      }
+    }
+  }, [host]);
 
-    void run();
-    const timer = setInterval(run, PING_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [host, collapsed]);
+  useEffect(() => {
+    if (!pollEnabled) {
+      return;
+    }
+    void runPing();
+  }, [host, pollEnabled, runPing]);
+
+  useScheduledPoll({
+    enabled: pollEnabled,
+    intervalMs: PING_INTERVAL_MS,
+    task: runPing
+  });
 
   if (!host) {
     return null;
@@ -136,7 +152,7 @@ export const PingCard = ({ host }: PingCardProps) => {
                 <span className="text-[10px] text-[var(--t3)]">每 1 秒刷新</span>
               </>
             ) : (
-              <span className="text-[var(--t3)]">展开后启用 Ping，折叠不停止</span>
+              <span className="text-[var(--t3)]">展开后开始采样，折叠暂停</span>
             )}
           </div>
 

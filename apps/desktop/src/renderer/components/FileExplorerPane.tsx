@@ -3,6 +3,7 @@ import { App as AntdApp, Modal, Table, Tooltip, Tree, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
 import type { ConnectionProfile, RemoteFileEntry } from "@nextshell/core";
+import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { useTransferQueueStore } from "../store/useTransferQueueStore";
 import { pMap } from "../utils/concurrentLimit";
@@ -12,6 +13,7 @@ import { promptModal } from "../utils/promptModal";
 interface FileExplorerPaneProps {
   connection?: ConnectionProfile;
   connected: boolean;
+  active: boolean;
   onOpenSettings?: () => void;
   onOpenEditorTab?: (connectionId: string, remotePath: string) => Promise<void>;
 }
@@ -392,7 +394,13 @@ const ContextMenu = ({
 };
 
 // ── Main component ────────────────────────────────────────
-export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpenEditorTab }: FileExplorerPaneProps) => {
+export const FileExplorerPane = ({
+  connection,
+  connected,
+  active,
+  onOpenSettings,
+  onOpenEditorTab
+}: FileExplorerPaneProps) => {
   const { message, modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
@@ -424,6 +432,7 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
 
   const [followCwd, setFollowCwd] = useState(false);
   const followCwdLastRef = useRef<string | null>(null);
+  const followCwdRequestIdRef = useRef(0);
   const followCwdDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   );
@@ -631,8 +640,11 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
     if (!connection || !connected) setFollowCwd(false);
   }, [connection?.id, connected]);
 
+  const followCwdPollingEnabled = Boolean(active && followCwd && connection && connected);
+
   useEffect(() => {
-    if (!followCwd || !connection || !connected) {
+    if (!followCwdPollingEnabled) {
+      followCwdRequestIdRef.current += 1;
       if (followCwdDebounceRef.current) {
         clearTimeout(followCwdDebounceRef.current);
         followCwdDebounceRef.current = undefined;
@@ -640,39 +652,53 @@ export const FileExplorerPane = ({ connection, connected, onOpenSettings, onOpen
       followCwdLastRef.current = null;
       return;
     }
-    let cancelled = false;
-    const connId = connection.id;
-    const tick = async () => {
-      if (cancelled) return;
-      try {
-        const result = await window.nextshell.session.getCwd({ connectionId: connId });
-        if (cancelled) return;
-        if (!result?.cwd) return;
-        const normalized = normalizeRemotePath(result.cwd);
-        if (normalized === followCwdLastRef.current) return;
-        followCwdLastRef.current = normalized;
-        if (followCwdDebounceRef.current) clearTimeout(followCwdDebounceRef.current);
-        followCwdDebounceRef.current = setTimeout(() => {
-          followCwdDebounceRef.current = undefined;
-          if (!cancelled && pathNameRef.current !== normalized) {
-            navigateRef.current(normalized);
-          }
-        }, 3000);
-      } catch {
-        // ignore
-      }
-    };
-    void tick();
-    const interval = setInterval(() => void tick(), 2000);
     return () => {
-      cancelled = true;
-      clearInterval(interval);
+      followCwdRequestIdRef.current += 1;
       if (followCwdDebounceRef.current) {
         clearTimeout(followCwdDebounceRef.current);
         followCwdDebounceRef.current = undefined;
       }
     };
-  }, [followCwd, connection?.id, connected]);
+  }, [followCwdPollingEnabled]);
+
+  const pollFollowCwd = useCallback(async () => {
+    if (!connection || !connected) {
+      return;
+    }
+    const requestId = followCwdRequestIdRef.current + 1;
+    followCwdRequestIdRef.current = requestId;
+    try {
+      const result = await window.nextshell.session.getCwd({ connectionId: connection.id });
+      if (followCwdRequestIdRef.current !== requestId) return;
+      if (!result?.cwd) return;
+      const normalized = normalizeRemotePath(result.cwd);
+      if (normalized === followCwdLastRef.current) return;
+      followCwdLastRef.current = normalized;
+      if (followCwdDebounceRef.current) clearTimeout(followCwdDebounceRef.current);
+      followCwdDebounceRef.current = setTimeout(() => {
+        if (followCwdRequestIdRef.current !== requestId) return;
+        followCwdDebounceRef.current = undefined;
+        if (pathNameRef.current !== normalized) {
+          navigateRef.current(normalized);
+        }
+      }, 3000);
+    } catch {
+      // ignore
+    }
+  }, [connection, connected]);
+
+  useEffect(() => {
+    if (!followCwdPollingEnabled) {
+      return;
+    }
+    void pollFollowCwd();
+  }, [connection?.id, followCwdPollingEnabled, pollFollowCwd]);
+
+  useScheduledPoll({
+    enabled: followCwdPollingEnabled,
+    intervalMs: 2000,
+    task: pollFollowCwd
+  });
 
   useEffect(() => {
     setEditorModalValue(preferences.remoteEdit.defaultEditorCommand);
