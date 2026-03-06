@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CommandHistoryEntry } from "@nextshell/core";
+import {
+  applyOptimisticCommandHistoryPush,
+  applyOptimisticCommandHistoryRemove
+} from "./useCommandHistory.helpers";
 
 export type { CommandHistoryEntry };
 
@@ -29,11 +33,7 @@ export const useCommandHistory = () => {
         useCount: 1,
         lastUsedAt: new Date().toISOString()
       };
-      setEntries((prev) => {
-        // Dedupe: remove existing entry with same command
-        const filtered = prev.filter((e) => e.command !== trimmed);
-        return [optimisticEntry, ...filtered];
-      });
+      setEntries((prev) => applyOptimisticCommandHistoryPush(prev, optimisticEntry));
       navigatorRef.current = { index: -1, snapshot: [] };
 
       // Fire-and-forget: persist to DB
@@ -48,7 +48,7 @@ export const useCommandHistory = () => {
     async (command: string) => {
       // Optimistic: remove immediately
       const prev = entries;
-      setEntries((current) => current.filter((e) => e.command !== command));
+      setEntries((current) => applyOptimisticCommandHistoryRemove(current, command));
 
       try {
         await window.nextshell.commandHistory.remove({ command });

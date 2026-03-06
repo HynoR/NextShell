@@ -7,7 +7,7 @@
  *  |-------------------|----------------|----------------------------------|
  *  | Connections       | 内存 Map 全量  | write-through（立即落盘）        |
  *  | Preferences       | 内存单例       | write-behind（5 s debounce）     |
- *  | Command History   | 内存数组       | write-through                    |
+ *  | Command History   | 有序 Map + 快照 | write-through                   |
  *  | Saved Commands    | 内存数组       | write-through                    |
  *  | Template Params   | 内存数组       | write-through + invalidate       |
  *  | Audit Logs        | 不缓存读       | write-behind 队列（30 s / 50条） |
@@ -18,21 +18,38 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type {
-  AppPreferences,
-  AuditLogRecord,
-  CommandHistoryEntry,
-  CommandTemplateParam,
-  ConnectionListQuery,
-  ConnectionProfile,
-  MasterKeyMeta,
-  MigrationRecord,
-  ProxyProfile,
-  SavedCommand,
-  SshKeyProfile
+import {
+  MAX_COMMAND_HISTORY_ENTRIES,
+  type AppPreferences,
+  type AuditLogRecord,
+  type CommandHistoryEntry,
+  type CommandTemplateParam,
+  type ConnectionListQuery,
+  type ConnectionProfile,
+  type MasterKeyMeta,
+  type MigrationRecord,
+  type ProxyProfile,
+  type SavedCommand,
+  type SshKeyProfile
 } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
 import type { ConnectionRepository, AppendAuditLogInput, SshKeyRepository, ProxyRepository } from "./index";
+
+interface CommandHistoryCache {
+  entriesByCommand: Map<string, CommandHistoryEntry>;
+  snapshot: CommandHistoryEntry[] | undefined;
+}
+
+const compareCommandHistoryForEviction = (
+  left: CommandHistoryEntry,
+  right: CommandHistoryEntry
+): number => {
+  if (left.useCount !== right.useCount) {
+    return left.useCount - right.useCount;
+  }
+
+  return left.lastUsedAt.localeCompare(right.lastUsedAt);
+};
 
 // ── Tuning constants ────────────────────────────────────────────────────────
 /** 审计日志批量写入间隔 (ms) */
@@ -55,7 +72,7 @@ export class CachedConnectionRepository implements ConnectionRepository {
   private prefTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ── Command history cache ────────────────────────────────────────────────
-  private histCache: CommandHistoryEntry[] | undefined;
+  private histCache: CommandHistoryCache | undefined;
 
   // ── Saved commands cache ─────────────────────────────────────────────────
   private savedCache: SavedCommand[] | undefined;
@@ -192,35 +209,83 @@ export class CachedConnectionRepository implements ConnectionRepository {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Command History – 内存数组，write-through
+  // Command History – 有序 Map + 快照，write-through
   // ═══════════════════════════════════════════════════════════════════════════
 
-  listCommandHistory(): CommandHistoryEntry[] {
+  private ensureCommandHistoryCache(): CommandHistoryCache {
     if (!this.histCache) {
-      this.histCache = this.inner.listCommandHistory();
+      const snapshot = this.inner.listCommandHistory();
+      const entriesByCommand = new Map<string, CommandHistoryEntry>();
+
+      for (let index = snapshot.length - 1; index >= 0; index -= 1) {
+        const entry = snapshot[index]!;
+        entriesByCommand.set(entry.command, entry);
+      }
+
+      this.histCache = {
+        entriesByCommand,
+        snapshot
+      };
     }
+
     return this.histCache;
+  }
+
+  private rebuildCommandHistorySnapshot(cache: CommandHistoryCache): CommandHistoryEntry[] {
+    const snapshot = Array.from(cache.entriesByCommand.values()).reverse();
+    cache.snapshot = snapshot;
+    return snapshot;
+  }
+
+  private findEvictionCommand(cache: CommandHistoryCache): string | undefined {
+    let candidate: CommandHistoryEntry | undefined;
+
+    for (const entry of cache.entriesByCommand.values()) {
+      if (!candidate || compareCommandHistoryForEviction(entry, candidate) < 0) {
+        candidate = entry;
+      }
+    }
+
+    return candidate?.command;
+  }
+
+  listCommandHistory(): CommandHistoryEntry[] {
+    const cache = this.ensureCommandHistoryCache();
+    return cache.snapshot ?? this.rebuildCommandHistorySnapshot(cache);
   }
 
   pushCommandHistory(command: string): CommandHistoryEntry {
     const result = this.inner.pushCommandHistory(command);
     if (this.histCache) {
-      // 去重 + 置顶
-      this.histCache = [result, ...this.histCache.filter((e) => e.command !== command)];
+      const cache = this.histCache;
+      const hadExistingEntry = cache.entriesByCommand.delete(command);
+
+      if (!hadExistingEntry && cache.entriesByCommand.size >= MAX_COMMAND_HISTORY_ENTRIES) {
+        const evictedCommand = this.findEvictionCommand(cache);
+        if (evictedCommand) {
+          cache.entriesByCommand.delete(evictedCommand);
+        }
+      }
+
+      cache.entriesByCommand.set(command, result);
+      cache.snapshot = undefined;
     }
     return result;
   }
 
   removeCommandHistory(command: string): void {
     this.inner.removeCommandHistory(command);
-    if (this.histCache) {
-      this.histCache = this.histCache.filter((e) => e.command !== command);
+    if (this.histCache && this.histCache.entriesByCommand.delete(command)) {
+      this.histCache.snapshot = undefined;
     }
   }
 
   clearCommandHistory(): void {
     this.inner.clearCommandHistory();
-    this.histCache = [];
+    this.histCache = {
+      entriesByCommand: new Map(),
+      snapshot: []
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

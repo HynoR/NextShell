@@ -272,6 +272,8 @@ export interface CommandHistoryEntry {
   lastUsedAt: string;
 }
 
+export const MAX_COMMAND_HISTORY_ENTRIES = 500;
+
 export interface SavedCommand {
   id: string;
   name: string;
