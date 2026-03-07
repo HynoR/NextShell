@@ -9,10 +9,10 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   }
 };
 
-const assertThrows = (fn: () => void, message: string): void => {
+const assertRejects = async (fn: () => Promise<unknown>, message: string): Promise<void> => {
   let didThrow = false;
   try {
-    fn();
+    await fn();
   } catch {
     didThrow = true;
   }
@@ -22,18 +22,18 @@ const assertThrows = (fn: () => void, message: string): void => {
   }
 };
 
-(() => {
+await (async () => {
   const plaintext = JSON.stringify({ hello: "world", count: 2 });
   const password = "example-password";
-  const encrypted = encryptConnectionExportPayload(plaintext, password);
-  const decrypted = decryptConnectionExportPayload(encrypted, password);
+  const encrypted = await encryptConnectionExportPayload(plaintext, password);
+  const decrypted = await decryptConnectionExportPayload(encrypted, password);
   assertEqual(decrypted, plaintext, "should decrypt encrypted export payload");
 })();
 
-(() => {
+await (async () => {
   const plaintext = "{\"format\":\"nextshell-connections\"}";
-  const encrypted = encryptConnectionExportPayload(plaintext, "correct-password");
-  assertThrows(() => {
-    decryptConnectionExportPayload(encrypted, "wrong-password");
+  const encrypted = await encryptConnectionExportPayload(plaintext, "correct-password");
+  await assertRejects(async () => {
+    await decryptConnectionExportPayload(encrypted, "wrong-password");
   }, "wrong password should fail decryption");
 })();

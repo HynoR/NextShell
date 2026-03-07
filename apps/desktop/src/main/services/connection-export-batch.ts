@@ -110,7 +110,7 @@ export const exportConnectionsBatchToDirectory = async <
       };
       const plainJson = JSON.stringify(exportFile, null, 2);
       const fileContent = encrypted
-        ? `${ENCRYPTED_EXPORT_PREFIX}${encryptConnectionExportPayload(
+        ? `${ENCRYPTED_EXPORT_PREFIX}${await encryptConnectionExportPayload(
             plainJson,
             options.encryptionPassword as string
           )}`

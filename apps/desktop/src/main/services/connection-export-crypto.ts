@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scrypt } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
@@ -10,17 +10,21 @@ const KDF_R = 8;
 const KDF_P = 1;
 const AAD = "nextshell-connection-export";
 
-const deriveKey = (password: string, salt: Buffer): Buffer => {
-  return scryptSync(password, salt, KEY_LENGTH, {
-    N: KDF_N,
-    r: KDF_R,
-    p: KDF_P
+const deriveKey = (password: string, salt: Buffer): Promise<Buffer> => {
+  return new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, KEY_LENGTH, { N: KDF_N, r: KDF_R, p: KDF_P }, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(Buffer.from(derivedKey));
+    });
   });
 };
 
-export const encryptConnectionExportPayload = (plainJson: string, password: string): string => {
+export const encryptConnectionExportPayload = async (plainJson: string, password: string): Promise<string> => {
   const salt = randomBytes(SALT_LENGTH);
-  const key = deriveKey(password, salt);
+  const key = await deriveKey(password, salt);
   const iv = randomBytes(IV_LENGTH);
 
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
@@ -33,7 +37,7 @@ export const encryptConnectionExportPayload = (plainJson: string, password: stri
   return Buffer.concat([salt, iv, tag, ciphertext]).toString("base64");
 };
 
-export const decryptConnectionExportPayload = (payloadB64: string, password: string): string => {
+export const decryptConnectionExportPayload = async (payloadB64: string, password: string): Promise<string> => {
   const payload = Buffer.from(payloadB64, "base64");
   const minLength = SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH;
 
@@ -46,7 +50,7 @@ export const decryptConnectionExportPayload = (payloadB64: string, password: str
   const tag = payload.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
   const ciphertext = payload.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
-  const key = deriveKey(password, salt);
+  const key = await deriveKey(password, salt);
   const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   decipher.setAAD(Buffer.from(AAD, "utf8"));
   decipher.setAuthTag(tag);

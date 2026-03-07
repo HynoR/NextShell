@@ -130,7 +130,7 @@ await (async () => {
     const raw = fs.readFileSync(filePath as string, "utf-8");
     assert(raw.startsWith("b64##"), "encrypted file should start with b64##");
 
-    const decrypted = decryptConnectionExportPayload(raw.slice("b64##".length), "123456");
+    const decrypted = await decryptConnectionExportPayload(raw.slice("b64##".length), "123456");
     const parsed = JSON.parse(decrypted) as { format?: string; connections?: unknown[] };
     assertEqual(parsed.format, "nextshell-connections", "decrypted file format");
     assertEqual(parsed.connections?.length ?? 0, 1, "decrypted single-connection payload");

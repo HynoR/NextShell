@@ -2539,10 +2539,10 @@ export const createServiceContainer = (
   const ENCRYPTED_EXPORT_PREFIX = "b64##";
   const trimBomAndWhitespace = (value: string): string => value.replace(/^\uFEFF/, "").trim();
 
-  const parseImportPayloadText = (
+  const parseImportPayloadText = async (
     rawText: string,
     decryptionPassword?: string
-  ): unknown => {
+  ): Promise<unknown> => {
     const normalizedText = trimBomAndWhitespace(rawText);
     const encryptedPrefix = ENCRYPTED_EXPORT_PREFIX;
 
@@ -2560,7 +2560,7 @@ export const createServiceContainer = (
 
       let decryptedText: string;
       try {
-        decryptedText = decryptConnectionExportPayload(encryptedB64, decryptionPassword);
+        decryptedText = await decryptConnectionExportPayload(encryptedB64, decryptionPassword);
       } catch {
         throw new Error(
           `${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}密码错误或文件损坏，请重试`
@@ -2659,7 +2659,7 @@ export const createServiceContainer = (
     };
     const plainJson = JSON.stringify(exportFile, null, 2);
     const fileContent = encrypted
-      ? `${ENCRYPTED_EXPORT_PREFIX}${encryptConnectionExportPayload(
+      ? `${ENCRYPTED_EXPORT_PREFIX}${await encryptConnectionExportPayload(
           plainJson,
           encryptionPassword
         )}`
@@ -2704,7 +2704,7 @@ export const createServiceContainer = (
     input: ConnectionImportPreviewInput
   ): Promise<ConnectionImportEntry[]> => {
     const raw = fs.readFileSync(input.filePath, "utf-8");
-    const data = parseImportPayloadText(raw, input.decryptionPassword);
+    const data = await parseImportPayloadText(raw, input.decryptionPassword);
 
     if (isNextShellFormat(data)) {
       return parseNextShellImport(data);
