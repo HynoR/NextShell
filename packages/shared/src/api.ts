@@ -25,6 +25,7 @@ import type {
 import type {
   AppPreferences,
   AppPreferencesPatchInput,
+  AuditClearInput,
   AuditListInput,
   DebugLogEntry,
   BackupListInput,
@@ -174,6 +175,7 @@ export interface NextShellApi {
   };
   audit: {
     list: (payload: AuditListInput) => Promise<AuditLogRecord[]>;
+    clear: (payload?: AuditClearInput) => Promise<{ ok: true; deleted: number }>;
   };
   storage: {
     migrations: (payload?: StorageMigrationsInput) => Promise<MigrationRecord[]>;

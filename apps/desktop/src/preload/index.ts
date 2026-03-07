@@ -151,7 +151,8 @@ const api: NextShellApi = {
     execBatch: (payload) => ipcRenderer.invoke(IPCChannel.CommandBatchExec, payload)
   },
   audit: {
-    list: (payload) => ipcRenderer.invoke(IPCChannel.AuditList, payload)
+    list: (payload) => ipcRenderer.invoke(IPCChannel.AuditList, payload),
+    clear: (payload) => ipcRenderer.invoke(IPCChannel.AuditClear, payload ?? {})
   },
   storage: {
     migrations: (payload) => ipcRenderer.invoke(IPCChannel.StorageMigrations, payload ?? {})

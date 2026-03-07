@@ -111,6 +111,7 @@ import { RemoteEditManager } from "./remote-edit-manager";
 import { mergePreferences } from "./preferences";
 import { BackupService, applyPendingRestore } from "./backup-service";
 import { changeMasterPassword } from "./master-password-change";
+import { resolveAuditRuntime } from "./audit-runtime";
 import {
   isFinalShellFormat,
   isNextShellFormat,
@@ -269,6 +270,7 @@ export interface ServiceContainer {
   getSessionCwd: (connectionId: string) => Promise<{ cwd: string } | null>;
   execBatchCommand: (input: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   listAuditLogs: (limit: number) => AuditLogRecord[];
+  clearAuditLogs: () => { ok: true; deleted: number };
   listMigrations: () => MigrationRecord[];
   listRemoteFiles: (connectionId: string, path: string) => Promise<RemoteFileEntry[]>;
   listLocalFiles: (path: string) => Promise<RemoteFileEntry[]>;
@@ -826,9 +828,29 @@ export const createServiceContainer = (
     getMasterPassword: () => masterPassword
   });
 
+  const auditEnabledForSession = connections.getAppPreferences().audit.enabled;
+  const auditRuntime = resolveAuditRuntime(connections.getAppPreferences().audit);
+  const appendAuditLogDirect = connections.appendAuditLog.bind(connections);
+
+  const appendAuditLogIfEnabled = (payload: {
+    action: string;
+    level: "info" | "warn" | "error";
+    connectionId?: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }): void => {
+    if (!auditEnabledForSession) {
+      return;
+    }
+    appendAuditLogDirect(payload);
+  };
+
   // ─── Audit log auto-purge ──────────────────────────────────────────────
-  const purgeExpiredAuditLogs = (): void => {
+  const purgeExpiredAuditLogs = (allowWhenDisabled = false): void => {
     try {
+      if (!auditEnabledForSession && !allowWhenDisabled) {
+        return;
+      }
       const prefs = connections.getAppPreferences();
       const days = prefs.audit.retentionDays;
       if (days > 0) {
@@ -842,8 +864,16 @@ export const createServiceContainer = (
     }
   };
 
-  purgeExpiredAuditLogs();
-  const auditPurgeTimer = setInterval(purgeExpiredAuditLogs, 6 * 3600_000);
+  if (auditRuntime.runStartupPurge) {
+    const prefs = connections.getAppPreferences();
+    const days = prefs.audit.retentionDays;
+    if (days > 0) {
+      purgeExpiredAuditLogs(true);
+    }
+  }
+  const auditPurgeTimer = auditRuntime.runPeriodicPurge
+    ? setInterval(purgeExpiredAuditLogs, 6 * 3600_000)
+    : undefined;
 
   const activeSessions = new Map<string, ActiveSession>();
   const activeConnections = new Map<string, SshConnection>();
@@ -1770,7 +1800,7 @@ export const createServiceContainer = (
         })
       ]);
 
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.init_ready",
         level: "info",
         connectionId,
@@ -1780,7 +1810,7 @@ export const createServiceContainer = (
     } catch (error) {
       const reason = normalizeError(error);
       logger.warn("[SFTP] warmup failed", { connectionId, reason });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.init_failed",
         level: "warn",
         connectionId,
@@ -1812,7 +1842,7 @@ export const createServiceContainer = (
       applyAppearanceToAllWindows(saved.window.appearance);
     }
 
-    if (patch.audit?.retentionDays !== undefined) {
+    if (patch.audit?.retentionDays !== undefined && auditEnabledForSession) {
       purgeExpiredAuditLogs();
     }
 
@@ -2005,7 +2035,7 @@ export const createServiceContainer = (
       await disposeAllMonitorSessions(profile.id);
     }
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.upsert",
       level: "info",
       connectionId: profile.id,
@@ -2086,7 +2116,7 @@ export const createServiceContainer = (
         connectionId,
         reason
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "connection.auth_override_persist_failed",
         level: "warn",
         connectionId,
@@ -2495,7 +2525,7 @@ export const createServiceContainer = (
     await closeConnectionIfIdle(id);
     connections.remove(id);
     monitorStates.delete(id);
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.remove",
       level: "warn",
       connectionId: id,
@@ -2637,7 +2667,7 @@ export const createServiceContainer = (
 
     fs.writeFileSync(result.filePath, fileContent, "utf-8");
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.export",
       level: "info",
       message: `Exported ${exportedConnections.length} connections`,
@@ -2660,7 +2690,7 @@ export const createServiceContainer = (
       buildExportedConnection
     });
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.export.batch",
       level: "info",
       message: `Batch exported ${result.exported}/${result.total} connections`,
@@ -2782,7 +2812,7 @@ export const createServiceContainer = (
       }
     }
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.import",
       level: "info",
       message: `Imported connections: ${result.created} created, ${result.overwritten} overwritten, ${result.skipped} skipped, ${result.failed} failed`,
@@ -2916,7 +2946,7 @@ export const createServiceContainer = (
         reason: connectedReason
       });
 
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "session.open",
         level: "info",
         connectionId,
@@ -2942,7 +2972,7 @@ export const createServiceContainer = (
           reason
         });
       }
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "session.open_failed",
         level: "error",
         connectionId,
@@ -3001,7 +3031,7 @@ export const createServiceContainer = (
       status: "disconnected"
     });
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "session.close",
       level: "info",
       connectionId: active.connectionId,
@@ -3124,7 +3154,7 @@ export const createServiceContainer = (
       executedAt: new Date().toISOString()
     };
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "command.exec",
       level: result.exitCode === 0 ? "info" : "warn",
       connectionId,
@@ -3263,7 +3293,7 @@ export const createServiceContainer = (
       results: results.sort((a, b) => a.connectionId.localeCompare(b.connectionId))
     };
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "command.exec_batch",
       level: failedCount > 0 ? "warn" : "info",
       message: "Executed batch command",
@@ -3380,7 +3410,7 @@ export const createServiceContainer = (
         status: "success",
         progress: 100
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.upload",
         level: "info",
         connectionId,
@@ -3432,7 +3462,7 @@ export const createServiceContainer = (
         status: "success",
         progress: 100
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.download",
         level: "info",
         connectionId,
@@ -3594,7 +3624,7 @@ export const createServiceContainer = (
         status: "success",
         progress: 100
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.upload.packed",
         level: "info",
         connectionId,
@@ -3753,7 +3783,7 @@ export const createServiceContainer = (
         status: "success",
         progress: 100
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.download.packed",
         level: "info",
         connectionId,
@@ -3961,7 +3991,7 @@ export const createServiceContainer = (
         status: "success",
         progress: 100
       });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.transfer.packed",
         level: "info",
         connectionId: sourceConnectionId,
@@ -4010,7 +4040,7 @@ export const createServiceContainer = (
     getConnectionOrThrow(connectionId);
     const connection = await ensureConnection(connectionId);
     await connection.mkdir(pathName, true);
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "sftp.mkdir",
       level: "info",
       connectionId,
@@ -4028,7 +4058,7 @@ export const createServiceContainer = (
     getConnectionOrThrow(connectionId);
     const connection = await ensureConnection(connectionId);
     await connection.rename(fromPath, toPath);
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "sftp.rename",
       level: "warn",
       connectionId,
@@ -4050,7 +4080,7 @@ export const createServiceContainer = (
       type === "directory" ? "directory" : type === "link" ? "link" : "file";
 
     await connection.remove(targetPath, normalizedType);
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "sftp.delete",
       level: "warn",
       connectionId,
@@ -4062,6 +4092,10 @@ export const createServiceContainer = (
 
   const listAuditLogs = (limit: number): AuditLogRecord[] => {
     return connections.listAuditLogs(limit);
+  };
+
+  const clearAuditLogs = (): { ok: true; deleted: number } => {
+    return { ok: true, deleted: connections.clearAuditLogs() };
   };
 
   const listMigrations = (): MigrationRecord[] => {
@@ -4116,7 +4150,7 @@ export const createServiceContainer = (
     getConnectionOrThrow(connectionId);
     try {
       const result = await remoteEditManager.open(connectionId, remotePath, editorCommand, sender);
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.edit_open",
         level: "info",
         connectionId,
@@ -4132,7 +4166,7 @@ export const createServiceContainer = (
         requestedCommand?: string;
         resolvedCommand?: string;
       };
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "sftp.edit_open_failed",
         level: "error",
         connectionId,
@@ -4153,7 +4187,7 @@ export const createServiceContainer = (
 
   const stopRemoteEdit = async (editId: string): Promise<{ ok: true }> => {
     await remoteEditManager.stop(editId);
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "sftp.edit_stop",
       level: "info",
       message: "Stopped remote file live editing",
@@ -4164,7 +4198,7 @@ export const createServiceContainer = (
 
   const stopAllRemoteEdits = async (): Promise<{ ok: true }> => {
     await remoteEditManager.stopAll();
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "sftp.edit_stop_all",
       level: "info",
       message: "Stopped all remote file live editing sessions"
@@ -4277,7 +4311,7 @@ export const createServiceContainer = (
     if (result.exitCode !== 0) {
       throw new Error(`kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`);
     }
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "monitor.process_kill",
       level: "warn",
       connectionId,
@@ -4351,7 +4385,7 @@ export const createServiceContainer = (
     } catch (error) {
       const reason = normalizeError(error);
       logger.warn("[Security] failed to cache master password in keytar", { phase, reason });
-      connections.appendAuditLog({
+      appendAuditLogIfEnabled({
         action: "master_password.cache_failed",
         level: "warn",
         message: "Failed to cache master password in keytar",
@@ -4373,7 +4407,7 @@ export const createServiceContainer = (
     connections.saveMasterKeyMeta(meta);
     masterPassword = password;
     await rememberPasswordBestEffort(password, "set");
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "master_password.set",
       level: "info",
       message: "Master password configured"
@@ -4402,7 +4436,7 @@ export const createServiceContainer = (
       },
       rememberPasswordBestEffort,
       appendAuditLog: (payload) => {
-        connections.appendAuditLog(payload);
+        appendAuditLogIfEnabled(payload);
       }
     });
   };
@@ -4474,7 +4508,7 @@ export const createServiceContainer = (
       throw new Error("该连接未保存登录密码。");
     }
 
-    connections.appendAuditLog({
+    appendAuditLogIfEnabled({
       action: "connection.password_reveal",
       level: "warn",
       connectionId,
@@ -4524,7 +4558,7 @@ export const createServiceContainer = (
     // 先同步 flush 所有缓冲写入，避免后续 await 链未跑完就退出导致丢失
     connections.flush();
 
-    clearInterval(auditPurgeTimer);
+    if (auditPurgeTimer) clearInterval(auditPurgeTimer);
 
     // Dispose all hidden sessions for every connection that has any
     const allConnectionIds = new Set([
@@ -4604,6 +4638,7 @@ export const createServiceContainer = (
     getSessionCwd,
     execBatchCommand,
     listAuditLogs,
+    clearAuditLogs,
     listMigrations,
     listRemoteFiles,
     listLocalFiles,

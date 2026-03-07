@@ -497,6 +497,11 @@ export class CachedConnectionRepository implements ConnectionRepository {
     return this.inner.listAuditLogs(limit);
   }
 
+  clearAuditLogs(): number {
+    this.auditBuf = [];
+    return this.inner.clearAuditLogs();
+  }
+
   purgeExpiredAuditLogs(retentionDays: number): number {
     this.flushAuditLogs();
     return this.inner.purgeExpiredAuditLogs(retentionDays);

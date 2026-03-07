@@ -27,6 +27,7 @@ export const IPCChannel = {
   CommandExec: "nextshell:command:exec",
   CommandBatchExec: "nextshell:command:batch:exec",
   AuditList: "nextshell:audit:list",
+  AuditClear: "nextshell:audit:clear",
   StorageMigrations: "nextshell:storage:migrations",
   SftpList: "nextshell:sftp:list",
   SftpUpload: "nextshell:sftp:upload",

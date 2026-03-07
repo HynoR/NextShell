@@ -4,6 +4,7 @@ import { logger } from "../logger";
 import {
   IPCChannel,
   auditListSchema,
+  auditClearSchema,
   commandBatchExecSchema,
   commandExecSchema,
   commandHistoryClearSchema,
@@ -253,6 +254,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.AuditList, (_event, payload) => {
     const input = parsePayload(auditListSchema, payload ?? {}, "审计日志查询");
     return services.listAuditLogs(input.limit);
+  });
+
+  ipcMain.handle(IPCChannel.AuditClear, (_event, payload) => {
+    parsePayload(auditClearSchema, payload ?? {}, "审计日志清空");
+    return services.clearAuditLogs();
   });
 
   ipcMain.handle(IPCChannel.StorageMigrations, (_event, payload) => {

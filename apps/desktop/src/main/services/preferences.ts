@@ -184,6 +184,10 @@ export const mergePreferences = (
           : current.traceroute.powProvider
     },
     audit: {
+      enabled:
+        patch.audit?.enabled !== undefined
+          ? patch.audit.enabled
+          : current.audit.enabled,
       retentionDays:
         patch.audit?.retentionDays !== undefined &&
         Number.isInteger(patch.audit.retentionDays) &&

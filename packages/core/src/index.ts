@@ -361,6 +361,8 @@ export interface AppPreferences {
     powProvider: "api.nxtrace.org" | "sakura";
   };
   audit: {
+    /** 是否启用审计日志记录 */
+    enabled: boolean;
     /** 审计日志保留天数，0 表示永不清理 */
     retentionDays: number;
   };
@@ -421,6 +423,7 @@ export interface AppPreferencesPatch {
     powProvider?: "api.nxtrace.org" | "sakura";
   };
   audit?: {
+    enabled?: boolean;
     retentionDays?: number;
   };
 }
@@ -565,6 +568,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     powProvider: "api.nxtrace.org"
   },
   audit: {
+    enabled: false,
     retentionDays: 7
   }
 };

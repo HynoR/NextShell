@@ -227,6 +227,8 @@ export const auditListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100)
 });
 
+export const auditClearSchema = z.object({});
+
 export const storageMigrationsSchema = z.object({});
 
 export const sftpListSchema = z.object({
@@ -427,6 +429,7 @@ export const appPreferencesSchema = z.object({
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).default(DEFAULT_APP_PREFERENCES.traceroute.powProvider)
   }).default(DEFAULT_APP_PREFERENCES.traceroute),
   audit: z.object({
+    enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.audit.enabled),
     retentionDays: z.coerce.number().int().min(0).max(365).default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
   }).default(DEFAULT_APP_PREFERENCES.audit)
 }).default(DEFAULT_APP_PREFERENCES);
@@ -486,6 +489,7 @@ export const appPreferencesPatchSchema = z.object({
     powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional()
   }).optional(),
   audit: z.object({
+    enabled: z.boolean().optional(),
     retentionDays: z.coerce.number().int().min(0).max(365).optional()
   }).optional()
 });
@@ -703,6 +707,7 @@ export type MonitorNetworkConnectionsInput = z.infer<typeof monitorNetworkConnec
 export type CommandExecInput = z.infer<typeof commandExecSchema>;
 export type CommandBatchExecInput = z.infer<typeof commandBatchExecSchema>;
 export type AuditListInput = z.infer<typeof auditListSchema>;
+export type AuditClearInput = z.infer<typeof auditClearSchema>;
 export type StorageMigrationsInput = z.infer<typeof storageMigrationsSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;

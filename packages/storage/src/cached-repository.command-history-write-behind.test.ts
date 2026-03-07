@@ -44,6 +44,7 @@ const createRepositoryStub = (
       createdAt: new Date().toISOString()
     }),
     listAuditLogs: () => [],
+    clearAuditLogs: () => 0,
     purgeExpiredAuditLogs: () => 0,
     listMigrations: () => [],
     listCommandHistory: () => store.map((entry) => ({ ...entry })),

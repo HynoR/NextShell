@@ -41,6 +41,7 @@ const createRepositoryStub = (): ConnectionRepository & {
       batchCalls.push(payloads);
     },
     listAuditLogs: () => [],
+    clearAuditLogs: () => 0,
     purgeExpiredAuditLogs: () => 0,
     listMigrations: () => [],
     listCommandHistory: () => [],

@@ -537,6 +537,10 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
             : fallback.traceroute.powProvider
       },
       audit: {
+        enabled:
+          typeof parsed.audit?.enabled === "boolean"
+            ? parsed.audit.enabled
+            : fallback.audit.enabled,
         retentionDays:
           typeof parsed.audit?.retentionDays === "number" &&
           Number.isInteger(parsed.audit.retentionDays) &&
@@ -862,6 +866,7 @@ export interface ConnectionRepository {
   seedIfEmpty: (connections: ConnectionProfile[]) => void;
   appendAuditLog: (payload: AppendAuditLogInput) => AuditLogRecord;
   listAuditLogs: (limit?: number) => AuditLogRecord[];
+  clearAuditLogs: () => number;
   purgeExpiredAuditLogs: (retentionDays: number) => number;
   listMigrations: () => MigrationRecord[];
   listCommandHistory: () => CommandHistoryEntry[];
@@ -1287,6 +1292,11 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     ).all({ limit }) as AuditLogRow[];
 
     return rows.map(rowToAuditLog);
+  }
+
+  clearAuditLogs(): number {
+    const result = this.db.prepare("DELETE FROM audit_logs").run();
+    return result.changes;
   }
 
   purgeExpiredAuditLogs(retentionDays: number): number {
