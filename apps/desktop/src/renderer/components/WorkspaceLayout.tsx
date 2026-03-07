@@ -181,6 +181,7 @@ interface WorkspaceLayoutProps {
     bottomTab: string;
     onLoadConnections: () => void;
     onOpenManager: () => void;
+    onOpenLocalTerminal: () => void;
     onOpenSettings: () => void;
     onActivateConnection: (connectionId: string) => void;
     onTreeDoubleConnect: (connectionId: string) => void;
@@ -231,6 +232,7 @@ export const WorkspaceLayout = ({
     bottomTab,
     onLoadConnections,
     onOpenManager,
+    onOpenLocalTerminal,
     onOpenSettings,
     onActivateConnection,
     onTreeDoubleConnect,
@@ -584,6 +586,14 @@ export const WorkspaceLayout = ({
                         <i className="ri-links-line" aria-hidden="true" />
                         服务器
                     </button>
+                    <button
+                        className="hdr-btn"
+                        onClick={onOpenLocalTerminal}
+                        title="打开本地终端"
+                    >
+                        <i className="ri-terminal-box-line" aria-hidden="true" />
+                        本地终端
+                    </button>
                     <button className="hdr-btn" onClick={onOpenSettings} title="打开设置中心">
                         <i className="ri-settings-3-line" aria-hidden="true" />
                         设置
@@ -741,9 +751,11 @@ export const WorkspaceLayout = ({
                                                         onClick={() => {
                                                             setSessionContextMenu(null);
                                                             onSetActiveSession(session.id);
-                                                            onSetActiveConnection(
-                                                                session.connectionId,
-                                                            );
+                                                            if (session.connectionId) {
+                                                                onSetActiveConnection(
+                                                                    session.connectionId,
+                                                                );
+                                                            }
                                                         }}
                                                         onContextMenu={(event) =>
                                                             handleSessionTabContextMenu(

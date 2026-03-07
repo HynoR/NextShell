@@ -80,6 +80,115 @@ const TERMINAL_THEME_PRESETS = [
   { label: "Nord", value: "nord", backgroundColor: "#2e3440", foregroundColor: "#d8dee9" },
 ] as const;
 
+type LocalShellMode = "preset" | "custom";
+type LocalShellPreset = "system" | "powershell" | "cmd" | "zsh" | "sh" | "bash";
+type LocalShellPreference = {
+  mode: LocalShellMode;
+  preset: LocalShellPreset;
+  customPath: string;
+};
+
+const DEFAULT_LOCAL_SHELL: LocalShellPreference = {
+  mode: "preset",
+  preset: "system",
+  customPath: ""
+};
+
+const isLocalShellMode = (value: unknown): value is LocalShellMode =>
+  value === "preset" || value === "custom";
+
+const isLocalShellPreset = (value: unknown): value is LocalShellPreset =>
+  value === "system" ||
+  value === "powershell" ||
+  value === "cmd" ||
+  value === "zsh" ||
+  value === "sh" ||
+  value === "bash";
+
+const readLocalShellPreference = (
+  terminal: Record<string, unknown> | undefined,
+  platform: string
+): LocalShellPreference => {
+  const raw = terminal?.["localShell"];
+  if (!raw || typeof raw !== "object") {
+    return DEFAULT_LOCAL_SHELL;
+  }
+
+  const rawRecord = raw as Record<string, unknown>;
+  const rawMode = rawRecord["mode"];
+  const rawPreset = rawRecord["preset"];
+  const rawCustomPath = rawRecord["customPath"];
+
+  const mode = isLocalShellMode(rawMode)
+    ? rawMode
+    : DEFAULT_LOCAL_SHELL.mode;
+  const preset = isLocalShellPreset(rawPreset)
+    ? rawPreset
+    : DEFAULT_LOCAL_SHELL.preset;
+  const customPath =
+    typeof rawCustomPath === "string"
+      ? String(rawCustomPath).trim()
+      : "";
+
+  if (
+    platform === "win32" &&
+    preset !== "system" &&
+    preset !== "powershell" &&
+    preset !== "cmd"
+  ) {
+    return { ...DEFAULT_LOCAL_SHELL, customPath };
+  }
+
+  if (
+    platform === "darwin" &&
+    preset !== "system" &&
+    preset !== "zsh" &&
+    preset !== "sh"
+  ) {
+    return { ...DEFAULT_LOCAL_SHELL, customPath };
+  }
+
+  if (
+    platform !== "win32" &&
+    platform !== "darwin" &&
+    preset !== "system" &&
+    preset !== "bash" &&
+    preset !== "sh"
+  ) {
+    return { ...DEFAULT_LOCAL_SHELL, customPath };
+  }
+
+  return {
+    mode,
+    preset,
+    customPath
+  };
+};
+
+const getLocalShellOptions = (platform: string): Array<{ label: string; value: LocalShellPreset }> => {
+  if (platform === "win32") {
+    return [
+      { label: "跟随系统（PowerShell）", value: "system" },
+      { label: "PowerShell", value: "powershell" },
+      { label: "CMD", value: "cmd" }
+    ];
+  }
+
+  if (platform === "darwin") {
+    return [
+      { label: "跟随系统（zsh）", value: "system" },
+      { label: "zsh", value: "zsh" },
+      { label: "sh", value: "sh" }
+    ];
+  }
+
+  return [
+    { label: "跟随系统（bash/sh）", value: "system" },
+    { label: "bash", value: "bash" },
+    { label: "sh", value: "sh" }
+  ];
+};
+
 const appVersion = __APP_VERSION__;
 const githubRepo = __GITHUB_REPO__;
 const normalizedRepo = githubRepo.trim();
@@ -194,6 +303,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   );
 
   const [appBackgroundImagePath, setAppBackgroundImagePath] = useState(preferences.window.backgroundImagePath);
+  const [localShell, setLocalShell] = useState<LocalShellPreference>(() =>
+    readLocalShellPreference(preferences.terminal as unknown as Record<string, unknown>, window.nextshell.platform)
+  );
 
   // ─── Backup state ───────────────────────────────────────────────────
   const [backupRemotePath, setBackupRemotePath] = useState(preferences.backup.remotePath);
@@ -245,6 +357,12 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setTerminalForegroundColor(preferences.terminal.foregroundColor);
     setTerminalThemePreset(
       resolvePresetByColors(preferences.terminal.backgroundColor, preferences.terminal.foregroundColor)
+    );
+    setLocalShell(
+      readLocalShellPreference(
+        preferences.terminal as unknown as Record<string, unknown>,
+        window.nextshell.platform
+      )
     );
     setAppBackgroundImagePath(preferences.window.backgroundImagePath);
     setBackupRemotePath(preferences.backup.remotePath);
@@ -552,11 +670,13 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           terminalFontSize={preferences.terminal.fontSize}
           terminalLineHeight={preferences.terminal.lineHeight}
           terminalFontFamily={preferences.terminal.fontFamily}
+          localShell={localShell}
           appBackgroundImagePath={appBackgroundImagePath}
           appBackgroundOpacity={preferences.window.backgroundOpacity}
           setTerminalBackgroundColor={setTerminalBackgroundColor}
           setTerminalForegroundColor={setTerminalForegroundColor}
           setTerminalThemePreset={setTerminalThemePreset}
+          setLocalShell={setLocalShell}
           setAppBackgroundImagePath={setAppBackgroundImagePath}
           save={save}
           message={message}
@@ -606,7 +726,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   }, [
     activeSection, loading, preferences,
     uploadDefaultDir, downloadDefaultDir, editorMode, editorCommand,
-    terminalBackgroundColor, terminalForegroundColor, terminalThemePreset,
+    terminalBackgroundColor, terminalForegroundColor, terminalThemePreset, localShell,
     appBackgroundImagePath, nexttracePath,
     backupRemotePath, rclonePath, backupConflictPolicy, restoreConflictPolicy,
     pwdStatus, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
@@ -1214,10 +1334,10 @@ const TERMINAL_DEBOUNCE_MS = 3000;
 
 const TerminalSection = ({
   loading, terminalBackgroundColor, terminalForegroundColor,
-  terminalThemePreset, terminalFontSize, terminalLineHeight, terminalFontFamily,
+  terminalThemePreset, terminalFontSize, terminalLineHeight, terminalFontFamily, localShell,
   appBackgroundImagePath, appBackgroundOpacity,
   setTerminalBackgroundColor, setTerminalForegroundColor,
-  setTerminalThemePreset, setAppBackgroundImagePath,
+  setTerminalThemePreset, setLocalShell, setAppBackgroundImagePath,
   save, message: msg,
 }: {
   loading: boolean;
@@ -1227,11 +1347,13 @@ const TerminalSection = ({
   terminalFontSize: number;
   terminalLineHeight: number;
   terminalFontFamily: string;
+  localShell: LocalShellPreference;
   appBackgroundImagePath: string;
   appBackgroundOpacity: number;
   setTerminalBackgroundColor: (v: string) => void;
   setTerminalForegroundColor: (v: string) => void;
   setTerminalThemePreset: (v: string) => void;
+  setLocalShell: (value: LocalShellPreference) => void;
   setAppBackgroundImagePath: (v: string) => void;
   save: (patch: Record<string, unknown>) => void;
   message: ReturnType<typeof AntdApp.useApp>["message"];
@@ -1285,11 +1407,18 @@ const TerminalSection = ({
   );
   const [terminalFontFamilyInput, setTerminalFontFamilyInput] = useState(terminalFontFamily);
   const lastValidTerminalFontFamilyRef = useRef(terminalFontFamily);
+  const [localShellCustomPathInput, setLocalShellCustomPathInput] = useState(localShell.customPath);
+  const lastValidLocalShellCustomPathRef = useRef(localShell.customPath);
 
   useEffect(() => {
     setTerminalFontFamilyInput(terminalFontFamily);
     lastValidTerminalFontFamilyRef.current = terminalFontFamily;
   }, [terminalFontFamily]);
+
+  useEffect(() => {
+    setLocalShellCustomPathInput(localShell.customPath);
+    lastValidLocalShellCustomPathRef.current = localShell.customPath;
+  }, [localShell]);
 
   const selectedTerminalFontPreset = useMemo(() => {
     const normalizedInput = canonicalizeFontFamily(terminalFontFamilyInput);
@@ -1310,6 +1439,33 @@ const TerminalSection = ({
     setTerminalFontFamilyInput(trimmed);
     debouncedSaveTerminal({ fontFamily: trimmed });
   }, [debouncedSaveTerminal, msg, terminalFontFamilyInput]);
+
+  const localShellOptions = useMemo(
+    () => getLocalShellOptions(window.nextshell.platform),
+    []
+  );
+
+  const persistLocalShell = useCallback((next: LocalShellPreference) => {
+    setLocalShell(next);
+    debouncedSaveTerminal({ localShell: next });
+  }, [debouncedSaveTerminal, setLocalShell]);
+
+  const applyLocalShellCustomPath = useCallback(() => {
+    const trimmed = localShellCustomPathInput.trim();
+    if (!trimmed) {
+      setLocalShellCustomPathInput(lastValidLocalShellCustomPathRef.current);
+      msg.warning("本地终端可执行文件路径不能为空，已恢复为上一次有效值。");
+      return;
+    }
+
+    lastValidLocalShellCustomPathRef.current = trimmed;
+    setLocalShellCustomPathInput(trimmed);
+    persistLocalShell({
+      ...localShell,
+      mode: "custom",
+      customPath: trimmed
+    });
+  }, [localShell, localShellCustomPathInput, msg, persistLocalShell]);
 
   return (
   <>
@@ -1524,6 +1680,93 @@ const TerminalSection = ({
           }}
         />
       </SettingsRow>
+    </SettingsCard>
+
+    <SettingsCard title="本地终端" description="选择本地终端默认 shell（修改后 3 秒生效）">
+      <SettingsRow label="默认 shell">
+        <div className="flex gap-2 items-center">
+          <Select<LocalShellMode>
+            style={{ width: 132, flexShrink: 0 }}
+            value={localShell.mode}
+            disabled={loading}
+            options={[
+              { label: "预设", value: "preset" },
+              { label: "自定义", value: "custom" }
+            ]}
+            onChange={(value) => {
+              if (value === "preset") {
+                persistLocalShell({
+                  ...localShell,
+                  mode: value
+                });
+                return;
+              }
+
+              persistLocalShell({
+                ...localShell,
+                mode: value,
+                customPath: localShell.customPath.trim()
+              });
+            }}
+          />
+          {localShell.mode === "preset" ? (
+            <Select<LocalShellPreset>
+              style={{ width: "100%" }}
+              value={localShell.preset}
+              disabled={loading}
+              options={localShellOptions}
+              onChange={(value) => {
+                persistLocalShell({
+                  ...localShell,
+                  preset: value
+                });
+              }}
+            />
+          ) : (
+            <Input
+              value={localShellCustomPathInput}
+              disabled={loading}
+              onChange={(event) => setLocalShellCustomPathInput(event.target.value)}
+              onBlur={applyLocalShellCustomPath}
+              onPressEnter={() => applyLocalShellCustomPath()}
+              placeholder={window.nextshell.platform === "win32" ? "例如 C:\\Windows\\System32\\cmd.exe" : "/bin/zsh"}
+            />
+          )}
+        </div>
+      </SettingsRow>
+      {localShell.mode === "custom" ? (
+        <SettingsRow label="选择可执行文件" hint="仅支持可执行文件路径，不支持整段命令参数">
+          <div className="flex gap-2 items-center">
+            <Button
+              disabled={loading}
+              onClick={() =>
+                void (async () => {
+                  try {
+                    const result = await window.nextshell.dialog.openFiles({
+                      title: "选择本地 shell 可执行文件",
+                      multi: false
+                    });
+                    if (!result.canceled && result.filePaths[0]) {
+                      lastValidLocalShellCustomPathRef.current = result.filePaths[0];
+                      setLocalShellCustomPathInput(result.filePaths[0]);
+                      persistLocalShell({
+                        ...localShell,
+                        mode: "custom",
+                        customPath: result.filePaths[0]
+                      });
+                    }
+                  } catch {
+                    msg.error("打开文件选择器失败");
+                  }
+                })()
+              }
+            >
+              浏览
+            </Button>
+            <span className="stg-row-hint">启动目录固定为当前用户 Home 目录</span>
+          </div>
+        </SettingsRow>
+      ) : null}
     </SettingsCard>
   </>
   );

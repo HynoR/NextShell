@@ -26,6 +26,7 @@ import {
   setBoundedSessionMapEntry
 } from "../utils/sessionScopedCollections";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { shouldReconnectOnInput } from "../utils/terminal-reconnect";
 import {
@@ -38,6 +39,16 @@ import {
   stripAuthFailurePrefix,
   type TerminalAuthState
 } from "../utils/terminal-auth-flow";
+
+type LocalAwareSessionDescriptor = SessionDescriptor & {
+  target?: "remote" | "local";
+};
+
+const isLocalSession = (session?: SessionDescriptor): boolean =>
+  (session as LocalAwareSessionDescriptor | undefined)?.target === "local";
+
+const isRemoteSession = (session?: SessionDescriptor): boolean =>
+  !isLocalSession(session);
 
 interface TerminalPaneProps {
   connection?: ConnectionProfile;
@@ -118,9 +129,32 @@ const ackSessionDelivery = (
 };
 
 const statusMessage = (
+  session: SessionDescriptor | undefined,
   status: SessionDescriptor["status"],
   reason?: string
 ): string | undefined => {
+  if (isLocalSession(session)) {
+    if (status === "connecting") {
+      return "正在启动本地终端...";
+    }
+
+    if (status === "connected") {
+      return reason
+        ? `本地终端已启动：${formatErrorMessage(reason, "启动成功")}`
+        : "本地终端已启动。";
+    }
+
+    if (status === "disconnected") {
+      return "本地终端已断开。按回车键重新打开。";
+    }
+
+    if (status === "failed") {
+      return `本地终端启动失败：${formatErrorMessage(reason, "未知原因")}`;
+    }
+
+    return undefined;
+  }
+
   if (status === "connecting") {
     return "正在建立 SSH 会话...";
   }
@@ -144,22 +178,24 @@ const statusMessage = (
 };
 
 const isAuthRetryInProgress = (
+  session: SessionDescriptor | undefined,
   status: SessionDescriptor["status"],
   reason?: string
 ): boolean =>
-  status === "failed" && isAuthFailureReason(reason);
+  isRemoteSession(session) && status === "failed" && isAuthFailureReason(reason);
 
 const formatStatusOutput = (
+  session: SessionDescriptor | undefined,
   status: SessionDescriptor["status"],
   reason?: string
 ): string | undefined => {
   if (status === "connected") {
     return undefined;
   }
-  if (isAuthRetryInProgress(status, reason)) {
+  if (isAuthRetryInProgress(session, status, reason)) {
     return undefined;
   }
-  const msg = statusMessage(status, reason);
+  const msg = statusMessage(session, status, reason);
   if (!msg) {
     return undefined;
   }
@@ -807,12 +843,16 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         message.success(text);
       }
 
-      if (event.status === "failed" && isAuthFailureReason(event.reason)) {
+      const targetSession = useWorkspaceStore
+        .getState()
+        .sessions.find((session: SessionDescriptor) => session.id === event.sessionId);
+
+      if (isRemoteSession(targetSession) && event.status === "failed" && isAuthFailureReason(event.reason)) {
         beginLocalAuthPrompt(event.sessionId, event.reason);
         return;
       }
 
-      const output = formatStatusOutput(event.status, event.reason);
+      const output = formatStatusOutput(targetSession, event.status, event.reason);
       if (!output) {
         return;
       }
@@ -845,7 +885,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
           const connectingEventKey = `${currentSessionId}:connecting:`;
           if (lastStatusKeyBySessionRef.current.get(currentSessionId) !== connectingEventKey) {
             lastStatusKeyBySessionRef.current.set(currentSessionId, connectingEventKey);
-            const output = formatStatusOutput("connecting");
+            const output = formatStatusOutput(session, "connecting");
             if (output) {
               appendSessionOutput(currentSessionId, output);
             }
@@ -856,7 +896,12 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       }
     }
 
-    if (currentSessionId && session?.status === "failed" && isAuthFailureReason(session.reason)) {
+    if (
+      currentSessionId &&
+      isRemoteSession(session) &&
+      session?.status === "failed" &&
+      isAuthFailureReason(session.reason)
+    ) {
       beginLocalAuthPrompt(currentSessionId, session.reason);
     }
 
@@ -901,7 +946,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       prevStatus !== undefined &&
       prevStatus !== "failed"
     ) {
-      if (isAuthFailureReason(session?.reason)) {
+      if (isRemoteSession(session) && isAuthFailureReason(session?.reason)) {
         beginLocalAuthPrompt(currentSessionId, session.reason);
         return;
       }
@@ -911,7 +956,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       if (lastKey?.includes(":failed:")) {
         return;
       }
-      const output = formatStatusOutput("failed", session?.reason);
+      const output = formatStatusOutput(session, "failed", session?.reason);
       if (output) {
         appendSessionOutput(currentSessionId, output);
         if (currentSessionId === sessionIdRef.current) {

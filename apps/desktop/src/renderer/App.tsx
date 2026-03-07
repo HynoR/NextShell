@@ -25,6 +25,17 @@ import {
 const isTerminalSession = (session: SessionDescriptor): boolean =>
   !session.type || session.type === "terminal";
 
+type LocalAwareSessionDescriptor = SessionDescriptor & {
+  target?: "remote" | "local";
+  connectionId?: string;
+};
+
+const isLocalSession = (session?: SessionDescriptor): boolean =>
+  (session as LocalAwareSessionDescriptor | undefined)?.target === "local";
+
+const getSessionConnectionId = (session?: SessionDescriptor): string | undefined =>
+  (session as LocalAwareSessionDescriptor | undefined)?.connectionId;
+
 export const App = () => {
   const {
     connections,
@@ -92,6 +103,7 @@ export const App = () => {
   const {
     connectingIds,
     startSession,
+    startLocalSession,
     retrySessionAuth,
     activateConnection,
     handleCloseSession,
@@ -110,7 +122,11 @@ export const App = () => {
 
   const activeSessionConnection = useMemo(() => {
     if (!activeSession) return undefined;
-    return connections.find((connection) => connection.id === activeSession.connectionId);
+    const activeSessionConnectionId = getSessionConnectionId(activeSession);
+    if (!activeSessionConnectionId) {
+      return undefined;
+    }
+    return connections.find((connection) => connection.id === activeSessionConnectionId);
   }, [activeSession, connections]);
 
   const isActiveConnectionTerminalConnected = useMemo(
@@ -164,7 +180,9 @@ export const App = () => {
     }
     if (activeConnectionId) {
       const conn = sessions.find(
-        (session) => session.connectionId === activeConnectionId && isTerminalSession(session)
+        (session) =>
+          getSessionConnectionId(session) === activeConnectionId &&
+          isTerminalSession(session)
       );
       if (conn) return conn;
     }
@@ -173,7 +191,11 @@ export const App = () => {
 
   const activeTerminalConnection = useMemo(() => {
     if (!activeTerminalSession) return undefined;
-    return connections.find((connection) => connection.id === activeTerminalSession.connectionId);
+    const terminalConnectionId = getSessionConnectionId(activeTerminalSession);
+    if (!terminalConnectionId) {
+      return undefined;
+    }
+    return connections.find((connection) => connection.id === terminalConnectionId);
   }, [activeTerminalSession, connections]);
 
   const terminalSessionIds = useMemo(
@@ -426,6 +448,10 @@ export const App = () => {
     setManagerOpen(true);
   }, []);
 
+  const handleOpenLocalTerminal = useCallback(() => {
+    void startLocalSession();
+  }, [startLocalSession]);
+
   const isConnecting = activeConnectionId ? connectingIds.has(activeConnectionId) : false;
   const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
   const hasAppBackgroundImage = normalizedAppBackgroundImagePath.length > 0;
@@ -477,6 +503,7 @@ export const App = () => {
           bottomTab={bottomTab}
           onLoadConnections={() => void loadConnections()}
           onOpenManager={handleOpenManager}
+          onOpenLocalTerminal={handleOpenLocalTerminal}
           onOpenSettings={() => setSettingsOpen(true)}
           onActivateConnection={activateConnection}
           onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}

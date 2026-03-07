@@ -20,6 +20,17 @@ type RetrySessionAuthResult =
   | { ok: true }
   | { ok: false; authRequired: boolean; reason: string };
 
+type LocalAwareSessionDescriptor = SessionDescriptor & {
+  target?: "remote" | "local";
+  connectionId?: string;
+};
+
+const isLocalSession = (session?: SessionDescriptor): boolean =>
+  (session as LocalAwareSessionDescriptor | undefined)?.target === "local";
+
+const getSessionConnectionId = (session?: SessionDescriptor): string | undefined =>
+  (session as LocalAwareSessionDescriptor | undefined)?.connectionId;
+
 export function useSessionLifecycle() {
   const connections = useWorkspaceStore((state) => state.connections);
   const sessions = useWorkspaceStore((state) => state.sessions);
@@ -161,6 +172,22 @@ export function useSessionLifecycle() {
     [refreshConnectionsOnce, setActiveConnection, setActiveSession, upsertSession]
   );
 
+  const finalizeLocalSession = useCallback(
+    (openedSession: SessionDescriptor, preservedTitle?: string): SessionDescriptor => {
+      const nextSession: SessionDescriptor = preservedTitle
+        ? {
+            ...openedSession,
+            title: preservedTitle
+          }
+        : openedSession;
+
+      upsertSession(nextSession);
+      setActiveSession(nextSession.id);
+      return nextSession;
+    },
+    [setActiveSession, upsertSession]
+  );
+
   const finalizeRetriedSession = useCallback(
     (openedSession: SessionDescriptor, preservedTitle: string): SessionDescriptor => {
       const nextSession: SessionDescriptor = {
@@ -191,7 +218,11 @@ export function useSessionLifecycle() {
       }
 
       const normalizedReason =
-        event.status === "failed" && typeof event.reason === "string"
+        event.status === "failed" &&
+        typeof event.reason === "string" &&
+        !isLocalSession(
+          useWorkspaceStore.getState().sessions.find((session) => session.id === event.sessionId)
+        )
           ? (extractAuthRequiredReason(event.reason) ?? event.reason)
           : event.reason;
 
@@ -313,6 +344,64 @@ export function useSessionLifecycle() {
     ]
   );
 
+  const startLocalSession = useCallback(
+    async (): Promise<SessionDescriptor | undefined> => {
+      const sessionId = crypto.randomUUID();
+      const sessionGeneration = nextSessionGeneration(sessionId);
+      const pendingSession = {
+        id: sessionId,
+        title: "本地终端",
+        type: "terminal",
+        status: "connecting",
+        createdAt: new Date().toISOString(),
+        reconnectable: true,
+        target: "local"
+      } as unknown as SessionDescriptor;
+
+      upsertSession(pendingSession);
+      setActiveSession(sessionId);
+
+      try {
+        const openedSession = await window.nextshell.session.open({
+          target: "local",
+          sessionId
+        } as never);
+
+        if (!canApplySessionResult(sessionId, sessionGeneration)) {
+          closeSessionSilently(sessionId);
+          return undefined;
+        }
+
+        return finalizeLocalSession(openedSession);
+      } catch (error) {
+        if (!canApplySessionResult(sessionId, sessionGeneration)) {
+          return undefined;
+        }
+
+        const normalized = normalizeOpenError(error, "打开本地终端失败");
+        setSessionStatus(sessionId, "failed", normalized.reason);
+        return undefined;
+      } finally {
+        const hasSession = useWorkspaceStore
+          .getState()
+          .sessions.some((session) => session.id === sessionId);
+        if (!hasSession) {
+          clearSessionTracking(sessionId);
+        }
+      }
+    },
+    [
+      canApplySessionResult,
+      clearSessionTracking,
+      closeSessionSilently,
+      finalizeLocalSession,
+      nextSessionGeneration,
+      setActiveSession,
+      setSessionStatus,
+      upsertSession
+    ]
+  );
+
   const retrySessionAuth = useCallback(
     async (
       sessionId: string,
@@ -340,8 +429,25 @@ export function useSessionLifecycle() {
         };
       }
 
-      beginConnecting(target.connectionId);
-      setActiveConnection(target.connectionId);
+      if (isLocalSession(target)) {
+        return {
+          ok: false,
+          authRequired: false,
+          reason: "本地终端不支持认证重试。"
+        };
+      }
+
+      const targetConnectionId = getSessionConnectionId(target);
+      if (!targetConnectionId) {
+        return {
+          ok: false,
+          authRequired: false,
+          reason: "会话连接信息缺失。"
+        };
+      }
+
+      beginConnecting(targetConnectionId);
+      setActiveConnection(targetConnectionId);
       setActiveSession(target.id);
       setSessionStatus(target.id, "connecting", null);
 
@@ -351,9 +457,10 @@ export function useSessionLifecycle() {
         try {
           const openedSession = await window.nextshell.session.open({
             connectionId: target.connectionId,
+            target: "remote",
             sessionId: target.id,
             authOverride
-          });
+          } as never);
 
           if (!canApplySessionResult(target.id, sessionGeneration)) {
             closeSessionSilently(target.id);
@@ -384,7 +491,7 @@ export function useSessionLifecycle() {
             reason: normalized.reason
           };
         } finally {
-          endConnecting(target.connectionId);
+          endConnecting(targetConnectionId);
           inFlightAuthRetryBySessionRef.current.delete(target.id);
           const hasSession = useWorkspaceStore
             .getState()
@@ -459,37 +566,61 @@ export function useSessionLifecycle() {
       if (inFlightAuthRetryBySessionRef.current.has(sessionId)) {
         return;
       }
-      if (!beginConnecting(target.connectionId)) {
-        return;
+      const targetIsLocal = isLocalSession(target);
+      const targetConnectionId = getSessionConnectionId(target);
+      if (!targetIsLocal) {
+        if (!targetConnectionId) {
+          return;
+        }
+        if (!beginConnecting(targetConnectionId)) {
+          return;
+        }
+        setActiveConnection(targetConnectionId);
       }
 
-      setActiveConnection(target.connectionId);
       setActiveSession(target.id);
       setSessionStatus(target.id, "connecting", null);
 
       const sessionGeneration = nextSessionGeneration(target.id);
 
       try {
-        const openedSession = await window.nextshell.session.open({
-          connectionId: target.connectionId,
-          sessionId: target.id
-        });
+        const openedSession = await window.nextshell.session.open(
+          targetIsLocal
+            ? ({
+                target: "local",
+                sessionId: target.id
+              } as never)
+            : ({
+                target: "remote",
+                connectionId: targetConnectionId,
+                sessionId: target.id
+              } as never)
+        );
 
         if (!canApplySessionResult(target.id, sessionGeneration)) {
           closeSessionSilently(target.id);
           return;
         }
 
-        finalizeRetriedSession(openedSession, target.title);
+        if (targetIsLocal) {
+          finalizeLocalSession(openedSession, target.title);
+        } else {
+          finalizeRetriedSession(openedSession, target.title);
+        }
       } catch (error) {
         if (!canApplySessionResult(target.id, sessionGeneration)) {
           return;
         }
 
-        const normalized = normalizeOpenError(error, "打开 SSH 会话失败");
+        const normalized = normalizeOpenError(
+          error,
+          targetIsLocal ? "打开本地终端失败" : "打开 SSH 会话失败"
+        );
         setSessionStatus(target.id, "failed", normalized.reason);
       } finally {
-        endConnecting(target.connectionId);
+        if (targetConnectionId) {
+          endConnecting(targetConnectionId);
+        }
         const hasSession = useWorkspaceStore
           .getState()
           .sessions.some((session) => session.id === target.id);
@@ -544,6 +675,7 @@ export function useSessionLifecycle() {
   return {
     connectingIds,
     startSession,
+    startLocalSession,
     retrySessionAuth,
     activateConnection,
     handleCloseSession,

@@ -9,6 +9,11 @@ import type {
   ProxyProfile
 } from "@nextshell/core";
 
+type LocalAwareSessionDescriptor = SessionDescriptor & {
+  target?: "remote" | "local";
+  connectionId?: string;
+};
+
 export type BottomTab = "connections" | "files" | "quick-transfer" | "live-edit" | "commands" | "system-info" | "traceroute";
 
 export interface NetworkPoint {
@@ -49,6 +54,14 @@ function pruneNetworkRateHistory(
   }
 
   return changed ? nextHistory : networkRateHistory;
+}
+
+function getSessionConnectionId(session?: SessionDescriptor): string | undefined {
+  return (session as LocalAwareSessionDescriptor | undefined)?.connectionId;
+}
+
+function isLocalSession(session?: SessionDescriptor): boolean {
+  return (session as LocalAwareSessionDescriptor | undefined)?.target === "local";
 }
 
 interface WorkspaceState {
@@ -137,20 +150,25 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const nextActiveSession = candidateActiveSessionId
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
+      const nextActiveConnectionId = nextActiveSession
+        ? (isLocalSession(nextActiveSession)
+            ? state.activeConnectionId
+            : getSessionConnectionId(nextActiveSession))
+        : undefined;
 
       const processSnapshots =
-        target?.type === "processManager"
-          ? omitConnectionSnapshot(state.processSnapshots, target.connectionId)
+        target?.type === "processManager" && getSessionConnectionId(target)
+          ? omitConnectionSnapshot(state.processSnapshots, getSessionConnectionId(target)!)
           : state.processSnapshots;
       const networkSnapshots =
-        target?.type === "networkMonitor"
-          ? omitConnectionSnapshot(state.networkSnapshots, target.connectionId)
+        target?.type === "networkMonitor" && getSessionConnectionId(target)
+          ? omitConnectionSnapshot(state.networkSnapshots, getSessionConnectionId(target)!)
           : state.networkSnapshots;
 
       return {
         sessions,
         activeSessionId: nextActiveSession?.id,
-        activeConnectionId: nextActiveSession?.connectionId,
+        activeConnectionId: nextActiveConnectionId,
         processSnapshots,
         networkSnapshots
       };
@@ -219,7 +237,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
 
       return {
         activeSessionId,
-        activeConnectionId: activeSession.connectionId
+        activeConnectionId: isLocalSession(activeSession)
+          ? state.activeConnectionId
+          : getSessionConnectionId(activeSession)
       };
     }),
   setMonitor: (monitor) => set({ monitor }),

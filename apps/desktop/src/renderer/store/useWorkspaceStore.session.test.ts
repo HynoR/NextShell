@@ -30,6 +30,20 @@ const createSession = (
   ...(reason !== undefined ? { reason } : {})
 });
 
+const createLocalTerminalSession = (
+  id: string,
+  status: SessionDescriptor["status"]
+): SessionDescriptor =>
+  ({
+    id,
+    title: "本地终端 · zsh",
+    type: "terminal",
+    status,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    reconnectable: true,
+    target: "local"
+  }) as unknown as SessionDescriptor;
+
 const resetStore = (): void => {
   useWorkspaceStore.setState({
     connections: [],
@@ -206,6 +220,27 @@ const resetStore = (): void => {
   const state = useWorkspaceStore.getState();
   assertEqual(state.activeSessionId, "s2", "setActiveSession should switch active session");
   assertEqual(state.activeConnectionId, "c2", "setActiveSession should align active connection");
+})();
+
+(() => {
+  resetStore();
+  useWorkspaceStore.setState({
+    sessions: [
+      createSession("remote-1", "c1", "connected"),
+      createLocalTerminalSession("local-1", "connected")
+    ],
+    activeSessionId: "remote-1",
+    activeConnectionId: "c1"
+  });
+
+  useWorkspaceStore.getState().setActiveSession("local-1");
+  const state = useWorkspaceStore.getState();
+  assertEqual(state.activeSessionId, "local-1", "setActiveSession should switch to local terminal session");
+  assertEqual(
+    state.activeConnectionId,
+    "c1",
+    "setActiveSession should preserve active connection when the selected session is local"
+  );
 })();
 
 (() => {
