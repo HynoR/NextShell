@@ -1749,6 +1749,56 @@ body {
   background: rgba(248, 113, 113, 0.15);
 }
 
+.session-tab-menu {
+  position: fixed;
+  z-index: 10010;
+  min-width: 188px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+
+.session-tab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: 12.5px;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+
+.session-tab-menu-item:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.session-tab-menu-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.session-tab-menu-hint {
+  margin: 4px 6px 2px;
+  color: var(--t3);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Command Input Bar ───────────────────────────────────── */
 .cib-root {
   position: relative;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, message, Tabs, Tag } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import type {
@@ -58,6 +58,107 @@ const getWorkspaceLayoutStorage = (): Storage | undefined => {
     } catch {
         return undefined;
     }
+};
+
+interface SessionTabContextMenuState {
+    x: number;
+    y: number;
+    sessionId: string;
+}
+
+const SessionTabContextMenu = ({
+    state,
+    session,
+    onClose,
+    onRename,
+}: {
+    state: SessionTabContextMenuState;
+    session: SessionDescriptor;
+    onClose: () => void;
+    onRename: (session: SessionDescriptor) => void;
+}) => {
+    const menuRef = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState<{ left: number; top: number }>({
+        left: state.x,
+        top: state.y,
+    });
+    const [visible, setVisible] = useState(false);
+
+    useLayoutEffect(() => {
+        const element = menuRef.current;
+        if (!element) {
+            return;
+        }
+
+        const { offsetWidth: width, offsetHeight: height } = element;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const gap = 4;
+
+        let top = state.y - height - gap;
+        if (top < gap) {
+            top = state.y + gap;
+        }
+        if (top + height > viewportHeight - gap) {
+            top = viewportHeight - height - gap;
+        }
+
+        let left = state.x;
+        if (left + width > viewportWidth - gap) {
+            left = state.x - width;
+        }
+        if (left < gap) {
+            left = gap;
+        }
+
+        setPos({ left, top });
+        setVisible(true);
+    }, [state.x, state.y]);
+
+    useEffect(() => {
+        const handleWindowMouseDown = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                onClose();
+            }
+        };
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("mousedown", handleWindowMouseDown);
+        window.addEventListener("keydown", handleEscape);
+        return () => {
+            window.removeEventListener("mousedown", handleWindowMouseDown);
+            window.removeEventListener("keydown", handleEscape);
+        };
+    }, [onClose]);
+
+    return (
+        <div
+            ref={menuRef}
+            className="session-tab-menu"
+            style={{ left: pos.left, top: pos.top, visibility: visible ? "visible" : "hidden" }}
+            onContextMenu={(event) => event.preventDefault()}
+        >
+            <button
+                className="session-tab-menu-item"
+                onClick={() => {
+                    onRename(session);
+                    onClose();
+                }}
+            >
+                <span className="session-tab-menu-icon">
+                    <i className="ri-edit-line" aria-hidden="true" />
+                </span>
+                重命名当前标签
+            </button>
+            <div className="session-tab-menu-hint" title={session.title}>
+                {session.title}
+            </div>
+        </div>
+    );
 };
 
 interface WorkspaceLayoutProps {
@@ -177,6 +278,8 @@ export const WorkspaceLayout = ({
     const [terminalSearchTerm, setTerminalSearchTerm] = useState("");
     const [addressCopied, setAddressCopied] = useState(false);
     const [updateReleaseUrl, setUpdateReleaseUrl] = useState<string | null>(null);
+    const [sessionContextMenu, setSessionContextMenu] =
+        useState<SessionTabContextMenuState | null>(null);
     const leftPanelRef = usePanelRef();
     const bottomPanelRef = usePanelRef();
     const syncingLeftPanelRef = useRef(false);
@@ -210,6 +313,34 @@ export const WorkspaceLayout = ({
     }, [activeSession, activeSessionConnection]);
 
     const headerSessionClass = activeSession?.status ?? "disconnected";
+
+    const contextMenuSession = useMemo(
+        () =>
+            sessionContextMenu
+                ? sessions.find(
+                      (session) =>
+                          session.id === sessionContextMenu.sessionId &&
+                          isTerminalSession(session),
+                  )
+                : undefined,
+        [sessionContextMenu, sessions],
+    );
+
+    useEffect(() => {
+        if (sessionContextMenu && !contextMenuSession) {
+            setSessionContextMenu(null);
+        }
+    }, [contextMenuSession, sessionContextMenu]);
+
+    const handlePromptRenameSession = useCallback(
+        async (session: SessionDescriptor) => {
+            const title = await promptModal(modal, "会话标题", undefined, session.title);
+            if (title) {
+                onRenameSession(session.id, title);
+            }
+        },
+        [modal, onRenameSession],
+    );
 
     const handleTerminalSearchTermChange = useCallback((value: string) => {
         setTerminalSearchTerm(value);
@@ -254,6 +385,25 @@ export const WorkspaceLayout = ({
             })
             .catch(() => undefined);
     }, [sidebarAddress]);
+
+    const handleSessionTabContextMenu = useCallback(
+        (event: React.MouseEvent<HTMLButtonElement>, session: SessionDescriptor) => {
+            if (!isTerminalSession(session)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            onSetActiveSession(session.id);
+            onSetActiveConnection(session.connectionId);
+            setSessionContextMenu({
+                x: event.clientX,
+                y: event.clientY,
+                sessionId: session.id,
+            });
+        },
+        [onSetActiveConnection, onSetActiveSession],
+    );
 
     useEffect(() => {
         let disposed = false;
@@ -589,27 +739,18 @@ export const WorkspaceLayout = ({
                                                             .filter(Boolean)
                                                             .join(" ")}
                                                         onClick={() => {
+                                                            setSessionContextMenu(null);
                                                             onSetActiveSession(session.id);
                                                             onSetActiveConnection(
                                                                 session.connectionId,
                                                             );
                                                         }}
-                                                        onDoubleClick={() => {
-                                                            if (!isTerminal) return;
-                                                            void (async () => {
-                                                                const title = await promptModal(
-                                                                    modal,
-                                                                    "会话标题",
-                                                                    undefined,
-                                                                    session.title,
-                                                                );
-                                                                if (title)
-                                                                    onRenameSession(
-                                                                        session.id,
-                                                                        title,
-                                                                    );
-                                                            })();
-                                                        }}
+                                                        onContextMenu={(event) =>
+                                                            handleSessionTabContextMenu(
+                                                                event,
+                                                                session,
+                                                            )
+                                                        }
                                                         draggable={isTerminal}
                                                         onDragStart={() => {
                                                             if (isTerminal)
@@ -672,7 +813,7 @@ export const WorkspaceLayout = ({
                                                         {isTerminal ? (
                                                             <span
                                                                 className="tab-action tab-drag"
-                                                                title="拖拽重排 / 双击重命名"
+                                                                title="拖拽重排 / 右键菜单"
                                                             >
                                                                 <i
                                                                     className="ri-drag-move-2-line"
@@ -720,6 +861,16 @@ export const WorkspaceLayout = ({
                                                 );
                                             })}
                                         </div>
+                                        {sessionContextMenu && contextMenuSession ? (
+                                            <SessionTabContextMenu
+                                                state={sessionContextMenu}
+                                                session={contextMenuSession}
+                                                onClose={() => setSessionContextMenu(null)}
+                                                onRename={(session) => {
+                                                    void handlePromptRenameSession(session);
+                                                }}
+                                            />
+                                        ) : null}
                                         <div
                                             className={
                                                 activeSession?.type === "processManager" ||
