@@ -7,6 +7,7 @@ import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import * as iconv from "iconv-lite";
 import { BrowserWindow, dialog, shell } from "electron";
 import type { OpenDialogOptions, WebContents } from "electron";
+import { spawn as spawnPty, type IPty } from "node-pty";
 import type {
   AppPreferences,
   AuditLogRecord,
@@ -63,6 +64,7 @@ import type {
   ConnectionUpsertInput,
   MonitorProcessKillInput,
   SessionAuthOverrideInput,
+  SessionOpenInput,
   SftpTransferStatusEvent,
   SavedCommandListInput,
   SavedCommandRemoveInput,
@@ -165,8 +167,10 @@ import {
   createLatestOnlyDispatcher,
   createOrderedBytesDispatcher
 } from "./ipc-stream-dispatcher";
+import { resolveLocalShellLaunch } from "./local-shell";
 
-interface ActiveSession {
+interface ActiveRemoteSession {
+  kind: "remote";
   descriptor: SessionDescriptor;
   channel: SshShellChannel;
   sender: WebContents;
@@ -175,6 +179,16 @@ interface ActiveSession {
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
 }
+
+interface ActiveLocalSession {
+  kind: "local";
+  descriptor: SessionDescriptor;
+  pty: IPty;
+  sender: WebContents;
+  terminalEncoding: TerminalEncoding;
+}
+
+type ActiveSession = ActiveRemoteSession | ActiveLocalSession;
 
 interface CreateServiceContainerOptions {
   dataDir: string;
@@ -253,10 +267,8 @@ export interface ServiceContainer {
     input: DialogOpenPathInput
   ) => Promise<{ ok: boolean; error?: string }>;
   openSession: (
-    connectionId: string,
-    sender: WebContents,
-    sessionId?: string,
-    authOverride?: SessionAuthOverrideInput
+    input: SessionOpenInput,
+    sender: WebContents
   ) => Promise<SessionDescriptor>;
   ackStreamDelivery: (input: StreamDeliveryAckInput) => { ok: true };
   writeSession: (sessionId: string, data: string) => { ok: true };
@@ -1130,7 +1142,7 @@ export const createServiceContainer = (
     active.descriptor.status = status;
     sessionDataDispatcher.closeWhenDrained(sessionId, () => {
       const drained = activeSessions.get(sessionId);
-      if (!drained) {
+      if (!drained || drained.kind !== "remote") {
         return;
       }
 
@@ -1138,6 +1150,35 @@ export const createServiceContainer = (
       drained.descriptor.status = status;
       sendSessionStatus(drained.sender, { sessionId, status, reason });
       void closeConnectionIfIdle(drained.connectionId);
+    });
+  };
+
+  const finalizeLocalSession = (
+    sessionId: string,
+    status: Extract<SessionStatus, "disconnected" | "failed">,
+    reason?: string
+  ): void => {
+    const active = activeSessions.get(sessionId);
+    if (!active || active.kind !== "local") {
+      return;
+    }
+
+    active.descriptor.status = status;
+    sessionDataDispatcher.closeWhenDrained(sessionId, () => {
+      const drained = activeSessions.get(sessionId);
+      if (!drained || drained.kind !== "local") {
+        return;
+      }
+
+      activeSessions.delete(sessionId);
+      drained.descriptor.status = status;
+      sendSessionStatus(drained.sender, { sessionId, status, reason });
+      appendAuditLogIfEnabled({
+        action: "session.local_close",
+        level: status === "failed" ? "error" : "info",
+        message: "Local terminal session closed",
+        metadata: { sessionId, reason }
+      });
     });
   };
 
@@ -1193,6 +1234,7 @@ export const createServiceContainer = (
   const hasVisibleTerminalAlive = (connectionId: string): boolean => {
     return Array.from(activeSessions.values()).some((session) => {
       return (
+        session.kind === "remote" &&
         session.connectionId === connectionId &&
         session.descriptor.type === "terminal" &&
         session.descriptor.status === "connected"
@@ -2131,7 +2173,7 @@ export const createServiceContainer = (
 
   const closeConnectionIfIdle = async (connectionId: string): Promise<void> => {
     const stillUsed = Array.from(activeSessions.values()).some(
-      (session) => session.connectionId === connectionId
+      (session) => session.kind === "remote" && session.connectionId === connectionId
     );
 
     if (stillUsed) {
@@ -2526,7 +2568,8 @@ export const createServiceContainer = (
 
   const removeConnection = async (id: string): Promise<{ ok: true }> => {
     const sessions = Array.from(activeSessions.values()).filter(
-      (session) => session.connectionId === id
+      (session): session is ActiveRemoteSession =>
+        session.kind === "remote" && session.connectionId === id
     );
 
     for (const session of sessions) {
@@ -2846,7 +2889,7 @@ export const createServiceContainer = (
     return result;
   };
 
-  const openSession = async (
+  const openRemoteSession = async (
     connectionId: string,
     sender: WebContents,
     sessionId?: string,
@@ -2859,6 +2902,7 @@ export const createServiceContainer = (
     }
     const descriptor: SessionDescriptor = {
       id: descriptorId,
+      target: "remote",
       connectionId,
       title: `${profile.name}@${profile.host}`,
       status: "connecting",
@@ -2890,6 +2934,7 @@ export const createServiceContainer = (
       descriptor.status = "connected";
 
       activeSessions.set(descriptor.id, {
+        kind: "remote",
         descriptor,
         channel: shell,
         sender,
@@ -3010,10 +3055,143 @@ export const createServiceContainer = (
     }
   };
 
+  const openLocalSession = async (
+    sender: WebContents,
+    sessionId?: string
+  ): Promise<SessionDescriptor> => {
+    const descriptorId = sessionId ?? randomUUID();
+    if (activeSessions.has(descriptorId)) {
+      throw new Error("Session id already exists");
+    }
+
+    const prefs = connections.getAppPreferences();
+    const shellLaunch = resolveLocalShellLaunch(prefs.terminal.localShell, process.platform);
+    const descriptor: SessionDescriptor = {
+      id: descriptorId,
+      target: "local",
+      title: `本地终端 · ${shellLaunch.label}`,
+      status: "connecting",
+      type: "terminal",
+      createdAt: new Date().toISOString(),
+      reconnectable: true
+    };
+
+    sendSessionStatus(sender, {
+      sessionId: descriptor.id,
+      status: "connecting"
+    });
+
+    try {
+      const localShellEnv = Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+      );
+      const pty = spawnPty(shellLaunch.command, shellLaunch.args, {
+        name: "xterm-256color",
+        cols: 140,
+        rows: 40,
+        cwd: os.homedir(),
+        env: localShellEnv
+      });
+
+      descriptor.status = "connected";
+      activeSessions.set(descriptor.id, {
+        kind: "local",
+        descriptor,
+        pty,
+        sender,
+        terminalEncoding: "utf-8"
+      });
+
+      pty.onData((chunk) => {
+        const active = activeSessions.get(descriptor.id);
+        if (!active || active.kind !== "local") {
+          return;
+        }
+
+        sessionDataDispatcher.push({
+          streamId: descriptor.id,
+          sender: active.sender,
+          chunk,
+          onPause: () => pty.pause(),
+          onResume: () => pty.resume()
+        });
+      });
+
+      pty.onExit(({ exitCode, signal }) => {
+        const reasonParts: string[] = [];
+        if (typeof exitCode === "number") {
+          reasonParts.push(`exit ${exitCode}`);
+        }
+        if (typeof signal === "number") {
+          reasonParts.push(`signal ${signal}`);
+        }
+        finalizeLocalSession(
+          descriptor.id,
+          "disconnected",
+          reasonParts.length > 0 ? reasonParts.join(", ") : undefined
+        );
+      });
+
+      sendSessionStatus(sender, {
+        sessionId: descriptor.id,
+        status: "connected"
+      });
+
+      appendAuditLogIfEnabled({
+        action: "session.local_open",
+        level: "info",
+        message: "Local terminal session opened",
+        metadata: {
+          sessionId: descriptor.id,
+          shell: shellLaunch.command
+        }
+      });
+
+      return descriptor;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Failed to open local shell";
+      logger.error("[Session] failed to open local terminal", {
+        sessionId: descriptor.id,
+        reason
+      });
+      sendSessionStatus(sender, {
+        sessionId: descriptor.id,
+        status: "failed",
+        reason
+      });
+      appendAuditLogIfEnabled({
+        action: "session.local_open_failed",
+        level: "error",
+        message: "Local terminal session failed to open",
+        metadata: {
+          sessionId: descriptor.id,
+          reason
+        }
+      });
+      throw new Error(reason);
+    }
+  };
+
+  const openSession = async (
+    input: SessionOpenInput,
+    sender: WebContents
+  ): Promise<SessionDescriptor> => {
+    if (input.target === "local") {
+      return openLocalSession(sender, input.sessionId);
+    }
+
+    return openRemoteSession(input.connectionId, sender, input.sessionId, input.authOverride);
+  };
+
   const writeSession = (sessionId: string, data: string): { ok: true } => {
     const active = activeSessions.get(sessionId);
     if (!active) {
       throw new Error("Session not found");
+    }
+
+    if (active.kind === "local") {
+      active.pty.write(data);
+      return { ok: true };
     }
 
     const buffer = encodeTerminalData(data, active.terminalEncoding);
@@ -3032,6 +3210,11 @@ export const createServiceContainer = (
       return { ok: true };
     }
 
+    if (active.kind === "local") {
+      active.pty.resize(cols, rows);
+      return { ok: true };
+    }
+
     active.channel.setWindow(rows, cols, 0, 0);
     return { ok: true };
   };
@@ -3042,8 +3225,29 @@ export const createServiceContainer = (
       return { ok: true };
     }
 
-    logger.info("[Session] closing", { sessionId, connectionId: active.connectionId });
+    logger.info("[Session] closing", {
+      sessionId,
+      connectionId: active.kind === "remote" ? active.connectionId : undefined,
+      target: active.descriptor.target
+    });
     sessionDataDispatcher.clear(sessionId);
+    if (active.kind === "local") {
+      active.pty.kill();
+      activeSessions.delete(sessionId);
+      sendSessionStatus(active.sender, {
+        sessionId,
+        status: "disconnected"
+      });
+
+      appendAuditLogIfEnabled({
+        action: "session.local_close",
+        level: "info",
+        message: "Local terminal session closed",
+        metadata: { sessionId }
+      });
+      return { ok: true };
+    }
+
     active.channel.removeAllListeners();
     if (active.channel.stderr) {
       active.channel.stderr.removeAllListeners();

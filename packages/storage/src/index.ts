@@ -396,7 +396,27 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.terminal?.fontFamily === "string" &&
           parsed.terminal.fontFamily.trim().length > 0
             ? parsed.terminal.fontFamily.trim()
-            : fallback.terminal.fontFamily
+            : fallback.terminal.fontFamily,
+        localShell: {
+          mode:
+            parsed.terminal?.localShell?.mode === "preset" ||
+            parsed.terminal?.localShell?.mode === "custom"
+              ? parsed.terminal.localShell.mode
+              : fallback.terminal.localShell.mode,
+          preset:
+            parsed.terminal?.localShell?.preset === "system" ||
+            parsed.terminal?.localShell?.preset === "powershell" ||
+            parsed.terminal?.localShell?.preset === "cmd" ||
+            parsed.terminal?.localShell?.preset === "zsh" ||
+            parsed.terminal?.localShell?.preset === "sh" ||
+            parsed.terminal?.localShell?.preset === "bash"
+              ? parsed.terminal.localShell.preset
+              : fallback.terminal.localShell.preset,
+          customPath:
+            typeof parsed.terminal?.localShell?.customPath === "string"
+              ? parsed.terminal.localShell.customPath.trim()
+              : fallback.terminal.localShell.customPath
+        }
       },
       ssh: {
         keepAliveEnabled:

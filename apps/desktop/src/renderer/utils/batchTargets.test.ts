@@ -20,6 +20,7 @@ const createSession = (
   type: SessionDescriptor["type"]
 ): SessionDescriptor => ({
   id,
+  target: "remote",
   connectionId,
   title: `${type}:${connectionId}`,
   status: "connected",

@@ -142,6 +142,7 @@ export const QuickTransferPane = ({
     for (const session of sessions) {
       if (session.status !== "connected") continue;
       if (session.connectionId === sourceConnection?.id) continue;
+      if (!session.connectionId) continue;
       ids.add(session.connectionId);
     }
     return ids;

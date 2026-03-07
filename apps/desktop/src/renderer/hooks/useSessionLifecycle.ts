@@ -283,6 +283,7 @@ export function useSessionLifecycle() {
 
         const pendingSession: SessionDescriptor = {
           id: sessionId,
+          target: "remote",
           connectionId,
           title: formatSessionTitle(baseTitle, sessionIndex),
           type: "terminal",
@@ -296,6 +297,7 @@ export function useSessionLifecycle() {
 
         try {
           const openedSession = await window.nextshell.session.open({
+            target: "remote",
             connectionId,
             sessionId
           });
@@ -421,14 +423,6 @@ export function useSessionLifecycle() {
         };
       }
 
-      if (connectingSetRef.current.has(target.connectionId)) {
-        return {
-          ok: false,
-          authRequired: false,
-          reason: "连接正在建立，请稍后重试。"
-        };
-      }
-
       if (isLocalSession(target)) {
         return {
           ok: false,
@@ -438,6 +432,13 @@ export function useSessionLifecycle() {
       }
 
       const targetConnectionId = getSessionConnectionId(target);
+      if (targetConnectionId && connectingSetRef.current.has(targetConnectionId)) {
+        return {
+          ok: false,
+          authRequired: false,
+          reason: "连接正在建立，请稍后重试。"
+        };
+      }
       if (!targetConnectionId) {
         return {
           ok: false,

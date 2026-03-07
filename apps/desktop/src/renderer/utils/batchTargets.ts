@@ -6,6 +6,9 @@ export const getBatchTargetConnectionIds = (
   const seen = new Set<string>();
   const targetIds: string[] = [];
   for (const session of sessions) {
+    if (!session.connectionId) {
+      continue;
+    }
     if (seen.has(session.connectionId)) {
       continue;
     }

@@ -117,6 +117,7 @@ export function useMonitorLifecycle(
 
       const session: SessionDescriptor = {
         id: crypto.randomUUID(),
+        target: "remote",
         connectionId,
         title: `${name}(${suffix})`,
         type,

@@ -23,7 +23,10 @@ const getListenerKey = (listener: NetworkListener): string => {
 };
 
 export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
-  const { connectionId } = session;
+  const connectionId = session.connectionId;
+  if (!connectionId) {
+    throw new Error("NetworkMonitorPane requires a remote session connectionId");
+  }
   const networkSnapshot = useWorkspaceStore((state) => state.networkSnapshots[connectionId]);
   const setNetworkSnapshot = useWorkspaceStore((state) => state.setNetworkSnapshot);
 

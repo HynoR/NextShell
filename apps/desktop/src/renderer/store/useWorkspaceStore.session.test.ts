@@ -21,6 +21,7 @@ const createSession = (
   type: SessionDescriptor["type"] = "terminal"
 ): SessionDescriptor => ({
   id,
+  target: "remote",
   connectionId,
   title: `${connectionId}#1`,
   type,
@@ -110,6 +111,31 @@ const resetStore = (): void => {
   assertEqual(state.activeSessionId, "s2", "active session should align after bulk remove");
   assertEqual(state.activeConnectionId, "c2", "active connection should align after bulk remove");
   assertEqual(state.networkRateHistory["c1:eth0"], undefined, "removed connection history should be pruned");
+})();
+
+(() => {
+  resetStore();
+  useWorkspaceStore.setState({
+    sessions: [
+      createSession("remote-1", "c1", "connected"),
+      createLocalTerminalSession("local-1", "connected")
+    ],
+    activeSessionId: "remote-1",
+    activeConnectionId: "c1"
+  });
+
+  useWorkspaceStore.getState().removeSessionsByConnection("c1");
+  const state = useWorkspaceStore.getState();
+  assertEqual(
+    state.activeSessionId,
+    "local-1",
+    "removeSessionsByConnection should switch to the remaining local session"
+  );
+  assertEqual(
+    state.activeConnectionId,
+    "c1",
+    "removeSessionsByConnection should preserve the last active remote connection when local session remains"
+  );
 })();
 
 (() => {

@@ -78,6 +78,9 @@ export default defineConfig({
                 id === "ssh2" ||
                 id.startsWith("ssh2/") ||
                 id.includes("/ssh2/") ||
+                id === "node-pty" ||
+                id.startsWith("node-pty/") ||
+                id.includes("/node-pty/") ||
                 id === "better-sqlite3" ||
                 id.startsWith("better-sqlite3/") ||
                 id.includes("/better-sqlite3/") ||

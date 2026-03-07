@@ -193,7 +193,7 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
 
   ipcMain.handle(IPCChannel.SessionOpen, (event, payload) => {
     const input = parsePayload(sessionOpenSchema, payload, "会话打开");
-    return services.openSession(input.connectionId, event.sender, input.sessionId, input.authOverride);
+    return services.openSession(input, event.sender);
   });
 
   ipcMain.handle(IPCChannel.SessionWrite, (_event, payload) => {

@@ -3,6 +3,9 @@ export type ProxyType = "socks4" | "socks5";
 export type TerminalEncoding = "utf-8" | "gb18030" | "gbk" | "big5";
 export type BackspaceMode = "ascii-backspace" | "ascii-delete";
 export type DeleteMode = "vt220-delete" | "ascii-delete" | "ascii-backspace";
+export type SessionTarget = "remote" | "local";
+export type LocalShellMode = "preset" | "custom";
+export type LocalShellPreset = "system" | "powershell" | "cmd" | "zsh" | "sh" | "bash";
 
 /** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
 export interface SshKeyProfile {
@@ -74,7 +77,8 @@ export type SessionType = "terminal" | "processManager" | "networkMonitor" | "ed
 
 export interface SessionDescriptor {
   id: string;
-  connectionId: string;
+  target: SessionTarget;
+  connectionId?: string;
   title: string;
   status: SessionStatus;
   reason?: string;
@@ -309,6 +313,11 @@ export interface AppPreferences {
     fontSize: number;
     lineHeight: number;
     fontFamily: string;
+    localShell: {
+      mode: LocalShellMode;
+      preset: LocalShellPreset;
+      customPath: string;
+    };
   };
   ssh: {
     /** 是否对所有连接启用 keepalive（发送空包） */
@@ -388,6 +397,11 @@ export interface AppPreferencesPatch {
     fontSize?: number;
     lineHeight?: number;
     fontFamily?: string;
+    localShell?: {
+      mode?: LocalShellMode;
+      preset?: LocalShellPreset;
+      customPath?: string;
+    };
   };
   ssh?: {
     keepAliveEnabled?: boolean;
@@ -532,7 +546,12 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     foregroundColor: "#d8eaff",
     fontSize: 14,
     lineHeight: 1.2,
-    fontFamily: "JetBrains Mono, Menlo, Monaco, monospace"
+    fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
+    localShell: {
+      mode: "preset",
+      preset: "system",
+      customPath: ""
+    }
   },
   ssh: {
     keepAliveEnabled: true,

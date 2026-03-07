@@ -275,6 +275,7 @@ export const App = () => {
         const sessionId = `editor-${result.editId}`;
         const session: SessionDescriptor = {
           id: sessionId,
+          target: "remote",
           connectionId,
           type: "editor",
           title: `${fileName} [${serverLabel}]`,

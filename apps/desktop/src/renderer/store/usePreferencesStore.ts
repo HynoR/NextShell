@@ -13,7 +13,10 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   transfer: { ...prefs.transfer },
   remoteEdit: { ...prefs.remoteEdit },
   commandCenter: { ...prefs.commandCenter },
-  terminal: { ...prefs.terminal },
+  terminal: {
+    ...prefs.terminal,
+    localShell: { ...prefs.terminal.localShell }
+  },
   ssh: { ...prefs.ssh },
   backup: { ...prefs.backup },
   window: { ...prefs.window },
@@ -141,7 +144,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       transfer: { ...prev.transfer, ...(patch.transfer ?? {}) },
       remoteEdit: { ...prev.remoteEdit, ...(patch.remoteEdit ?? {}) },
       commandCenter: { ...prev.commandCenter, ...(patch.commandCenter ?? {}) },
-      terminal: { ...prev.terminal, ...(patch.terminal ?? {}) },
+      terminal: {
+        ...prev.terminal,
+        ...(patch.terminal ?? {}),
+        localShell: {
+          ...prev.terminal.localShell,
+          ...(patch.terminal?.localShell ?? {})
+        }
+      },
       ssh: { ...prev.ssh, ...(patch.ssh ?? {}) },
       backup: { ...prev.backup, ...(patch.backup ?? {}) },
       window: { ...prev.window, ...(patch.window ?? {}) },

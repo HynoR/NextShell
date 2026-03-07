@@ -38,6 +38,8 @@ export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-b
 export const backupConflictPolicySchema = z.enum(["skip", "force"]);
 export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
 export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
+export const localShellModeSchema = z.enum(["preset", "custom"]);
+export const localShellPresetSchema = z.enum(["system", "powershell", "cmd", "zsh", "sh", "bash"]);
 
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
@@ -102,11 +104,22 @@ export const sessionAuthOverrideSchema = z.object({
     }
   });
 
-export const sessionOpenSchema = z.object({
+const remoteSessionOpenSchema = z.object({
+  target: z.literal("remote"),
   connectionId: z.string().uuid(),
   sessionId: z.string().uuid().optional(),
   authOverride: sessionAuthOverrideSchema.optional()
 });
+
+const localSessionOpenSchema = z.object({
+  target: z.literal("local"),
+  sessionId: z.string().uuid().optional()
+}).strict();
+
+export const sessionOpenSchema = z.discriminatedUnion("target", [
+  remoteSessionOpenSchema,
+  localSessionOpenSchema
+]);
 
 export const sessionWriteSchema = z.object({
   sessionId: z.string().uuid(),
@@ -374,6 +387,20 @@ export const sftpEditSessionInfoSchema = z.object({
   lastActivityAt: z.number()
 });
 
+const localShellSchema = z.object({
+  mode: localShellModeSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.mode),
+  preset: localShellPresetSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.preset),
+  customPath: z.string().default(DEFAULT_APP_PREFERENCES.terminal.localShell.customPath)
+}).superRefine((value, ctx) => {
+  if (value.mode === "custom" && value.customPath.trim().length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "customPath is required when localShell mode is custom",
+      path: ["customPath"]
+    });
+  }
+});
+
 export const appPreferencesSchema = z.object({
   transfer: z.object({
     uploadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.uploadDefaultDir),
@@ -393,7 +420,8 @@ export const appPreferencesSchema = z.object({
     foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
     fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
     lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight),
-    fontFamily: z.string().trim().min(1).default(DEFAULT_APP_PREFERENCES.terminal.fontFamily)
+    fontFamily: z.string().trim().min(1).default(DEFAULT_APP_PREFERENCES.terminal.fontFamily),
+    localShell: localShellSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell)
   }).default(DEFAULT_APP_PREFERENCES.terminal),
   ssh: z.object({
     keepAliveEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ssh.keepAliveEnabled),
@@ -453,7 +481,20 @@ export const appPreferencesPatchSchema = z.object({
     foregroundColor: terminalColorSchema.optional(),
     fontSize: z.coerce.number().int().min(10).max(24).optional(),
     lineHeight: z.coerce.number().min(1).max(2).optional(),
-    fontFamily: z.string().trim().min(1).optional()
+    fontFamily: z.string().trim().min(1).optional(),
+    localShell: z.object({
+      mode: localShellModeSchema.optional(),
+      preset: localShellPresetSchema.optional(),
+      customPath: z.string().optional()
+    }).superRefine((value, ctx) => {
+      if (value.mode === "custom" && (!value.customPath || value.customPath.trim().length === 0)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "customPath is required when localShell mode is custom",
+          path: ["customPath"]
+        });
+      }
+    }).optional()
   }).optional(),
   ssh: z.object({
     keepAliveEnabled: z.boolean().optional(),
@@ -684,7 +725,7 @@ export type ConnectionListQueryInput = z.infer<typeof connectionListQuerySchema>
 export type ConnectionUpsertInput = z.infer<typeof connectionUpsertSchema>;
 export type ConnectionRemoveInput = z.infer<typeof connectionRemoveSchema>;
 export type SessionOpenInput = z.infer<typeof sessionOpenSchema>;
-export type SessionAuthOverrideInput = NonNullable<SessionOpenInput["authOverride"]>;
+export type SessionAuthOverrideInput = z.infer<typeof sessionAuthOverrideSchema>;
 export type SessionWriteInput = z.infer<typeof sessionWriteSchema>;
 export type SessionResizeInput = z.infer<typeof sessionResizeSchema>;
 export type SessionCloseInput = z.infer<typeof sessionCloseSchema>;

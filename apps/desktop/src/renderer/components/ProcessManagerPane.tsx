@@ -18,7 +18,10 @@ interface ProcessManagerPaneProps {
 type SortKey = "cpu" | "memory" | "pid";
 
 export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
-  const { connectionId } = session;
+  const connectionId = session.connectionId;
+  if (!connectionId) {
+    throw new Error("ProcessManagerPane requires a remote session connectionId");
+  }
   const processSnapshot = useWorkspaceStore(
     (state) => state.processSnapshots[connectionId]
   );

@@ -61,3 +61,49 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
     "mergePreferences should preserve bottom layout default when omitted"
   );
 })();
+
+(() => {
+  const merged = mergePreferences(DEFAULT_APP_PREFERENCES, {
+    terminal: {
+      localShell: {
+        mode: "custom",
+        preset: "system",
+        customPath: "/bin/fish"
+      }
+    }
+  });
+
+  assertEqual(
+    merged.terminal.localShell.mode,
+    "custom",
+    "mergePreferences should update terminal localShell mode"
+  );
+  assertEqual(
+    merged.terminal.localShell.customPath,
+    "/bin/fish",
+    "mergePreferences should update terminal localShell custom path"
+  );
+})();
+
+(() => {
+  const merged = mergePreferences(DEFAULT_APP_PREFERENCES, {
+    terminal: {
+      localShell: {
+        mode: "custom",
+        preset: "system",
+        customPath: "   "
+      }
+    }
+  });
+
+  assertEqual(
+    merged.terminal.localShell.customPath,
+    DEFAULT_APP_PREFERENCES.terminal.localShell.customPath,
+    "mergePreferences should fallback to existing custom path when incoming localShell path is blank"
+  );
+  assertEqual(
+    merged.terminal.localShell.mode,
+    "custom",
+    "mergePreferences should keep requested localShell mode when only path is invalid"
+  );
+})();

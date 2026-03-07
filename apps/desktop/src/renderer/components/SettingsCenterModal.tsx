@@ -122,14 +122,22 @@ const readLocalShellPreference = (
   const mode = isLocalShellMode(rawMode)
     ? rawMode
     : DEFAULT_LOCAL_SHELL.mode;
-  const preset = isLocalShellPreset(rawPreset)
-    ? rawPreset
-    : DEFAULT_LOCAL_SHELL.preset;
   const customPath =
     typeof rawCustomPath === "string"
       ? String(rawCustomPath).trim()
       : "";
 
+  if (mode === "custom") {
+    return {
+      mode,
+      preset: isLocalShellPreset(rawPreset) ? rawPreset : DEFAULT_LOCAL_SHELL.preset,
+      customPath
+    };
+  }
+
+  const preset = isLocalShellPreset(rawPreset)
+    ? rawPreset
+    : DEFAULT_LOCAL_SHELL.preset;
   if (
     platform === "win32" &&
     preset !== "system" &&

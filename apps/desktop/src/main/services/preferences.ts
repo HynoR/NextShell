@@ -48,6 +48,44 @@ export const mergePreferences = (
     return trimmed.length > 0 ? trimmed : fallback;
   };
 
+  const normalizeLocalShellMode = (
+    value: "preset" | "custom" | undefined,
+    fallback: AppPreferences["terminal"]["localShell"]["mode"]
+  ): AppPreferences["terminal"]["localShell"]["mode"] => {
+    if (value === "preset" || value === "custom") {
+      return value;
+    }
+    return fallback;
+  };
+
+  const normalizeLocalShellPreset = (
+    value: "system" | "powershell" | "cmd" | "zsh" | "sh" | "bash" | undefined,
+    fallback: AppPreferences["terminal"]["localShell"]["preset"]
+  ): AppPreferences["terminal"]["localShell"]["preset"] => {
+    if (
+      value === "system" ||
+      value === "powershell" ||
+      value === "cmd" ||
+      value === "zsh" ||
+      value === "sh" ||
+      value === "bash"
+    ) {
+      return value;
+    }
+    return fallback;
+  };
+
+  const normalizeLocalShellPath = (
+    value: string | undefined,
+    fallback: string
+  ): string => {
+    if (typeof value !== "string") {
+      return fallback;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  };
+
   const normalizeBackgroundOpacity = (value: number | undefined, fallback: number): number => {
     if (!Number.isFinite(value)) {
       return fallback;
@@ -112,7 +150,21 @@ export const mergePreferences = (
       fontFamily: normalizeTerminalFontFamily(
         patch.terminal?.fontFamily,
         current.terminal.fontFamily
-      )
+      ),
+      localShell: {
+        mode: normalizeLocalShellMode(
+          patch.terminal?.localShell?.mode,
+          current.terminal.localShell.mode
+        ),
+        preset: normalizeLocalShellPreset(
+          patch.terminal?.localShell?.preset,
+          current.terminal.localShell.preset
+        ),
+        customPath: normalizeLocalShellPath(
+          patch.terminal?.localShell?.customPath,
+          current.terminal.localShell.customPath
+        )
+      }
     },
     ssh: {
       keepAliveEnabled: patch.ssh?.keepAliveEnabled ?? current.ssh.keepAliveEnabled,

@@ -185,11 +185,16 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       const nextActiveSession = candidateActiveSessionId
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
+      const nextActiveConnectionId = nextActiveSession
+        ? (isLocalSession(nextActiveSession)
+            ? state.activeConnectionId
+            : getSessionConnectionId(nextActiveSession))
+        : undefined;
 
       return {
         sessions,
         activeSessionId: nextActiveSession?.id,
-        activeConnectionId: nextActiveSession?.connectionId,
+        activeConnectionId: nextActiveConnectionId,
         processSnapshots: omitConnectionSnapshot(state.processSnapshots, connectionId),
         networkSnapshots: omitConnectionSnapshot(state.networkSnapshots, connectionId),
         networkRateHistory: pruneNetworkRateHistory(state.networkRateHistory, connectionId)
