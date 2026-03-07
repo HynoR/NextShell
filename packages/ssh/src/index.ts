@@ -138,6 +138,7 @@ export interface SshDirectoryEntry {
 }
 
 export type SshShellChannel = ClientChannel;
+export type { Stats as SftpStats } from "ssh2";
 export type RemotePathType = "file" | "directory" | "link";
 
 const expandHomePath = (rawPath: string): string => {
@@ -700,6 +701,12 @@ export class SshConnection {
           resolve();
         });
       });
+    });
+  }
+
+  async stat(remotePath: string): Promise<Stats> {
+    return this.withSftp(async (sftp) => {
+      return this.statPath(sftp, remotePath);
     });
   }
 

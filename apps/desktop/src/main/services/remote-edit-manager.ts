@@ -57,6 +57,8 @@ function tokenizeCommand(command: string): string[] {
   return tokens;
 }
 
+const MAX_BUILTIN_EDIT_BYTES = 10 * 1024 * 1024;   // 10MB — 内置编辑器（内存 + IPC）
+const MAX_EXTERNAL_EDIT_BYTES = 50 * 1024 * 1024;  // 50MB — 外部编辑器（磁盘下载）
 const MAX_UPLOAD_RETRIES = 3;
 const RETRY_BASE_MS = 300;
 const TEMP_ROOT = path.join(os.tmpdir(), "nextshell-edit");
@@ -164,6 +166,7 @@ export class RemoteEditManager {
 
     await fsp.mkdir(path.dirname(localPath), { recursive: true });
     const connection = await this.deps.getConnection(connectionId);
+    await this.assertFileSizeWithin(connection, remotePath, MAX_EXTERNAL_EDIT_BYTES, "使用外部编辑器打开");
     await connection.download(remotePath, localPath);
 
     // Compute initial hash of downloaded file
@@ -261,6 +264,7 @@ export class RemoteEditManager {
     const existingExternal = this.findByRemotePath(connectionId, remotePath);
     if (existingExternal) {
       const connection = await this.deps.getConnection(connectionId);
+      await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
       const buf = await connection.readFileContent(remotePath);
       return { editId: existingExternal.editId, content: buf.toString("utf-8") };
     }
@@ -269,6 +273,7 @@ export class RemoteEditManager {
     for (const session of this.builtinSessions.values()) {
       if (session.connectionId === connectionId && session.remotePath === remotePath) {
         const connection = await this.deps.getConnection(connectionId);
+        await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
         const buf = await connection.readFileContent(remotePath);
         return { editId: session.editId, content: buf.toString("utf-8") };
       }
@@ -284,6 +289,7 @@ export class RemoteEditManager {
     });
 
     const connection = await this.deps.getConnection(connectionId);
+    await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
     const buf = await connection.readFileContent(remotePath);
     const content = buf.toString("utf-8");
 
@@ -433,6 +439,20 @@ export class RemoteEditManager {
       }
     }
     return undefined;
+  }
+
+  private async assertFileSizeWithin(
+    connection: SshConnection,
+    remotePath: string,
+    maxBytes: number,
+    label: string
+  ): Promise<void> {
+    const stats = await connection.stat(remotePath);
+    if (stats.size > maxBytes) {
+      const sizeMB = (stats.size / (1024 * 1024)).toFixed(1);
+      const limitMB = (maxBytes / (1024 * 1024)).toFixed(0);
+      throw new Error(`文件过大，无法${label}：${sizeMB}MB 超过 ${limitMB}MB 限制`);
+    }
   }
 
   private buildLocalPath(connectionId: string, remotePath: string): string {

@@ -2442,9 +2442,30 @@ export const createServiceContainer = (
     });
     activeTracerouteProcess = child;
 
-    const sendEvent = (event: TracerouteEvent): void => {
-      if (!sender.isDestroyed()) {
+    const pendingTracerouteEvents: TracerouteEvent[] = [];
+    let tracerouteFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const flushTracerouteEvents = (): void => {
+      tracerouteFlushTimer = undefined;
+      if (pendingTracerouteEvents.length === 0 || sender.isDestroyed()) return;
+      const batch = pendingTracerouteEvents.splice(0);
+      for (const event of batch) {
         sender.send(IPCChannel.TracerouteData, event);
+      }
+    };
+
+    const sendEvent = (event: TracerouteEvent): void => {
+      if (sender.isDestroyed()) return;
+      if (event.type === "done" || event.type === "error") {
+        if (tracerouteFlushTimer) { clearTimeout(tracerouteFlushTimer); tracerouteFlushTimer = undefined; }
+        const batch = pendingTracerouteEvents.splice(0);
+        for (const e of batch) { sender.send(IPCChannel.TracerouteData, e); }
+        sender.send(IPCChannel.TracerouteData, event);
+        return;
+      }
+      pendingTracerouteEvents.push(event);
+      if (!tracerouteFlushTimer) {
+        tracerouteFlushTimer = setTimeout(flushTracerouteEvents, 50);
       }
     };
 
@@ -3055,13 +3076,34 @@ export const createServiceContainer = (
     return { ok: true };
   };
 
-  const emitDebugLog = (entry: DebugLogEntry): void => {
+  const DEBUG_FLUSH_INTERVAL_MS = 200;
+  const DEBUG_MAX_PENDING = 50;
+  let debugPending: DebugLogEntry[] = [];
+  let debugFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const flushDebugLog = (): void => {
+    debugFlushTimer = undefined;
+    if (debugPending.length === 0 || debugSenders.size === 0) return;
+    const batch = debugPending.splice(0);
     for (const sender of debugSenders) {
       if (sender.isDestroyed()) {
         debugSenders.delete(sender);
       } else {
-        sender.send(IPCChannel.DebugLogEvent, entry);
+        for (const entry of batch) {
+          sender.send(IPCChannel.DebugLogEvent, entry);
+        }
       }
+    }
+  };
+
+  const emitDebugLog = (entry: DebugLogEntry): void => {
+    if (debugSenders.size === 0) return;
+    if (debugPending.length >= DEBUG_MAX_PENDING) {
+      debugPending.shift();
+    }
+    debugPending.push(entry);
+    if (!debugFlushTimer) {
+      debugFlushTimer = setTimeout(flushDebugLog, DEBUG_FLUSH_INTERVAL_MS);
     }
   };
 
@@ -4559,6 +4601,9 @@ export const createServiceContainer = (
     connections.flush();
 
     if (auditPurgeTimer) clearInterval(auditPurgeTimer);
+
+    if (debugFlushTimer) { clearTimeout(debugFlushTimer); debugFlushTimer = undefined; }
+    debugPending.length = 0;
 
     // Dispose all hidden sessions for every connection that has any
     const allConnectionIds = new Set([
