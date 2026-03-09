@@ -1645,18 +1645,30 @@ const BackupSection = ({
       <Alert
         type="warning"
         showIcon
-        style={{ cursor: "pointer" }}
-        title={<span style={{ fontSize: 12 }}>请先设置主密码，点击前往「安全与审计」。</span>}
-        onClick={onOpenSecurity}
+        message={
+          <span style={{ fontSize: 12 }}>
+            请先设置主密码，
+            <Button type="link" size="small" style={{ paddingInline: 0, height: "auto" }} onClick={onOpenSecurity}>
+              点击前往「安全与审计」
+            </Button>
+            。
+          </span>
+        }
       />
     )}
     {pwdStatus.isSet && !pwdStatus.isUnlocked && (
       <Alert
         type="warning"
         showIcon
-        style={{ cursor: "pointer" }}
-        title={<span style={{ fontSize: 12 }}>请先解锁主密码，点击前往「安全与审计」。</span>}
-        onClick={onOpenSecurity}
+        message={
+          <span style={{ fontSize: 12 }}>
+            请先解锁主密码，
+            <Button type="link" size="small" style={{ paddingInline: 0, height: "auto" }} onClick={onOpenSecurity}>
+              点击前往「安全与审计」
+            </Button>
+            。
+          </span>
+        }
       />
     )}
 
