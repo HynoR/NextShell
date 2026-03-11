@@ -1907,19 +1907,9 @@ export const createServiceContainer = (
       return;
     }
 
-    const allowedOrigin = new URL(apiBaseUrl).origin;
-    cloudSyncNetworkSession.setCertificateVerifyProc((request, callback) => {
-      try {
-        const requestUrl = (request as { requestURL?: string }).requestURL;
-        if (!requestUrl) {
-          callback(-2);
-          return;
-        }
-        const requestOrigin = new URL(requestUrl).origin;
-        callback(requestOrigin === allowedOrigin ? 0 : -2);
-      } catch {
-        callback(-2);
-      }
+    void apiBaseUrl;
+    cloudSyncNetworkSession.setCertificateVerifyProc((_request, callback) => {
+      callback(0);
     });
   };
 

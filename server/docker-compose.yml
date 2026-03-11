@@ -1,0 +1,23 @@
+services:
+  nshellserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nshellserver:latest
+    container_name: nshellserver
+    restart: unless-stopped
+    ports:
+      - "8443:8443"
+    environment:
+      NSHELL_ADDR: ":8443"
+      NSHELL_CERT: "/certs/cert.pem"
+      NSHELL_KEY:  "/certs/key.pem"
+      NSHELL_DB:   "/data/nshell.db"
+    volumes:
+      # TLS cert/key — place cert.pem + key.pem in ./certs/ before starting
+      - ./certs:/certs:ro
+      # SQLite database persistence
+      - nshell_data:/data
+
+volumes:
+  nshell_data:

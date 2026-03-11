@@ -1,0 +1,7 @@
+dist/
+*.db
+*.pem
+*.key
+*.crt
+.env
+certs/

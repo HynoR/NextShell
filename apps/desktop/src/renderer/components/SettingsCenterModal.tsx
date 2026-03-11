@@ -627,6 +627,19 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setCloudSyncIgnoreTlsErrors(status.ignoreTlsErrors);
   }, []);
 
+  const syncCloudSyncFormFromPreferences = useCallback(() => {
+    const savedCloudSync = preferences.cloudSync;
+    setCloudSyncApiBaseUrl(savedCloudSync.apiBaseUrl);
+    setCloudSyncWorkspaceName(savedCloudSync.workspaceName);
+    setCloudSyncWorkspacePassword("");
+    setCloudSyncPullIntervalSec(
+      savedCloudSync.pullIntervalSec > 0
+        ? Math.round(savedCloudSync.pullIntervalSec)
+        : DEFAULT_CLOUD_SYNC_STATUS.pullIntervalSec
+    );
+    setCloudSyncIgnoreTlsErrors(savedCloudSync.ignoreTlsErrors);
+  }, [preferences.cloudSync]);
+
   const refreshCloudSyncStatus = useCallback(
     async (options?: { syncForm?: boolean; silent?: boolean }) => {
       const cloudSync = getCloudSyncApi();
@@ -720,11 +733,12 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
   useEffect(() => {
     if (!open) return;
+    syncCloudSyncFormFromPreferences();
     void Promise.all([
       refreshCloudSyncStatus({ syncForm: true, silent: true }),
       refreshCloudSyncConflicts({ silent: true })
     ]);
-  }, [open, refreshCloudSyncConflicts, refreshCloudSyncStatus]);
+  }, [open, refreshCloudSyncConflicts, refreshCloudSyncStatus, syncCloudSyncFormFromPreferences]);
 
   useEffect(() => {
     if (!open) {
@@ -979,6 +993,10 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
         pullIntervalSec,
         ignoreTlsErrors
       });
+      setCloudSyncApiBaseUrl(apiBaseUrl);
+      setCloudSyncWorkspaceName(workspaceName);
+      setCloudSyncPullIntervalSec(pullIntervalSec);
+      setCloudSyncIgnoreTlsErrors(ignoreTlsErrors);
       message.success("云同步已启用。");
       setCloudSyncWorkspacePassword("");
       await Promise.all([
