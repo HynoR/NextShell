@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   CloudSyncAppliedEvent,
   CloudSyncStatus,
@@ -36,6 +36,9 @@ const ackStreamDelivery = (payload: StreamDeliveryAckInput): Promise<{ ok: true 
 };
 
 const api: NextShellApi = {
+  getFilePathForDrop: (file: File): string => {
+    return webUtils.getPathForFile(file);
+  },
   connection: {
     list: (query) => ipcRenderer.invoke(IPCChannel.ConnectionList, query),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionUpsert, payload),

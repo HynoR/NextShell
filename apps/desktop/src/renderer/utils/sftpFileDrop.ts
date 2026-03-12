@@ -60,7 +60,10 @@ export interface DropExtractionResult {
   allPathsEmpty: boolean;
 }
 
-export const extractDroppedFilePaths = (dataTransfer: DataTransferLike | null | undefined): DropExtractionResult => {
+export const extractDroppedFilePaths = (
+  dataTransfer: DataTransferLike | null | undefined,
+  getFilePath?: (file: File) => string
+): DropExtractionResult => {
   if (!dataTransfer) {
     return { paths: [], allPathsEmpty: false };
   }
@@ -88,14 +91,18 @@ export const extractDroppedFilePaths = (dataTransfer: DataTransferLike | null | 
     if (entry && entry.isFile === false) {
       continue;
     }
-    pushPath(item.getAsFile?.()?.path);
+    const file = item.getAsFile?.();
+    if (!file) continue;
+    const filePath = getFilePath ? getFilePath(file as File) : (file as FileLike).path;
+    pushPath(filePath);
   }
 
   // Fallback to dataTransfer.files only when items were absent
   if (fileItemCount === 0) {
     for (const file of Array.from(dataTransfer.files ?? [])) {
       fileItemCount += 1;
-      pushPath(file.path);
+      const filePath = getFilePath ? getFilePath(file as File) : file.path;
+      pushPath(filePath);
     }
   }
 

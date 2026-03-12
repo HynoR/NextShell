@@ -1030,8 +1030,16 @@ export const FileExplorerPane = ({
     if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
       return;
     }
-    const result = extractDroppedFilePaths(event.dataTransfer);
+    const result = extractDroppedFilePaths(
+      event.dataTransfer,
+      window.nextshell.getFilePathForDrop
+    );
     if (result.paths.length === 0) {
+      console.warn("[sftpFileDrop] drop extraction failed", {
+        allPathsEmpty: result.allPathsEmpty,
+        itemCount: event.dataTransfer?.items?.length ?? 0,
+        fileCount: event.dataTransfer?.files?.length ?? 0
+      });
       if (result.allPathsEmpty) {
         message.warning("无法读取拖入文件的路径，请尝试使用上传按钮选择文件");
       } else {
@@ -1039,6 +1047,7 @@ export const FileExplorerPane = ({
       }
       return;
     }
+    console.info("[sftpFileDrop] extracted paths:", result.paths);
 
     const confirmed = await confirmDropUpload(result.paths);
     if (!confirmed) {
@@ -1507,7 +1516,7 @@ export const FileExplorerPane = ({
               </button>
             </Tooltip>
             <span className="w-px h-4 bg-[var(--border)] mx-[3px] shrink-0" />
-            <Tooltip title="跟随终端目录（3 秒防抖）">
+            <Tooltip title="跟随终端目录">
               <span className="inline-flex">
                 <button
                   className={`fe-icon-btn${followCwd ? " active" : ""}`}

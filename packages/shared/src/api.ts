@@ -135,6 +135,10 @@ export interface StreamDeliveryEnvelope<T> {
 }
 
 export interface NextShellApi {
+  /** Resolve the native file-system path for a File obtained from a drag-and-drop.
+   *  Uses Electron's `webUtils.getPathForFile` in the preload — required under sandbox mode
+   *  where `File.path` is always empty. */
+  getFilePathForDrop: (file: File) => string;
   /** Current OS platform, set synchronously from process.platform in the preload. */
   platform: string;
   /** UI layout constants published by preload for renderer-safe spacing. */
