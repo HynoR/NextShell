@@ -188,6 +188,13 @@ import {
 } from "./ipc-stream-dispatcher";
 import { resolveLocalShellLaunch } from "./local-shell";
 
+interface BootstrapSuppression {
+  startMarker: string;
+  endMarker: string;
+  buffer: string;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 interface ActiveRemoteSession {
   kind: "remote";
   descriptor: SessionDescriptor;
@@ -197,6 +204,7 @@ interface ActiveRemoteSession {
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
+  bootstrapSuppression?: BootstrapSuppression;
 }
 
 interface ActiveLocalSession {
@@ -1172,6 +1180,11 @@ export const createServiceContainer = (
     const active = activeSessions.get(sessionId);
     if (!active) {
       return;
+    }
+
+    if (active.kind === "remote" && active.bootstrapSuppression) {
+      clearTimeout(active.bootstrapSuppression.timeout);
+      active.bootstrapSuppression = undefined;
     }
 
     active.descriptor.status = status;
@@ -3278,10 +3291,41 @@ export const createServiceContainer = (
         if (!active) {
           return;
         }
+
+        const decoded = decodeTerminalData(chunk, active.terminalEncoding);
+
+        if (active.kind === "remote" && active.bootstrapSuppression) {
+          const suppression = active.bootstrapSuppression;
+          suppression.buffer += decoded;
+
+          const endIdx = suppression.buffer.indexOf(suppression.endMarker);
+          if (endIdx < 0) {
+            return; // continue buffering
+          }
+
+          clearTimeout(suppression.timeout);
+          const startIdx = suppression.buffer.indexOf(suppression.startMarker);
+          const before = startIdx >= 0 ? suppression.buffer.slice(0, startIdx) : "";
+          const after = suppression.buffer.slice(endIdx + suppression.endMarker.length);
+          active.bootstrapSuppression = undefined;
+
+          const remaining = before + after;
+          if (remaining) {
+            sessionDataDispatcher.push({
+              streamId: descriptor.id,
+              sender: active.sender,
+              chunk: remaining,
+              onPause: () => shell.pause(),
+              onResume: () => shell.resume()
+            });
+          }
+          return;
+        }
+
         sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decodeTerminalData(chunk, active.terminalEncoding),
+          chunk: decoded,
           onPause: () => shell.pause(),
           onResume: () => shell.resume()
         });
@@ -3314,6 +3358,29 @@ export const createServiceContainer = (
       });
 
       if (osc7Bootstrap.enabled && osc7Bootstrap.shellBootstrap) {
+        const active = activeSessions.get(descriptor.id);
+        if (active?.kind === "remote" && osc7Bootstrap.startMarker && osc7Bootstrap.endMarker) {
+          active.bootstrapSuppression = {
+            startMarker: osc7Bootstrap.startMarker,
+            endMarker: osc7Bootstrap.endMarker,
+            buffer: "",
+            timeout: setTimeout(() => {
+              if (active.bootstrapSuppression) {
+                const buffered = active.bootstrapSuppression.buffer;
+                active.bootstrapSuppression = undefined;
+                if (buffered) {
+                  sessionDataDispatcher.push({
+                    streamId: descriptor.id,
+                    sender: active.sender,
+                    chunk: buffered,
+                    onPause: () => shell.pause(),
+                    onResume: () => shell.resume()
+                  });
+                }
+              }
+            }, 3000)
+          };
+        }
         shell.write(`${osc7Bootstrap.shellBootstrap}\r`);
       }
 
