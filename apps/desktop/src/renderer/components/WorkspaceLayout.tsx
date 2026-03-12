@@ -30,6 +30,7 @@ import type { TransferTask } from "../store/useTransferQueueStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import type { QuickCreateConnectionInput } from "../utils/quickConnectInput";
 import { promptModal } from "../utils/promptModal";
+import { getDynamicSessionTitleParts } from "../utils/sessionTitle";
 import {
     persistWorkspacePanelState,
     resolveWorkspacePanelState,
@@ -169,6 +170,7 @@ interface WorkspaceLayoutProps {
     activeSessionId?: string;
     activeConnection?: ConnectionProfile;
     activeSession?: SessionDescriptor;
+    activeSessionDynamicBaseTitle?: string;
     activeSessionConnection?: ConnectionProfile;
     activeTerminalSession?: SessionDescriptor;
     activeTerminalConnection?: ConnectionProfile;
@@ -221,6 +223,7 @@ export const WorkspaceLayout = ({
     activeSessionId,
     activeConnection,
     activeSession,
+    activeSessionDynamicBaseTitle,
     activeSessionConnection,
     activeTerminalSession,
     activeTerminalConnection,
@@ -307,14 +310,19 @@ export const WorkspaceLayout = ({
 
     const headerSessionText = useMemo(() => {
         if (!activeSession) return "no session";
-        const sessionIndex = activeSession.title.match(/#\d+$/)?.[0];
+        const { baseTitle, remoteTitle } = getDynamicSessionTitleParts(
+            activeSession.title,
+            activeSessionDynamicBaseTitle,
+        );
+        const sessionIndex = baseTitle.match(/#\d+$/)?.[0];
         const baseLabel =
             activeSessionConnection?.name?.trim() ||
             activeSessionConnection?.host?.trim() ||
-            activeSession.title.replace(/\s+#\d+$/, "").trim() ||
+            baseTitle.replace(/\s+#\d+$/, "").trim() ||
             "session";
-        return `${activeSession.status} ${baseLabel}${sessionIndex ? ` ${sessionIndex}` : ""}`;
-    }, [activeSession, activeSessionConnection]);
+        const dynamicLabel = remoteTitle ? ` — ${remoteTitle}` : "";
+        return `${activeSession.status} ${baseLabel}${sessionIndex ? ` ${sessionIndex}` : ""}${dynamicLabel}`;
+    }, [activeSession, activeSessionConnection, activeSessionDynamicBaseTitle]);
 
     const headerSessionClass = activeSession?.status ?? "disconnected";
 

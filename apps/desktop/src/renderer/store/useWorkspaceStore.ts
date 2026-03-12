@@ -8,6 +8,7 @@ import type {
   SshKeyProfile,
   ProxyProfile
 } from "@nextshell/core";
+import { formatDynamicSessionTitle } from "../utils/sessionTitle";
 
 type LocalAwareSessionDescriptor = SessionDescriptor & {
   target?: "remote" | "local";
@@ -76,6 +77,8 @@ interface WorkspaceState {
   networkSnapshots: Record<string, NetworkSnapshot>;
   networkRateHistory: Record<string, NetworkPoint[]>;
   sessionCwdById: Record<string, string>;
+  sessionTitlePinnedById: Record<string, boolean>;
+  sessionDynamicBaseTitleById: Record<string, string>;
   lastActiveRemoteTerminalByConnection: Record<string, string | undefined>;
   bottomTab: BottomTab;
   setConnections: (connections: ConnectionProfile[]) => void;
@@ -88,6 +91,7 @@ interface WorkspaceState {
   removeSessionsByConnection: (connectionId: string) => void;
   reorderSession: (sourceSessionId: string, targetSessionId: string) => void;
   renameSessionTitle: (sessionId: string, title: string) => void;
+  setSessionRemoteTitle: (sessionId: string, title: string) => void;
   setActiveSession: (sessionId?: string) => void;
   setMonitor: (snapshot?: MonitorSnapshot) => void;
   setProcessSnapshot: (connectionId: string, snapshot: ProcessSnapshot) => void;
@@ -108,6 +112,30 @@ const omitSessionCwd = (
 
   const next = { ...sessionCwdById };
   delete next[sessionId];
+  return next;
+};
+
+const omitSessionRecord = <T>(
+  record: Record<string, T>,
+  sessionId: string
+): Record<string, T> => {
+  if (!(sessionId in record)) {
+    return record;
+  }
+
+  const next = { ...record };
+  delete next[sessionId];
+  return next;
+};
+
+const omitSessionRecords = <T>(
+  record: Record<string, T>,
+  sessionIds: string[]
+): Record<string, T> => {
+  let next = record;
+  for (const sessionId of sessionIds) {
+    next = omitSessionRecord(next, sessionId);
+  }
   return next;
 };
 
@@ -138,6 +166,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   networkSnapshots: {},
   networkRateHistory: {},
   sessionCwdById: {},
+  sessionTitlePinnedById: {},
+  sessionDynamicBaseTitleById: {},
   lastActiveRemoteTerminalByConnection: {},
   setConnections: (connections) => set({ connections }),
   setSshKeys: (sshKeys) => set({ sshKeys }),
@@ -207,6 +237,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         processSnapshots,
         networkSnapshots,
         sessionCwdById: omitSessionCwd(state.sessionCwdById, sessionId),
+        sessionTitlePinnedById: omitSessionRecord(state.sessionTitlePinnedById, sessionId),
+        sessionDynamicBaseTitleById: omitSessionRecord(state.sessionDynamicBaseTitleById, sessionId),
         lastActiveRemoteTerminalByConnection: omitLastActiveTerminalForSession(
           state.lastActiveRemoteTerminalByConnection,
           target
@@ -253,6 +285,14 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         networkSnapshots: omitConnectionSnapshot(state.networkSnapshots, connectionId),
         networkRateHistory: pruneNetworkRateHistory(state.networkRateHistory, connectionId),
         sessionCwdById,
+        sessionTitlePinnedById: omitSessionRecords(
+          state.sessionTitlePinnedById,
+          removedSessions.map((session) => session.id)
+        ),
+        sessionDynamicBaseTitleById: omitSessionRecords(
+          state.sessionDynamicBaseTitleById,
+          removedSessions.map((session) => session.id)
+        ),
         lastActiveRemoteTerminalByConnection
       };
     }),
@@ -283,8 +323,44 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     set((state) => ({
       sessions: state.sessions.map((session) =>
         session.id === sessionId ? { ...session, title } : session
-      )
+      ),
+      sessionTitlePinnedById: { ...state.sessionTitlePinnedById, [sessionId]: true },
+      sessionDynamicBaseTitleById: omitSessionRecord(state.sessionDynamicBaseTitleById, sessionId)
     })),
+  setSessionRemoteTitle: (sessionId, title) =>
+    set((state) => {
+      if (state.sessionTitlePinnedById[sessionId]) {
+        return {};
+      }
+
+      const targetSession = state.sessions.find((session) => session.id === sessionId);
+      if (!targetSession) {
+        return {};
+      }
+
+      const normalizedRemoteTitle = title.trim();
+      const baseTitle = state.sessionDynamicBaseTitleById[sessionId] ?? targetSession.title;
+      const nextTitle = formatDynamicSessionTitle(baseTitle, normalizedRemoteTitle);
+
+      if (
+        targetSession.title === nextTitle &&
+        state.sessionDynamicBaseTitleById[sessionId] === baseTitle
+      ) {
+        return {};
+      }
+
+      return {
+        sessions: state.sessions.map((session) =>
+          session.id === sessionId ? { ...session, title: nextTitle } : session
+        ),
+        sessionDynamicBaseTitleById: normalizedRemoteTitle
+          ? {
+              ...state.sessionDynamicBaseTitleById,
+              [sessionId]: baseTitle
+            }
+          : omitSessionRecord(state.sessionDynamicBaseTitleById, sessionId)
+      };
+    }),
   setActiveSession: (activeSessionId) =>
     set((state) => {
       if (!activeSessionId) {

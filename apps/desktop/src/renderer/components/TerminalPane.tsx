@@ -10,7 +10,7 @@ import { App as AntdApp } from "antd";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { ClipboardAddon } from "@xterm/addon-clipboard";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
@@ -249,6 +249,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   }, [onRetrySessionAuth]);
 
   const setSessionCwd = useWorkspaceStore((state) => state.setSessionCwd);
+  const setSessionRemoteTitle = useWorkspaceStore((state) => state.setSessionRemoteTitle);
 
   const sanitizeSessionOutput = useCallback(
     (targetSessionId: string, text: string): string => {
@@ -609,11 +610,22 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
 
     const fitAddon = new FitAddon();
     const searchAddon = new SearchAddon();
-    const clipboardAddon = new ClipboardAddon();
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      void window.nextshell.dialog.openPath({
+        path: uri,
+        revealInFolder: false
+      }).then((result) => {
+        if (!result.ok) {
+          void message.error(`打开链接失败：${formatErrorMessage(result.error, "请稍后重试")}`);
+        }
+      }).catch((error) => {
+        void message.error(`打开链接失败：${formatErrorMessage(error, "请稍后重试")}`);
+      });
+    });
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(searchAddon);
-    terminal.loadAddon(clipboardAddon);
+    terminal.loadAddon(webLinksAddon);
 
     try {
       const webglAddon = new WebglAddon();
@@ -760,6 +772,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       }));
     });
 
+    const titleSub = terminal.onTitleChange((title) => {
+      const sessionId = sessionIdRef.current;
+      if (sessionId) {
+        setSessionRemoteTitle(sessionId, title);
+      }
+    });
+
     let resizeRafId = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(resizeRafId);
@@ -789,12 +808,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       observer.disconnect();
       dataSub.dispose();
       resizeSub.dispose();
+      titleSub.dispose();
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;
       searchAddonRef.current = null;
     };
-  }, [handleLocalAuthInput, tryReconnectOnEnter]);
+  }, [handleLocalAuthInput, message, setSessionRemoteTitle, tryReconnectOnEnter]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
