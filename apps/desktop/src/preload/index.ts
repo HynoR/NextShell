@@ -53,6 +53,7 @@ const api: NextShellApi = {
     resize: (payload) => ipcRenderer.invoke(IPCChannel.SessionResize, payload),
     close: (payload) => ipcRenderer.invoke(IPCChannel.SessionClose, payload),
     getCwd: (payload) => ipcRenderer.invoke(IPCChannel.SessionGetCwd, payload),
+    getHomeDir: (payload) => ipcRenderer.invoke(IPCChannel.SessionGetHomeDir, payload),
     ackData: (payload) => ackStreamDelivery(payload),
     onData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: SessionDataEvent) => {

@@ -91,6 +91,7 @@ import type {
   SessionCloseInput,
   SessionDataEvent,
   SessionGetCwdInput,
+  SessionGetHomeDirInput,
   SessionOpenInput,
   SessionResizeInput,
   SessionStatusEvent,
@@ -158,6 +159,7 @@ export interface NextShellApi {
     resize: (payload: SessionResizeInput) => Promise<{ ok: true }>;
     close: (payload: SessionCloseInput) => Promise<{ ok: true }>;
     getCwd: (payload: SessionGetCwdInput) => Promise<{ cwd: string } | null>;
+    getHomeDir: (payload: SessionGetHomeDirInput) => Promise<{ path: string } | null>;
     ackData: (payload: StreamDeliveryAckInput) => Promise<{ ok: true }>;
     onData: (listener: (event: SessionDataEvent) => void) => SessionEventUnsubscribe;
     onStatus: (listener: (event: SessionStatusEvent) => void) => SessionEventUnsubscribe;

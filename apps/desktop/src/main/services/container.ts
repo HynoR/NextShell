@@ -170,6 +170,10 @@ import {
   parseProcessDetailPrimary,
 } from "./monitor/process-probe-parser";
 import {
+  buildRemoteHomeDirCommand,
+  parseRemoteHomeDir
+} from "./remote-home-dir";
+import {
   NetworkMonitorController,
   type NetworkProbeExecutionLog,
   type NetworkTool,
@@ -297,6 +301,7 @@ export interface ServiceContainer {
   selectSystemNetworkInterface: (connectionId: string, networkInterface: string) => Promise<{ ok: true }>;
   execCommand: (connectionId: string, command: string) => Promise<CommandExecutionResult>;
   getSessionCwd: (connectionId: string) => Promise<{ cwd: string } | null>;
+  getSessionHomeDir: (connectionId: string) => Promise<{ path: string } | null>;
   execBatchCommand: (input: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   listAuditLogs: (limit: number) => AuditLogRecord[];
   clearAuditLogs: () => { ok: true; deleted: number };
@@ -3748,6 +3753,20 @@ export const createServiceContainer = (
     }
   };
 
+  const getSessionHomeDir = async (
+    connectionId: string
+  ): Promise<{ path: string } | null> => {
+    getConnectionOrThrow(connectionId);
+    const connection = await ensureConnection(connectionId);
+    try {
+      const result = await connection.exec(buildRemoteHomeDirCommand());
+      const homeDir = parseRemoteHomeDir(result.stdout);
+      return homeDir ? { path: homeDir } : null;
+    } catch {
+      return null;
+    }
+  };
+
   const executeCommandWithRetry = async (
     connectionId: string,
     command: string,
@@ -5204,6 +5223,7 @@ export const createServiceContainer = (
     selectSystemNetworkInterface,
     execCommand,
     getSessionCwd,
+    getSessionHomeDir,
     execBatchCommand,
     listAuditLogs,
     clearAuditLogs,

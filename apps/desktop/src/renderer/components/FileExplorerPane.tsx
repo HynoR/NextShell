@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { App as AntdApp, Modal, Table, Tooltip, Tree, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { DataNode } from "antd/es/tree";
@@ -9,6 +9,12 @@ import { useTransferQueueStore } from "../store/useTransferQueueStore";
 import { pMap } from "../utils/concurrentLimit";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { promptModal } from "../utils/promptModal";
+import { resolveInitialRemotePath } from "../utils/remoteHomePath";
+import {
+  canAcceptSftpFileDrop,
+  extractDroppedFilePaths,
+  isExternalFileDrag
+} from "../utils/sftpFileDrop";
 
 interface FileExplorerPaneProps {
   connection?: ConnectionProfile;
@@ -420,6 +426,8 @@ export const FileExplorerPane = ({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const skipHistoryRef = useRef(false);
   const pathNameRef = useRef(pathName);
+  const initialPathRequestIdRef = useRef(0);
+  const [initialPathReady, setInitialPathReady] = useState(false);
 
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -429,6 +437,8 @@ export const FileExplorerPane = ({
     preferences.remoteEdit.defaultEditorCommand
   );
   const pendingEditRef = useRef<RemoteFileEntry | null>(null);
+  const dragDepthRef = useRef(0);
+  const [dropTargetActive, setDropTargetActive] = useState(false);
 
   const [followCwd, setFollowCwd] = useState(false);
   const followCwdLastRef = useRef<string | null>(null);
@@ -548,7 +558,7 @@ export const FileExplorerPane = ({
 
   // ── File loading ────────────────────────────────────────
   const loadFiles = useCallback(async (): Promise<void> => {
-    if (!connection || !connected) {
+    if (!connection || !connected || !initialPathReady) {
       setFiles([]);
       setSelectedPaths([]);
       return;
@@ -572,7 +582,7 @@ export const FileExplorerPane = ({
     } finally {
       setBusy(false);
     }
-  }, [connection, connected, pathName]);
+  }, [connection, connected, initialPathReady, pathName]);
 
   // ── Tree helpers ────────────────────────────────────────
   const loadTreeChildren = useCallback(
@@ -620,12 +630,40 @@ export const FileExplorerPane = ({
   }, [connection, connected, loadTreeChildren]);
 
   useEffect(() => {
-    setPathName("/");
+    initialPathRequestIdRef.current += 1;
+    const requestId = initialPathRequestIdRef.current;
+
     setSelectedPaths([]);
-    setPathHistory(["/"]);
-    setHistoryIndex(0);
     setClipboard(null);
+    skipHistoryRef.current = false;
+
+    if (!connection || !connected) {
+      setInitialPathReady(false);
+      setPathName("/");
+      setPathHistory([]);
+      setHistoryIndex(-1);
+      setFiles([]);
+      void initTree();
+      return;
+    }
+
+    setInitialPathReady(false);
+    setPathName("/");
+    setFiles([]);
     void initTree();
+
+    void (async () => {
+      const initialPath = await resolveInitialRemotePath(() =>
+        window.nextshell.session.getHomeDir({ connectionId: connection.id })
+      );
+      if (initialPathRequestIdRef.current !== requestId) {
+        return;
+      }
+      setPathName(initialPath);
+      setPathHistory([initialPath]);
+      setHistoryIndex(0);
+      setInitialPathReady(true);
+    })();
   }, [connection?.id, connected, initTree]);
 
   useEffect(() => {
@@ -639,6 +677,11 @@ export const FileExplorerPane = ({
   useEffect(() => {
     if (!connection || !connected) setFollowCwd(false);
   }, [connection?.id, connected]);
+
+  useEffect(() => {
+    dragDepthRef.current = 0;
+    setDropTargetActive(false);
+  }, [connection?.id, active]);
 
   const followCwdPollingEnabled = Boolean(active && followCwd && connection && connected);
 
@@ -705,14 +748,14 @@ export const FileExplorerPane = ({
   }, [preferences.remoteEdit.defaultEditorCommand]);
 
   useEffect(() => {
-    if (!connection || !connected) {
+    if (!connection || !connected || !initialPathReady) {
       setFiles([]);
       setSelectedPaths([]);
       return;
     }
     void loadFiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connection?.id, connected, pathName]);
+  }, [connection?.id, connected, initialPathReady, pathName]);
 
   useEffect(() => {
     const unsub = window.nextshell.sftp.onEditStatus((event) => {
@@ -757,6 +800,82 @@ export const FileExplorerPane = ({
     return pieces.at(-1) ?? "file";
   };
 
+  const syncUploadDefaultDir = useCallback((localPaths: string[]): void => {
+    const firstFile = localPaths[0];
+    if (!firstFile) {
+      return;
+    }
+    const firstDir = firstFile.replace(/[\\/][^\\/]+$/, "");
+    if (firstDir && firstDir !== preferences.transfer.uploadDefaultDir) {
+      void updatePreferences({
+        transfer: {
+          uploadDefaultDir: firstDir
+        }
+      });
+    }
+  }, [preferences.transfer.uploadDefaultDir, updatePreferences]);
+
+  const uploadLocalFiles = useCallback(async (localPaths: string[]): Promise<void> => {
+    if (!connection || localPaths.length === 0) return;
+
+    syncUploadDefaultDir(localPaths);
+
+    let successCount = 0;
+    setBusy(true);
+
+    try {
+      await pMap(localPaths, async (localPath) => {
+        const remotePath = normalizeRemotePath(joinRemotePath(pathName, inferName(localPath)));
+        const task = enqueueTask({
+          direction: "upload",
+          connectionId: connection.id,
+          localPath,
+          remotePath
+        });
+
+        try {
+          await window.nextshell.sftp.upload({
+            connectionId: connection.id,
+            localPath,
+            remotePath,
+            taskId: task.id
+          });
+          markSuccess(task.id);
+          successCount += 1;
+        } catch (error) {
+          const reason = formatErrorMessage(error, "上传失败");
+          markFailed(task.id, reason);
+          message.error(`上传失败：${inferName(localPath)}（${reason}）`);
+        }
+      }, 5);
+
+      if (successCount > 0) {
+        message.success(`上传完成 (${successCount}/${localPaths.length})`);
+      }
+      await loadFiles();
+    } catch (error) {
+      message.error(`上传失败：${formatErrorMessage(error, "请稍后重试")}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [connection, enqueueTask, loadFiles, markFailed, markSuccess, message, pathName, syncUploadDefaultDir]);
+
+  const confirmDropUpload = useCallback((filePaths: string[]): Promise<boolean> => {
+    return new Promise((resolve) => {
+      modal.confirm({
+        title: "上传拖拽文件",
+        content:
+          filePaths.length === 1
+            ? `将 ${inferName(filePaths[0] ?? "")} 上传到当前目录 ${pathName}？`
+            : `将 ${filePaths.length} 个文件上传到当前目录 ${pathName}？`,
+        okText: "上传",
+        cancelText: "取消",
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false)
+      });
+    });
+  }, [modal, pathName]);
+
   // ── SSH exec with permission check ──────────────────────
   const execSSH = useCallback(
     async (command: string): Promise<{ ok: boolean; stderr: string }> => {
@@ -798,54 +917,9 @@ export const FileExplorerPane = ({
       if (picked.canceled || picked.filePaths.length === 0) {
         return;
       }
-
-      const firstFile = picked.filePaths[0]!;
-      const firstDir = firstFile.replace(/[\\/][^\\/]+$/, "");
-      if (firstDir && firstDir !== preferences.transfer.uploadDefaultDir) {
-        void updatePreferences({
-          transfer: {
-            uploadDefaultDir: firstDir
-          }
-        });
-      }
-
-      let successCount = 0;
-      setBusy(true);
-
-      // Concurrent upload with limit of 5
-      await pMap(picked.filePaths, async (localPath) => {
-        const remotePath = normalizeRemotePath(joinRemotePath(pathName, inferName(localPath)));
-        const task = enqueueTask({
-          direction: "upload",
-          connectionId: connection.id,
-          localPath,
-          remotePath
-        });
-
-        try {
-          await window.nextshell.sftp.upload({
-            connectionId: connection.id,
-            localPath,
-            remotePath,
-            taskId: task.id
-          });
-          markSuccess(task.id);
-          successCount += 1;
-        } catch (error) {
-          const reason = formatErrorMessage(error, "上传失败");
-          markFailed(task.id, reason);
-          message.error(`上传失败：${inferName(localPath)}（${reason}）`);
-        }
-      }, 5);
-
-      if (successCount > 0) {
-        message.success(`上传完成 (${successCount}/${picked.filePaths.length})`);
-      }
-      await loadFiles();
+      await uploadLocalFiles(picked.filePaths);
     } catch (error) {
       message.error(`上传失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -863,14 +937,7 @@ export const FileExplorerPane = ({
       }
 
       const firstFile = picked.filePaths[0]!;
-      const firstDir = firstFile.replace(/[\\/][^\\/]+$/, "");
-      if (firstDir && firstDir !== preferences.transfer.uploadDefaultDir) {
-        void updatePreferences({
-          transfer: {
-            uploadDefaultDir: firstDir
-          }
-        });
-      }
+      syncUploadDefaultDir(picked.filePaths);
 
       const archiveBase = picked.filePaths.length === 1
         ? inferName(firstFile)
@@ -912,6 +979,74 @@ export const FileExplorerPane = ({
       setBusy(false);
     }
   };
+
+  const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>): void => {
+    if (!isExternalFileDrag(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+      return;
+    }
+    dragDepthRef.current += 1;
+    if (!dropTargetActive) {
+      setDropTargetActive(true);
+    }
+  }, [active, busy, connected, connection, dropTargetActive]);
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>): void => {
+    if (!isExternalFileDrag(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+      return;
+    }
+    event.dataTransfer.dropEffect = "copy";
+    if (!dropTargetActive) {
+      setDropTargetActive(true);
+    }
+  }, [active, busy, connected, connection, dropTargetActive]);
+
+  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>): void => {
+    if (!dropTargetActive) {
+      return;
+    }
+    event.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setDropTargetActive(false);
+    }
+  }, [dropTargetActive]);
+
+  const handleDropUpload = useCallback(async (event: DragEvent<HTMLDivElement>): Promise<void> => {
+    dragDepthRef.current = 0;
+    setDropTargetActive(false);
+    if (!isExternalFileDrag(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+      return;
+    }
+    const result = extractDroppedFilePaths(event.dataTransfer);
+    if (result.paths.length === 0) {
+      if (result.allPathsEmpty) {
+        message.warning("无法读取拖入文件的路径，请尝试使用上传按钮选择文件");
+      } else {
+        message.warning("当前仅支持拖入文件");
+      }
+      return;
+    }
+
+    const confirmed = await confirmDropUpload(result.paths);
+    if (!confirmed) {
+      return;
+    }
+
+    await uploadLocalFiles(result.paths);
+  }, [active, busy, confirmDropUpload, connected, connection, message, uploadLocalFiles]);
 
   const handleDownload = useCallback(
     async (
@@ -1319,8 +1454,14 @@ export const FileExplorerPane = ({
 
   return (
     <div
-      className="flex h-full overflow-hidden"
+      className={`fe-shell flex h-full overflow-hidden${dropTargetActive ? " fe-shell--drop-target" : ""}`}
       onContextMenu={(e) => handleContextMenu(e)}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(event) => {
+        void handleDropUpload(event);
+      }}
     >
       {/* ── Left: directory tree ── */}
       <aside className="fe-tree-panel">
@@ -1553,6 +1694,16 @@ export const FileExplorerPane = ({
           onQuickDelete={handleQuickDelete}
           onRemoteEdit={handleRemoteEdit}
         />
+      )}
+
+      {dropTargetActive && (
+        <div className="fe-drop-overlay" aria-hidden="true">
+          <div className="fe-drop-overlay-card">
+            <i className="ri-upload-cloud-2-line" aria-hidden="true" />
+            <span>释放以上传到当前目录</span>
+            <code>{pathName}</code>
+          </div>
+        </div>
       )}
 
       {/* ── Editor selection modal ── */}

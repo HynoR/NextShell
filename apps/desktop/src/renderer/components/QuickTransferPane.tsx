@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, Modal, Table, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ConnectionProfile, RemoteFileEntry, SessionDescriptor } from "@nextshell/core";
@@ -6,6 +6,7 @@ import { usePreferencesStore } from "../store/usePreferencesStore";
 import { useTransferQueueStore } from "../store/useTransferQueueStore";
 import { pMap } from "../utils/concurrentLimit";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { resolveInitialRemotePath } from "../utils/remoteHomePath";
 
 interface QuickTransferPaneProps {
   sourceConnection?: ConnectionProfile;
@@ -114,6 +115,8 @@ export const QuickTransferPane = ({
   const [leftFiles, setLeftFiles] = useState<RemoteFileEntry[]>([]);
   const [leftSelectedPaths, setLeftSelectedPaths] = useState<string[]>([]);
   const [leftLoading, setLeftLoading] = useState(false);
+  const [leftPathReady, setLeftPathReady] = useState(false);
+  const leftHomeRequestIdRef = useRef(0);
 
   const [targetMode, setTargetMode] = useState<TargetMode>("local");
   const [transferMode, setTransferMode] = useState<TransferMode>(readTransferModePreference);
@@ -125,6 +128,9 @@ export const QuickTransferPane = ({
   const [rightFiles, setRightFiles] = useState<RemoteFileEntry[]>([]);
   const [rightSelectedPaths, setRightSelectedPaths] = useState<string[]>([]);
   const [rightLoading, setRightLoading] = useState(false);
+  const [rightRemotePathReady, setRightRemotePathReady] = useState(false);
+  const rightHomeRequestIdRef = useRef(0);
+  const lastLocalRightPathRef = useRef(preferences.transfer.downloadDefaultDir);
   const [transferBusy, setTransferBusy] = useState(false);
 
   const leftSelectedEntries = useMemo(() => {
@@ -212,7 +218,7 @@ export const QuickTransferPane = ({
     if (!active) {
       return;
     }
-    if (!sourceConnection || !connected) {
+    if (!sourceConnection || !connected || !leftPathReady) {
       setLeftFiles([]);
       setLeftSelectedPaths([]);
       return;
@@ -234,7 +240,7 @@ export const QuickTransferPane = ({
     } finally {
       setLeftLoading(false);
     }
-  }, [active, connected, leftPath, message, sourceConnection]);
+  }, [active, connected, leftPath, leftPathReady, message, sourceConnection]);
 
   const loadRightFiles = useCallback(async (): Promise<void> => {
     if (!active) {
@@ -245,7 +251,7 @@ export const QuickTransferPane = ({
       return;
     }
 
-    if (targetMode === "server" && !targetConnectionId) {
+    if (targetMode === "server" && (!targetConnectionId || !rightRemotePathReady)) {
       setRightFiles([]);
       setRightSelectedPaths([]);
       return;
@@ -274,7 +280,7 @@ export const QuickTransferPane = ({
     } finally {
       setRightLoading(false);
     }
-  }, [active, message, rightPath, targetConnectionId, targetMode]);
+  }, [active, message, rightPath, rightRemotePathReady, targetConnectionId, targetMode]);
 
   const leftNavigate = useCallback((nextPath: string) => {
     setLeftPath(normalizeRemotePath(nextPath));
@@ -300,6 +306,12 @@ export const QuickTransferPane = ({
   }, [rightPath]);
 
   useEffect(() => {
+    if (targetMode === "local" && rightPath.trim().length > 0) {
+      lastLocalRightPathRef.current = rightPath;
+    }
+  }, [rightPath, targetMode]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(QUICK_TRANSFER_MODE_STORAGE_KEY, transferMode);
     } catch {
@@ -308,8 +320,30 @@ export const QuickTransferPane = ({
   }, [transferMode]);
 
   useEffect(() => {
-    setLeftPath("/");
+    leftHomeRequestIdRef.current += 1;
+    const requestId = leftHomeRequestIdRef.current;
     setLeftSelectedPaths([]);
+    if (!sourceConnection || !connected) {
+      setLeftPathReady(false);
+      setLeftPath("/");
+      setLeftFiles([]);
+      return;
+    }
+
+    setLeftPathReady(false);
+    setLeftPath("/");
+    setLeftFiles([]);
+
+    void (async () => {
+      const initialPath = await resolveInitialRemotePath(() =>
+        window.nextshell.session.getHomeDir({ connectionId: sourceConnection.id })
+      );
+      if (leftHomeRequestIdRef.current !== requestId) {
+        return;
+      }
+      setLeftPath(initialPath);
+      setLeftPathReady(true);
+    })();
   }, [sourceConnection?.id, connected]);
 
   useEffect(() => {
@@ -336,9 +370,42 @@ export const QuickTransferPane = ({
 
   useEffect(() => {
     if (targetMode !== "local") return;
-    if (rightPath.trim().length > 0) return;
-    setRightPath(preferences.transfer.downloadDefaultDir);
+    const nextLocalPath = lastLocalRightPathRef.current || preferences.transfer.downloadDefaultDir;
+    if (rightPath === nextLocalPath) return;
+    setRightPath(nextLocalPath);
   }, [preferences.transfer.downloadDefaultDir, rightPath, targetMode]);
+
+  useEffect(() => {
+    rightHomeRequestIdRef.current += 1;
+    const requestId = rightHomeRequestIdRef.current;
+
+    if (targetMode !== "server") {
+      setRightRemotePathReady(false);
+      return;
+    }
+
+    setRightSelectedPaths([]);
+    if (!targetConnectionId) {
+      setRightRemotePathReady(false);
+      setRightFiles([]);
+      return;
+    }
+
+    setRightRemotePathReady(false);
+    setRightPath("/");
+    setRightFiles([]);
+
+    void (async () => {
+      const initialPath = await resolveInitialRemotePath(() =>
+        window.nextshell.session.getHomeDir({ connectionId: targetConnectionId })
+      );
+      if (rightHomeRequestIdRef.current !== requestId) {
+        return;
+      }
+      setRightPath(initialPath);
+      setRightRemotePathReady(true);
+    })();
+  }, [targetConnectionId, targetMode]);
 
   useEffect(() => {
     void loadLeftFiles();
@@ -394,7 +461,6 @@ export const QuickTransferPane = ({
     }
     if (pendingTargetConnectionId !== targetConnectionId) {
       setTargetConnectionId(pendingTargetConnectionId);
-      setRightPath("/");
     }
     setTargetPickerOpen(false);
   }, [message, pendingTargetConnectionId, targetConnectionId]);
@@ -937,6 +1003,8 @@ export const QuickTransferPane = ({
               className={`qtp-mode-btn${targetMode === "local" ? " active" : ""}`}
               onClick={() => {
                 setTargetMode("local");
+                setRightFiles([]);
+                setRightSelectedPaths([]);
               }}
             >
               本机
@@ -1052,7 +1120,6 @@ export const QuickTransferPane = ({
             onDoubleClick: () => {
               setPendingTargetConnectionId(row.id);
               setTargetConnectionId(row.id);
-              setRightPath("/");
               setTargetPickerOpen(false);
             }
           })}
