@@ -192,7 +192,7 @@ export class ConnectionService {
   }
 
   async applyConnectionFromCloudSync(input: CloudSyncApplyConnectionInput): Promise<void> {
-    const { connections, sshKeyRepo, proxyRepo, vault, disposeAllMonitorSessions } = this.options;
+    const { connections, sshKeyRepo, vault, disposeAllMonitorSessions } = this.options;
 
     const current = connections.getById(input.id);
     const needsPasswordCredential = input.authType === "password" || input.authType === "interactive";
@@ -202,9 +202,6 @@ export class ConnectionService {
     }
     if (input.sshKeyId && !sshKeyRepo.getById(input.sshKeyId)) {
       throw new Error(`Cloud sync referenced SSH key not found: ${input.sshKeyId}`);
-    }
-    if (input.proxyId && !proxyRepo.getById(input.proxyId)) {
-      throw new Error(`Cloud sync referenced proxy not found: ${input.proxyId}`);
     }
 
     let credentialRef = current?.credentialRef;
@@ -231,7 +228,7 @@ export class ConnectionService {
       sshKeyId: input.authType === "privateKey" ? input.sshKeyId : undefined,
       hostFingerprint: input.hostFingerprint,
       strictHostKeyChecking: input.strictHostKeyChecking,
-      proxyId: input.proxyId,
+      proxyId: undefined,
       keepAliveEnabled: input.keepAliveEnabled,
       keepAliveIntervalSec: input.keepAliveIntervalSec,
       terminalEncoding: current?.terminalEncoding ?? "utf-8",
@@ -422,7 +419,7 @@ export class ConnectionService {
   }
 
   async upsertProxy(input: ProxyUpsertInput): Promise<ProxyProfile> {
-    const { proxyRepo, vault, getCloudSyncService } = this.options;
+    const { proxyRepo, vault } = this.options;
 
     const now = new Date().toISOString();
     const id = input.id ?? randomUUID();
@@ -453,7 +450,6 @@ export class ConnectionService {
     };
 
     proxyRepo.save(profile);
-    void getCloudSyncService()?.pushProxyUpsert(profile);
     return profile;
   }
 
@@ -505,9 +501,7 @@ export class ConnectionService {
   }
 
   async removeProxy(input: ProxyRemoveInput): Promise<{ ok: true }> {
-    const result = await this.removeProxyRecord(input);
-    void this.options.getCloudSyncService()?.pushProxyDelete(input.id);
-    return result;
+    return this.removeProxyRecord(input);
   }
 
   // ── Auth Override Persistence ─────────────────────────────────────

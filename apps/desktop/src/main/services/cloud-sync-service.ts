@@ -267,6 +267,22 @@ interface CloudSyncCredentials {
 }
 
 const normalizeApiBaseUrl = (value: string): string => value.trim().replace(/\/+$/, "");
+const normalizeGroupPath = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "/") {
+    return "/";
+  }
+  return trimmed.replace(/\/+$/, "");
+};
+const workspaceGroupPathPrefix = (workspaceName: string): string => normalizeGroupPath(`/workspace/${workspaceName.trim()}`);
+const isConnectionGroupPathInScope = (groupPath: string, workspaceName: string): boolean => {
+  const prefix = workspaceGroupPathPrefix(workspaceName);
+  if (prefix === "/" || workspaceName.trim().length === 0) {
+    return false;
+  }
+  const normalizedGroupPath = normalizeGroupPath(groupPath);
+  return normalizedGroupPath === prefix || normalizedGroupPath.startsWith(`${prefix}/`);
+};
 
 const keytarAccountForWorkspace = (apiBaseUrl: string, workspaceName: string): string => {
   return `cloud-sync:${normalizeApiBaseUrl(apiBaseUrl)}::${workspaceName.trim()}`;
@@ -380,6 +396,11 @@ const defaultRequestJson = async <T>(
 
   return schema.parse(await response.json());
 };
+
+interface PendingExecutionResult {
+  mutation: z.infer<typeof mutationResponseSchema> | null;
+  clearResourceState?: boolean;
+}
 
 export class CloudSyncService {
   private readonly options: CloudSyncServiceOptions;
@@ -503,6 +524,7 @@ export class CloudSyncService {
 
   async status(): Promise<CloudSyncStatus> {
     await this.refreshPasswordPresence();
+    this.pruneDeprecatedProxySyncState();
     return this.emitCurrentStatus();
   }
 
@@ -520,6 +542,7 @@ export class CloudSyncService {
   }
 
   async listConflicts(): Promise<CloudSyncConflictItem[]> {
+    this.pruneDeprecatedProxySyncState();
     const items = this.listConflictStates().map((state) => cloudSyncConflictItemSchema.parse({
       resourceType: state.resourceType,
       resourceId: state.resourceId,
@@ -558,11 +581,48 @@ export class CloudSyncService {
   }
 
   async pushConnectionUpsert(profile: ConnectionProfile): Promise<void> {
-    await this.enqueueAndFlush("connection", profile.id, "upsert", "连接云同步失败");
+    const prefs = this.options.getPreferences().cloudSync;
+    if (!prefs.enabled) {
+      return;
+    }
+
+    await this.withQueue(async () => {
+      const credentials = await this.getStoredCredentials();
+      this.pruneDeprecatedProxySyncState();
+      if (this.isConnectionProfileInScope(profile, credentials.workspaceName)) {
+        this.queuePendingItem(credentials.apiBaseUrl, credentials.workspaceName, "connection", profile.id, "upsert");
+      } else if (this.hasTrackedRemoteConnection(profile.id)) {
+        this.queuePendingItem(credentials.apiBaseUrl, credentials.workspaceName, "connection", profile.id, "delete");
+      } else {
+        this.discardResourceSyncState("connection", profile.id);
+      }
+      await this.flushPendingQueueInternal(credentials);
+      this.transition("idle", null);
+    }).catch((error) => {
+      this.transition("error", normalizeErrorMessage(error, "连接云同步失败"));
+    });
   }
 
   async pushConnectionDelete(id: string): Promise<void> {
-    await this.enqueueAndFlush("connection", id, "delete", "连接删除同步失败");
+    const prefs = this.options.getPreferences().cloudSync;
+    if (!prefs.enabled) {
+      this.discardResourceSyncState("connection", id);
+      return;
+    }
+
+    await this.withQueue(async () => {
+      const credentials = await this.getStoredCredentials();
+      this.pruneDeprecatedProxySyncState();
+      if (this.hasTrackedRemoteConnection(id)) {
+        this.queuePendingItem(credentials.apiBaseUrl, credentials.workspaceName, "connection", id, "delete");
+        await this.flushPendingQueueInternal(credentials);
+      } else {
+        this.discardResourceSyncState("connection", id);
+      }
+      this.transition("idle", null);
+    }).catch((error) => {
+      this.transition("error", normalizeErrorMessage(error, "连接删除同步失败"));
+    });
   }
 
   async pushSshKeyUpsert(profile: SshKeyProfile): Promise<void> {
@@ -574,11 +634,12 @@ export class CloudSyncService {
   }
 
   async pushProxyUpsert(profile: ProxyProfile): Promise<void> {
-    await this.enqueueAndFlush("proxy", profile.id, "upsert", "代理云同步失败");
+    void profile;
+    this.pruneDeprecatedProxySyncState();
   }
 
   async pushProxyDelete(id: string): Promise<void> {
-    await this.enqueueAndFlush("proxy", id, "delete", "代理删除同步失败");
+    this.discardResourceSyncState("proxy", id);
   }
 
   async refreshFromPreferences(options: { triggerPull: boolean }): Promise<void> {
@@ -595,6 +656,7 @@ export class CloudSyncService {
 
     await this.refreshPasswordPresence();
     this.ensurePendingQueueState(prefs.apiBaseUrl, prefs.workspaceName);
+    this.pruneDeprecatedProxySyncState();
     this.ensureTimer(prefs.pullIntervalSec);
 
     if (!this.hasWorkspacePassword) {
@@ -637,6 +699,7 @@ export class CloudSyncService {
 
     await this.withQueue(async () => {
       const credentials = await this.getStoredCredentials();
+      this.pruneDeprecatedProxySyncState();
       this.queuePendingItem(credentials.apiBaseUrl, credentials.workspaceName, resourceType, resourceId, action);
       await this.flushPendingQueueInternal(credentials);
       this.transition("idle", null);
@@ -646,6 +709,7 @@ export class CloudSyncService {
   }
 
   private async runSyncCycleInternal(credentials: CloudSyncCredentials): Promise<void> {
+    this.pruneDeprecatedProxySyncState();
     this.transition("syncing", null);
     await this.flushPendingQueueInternal(credentials);
     await this.runPullInternal(credentials);
@@ -712,9 +776,15 @@ export class CloudSyncService {
           !(entry.resourceType === currentItem.resourceType && entry.resourceId === currentItem.resourceId)
         );
         this.persistPendingQueueState();
-        if (result) {
-          this.markSuccessfulMutation(result.workspaceVersion);
-          this.upsertResolvedResourceState(currentItem.resourceType, currentItem.resourceId, result.resourceRevision);
+        if (result.mutation) {
+          this.markSuccessfulMutation(result.mutation.workspaceVersion);
+          if (result.clearResourceState) {
+            this.removeResourceState(currentItem.resourceType, currentItem.resourceId);
+          } else {
+            this.upsertResolvedResourceState(currentItem.resourceType, currentItem.resourceId, result.mutation.resourceRevision);
+          }
+        } else if (result.clearResourceState) {
+          this.removeResourceState(currentItem.resourceType, currentItem.resourceId);
         }
       } catch (error) {
         const conflict = parseCloudSyncConflictError(error);
@@ -737,31 +807,32 @@ export class CloudSyncService {
   private async executePendingItem(
     item: CloudSyncPendingQueueItem,
     credentials: CloudSyncCredentials
-  ): Promise<z.infer<typeof mutationResponseSchema> | null> {
+  ): Promise<PendingExecutionResult> {
     switch (item.resourceType) {
       case "connection":
         return item.action === "upsert"
           ? this.executeConnectionUpsert(item, credentials)
-          : this.executeDelete("/api/v1/sync/connections/delete", item, credentials);
+          : this.executeConnectionDelete(item, credentials);
       case "sshKey":
         return item.action === "upsert"
           ? this.executeSshKeyUpsert(item, credentials)
           : this.executeDelete("/api/v1/sync/ssh-keys/delete", item, credentials);
       case "proxy":
-        return item.action === "upsert"
-          ? this.executeProxyUpsert(item, credentials)
-          : this.executeDelete("/api/v1/sync/proxies/delete", item, credentials);
+        return { mutation: null, clearResourceState: true };
     }
   }
 
   private async executeConnectionUpsert(
     item: CloudSyncPendingQueueItem,
     credentials: CloudSyncCredentials
-  ): Promise<z.infer<typeof mutationResponseSchema> | null> {
+  ): Promise<PendingExecutionResult> {
     const id = item.resourceId;
     const profile = this.options.listConnections().find((item) => item.id === id);
     if (!profile) {
-      return null;
+      return { mutation: null, clearResourceState: !this.hasTrackedRemoteConnection(id) };
+    }
+    if (!this.isConnectionProfileInScope(profile, credentials.workspaceName)) {
+      return this.executeConnectionExitedScope(item, credentials);
     }
 
     const payload = await this.serializeConnection(profile, credentials.workspacePassword);
@@ -775,17 +846,17 @@ export class CloudSyncService {
       },
       mutationResponseSchema
     );
-    return response;
+    return { mutation: response };
   }
 
   private async executeSshKeyUpsert(
     item: CloudSyncPendingQueueItem,
     credentials: CloudSyncCredentials
-  ): Promise<z.infer<typeof mutationResponseSchema> | null> {
+  ): Promise<PendingExecutionResult> {
     const id = item.resourceId;
     const profile = this.options.listSshKeys().find((item) => item.id === id);
     if (!profile) {
-      return null;
+      return { mutation: null };
     }
 
     const payload = await this.serializeSshKey(profile, credentials.workspacePassword);
@@ -799,38 +870,14 @@ export class CloudSyncService {
       },
       mutationResponseSchema
     );
-    return response;
-  }
-
-  private async executeProxyUpsert(
-    item: CloudSyncPendingQueueItem,
-    credentials: CloudSyncCredentials
-  ): Promise<z.infer<typeof mutationResponseSchema> | null> {
-    const id = item.resourceId;
-    const profile = this.options.listProxies().find((item) => item.id === id);
-    if (!profile) {
-      return null;
-    }
-
-    const payload = await this.serializeProxy(profile, credentials.workspacePassword);
-    const response = await this.postJson(
-      credentials,
-      "/api/v1/sync/proxies/upsert",
-      {
-        baseRevision: item.baseRevision ?? null,
-        force: item.force,
-        proxy: payload
-      },
-      mutationResponseSchema
-    );
-    return response;
+    return { mutation: response };
   }
 
   private async executeDelete(
     pathname: string,
     item: CloudSyncPendingQueueItem,
     credentials: CloudSyncCredentials
-  ): Promise<z.infer<typeof mutationResponseSchema>> {
+  ): Promise<PendingExecutionResult> {
     const response = await this.postJson(
       credentials,
       pathname,
@@ -841,7 +888,34 @@ export class CloudSyncService {
       },
       mutationResponseSchema
     );
-    return response;
+    return { mutation: response };
+  }
+
+  private async executeConnectionDelete(
+    item: CloudSyncPendingQueueItem,
+    credentials: CloudSyncCredentials
+  ): Promise<PendingExecutionResult> {
+    return this.executeDelete("/api/v1/sync/connections/delete", item, credentials);
+  }
+
+  private async executeConnectionExitedScope(
+    item: CloudSyncPendingQueueItem,
+    credentials: CloudSyncCredentials
+  ): Promise<PendingExecutionResult> {
+    if (!this.hasTrackedRemoteConnection(item.resourceId)) {
+      return { mutation: null, clearResourceState: true };
+    }
+
+    const deleteItem: CloudSyncPendingQueueItem = {
+      ...item,
+      action: "delete",
+      baseRevision: item.baseRevision ?? this.getResourceState("connection", item.resourceId)?.serverRevision ?? null,
+    };
+    const result = await this.executeConnectionDelete(deleteItem, credentials);
+    return {
+      ...result,
+      clearResourceState: true,
+    };
   }
 
   private async applySnapshot(
@@ -850,12 +924,16 @@ export class CloudSyncService {
     pullStartedAt: string
   ): Promise<void> {
     const { workspacePassword, apiBaseUrl, workspaceName } = credentials;
-    const remoteConnectionIds = new Set(snapshot.connections.map((item) => item.payload.id));
+    const scopedConnections = snapshot.connections.filter((item) =>
+      isConnectionGroupPathInScope(item.payload.groupPath, workspaceName)
+    );
+    const scopedDeletedConnections = snapshot.deleted.connections.filter((item) =>
+      this.shouldProcessConnectionDeletion(item.id, workspaceName)
+    );
+    const remoteConnectionIds = new Set(scopedConnections.map((item) => item.payload.id));
     const remoteSshKeyIds = new Set(snapshot.sshKeys.map((item) => item.payload.id));
-    const remoteProxyIds = new Set(snapshot.proxies.map((item) => item.payload.id));
-    const deletedConnectionIds = new Set(snapshot.deleted.connections.map((item) => item.id));
+    const deletedConnectionIds = new Set(scopedDeletedConnections.map((item) => item.id));
     const deletedSshKeyIds = new Set(snapshot.deleted.sshKeys.map((item) => item.id));
-    const deletedProxyIds = new Set(snapshot.deleted.proxies.map((item) => item.id));
 
     for (const sshKey of snapshot.sshKeys) {
       const local = this.options.listSshKeys().find((k) => k.id === sshKey.payload.id);
@@ -865,15 +943,7 @@ export class CloudSyncService {
       }
       await this.applyRemoteSshKeySnapshotItem(sshKey, workspacePassword);
     }
-    for (const proxy of snapshot.proxies) {
-      const local = this.options.listProxies().find((p) => p.id === proxy.payload.id);
-      if (local && local.updatedAt > pullStartedAt) {
-        this.queuePendingItem(apiBaseUrl, workspaceName, "proxy", proxy.payload.id, "upsert");
-        continue;
-      }
-      await this.applyRemoteProxySnapshotItem(proxy, workspacePassword);
-    }
-    for (const connection of snapshot.connections) {
+    for (const connection of scopedConnections) {
       const local = this.options.listConnections().find((c) => c.id === connection.payload.id);
       if (local && local.updatedAt > pullStartedAt) {
         this.queuePendingItem(apiBaseUrl, workspaceName, "connection", connection.payload.id, "upsert");
@@ -882,21 +952,13 @@ export class CloudSyncService {
       await this.applyRemoteConnectionSnapshotItem(connection, workspacePassword);
     }
 
-    for (const tombstone of snapshot.deleted.connections) {
+    for (const tombstone of scopedDeletedConnections) {
       const local = this.options.listConnections().find((connection) => connection.id === tombstone.id);
       if (local && local.updatedAt > pullStartedAt) {
         this.queuePendingItem(apiBaseUrl, workspaceName, "connection", tombstone.id, "upsert");
         continue;
       }
       await this.applyRemoteConnectionDelete(tombstone);
-    }
-    for (const tombstone of snapshot.deleted.proxies) {
-      const local = this.options.listProxies().find((proxy) => proxy.id === tombstone.id);
-      if (local && local.updatedAt > pullStartedAt) {
-        this.queuePendingItem(apiBaseUrl, workspaceName, "proxy", tombstone.id, "upsert");
-        continue;
-      }
-      await this.applyRemoteProxyDelete(tombstone);
     }
     for (const tombstone of snapshot.deleted.sshKeys) {
       const local = this.options.listSshKeys().find((sshKey) => sshKey.id === tombstone.id);
@@ -909,22 +971,13 @@ export class CloudSyncService {
 
     for (const connection of this.options.listConnections()) {
       if (
+        this.isConnectionProfileInScope(connection, workspaceName) &&
         !remoteConnectionIds.has(connection.id) &&
         !deletedConnectionIds.has(connection.id) &&
         !this.findPendingItem("connection", connection.id)
       ) {
         await this.options.removeConnectionFromCloudSync(connection.id);
         this.removeResourceState("connection", connection.id);
-      }
-    }
-    for (const proxy of this.options.listProxies()) {
-      if (
-        !remoteProxyIds.has(proxy.id) &&
-        !deletedProxyIds.has(proxy.id) &&
-        !this.findPendingItem("proxy", proxy.id)
-      ) {
-        await this.options.removeProxyFromCloudSync(proxy.id);
-        this.removeResourceState("proxy", proxy.id);
       }
     }
     for (const sshKey of this.options.listSshKeys()) {
@@ -991,25 +1044,6 @@ export class CloudSyncService {
     this.upsertResolvedResourceState("sshKey", item.payload.id, item.revision);
   }
 
-  private async applyRemoteProxySnapshotItem(
-    item: ProxySnapshotItem,
-    workspacePassword: string
-  ): Promise<void> {
-    if (this.shouldDeferRemoteApply("proxy", item.payload.id, item.revision)) {
-      this.saveConflictState("proxy", item.payload.id, {
-        resourceType: "proxy",
-        resourceId: item.payload.id,
-        serverRevision: item.revision,
-        serverUpdatedAt: item.updatedAt,
-        serverDeleted: false,
-        serverPayload: item.payload
-      });
-      return;
-    }
-    await this.options.applyProxyFromCloudSync(await this.deserializeProxy(item.payload, workspacePassword));
-    this.upsertResolvedResourceState("proxy", item.payload.id, item.revision);
-  }
-
   private async applyRemoteConnectionDelete(item: DeletedSnapshotItem): Promise<void> {
     if (this.shouldDeferRemoteApply("connection", item.id, item.revision)) {
       this.saveConflictState("connection", item.id, {
@@ -1040,21 +1074,6 @@ export class CloudSyncService {
     this.upsertResolvedResourceState("sshKey", item.id, item.revision);
   }
 
-  private async applyRemoteProxyDelete(item: DeletedSnapshotItem): Promise<void> {
-    if (this.shouldDeferRemoteApply("proxy", item.id, item.revision)) {
-      this.saveConflictState("proxy", item.id, {
-        resourceType: "proxy",
-        resourceId: item.id,
-        serverRevision: item.revision,
-        serverUpdatedAt: item.deletedAt,
-        serverDeleted: true
-      });
-      return;
-    }
-    await this.options.removeProxyFromCloudSync(item.id);
-    this.upsertResolvedResourceState("proxy", item.id, item.revision);
-  }
-
   private async applyConflictOverwriteLocal(
     resourceType: CloudSyncResourceType,
     resourceId: string,
@@ -1073,7 +1092,7 @@ export class CloudSyncService {
           await this.options.removeSshKeyFromCloudSync(resourceId);
           break;
         case "proxy":
-          await this.options.removeProxyFromCloudSync(resourceId);
+          this.discardResourceSyncState("proxy", resourceId);
           break;
       }
     } else if (state.conflictRemotePayloadJson) {
@@ -1095,12 +1114,7 @@ export class CloudSyncService {
           );
           break;
         case "proxy":
-          await this.options.applyProxyFromCloudSync(
-            await this.deserializeProxy(
-              proxyPayloadSchema.parse(JSON.parse(state.conflictRemotePayloadJson)),
-              workspacePassword
-            )
-          );
+          this.discardResourceSyncState("proxy", resourceId);
           break;
       }
     }
@@ -1139,19 +1153,110 @@ export class CloudSyncService {
 
     try {
       const result = await this.executePendingItem(item, credentials);
-      if (result) {
+      if (result.mutation) {
         this.removePendingItem(resourceType, resourceId);
-        this.markSuccessfulMutation(result.workspaceVersion);
-        this.upsertResolvedResourceState(resourceType, resourceId, result.resourceRevision);
+        this.markSuccessfulMutation(result.mutation.workspaceVersion);
+        if (result.clearResourceState) {
+          this.removeResourceState(resourceType, resourceId);
+        } else {
+          this.upsertResolvedResourceState(resourceType, resourceId, result.mutation.resourceRevision);
+        }
+      } else if (result.clearResourceState) {
+        this.removePendingItem(resourceType, resourceId);
+        this.removeResourceState(resourceType, resourceId);
       }
     } catch (error) {
       const conflict = parseCloudSyncConflictError(error);
       if (conflict) {
+        if (resourceType === "proxy") {
+          this.discardResourceSyncState("proxy", resourceId);
+          return;
+        }
         this.saveConflictState(resourceType, resourceId, conflict);
         this.emitCurrentStatus();
         return;
       }
       throw error;
+    }
+  }
+
+  private isConnectionProfileInScope(profile: ConnectionProfile, workspaceName: string): boolean {
+    return isConnectionGroupPathInScope(profile.groupPath, workspaceName);
+  }
+
+  private shouldProcessConnectionDeletion(resourceId: string, workspaceName: string): boolean {
+    return this.shouldExposeConnectionState(resourceId, workspaceName);
+  }
+
+  private shouldExposeConnectionState(
+    resourceId: string,
+    workspaceName: string,
+    state = this.getResourceState("connection", resourceId)
+  ): boolean {
+    const local = this.options.listConnections().find((item) => item.id === resourceId);
+    if (local) {
+      return this.isConnectionProfileInScope(local, workspaceName);
+    }
+    if (state?.conflictRemotePayloadJson) {
+      try {
+        const payload = connectionPayloadSchema.parse(JSON.parse(state.conflictRemotePayloadJson));
+        return isConnectionGroupPathInScope(payload.groupPath, workspaceName);
+      } catch {
+        return false;
+      }
+    }
+    return this.hasTrackedRemoteConnection(resourceId);
+  }
+
+  private hasTrackedRemoteConnection(resourceId: string): boolean {
+    const state = this.getResourceState("connection", resourceId);
+    const pending = this.findPendingItem("connection", resourceId);
+    return (
+      typeof state?.serverRevision === "number" ||
+      typeof state?.conflictRemoteRevision === "number" ||
+      typeof pending?.baseRevision === "number"
+    );
+  }
+
+  private discardResourceSyncState(resourceType: CloudSyncResourceType, resourceId: string): void {
+    let changed = false;
+    if (this.pendingQueueState) {
+      const nextItems = this.pendingQueueState.items.filter((item) =>
+        !(item.resourceType === resourceType && item.resourceId === resourceId)
+      );
+      if (nextItems.length !== this.pendingQueueState.items.length) {
+        this.pendingQueueState.items = nextItems;
+        this.persistPendingQueueState();
+        changed = true;
+      }
+    }
+    if (this.getResourceState(resourceType, resourceId)) {
+      changed = true;
+    }
+    this.removeResourceState(resourceType, resourceId);
+    if (changed) {
+      this.emitCurrentStatus();
+    }
+  }
+
+  private pruneDeprecatedProxySyncState(): void {
+    let changed = false;
+    if (this.pendingQueueState) {
+      const nextItems = this.pendingQueueState.items.filter((item) => item.resourceType !== "proxy");
+      if (nextItems.length !== this.pendingQueueState.items.length) {
+        this.pendingQueueState.items = nextItems;
+        this.persistPendingQueueState();
+        changed = true;
+      }
+    }
+    for (const state of this.listResourceStates()) {
+      if (state.resourceType === "proxy") {
+        this.removeResourceState("proxy", state.resourceId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      this.emitCurrentStatus();
     }
   }
 
@@ -1185,7 +1290,7 @@ export class CloudSyncService {
       sshKeyId: payload.sshKeyId ?? undefined,
       hostFingerprint: payload.hostFingerprint ?? undefined,
       strictHostKeyChecking: payload.strictHostKeyChecking,
-      proxyId: payload.proxyId ?? undefined,
+      proxyId: undefined,
       keepAliveEnabled: payload.keepAliveEnabled ?? undefined,
       keepAliveIntervalSec: payload.keepAliveIntervalSec ?? undefined,
       groupPath: payload.groupPath,
@@ -1253,7 +1358,7 @@ export class CloudSyncService {
       sshKeyId: profile.sshKeyId ?? null,
       hostFingerprint: profile.hostFingerprint ?? null,
       strictHostKeyChecking: profile.strictHostKeyChecking,
-      proxyId: profile.proxyId ?? null,
+      proxyId: null,
       keepAliveEnabled: profile.keepAliveEnabled ?? null,
       keepAliveIntervalSec: profile.keepAliveIntervalSec ?? null,
       groupPath: profile.groupPath,
@@ -1401,7 +1506,16 @@ export class CloudSyncService {
   }
 
   private listConflictStates(): CloudSyncResourceSyncState[] {
-    return this.listResourceStates().filter((state) => typeof state.conflictRemoteRevision === "number");
+    const workspaceName = this.options.getPreferences().cloudSync.workspaceName;
+    return this.listResourceStates().filter((state) => {
+      if (typeof state.conflictRemoteRevision !== "number" || state.resourceType === "proxy") {
+        return false;
+      }
+      if (state.resourceType !== "connection") {
+        return true;
+      }
+      return this.shouldExposeConnectionState(state.resourceId, workspaceName, state);
+    });
   }
 
   private getResourceState(
@@ -1461,7 +1575,7 @@ export class CloudSyncService {
       case "sshKey":
         return this.options.listSshKeys().find((item) => item.id === resourceId)?.updatedAt ?? null;
       case "proxy":
-        return this.options.listProxies().find((item) => item.id === resourceId)?.updatedAt ?? null;
+        return null;
     }
   }
 
@@ -1496,17 +1610,6 @@ export class CloudSyncService {
         return state.resourceId;
       }
       case "proxy": {
-        const local = this.options.listProxies().find((item) => item.id === state.resourceId);
-        if (local) {
-          return local.name;
-        }
-        if (state.conflictRemotePayloadJson) {
-          try {
-            return proxyPayloadSchema.parse(JSON.parse(state.conflictRemotePayloadJson)).name;
-          } catch {
-            return state.resourceId;
-          }
-        }
         return state.resourceId;
       }
     }

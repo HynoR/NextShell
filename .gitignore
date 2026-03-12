@@ -28,3 +28,5 @@ CLAUDE.md
 AGENTS.md
 
 /memo/
+
+*.test.ts

@@ -1,4 +1,6 @@
-import { session as electronSession } from "electron";
+import { Buffer } from "node:buffer";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import type { AppPreferences, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type {
   CloudSyncConflictItem,
@@ -38,11 +40,8 @@ export interface CloudSyncBridgeOptions {
 
 export class CloudSyncBridge {
   private readonly cloudSyncService: CloudSyncService;
-  private readonly cloudSyncNetworkSession: Electron.Session;
 
   constructor(private readonly options: CloudSyncBridgeOptions) {
-    this.cloudSyncNetworkSession = electronSession.fromPartition("persist:nextshell-cloud-sync");
-
     const { connections } = options;
 
     this.cloudSyncService = new CloudSyncService({
@@ -120,17 +119,6 @@ export class CloudSyncBridge {
     this.cloudSyncService.dispose();
   }
 
-  private configureCloudSyncTlsVerification(apiBaseUrl: string, ignoreTlsErrors: boolean): void {
-    if (!ignoreTlsErrors) {
-      this.cloudSyncNetworkSession.setCertificateVerifyProc(null);
-      return;
-    }
-    void apiBaseUrl;
-    this.cloudSyncNetworkSession.setCertificateVerifyProc((_request, callback) => {
-      callback(0);
-    });
-  }
-
   private async cloudSyncRequestJson<T>(
     request: {
       apiBaseUrl: string;
@@ -142,24 +130,45 @@ export class CloudSyncBridge {
     },
     schema: { parse: (value: unknown) => T },
   ): Promise<T> {
-    this.configureCloudSyncTlsVerification(request.apiBaseUrl, request.ignoreTlsErrors);
+    const requestUrl = new URL(`${request.apiBaseUrl}${request.pathname}`);
+    const body = JSON.stringify(request.payload);
+    const isHttps = requestUrl.protocol === "https:";
+    const transport = isHttps ? httpsRequest : httpRequest;
 
-    const response = await this.cloudSyncNetworkSession.fetch(
-      `${request.apiBaseUrl}${request.pathname}`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Basic ${Buffer.from(`${request.workspaceName}:${request.workspacePassword}`, "utf8").toString("base64")}`,
-          "Content-Type": "application/json",
+    const { statusCode, bodyText } = await new Promise<{ statusCode: number; bodyText: string }>((resolve, reject) => {
+      const clientRequest = transport(
+        requestUrl,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Basic ${Buffer.from(`${request.workspaceName}:${request.workspacePassword}`, "utf8").toString("base64")}`,
+            "Content-Length": Buffer.byteLength(body),
+            "Content-Type": "application/json",
+          },
+          rejectUnauthorized: isHttps ? !request.ignoreTlsErrors : undefined,
         },
-        body: JSON.stringify(request.payload),
-      },
-    );
+        (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          response.on("end", () => {
+            resolve({
+              statusCode: response.statusCode ?? 0,
+              bodyText: Buffer.concat(chunks).toString("utf8"),
+            });
+          });
+        },
+      );
 
-    if (!response.ok) {
-      const bodyText = await response.text();
-      if (response.status === 409 && bodyText.trim()) {
+      clientRequest.on("error", reject);
+      clientRequest.write(body);
+      clientRequest.end();
+    });
+
+    if (statusCode < 200 || statusCode >= 300) {
+      if (statusCode === 409 && bodyText.trim()) {
         throw new Error(bodyText);
       }
       let message: string | undefined;
@@ -174,9 +183,9 @@ export class CloudSyncBridge {
         }
         message ??= bodyText.trim();
       }
-      throw new Error(message ?? `HTTP ${response.status}`);
+      throw new Error(message ?? `HTTP ${statusCode}`);
     }
 
-    return schema.parse(await response.json());
+    return schema.parse(JSON.parse(bodyText));
   }
 }

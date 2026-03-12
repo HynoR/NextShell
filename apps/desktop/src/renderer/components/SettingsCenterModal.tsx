@@ -105,6 +105,10 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const [cloudSyncPullIntervalSec, setCloudSyncPullIntervalSec] = useState(60);
   const [cloudSyncIgnoreTlsErrors, setCloudSyncIgnoreTlsErrors] = useState(false);
 
+  const buildCloudSyncScopeKey = useCallback((apiBaseUrl: string, workspaceName: string): string => {
+    return `${apiBaseUrl.trim()}::${workspaceName.trim()}`;
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     void initialize();
@@ -143,27 +147,18 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   }, [open, preferences]);
 
   const syncCloudSyncFormFromStatus = useCallback((status: CloudSyncStatusView) => {
+    const nextScopeKey = buildCloudSyncScopeKey(status.apiBaseUrl, status.workspaceName);
+    const currentScopeKey = buildCloudSyncScopeKey(cloudSyncApiBaseUrl, cloudSyncWorkspaceName);
     setCloudSyncApiBaseUrl(status.apiBaseUrl);
     setCloudSyncWorkspaceName(status.workspaceName);
-    setCloudSyncWorkspacePassword("");
+    if (nextScopeKey !== currentScopeKey) {
+      setCloudSyncWorkspacePassword("");
+    }
     setCloudSyncPullIntervalSec(
       status.pullIntervalSec > 0 ? Math.round(status.pullIntervalSec) : DEFAULT_CLOUD_SYNC_STATUS.pullIntervalSec
     );
     setCloudSyncIgnoreTlsErrors(status.ignoreTlsErrors);
-  }, []);
-
-  const syncCloudSyncFormFromPreferences = useCallback(() => {
-    const savedCloudSync = preferences.cloudSync;
-    setCloudSyncApiBaseUrl(savedCloudSync.apiBaseUrl);
-    setCloudSyncWorkspaceName(savedCloudSync.workspaceName);
-    setCloudSyncWorkspacePassword("");
-    setCloudSyncPullIntervalSec(
-      savedCloudSync.pullIntervalSec > 0
-        ? Math.round(savedCloudSync.pullIntervalSec)
-        : DEFAULT_CLOUD_SYNC_STATUS.pullIntervalSec
-    );
-    setCloudSyncIgnoreTlsErrors(savedCloudSync.ignoreTlsErrors);
-  }, [preferences.cloudSync]);
+  }, [buildCloudSyncScopeKey, cloudSyncApiBaseUrl, cloudSyncWorkspaceName]);
 
   const refreshCloudSyncStatus = useCallback(
     async (options?: { syncForm?: boolean; silent?: boolean }) => {
@@ -258,12 +253,11 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
   useEffect(() => {
     if (!open) return;
-    syncCloudSyncFormFromPreferences();
     void Promise.all([
       refreshCloudSyncStatus({ syncForm: true, silent: true }),
       refreshCloudSyncConflicts({ silent: true })
     ]);
-  }, [open, refreshCloudSyncConflicts, refreshCloudSyncStatus, syncCloudSyncFormFromPreferences]);
+  }, [open, refreshCloudSyncConflicts, refreshCloudSyncStatus]);
 
   useEffect(() => {
     if (!open) {
@@ -511,21 +505,25 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
     setCloudSyncBusyAction("configure");
     try {
-      await cloudSync.configure({
-        apiBaseUrl,
-        workspaceName,
-        workspacePassword,
-        pullIntervalSec,
-        ignoreTlsErrors
-      });
+      const configuredStatus = normalizeCloudSyncStatus(
+        await cloudSync.configure({
+          apiBaseUrl,
+          workspaceName,
+          workspacePassword,
+          pullIntervalSec,
+          ignoreTlsErrors
+        }),
+        cloudSyncStatus
+      );
+      setCloudSyncStatus(configuredStatus);
+      syncCloudSyncFormFromStatus(configuredStatus);
       setCloudSyncApiBaseUrl(apiBaseUrl);
       setCloudSyncWorkspaceName(workspaceName);
       setCloudSyncPullIntervalSec(pullIntervalSec);
       setCloudSyncIgnoreTlsErrors(ignoreTlsErrors);
       message.success("云同步已启用。");
-      setCloudSyncWorkspacePassword("");
       await Promise.all([
-        refreshCloudSyncStatus({ syncForm: true, silent: true }),
+        refreshCloudSyncStatus({ silent: true }),
         refreshCloudSyncConflicts({ silent: true })
       ]);
     } catch (error) {
@@ -535,13 +533,15 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     }
   }, [
     cloudSyncApiBaseUrl,
+    cloudSyncStatus,
     cloudSyncIgnoreTlsErrors,
     cloudSyncPullIntervalSec,
     cloudSyncWorkspaceName,
     cloudSyncWorkspacePassword,
     message,
     refreshCloudSyncConflicts,
-    refreshCloudSyncStatus
+    refreshCloudSyncStatus,
+    syncCloudSyncFormFromStatus
   ]);
 
   const handleDisableCloudSync = useCallback(async (): Promise<void> => {
