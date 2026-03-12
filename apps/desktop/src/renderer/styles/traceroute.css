@@ -1,0 +1,33 @@
+/* Traceroute Pane — .traceroute-* */
+/* ─── Traceroute Pane ─────────────────────────────────────────────── */
+
+.traceroute-output {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #f8f8f2;
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--border);
+}
+
+.traceroute-placeholder {
+  color: rgba(248, 248, 242, 0.35);
+}
+
+.traceroute-line {
+  display: contents;
+}
+
+:root[data-theme="light"] .traceroute-output {
+  background: #1a1a2e;
+  color: #f8f8f2;
+  border-color: rgba(255, 255, 255, 0.08);
+}

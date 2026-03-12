@@ -1,0 +1,78 @@
+/* Design Tokens — CSS custom properties for dark and light themes */
+/* ── Design Tokens ───────────────────────────────────────── */
+:root {
+  --bg-base-solid:      #0d1117;
+  --bg-surface-solid:   #161c27;
+  --bg-elevated-solid:  #1d2435;
+  --bg-hover-solid:     #232d40;
+  --bg-active-solid:    #2a3548;
+
+  --bg-base:      var(--bg-base-solid);
+  --bg-surface:   var(--bg-surface-solid);
+  --bg-elevated:  var(--bg-elevated-solid);
+  --bg-hover:     var(--bg-hover-solid);
+  --bg-active:    var(--bg-active-solid);
+
+  --border-dim:   rgba(255, 255, 255, 0.05);
+  --border:       rgba(255, 255, 255, 0.09);
+  --border-mid:   rgba(255, 255, 255, 0.15);
+
+  --accent:       #4d9fff;
+  --accent-dim:   rgba(77, 159, 255, 0.14);
+  --accent-glow:  rgba(77, 159, 255, 0.08);
+
+  --ok:    #3dd68c;
+  --warn:  #f59e0b;
+  --err:   #f87171;
+
+  --t1: #dde4f0;
+  --t2: #8893a6;
+  --t3: #4a5568;
+
+  --mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, monospace;
+  --sans: "Inter", "PingFang SC", "SF Pro Text", system-ui, sans-serif;
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  --app-background-opacity: 60;
+  /* Keep in sync with apps/desktop/src/main/window-theme.ts via src/shared/window-ui.ts. */
+  --window-titlebar-safe-top: 44px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base-solid:      #eef2f8;
+  --bg-surface-solid:   #f7f9fc;
+  --bg-elevated-solid:  #ffffff;
+  --bg-hover-solid:     #f0f4fa;
+  --bg-active-solid:    #e8eef8;
+
+  --bg-base:      var(--bg-base-solid);
+  --bg-surface:   var(--bg-surface-solid);
+  --bg-elevated:  var(--bg-elevated-solid);
+  --bg-hover:     var(--bg-hover-solid);
+  --bg-active:    var(--bg-active-solid);
+
+  --border-dim:   rgba(14, 31, 53, 0.05);
+  --border:       rgba(14, 31, 53, 0.14);
+  --border-mid:   rgba(14, 31, 53, 0.2);
+
+  --accent:       #1768d6;
+  --accent-dim:   rgba(23, 104, 214, 0.14);
+  --accent-glow:  rgba(23, 104, 214, 0.08);
+
+  --ok:    #0f9d69;
+  --warn:  #d97706;
+  --err:   #dc2626;
+
+  --t1: #122033;
+  --t2: #4d5b73;
+  --t3: #7f8ca3;
+}

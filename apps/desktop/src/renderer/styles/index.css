@@ -1,0 +1,32 @@
+/* styles/index.css — Entry point. Import order matters: tokens and reset first, theme-light last. */
+
+@import "tailwindcss";
+
+@import "./tokens.css";
+@import "./reset.css";
+@import "./titlebar.css";
+@import "./quick-connect.css";
+@import "./sidebar.css";
+@import "./layout.css";
+@import "./monitor.css";
+@import "./connection-tree.css";
+@import "./terminal.css";
+@import "./session-tabs.css";
+@import "./command-input.css";
+@import "./bottom-workbench.css";
+@import "./file-explorer.css";
+@import "./quick-transfer.css";
+@import "./command-center.css";
+@import "./connection-manager.css";
+@import "./process-table.css";
+@import "./settings.css";
+@import "./transfer-queue.css";
+@import "./process-manager.css";
+@import "./network-monitor.css";
+@import "./live-edit.css";
+@import "./about.css";
+@import "./disk-monitor.css";
+@import "./tables.css";
+@import "./editor.css";
+@import "./theme-light.css";
+@import "./traceroute.css";

@@ -1,0 +1,38 @@
+/* Titlebar — .shell-header, .titlebar-*, .brand-*, .header-* */
+/* ── Titlebar ────────────────────────────────────────────── */
+.shell-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--window-titlebar-safe-top);
+  padding: 0 14px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+/* macOS: leave room for traffic-light buttons on the left */
+[data-platform="darwin"] .shell-header {
+  padding-left: 80px;
+}
+
+/* Windows: leave room for titleBarOverlay min/max/close on the right */
+[data-platform="win32"] .shell-header {
+  padding-right: 142px;
+}
+
+/* Windows: keep native titlebar controls clickable when any portal Drawer is open. */
+[data-platform="win32"] .ant-drawer:not(.ant-drawer-inline) {
+  top: var(--window-titlebar-safe-top);
+  height: calc(100% - var(--window-titlebar-safe-top));
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  flex: 1;
+}

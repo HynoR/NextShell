@@ -1,0 +1,190 @@
+/* Session Tabs — .session-tab*, .status-pill, .tab-*, .tab-type-icon */
+/* ── Session tabs ────────────────────────────────────────── */
+.session-tabs {
+  display: flex;
+  align-items: stretch;
+  background: #0d1822;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0 8px;
+  min-height: 36px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.app-shell--with-wallpaper .session-tabs {
+  background: color-mix(in srgb, #0d1822 calc(var(--app-background-opacity, 60) * 1%), transparent);
+}
+
+.session-tabs::-webkit-scrollbar { display: none; }
+
+.session-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 9px;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  background: transparent;
+  color: #576070;
+  font-size: 12px;
+  font-family: var(--sans);
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: color 0.12s, background 0.12s;
+  border-top: 2px solid transparent;
+  margin-top: 2px;
+  user-select: none;
+}
+
+.session-tab:hover {
+  color: #9ba8be;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.session-tab.active {
+  color: #dde4f0;
+  background: rgba(77, 159, 255, 0.06);
+  border-top-color: var(--accent);
+}
+
+.session-tab.dragging { opacity: 0.4; }
+
+.status-pill {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #3d4f63;
+}
+
+.status-pill.connected   { background: var(--ok); box-shadow: 0 0 5px rgba(61, 214, 140, 0.5); }
+.status-pill.connecting  { background: var(--warn); }
+.status-pill.failed      { background: var(--err); }
+.status-pill.disconnected { background: #3d4f63; }
+
+.session-title {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tab-action i {
+  line-height: 1;
+}
+
+.tab-reconnect {
+  color: var(--warn);
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.tab-reconnect i {
+  font-size: 11px;
+}
+
+.tab-reconnect:hover { background: rgba(245, 158, 11, 0.2); }
+
+.tab-drag {
+  color: #2d3d50;
+  cursor: grab;
+  font-size: 10px;
+  letter-spacing: -1px;
+  padding: 0 2px;
+}
+
+.tab-drag i {
+  font-size: 12px;
+}
+
+.tab-close {
+  color: #3d4f63;
+  font-size: 15px;
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.tab-close i {
+  font-size: 14px;
+}
+
+.tab-close:hover {
+  color: var(--err);
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.session-tab-menu {
+  position: fixed;
+  z-index: 10010;
+  min-width: 188px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+
+.session-tab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: 12.5px;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.08s, color 0.08s;
+}
+
+.session-tab-menu-item:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.session-tab-menu-icon {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.session-tab-menu-hint {
+  margin: 4px 6px 2px;
+  color: var(--t3);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Session Tab Type Icon ───────────────────────────────── */
+.tab-type-icon {
+  font-size: 12px;
+  margin-right: 4px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.session-tab.active .tab-type-icon { opacity: 1; }
+
+/* (legacy tree-monitor styles removed, now uses .ct-monitor-* classes) */
+

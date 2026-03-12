@@ -1,0 +1,52 @@
+/* Layout — .panel-resize-handle, resize handles, responsive @media */
+/* ── Main layout ─────────────────────────────────────────── */
+
+.panel-resize-handle {
+  position: relative;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.12s ease;
+}
+
+.panel-resize-handle.horizontal {
+  width: 6px;
+  cursor: col-resize;
+}
+
+.panel-resize-handle.vertical {
+  height: 6px;
+  cursor: row-resize;
+}
+
+.panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 3px;
+  background: transparent;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:focus-visible,
+.panel-resize-handle[data-active="true"],
+.panel-resize-handle[data-resizing="true"],
+.panel-resize-handle[data-resize-handle-state="hover"],
+.panel-resize-handle[data-resize-handle-state="drag"] {
+  background: rgba(77, 159, 255, 0.22);
+}
+
+/* ── Workspace ───────────────────────────────────────────── */
+
+/* ── Section label ───────────────────────────────────────── */
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .manager-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .file-pathbar {
+    grid-template-columns: 1fr;
+  }
+}
+

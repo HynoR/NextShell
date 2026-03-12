@@ -7,7 +7,7 @@ import "remixicon/fonts/remixicon.css";
 import type { WindowAppearance } from "@nextshell/core";
 import { App } from "./App";
 import { usePreferencesStore } from "./store/usePreferencesStore";
-import "./styles.css";
+import "./styles/index.css";
 
 // Expose current OS platform as a CSS data attribute so layout can adapt
 // without JS conditionals (e.g. macOS traffic-lights vs Windows overlay)

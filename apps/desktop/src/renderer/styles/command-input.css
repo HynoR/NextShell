@@ -1,0 +1,384 @@
+/* Command Input Bar + History Panel — .cib-* */
+/* ── Command Input Bar ───────────────────────────────────── */
+.cib-root {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.cib-bar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  height: 36px;
+  background: #0a1420;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0 4px 0 0;
+}
+
+.cib-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: auto;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #3f5570;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.cib-history-toggle:hover {
+  color: var(--accent);
+  background: rgba(77, 159, 255, 0.06);
+}
+
+.cib-history-toggle.active {
+  color: var(--accent);
+  background: rgba(77, 159, 255, 0.1);
+}
+
+.cib-badge {
+  font-size: 9px;
+  font-weight: 600;
+  font-family: var(--mono);
+  background: rgba(77, 159, 255, 0.15);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 1px 5px;
+  line-height: 1.3;
+}
+
+.cib-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+}
+
+.cib-prompt {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ok);
+  padding: 0 6px 0 10px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.cib-prompt.search {
+  color: var(--accent);
+}
+
+.cib-input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: #d8eaff;
+  font-size: 13px;
+  font-family: var(--mono);
+  outline: none;
+  padding: 0 8px 0 0;
+  min-width: 0;
+}
+
+.cib-input::placeholder {
+  color: #2a3d55;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.cib-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cib-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: 1px solid rgba(77, 159, 255, 0.3);
+  border-radius: var(--r-sm);
+  background: rgba(77, 159, 255, 0.12);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.cib-send-btn:hover:not(.disabled) {
+  background: rgba(77, 159, 255, 0.22);
+  border-color: var(--accent);
+}
+
+.cib-send-btn.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.cib-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: 1px solid rgba(77, 159, 255, 0.2);
+  border-radius: var(--r-sm);
+  background: rgba(77, 159, 255, 0.08);
+  color: #5d7088;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.cib-search-btn:hover:not(.disabled),
+.cib-search-btn.active {
+  color: #8ec8ff;
+  border-color: rgba(77, 159, 255, 0.45);
+  background: rgba(77, 159, 255, 0.15);
+}
+
+.cib-search-btn.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── History panel (popup above input) ── */
+.cib-panel {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  background: #111b28;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: cib-slide-up 0.12s ease-out;
+}
+
+@keyframes cib-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.cib-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.cib-panel-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cib-panel-mode {
+  font-size: 11px;
+  color: var(--t2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s, opacity 0.12s;
+}
+
+.cib-panel-mode:hover:not(:disabled),
+.cib-panel-mode.active {
+  color: var(--accent);
+  border-color: rgba(77, 159, 255, 0.32);
+  background: rgba(77, 159, 255, 0.12);
+}
+
+.cib-panel-mode:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cib-empty-tip {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.cib-search-panel {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cib-search-tip {
+  font-size: 12px;
+  color: var(--t2);
+  line-height: 1.45;
+}
+
+.cib-search-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cib-search-action-btn {
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--t2);
+  font-size: 11px;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s, opacity 0.12s;
+}
+
+.cib-search-action-btn:hover:not(:disabled) {
+  color: #d8eaff;
+  border-color: rgba(77, 159, 255, 0.32);
+  background: rgba(77, 159, 255, 0.1);
+}
+
+.cib-search-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cib-panel-count {
+  font-size: 10px;
+  font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--t2);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+
+.cib-clear-btn {
+  font-size: 11px;
+  color: var(--t3);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.cib-clear-btn:hover {
+  color: var(--err);
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.cib-panel-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.cib-panel-list::-webkit-scrollbar { width: 4px; }
+.cib-panel-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
+.cib-panel-list::-webkit-scrollbar-track { background: transparent; }
+
+.cib-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.08s;
+  gap: 8px;
+}
+
+.cib-history-item:hover,
+.cib-history-item.highlight {
+  background: rgba(77, 159, 255, 0.08);
+}
+
+.cib-history-item.highlight {
+  background: rgba(77, 159, 255, 0.12);
+}
+
+.cib-cmd-text {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cib-history-item.highlight .cib-cmd-text {
+  color: var(--accent);
+}
+
+.cib-cmd-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cib-cmd-count {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--t3);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.cib-cmd-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #3d4f63;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  line-height: 1;
+  padding: 0;
+}
+
+.cib-cmd-remove:hover {
+  color: var(--err);
+  background: rgba(248, 113, 113, 0.15);
+}
+

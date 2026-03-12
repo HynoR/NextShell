@@ -1,0 +1,82 @@
+/* Bottom Workbench — .bottom-workbench, .bottom-collapse-btn, Ant Tabs overrides */
+/* ── Bottom workbench ────────────────────────────────────── */
+.bottom-workbench {
+  height: 100%;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Antd Tabs overrides for dark */
+.bottom-workbench .ant-tabs {
+  height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.bottom-workbench .ant-tabs-content-holder {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bottom-workbench .ant-tabs-content {
+  height: 100%;
+}
+
+.bottom-workbench .ant-tabs-tabpane {
+  height: 100%;
+  overflow: hidden;
+}
+
+.bottom-workbench .ant-tabs-nav {
+  margin: 0;
+  padding: 0 12px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.bottom-workbench .ant-tabs-tab {
+  font-size: 12px;
+  padding: 8px 0;
+  transition: color 0.15s;
+}
+
+.bottom-workbench .ant-tabs-tab:hover {
+  color: var(--t1) !important;
+}
+
+.bottom-workbench .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 20px;
+}
+
+.bottom-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--t3);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  margin-right: 2px;
+}
+
+.bottom-collapse-btn i {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.bottom-collapse-btn:hover {
+  color: #8ec8ff;
+  border-color: rgba(77, 159, 255, 0.35);
+  background: rgba(77, 159, 255, 0.12);
+}
+

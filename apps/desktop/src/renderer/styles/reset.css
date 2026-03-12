@@ -1,0 +1,49 @@
+/* Reset — body, #root, .app-shell, wallpaper layer */
+/* ── Reset ───────────────────────────────────────────────── */
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--bg-base);
+  color: var(--t1);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-base);
+}
+
+.app-shell-content {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.app-wallpaper-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: calc(var(--app-background-opacity, 60) / 100);
+  pointer-events: none;
+}
+
+.app-shell--with-wallpaper {
+  --bg-base: color-mix(in srgb, var(--bg-base-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-surface: color-mix(in srgb, var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-elevated: color-mix(in srgb, var(--bg-elevated-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-hover: color-mix(in srgb, var(--bg-hover-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-active: color-mix(in srgb, var(--bg-active-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+}

@@ -1,0 +1,6 @@
+/* Process Table legacy — .process-table */
+/* ── Process table ───────────────────────────────────────── */
+.process-table .ant-table-cell {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+}

@@ -1,0 +1,134 @@
+/* Network Monitor Pane — .nm-*, .port-*, .conn-state* */
+/* ── Network Monitor Pane ────────────────────────────────── */
+.nm-search {
+  max-width: 240px;
+}
+
+.nm-table .ant-table,
+.nm-table .ant-table-container,
+.nm-table .ant-table-body {
+  background: transparent !important;
+  font-size: 12px;
+}
+
+.nm-table .ant-table-thead > tr > th {
+  background: var(--bg-elevated) !important;
+  color: var(--t2);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.nm-table .ant-table-tbody > tr > td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--t1);
+  background: var(--bg-base) !important;
+}
+
+.nm-table .ant-table-tbody > tr:hover > td {
+  background: var(--bg-hover) !important;
+}
+
+.nm-table .ant-table-tbody > tr.nm-row-selected > td {
+  background: var(--bg-active) !important;
+}
+
+.nm-table .ant-table-row {
+  cursor: pointer;
+}
+
+.port-cell {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.conn-state {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-elevated);
+  font-family: var(--mono);
+}
+
+.conn-state-established {
+  color: var(--ok);
+}
+
+.conn-state-time_wait,
+.conn-state-time-wait {
+  color: var(--warn);
+}
+
+.conn-state-close_wait,
+.conn-state-close-wait {
+  color: var(--err);
+}
+
+.nm-port-tabs .ant-tabs-tab {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.nm-detail-placeholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--t3);
+  font-size: 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+  background: rgba(77, 159, 255, 0.04);
+}
+
+.nm-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-dim);
+  background: var(--bg-elevated);
+}
+
+.nm-detail-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nm-detail-label {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.nm-detail-value {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.nm-detail-sub {
+  font-size: 11px;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nm-detail-error {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+  color: #ff9f9f;
+  font-size: 12px;
+}
+

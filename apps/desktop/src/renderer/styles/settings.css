@@ -1,0 +1,284 @@
+/* Settings Center — .stg-*, .settings-*, .cloud-sync-* */
+/* ── Settings Center ────────────────────────────────────── */
+.settings-color-input {
+  width: 44px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.settings-switch-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Settings Center – layout */
+.stg-layout {
+  display: flex;
+  height: 540px;
+  overflow: hidden;
+}
+
+/* Settings Center – sidebar */
+.stg-sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.stg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--t2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-align: left;
+}
+.stg-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+.stg-nav-item--active {
+  background: var(--accent-bg, rgba(22, 119, 255, 0.08));
+  color: var(--accent);
+  font-weight: 500;
+}
+.stg-nav-item i {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+}
+
+/* Settings Center – content area */
+.stg-content {
+  flex: 1;
+  min-width: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Settings Center – card */
+.stg-card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.stg-card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.stg-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t1);
+}
+.stg-card-desc {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+.stg-card-body {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Settings Center – row */
+.stg-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stg-row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stg-row-label > span:first-child {
+  font-size: 12px;
+  color: var(--t1);
+  font-weight: 500;
+}
+.stg-row-hint {
+  font-size: 11px;
+  color: var(--t3);
+}
+.stg-row-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Settings Center – switch row */
+.stg-switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 32px;
+}
+.stg-switch-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stg-switch-label > span:first-child {
+  font-size: 12px;
+  color: var(--t1);
+}
+
+/* Settings Center – note */
+.stg-note {
+  font-size: 11px;
+  color: var(--t3);
+  line-height: 1.5;
+}
+
+/* Settings Center – cloud sync */
+.cloud-sync-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cloud-sync-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(240px, 1fr);
+  gap: 14px 16px;
+}
+
+.cloud-sync-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-surface);
+}
+
+.cloud-sync-field--wide {
+  grid-column: 1 / -1;
+}
+
+.cloud-sync-field--toggle {
+  justify-content: center;
+}
+
+.cloud-sync-field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t1);
+}
+
+.cloud-sync-field-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--t3);
+}
+
+.cloud-sync-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cloud-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.cloud-sync-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cloud-sync-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-surface);
+}
+
+.cloud-sync-status-label {
+  font-size: 11px;
+  color: var(--t3);
+}
+
+.cloud-sync-status-value {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--t1);
+}
+
+.cloud-sync-status-value .ant-typography {
+  color: inherit;
+}
+
+.cloud-sync-status-value--metric {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.cloud-sync-status-feedback {
+  margin-top: 4px;
+}
+
+@media (max-width: 980px) {
+  .cloud-sync-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .cloud-sync-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cloud-sync-field--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .cloud-sync-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cloud-sync-toggle-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+

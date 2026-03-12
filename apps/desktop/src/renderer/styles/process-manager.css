@@ -1,0 +1,76 @@
+/* Process Manager Pane — .pm-*, .cpu-* */
+/* ── Process Manager Pane ────────────────────────────────── */
+.pm-search {
+  max-width: 280px;
+}
+
+.pm-sort-select .ant-select-selector {
+  font-size: 12px !important;
+}
+
+.pm-table .ant-table,
+.pm-table .ant-table-container,
+.pm-table .ant-table-body {
+  background: transparent !important;
+  font-size: 12px;
+}
+
+.pm-table .ant-table-thead > tr > th {
+  background: var(--bg-elevated) !important;
+  color: var(--t2);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.pm-table .ant-table-tbody > tr > td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--t1);
+  background: var(--bg-base) !important;
+}
+
+.pm-table .ant-table-tbody > tr:hover > td {
+  background: var(--bg-hover) !important;
+}
+
+.cpu-hot {
+  color: var(--err);
+  font-weight: 600;
+}
+
+.cpu-warm {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+.pm-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--t2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.pm-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.pm-action-btn.danger:hover {
+  color: var(--err);
+}
+
+.pm-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+

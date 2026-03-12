@@ -1,0 +1,173 @@
+/* Disk Monitor Pane — .disk-*, .system-static-* */
+/* ── Disk Monitor Pane ─────────────────────────────────────────── */
+
+.disk-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 10px 12px;
+  gap: 8px;
+}
+
+.disk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.disk-refresh-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--t2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.disk-refresh-btn:hover:not(:disabled) {
+  color: var(--t1);
+  border-color: var(--border-mid);
+  background: var(--bg-hover);
+}
+
+.disk-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.disk-refresh-spin {
+  animation: disk-spin 1s linear infinite;
+}
+
+@keyframes disk-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.disk-summary {
+  font-size: 11px;
+  color: var(--t3);
+  font-family: var(--mono);
+}
+
+.disk-summary + .disk-summary {
+  margin-left: auto;
+}
+
+.disk-error {
+  color: var(--err);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--err) 22%, transparent);
+  border-radius: 6px;
+}
+
+.disk-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.system-static-card {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.system-static-group-switch {
+  display: flex;
+  gap: 8px;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-surface);
+}
+
+.system-static-group-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--t2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.system-static-group-btn:hover {
+  color: var(--t1);
+  border-color: var(--border-mid);
+  background: var(--bg-hover);
+}
+
+.system-static-group-btn.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+}
+
+.system-static-group-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.system-static-basic-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.system-static-basic-grid > div {
+  flex: 1 1 calc(50% - 10px);
+  min-width: 240px;
+}
+
+.system-static-empty {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.system-static-section {
+  min-height: 0;
+}
+
+.disk-table .ant-table,
+.disk-table .ant-table-container,
+.disk-table .ant-table-body {
+  background: transparent !important;
+}
+
+.disk-table .ant-table-thead > tr > th {
+  background: var(--bg-elevated) !important;
+  color: var(--t2);
+  font-size: 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.disk-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--t1);
+  background: var(--bg-base) !important;
+}
+
+.disk-table .ant-table-tbody > tr:hover > td {
+  background: var(--bg-hover) !important;
+}
+
