@@ -66,14 +66,6 @@ import type { ProcessMonitorController } from "./monitor/process-monitor-control
 import type { NetworkMonitorController } from "./monitor/network-monitor-controller";
 import type { SshConnection } from "../../../../../packages/ssh/src/index";
 
-// ─── Bootstrap suppression (remote session output gating) ─────────────────
-export interface BootstrapSuppression {
-  startMarker: string;
-  endMarker: string;
-  buffer: string;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
 // ─── Active session types ──────────────────────────────────────────────────
 export interface ActiveRemoteSession {
   kind: "remote";
@@ -84,7 +76,6 @@ export interface ActiveRemoteSession {
   terminalEncoding: TerminalEncoding;
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
-  bootstrapSuppression?: BootstrapSuppression;
 }
 
 export interface ActiveLocalSession {

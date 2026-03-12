@@ -28,5 +28,5 @@ CLAUDE.md
 AGENTS.md
 
 /memo/
-
 *.test.ts
+!apps/desktop/src/main/services/terminal-osc7-bootstrap.test.ts

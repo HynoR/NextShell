@@ -121,12 +121,15 @@ export class SessionService {
 
     try {
       const connection = await this.ensureConnection(connectionId, authOverride);
+      let shellPath: string | undefined;
       let osc7ShellFamily: ReturnType<typeof resolveOsc7ShellFamily> = undefined;
       if (profile.monitorSession) {
         try {
           const shellProbe = await connection.exec('printf \'%s\' "${SHELL:-}"');
-          osc7ShellFamily = resolveOsc7ShellFamily(shellProbe.stdout);
+          shellPath = shellProbe.stdout.trim() || undefined;
+          osc7ShellFamily = resolveOsc7ShellFamily(shellPath);
         } catch {
+          shellPath = undefined;
           osc7ShellFamily = undefined;
         }
       }
@@ -134,13 +137,19 @@ export class SessionService {
         Boolean(profile.monitorSession),
         profile.host,
         osc7ShellFamily,
+        shellPath,
       );
-      const shell = await connection.openShell({
-        cols: 140,
-        rows: 40,
-        term: "xterm-256color",
-        env: osc7Bootstrap.enabled ? osc7Bootstrap.env : undefined,
-      });
+      const shell = osc7Bootstrap.enabled && osc7Bootstrap.launchCommand
+        ? await connection.openExecChannel(osc7Bootstrap.launchCommand, {
+            cols: 140,
+            rows: 40,
+            term: "xterm-256color",
+          })
+        : await connection.openShell({
+            cols: 140,
+            rows: 40,
+            term: "xterm-256color",
+          });
 
       const now = new Date().toISOString();
       this.connections.save({
@@ -168,40 +177,10 @@ export class SessionService {
           return;
         }
 
-        const decoded = decodeTerminalData(chunk, active.terminalEncoding);
-
-        if (active.kind === "remote" && active.bootstrapSuppression) {
-          const suppression = active.bootstrapSuppression;
-          suppression.buffer += decoded;
-
-          const endIdx = suppression.buffer.indexOf(suppression.endMarker);
-          if (endIdx < 0) {
-            return; // continue buffering
-          }
-
-          clearTimeout(suppression.timeout);
-          const startIdx = suppression.buffer.indexOf(suppression.startMarker);
-          const before = startIdx >= 0 ? suppression.buffer.slice(0, startIdx) : "";
-          const after = suppression.buffer.slice(endIdx + suppression.endMarker.length);
-          active.bootstrapSuppression = undefined;
-
-          const remaining = before + after;
-          if (remaining) {
-            this.sessionDataDispatcher.push({
-              streamId: descriptor.id,
-              sender: active.sender,
-              chunk: remaining,
-              onPause: () => shell.pause(),
-              onResume: () => shell.resume(),
-            });
-          }
-          return;
-        }
-
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decoded,
+          chunk: decodeTerminalData(chunk, active.terminalEncoding),
           onPause: () => shell.pause(),
           onResume: () => shell.resume(),
         });
@@ -232,33 +211,6 @@ export class SessionService {
         shell.stderr.removeAllListeners();
         this.finalizeRemoteSession(descriptor.id, "failed", normalizeError(error));
       });
-
-      if (osc7Bootstrap.enabled && osc7Bootstrap.shellBootstrap) {
-        const active = this.activeSessions.get(descriptor.id);
-        if (active?.kind === "remote" && osc7Bootstrap.startMarker && osc7Bootstrap.endMarker) {
-          active.bootstrapSuppression = {
-            startMarker: osc7Bootstrap.startMarker,
-            endMarker: osc7Bootstrap.endMarker,
-            buffer: "",
-            timeout: setTimeout(() => {
-              if (active.bootstrapSuppression) {
-                const buffered = active.bootstrapSuppression.buffer;
-                active.bootstrapSuppression = undefined;
-                if (buffered) {
-                  this.sessionDataDispatcher.push({
-                    streamId: descriptor.id,
-                    sender: active.sender,
-                    chunk: buffered,
-                    onPause: () => shell.pause(),
-                    onResume: () => shell.resume(),
-                  });
-                }
-              }
-            }, 3000),
-          };
-        }
-        shell.write(`${osc7Bootstrap.shellBootstrap}\r`);
-      }
 
       let connectedReason = await this.warmupSftp(connectionId, connection);
       if (authOverride) {
@@ -578,11 +530,6 @@ export class SessionService {
     const active = this.activeSessions.get(sessionId);
     if (!active) {
       return;
-    }
-
-    if (active.kind === "remote" && active.bootstrapSuppression) {
-      clearTimeout(active.bootstrapSuppression.timeout);
-      active.bootstrapSuppression = undefined;
     }
 
     active.descriptor.status = status;

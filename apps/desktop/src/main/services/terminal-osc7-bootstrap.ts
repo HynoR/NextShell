@@ -1,45 +1,70 @@
 export interface RemoteOsc7BootstrapPlan {
   enabled: boolean;
-  env: Record<string, string>;
-  shellBootstrap?: string;
-  startMarker?: string;
-  endMarker?: string;
+  launchCommand?: string;
 }
-
-// OSC 133 sequences — terminals don't render these, reliable for sentinel detection
-export const OSC7_BS_START = "\x1b]133;NS_BS_S\x07";
-export const OSC7_BS_END = "\x1b]133;NS_BS_E\x07";
 
 export type Osc7ShellFamily = "bash" | "zsh";
 
-const OSC7_BASH_BOOTSTRAP = [
-  "__nextshell_osc7_emit() { printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST:-localhost}\" \"$PWD\"; };",
+const quotePosix = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+
+const BASH_INIT_FILE = [
+  "[ -f ~/.bashrc ] && . ~/.bashrc",
+  "__nextshell_osc7_emit() {",
+  "  printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST}\" \"$PWD\"",
+  "}",
   "case \";${PROMPT_COMMAND:-};\" in",
-  "*\";__nextshell_osc7_emit;\"*) ;;",
-  "*) PROMPT_COMMAND=\"__nextshell_osc7_emit${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;",
-  "esac;",
+  "  *\";__nextshell_osc7_emit;\"*) ;;",
+  "  *) PROMPT_COMMAND=\"__nextshell_osc7_emit${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;",
+  "esac",
+  "__nextshell_osc7_cleanup() {",
+  "  [ -n \"${NEXTSHELL_OSC7_RCFILE:-}\" ] && rm -f -- \"$NEXTSHELL_OSC7_RCFILE\"",
+  "}",
+  "trap __nextshell_osc7_cleanup EXIT",
   "__nextshell_osc7_emit"
-].join(" ");
+].join("\n");
 
-const OSC7_ZSH_BOOTSTRAP = [
-  "emulate -L zsh;",
-  "autoload -Uz add-zsh-hook >/dev/null 2>&1 || true;",
+const ZSH_ENV_FILE = ["[ -f ~/.zshenv ] && . ~/.zshenv"].join("\n");
+
+const ZSH_RC_FILE = [
+  "[ -f ~/.zshrc ] && . ~/.zshrc",
+  "autoload -Uz add-zsh-hook >/dev/null 2>&1 || true",
   "if ! typeset -f __nextshell_osc7_emit >/dev/null 2>&1; then",
-  "__nextshell_osc7_emit() { printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST:-localhost}\" \"$PWD\"; };",
-  "fi;",
-  "if [ -z \"${NEXTSHELL_OSC7_INSTALLED-}\" ]; then",
-  "typeset -g NEXTSHELL_OSC7_INSTALLED=1;",
-  "add-zsh-hook precmd __nextshell_osc7_emit >/dev/null 2>&1 || true;",
-  "add-zsh-hook chpwd __nextshell_osc7_emit >/dev/null 2>&1 || true;",
-  "fi;",
+  "  __nextshell_osc7_emit() {",
+  "    printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST}\" \"$PWD\"",
+  "  }",
+  "fi",
+  "if [[ -z \"${NEXTSHELL_OSC7_INSTALLED:-}\" ]]; then",
+  "  typeset -g NEXTSHELL_OSC7_INSTALLED=1",
+  "  add-zsh-hook precmd __nextshell_osc7_emit >/dev/null 2>&1 || true",
+  "  add-zsh-hook chpwd __nextshell_osc7_emit >/dev/null 2>&1 || true",
+  "  __nextshell_osc7_cleanup() {",
+  "    [[ -n \"${NEXTSHELL_OSC7_ZDOTDIR:-}\" ]] && rm -rf -- \"$NEXTSHELL_OSC7_ZDOTDIR\"",
+  "  }",
+  "  add-zsh-hook zshexit __nextshell_osc7_cleanup >/dev/null 2>&1 || true",
+  "fi",
   "__nextshell_osc7_emit"
-].join(" ");
+].join("\n");
 
-const wrapBootstrapWithSentinels = (bootstrap: string): string => {
-  const startEsc = OSC7_BS_START.replace(/\x1b/g, "\\033").replace(/\x07/g, "\\007");
-  const endEsc = OSC7_BS_END.replace(/\x1b/g, "\\033").replace(/\x07/g, "\\007");
-  return `printf '${startEsc}'; ${bootstrap}; printf '${endEsc}\\r\\033[K'`;
-};
+const buildBashLaunchCommand = (shellPath: string, osc7Host: string): string =>
+  [
+    "__ns_osc7_rc=$(mktemp \"${TMPDIR:-/tmp}/nextshell-osc7-bash.XXXXXX\") || exit 1",
+    "cat > \"$__ns_osc7_rc\" <<'__NEXTSHELL_OSC7_BASH__'",
+    BASH_INIT_FILE,
+    "__NEXTSHELL_OSC7_BASH__",
+    `NEXTSHELL_OSC7_HOST=${quotePosix(osc7Host)} NEXTSHELL_OSC7_RCFILE="$__ns_osc7_rc" exec ${quotePosix(shellPath)} --init-file "$__ns_osc7_rc" -i`
+  ].join("\n");
+
+const buildZshLaunchCommand = (shellPath: string, osc7Host: string): string =>
+  [
+    "__ns_osc7_zdotdir=$(mktemp -d \"${TMPDIR:-/tmp}/nextshell-osc7-zsh.XXXXXX\") || exit 1",
+    "cat > \"$__ns_osc7_zdotdir/.zshenv\" <<'__NEXTSHELL_OSC7_ZSHENV__'",
+    ZSH_ENV_FILE,
+    "__NEXTSHELL_OSC7_ZSHENV__",
+    "cat > \"$__ns_osc7_zdotdir/.zshrc\" <<'__NEXTSHELL_OSC7_ZSHRC__'",
+    ZSH_RC_FILE,
+    "__NEXTSHELL_OSC7_ZSHRC__",
+    `ZDOTDIR="$__ns_osc7_zdotdir" NEXTSHELL_OSC7_HOST=${quotePosix(osc7Host)} NEXTSHELL_OSC7_ZDOTDIR="$__ns_osc7_zdotdir" exec ${quotePosix(shellPath)} -i`
+  ].join("\n");
 
 export const resolveOsc7ShellFamily = (
   shellPath?: string | null
@@ -63,29 +88,30 @@ export const resolveOsc7ShellFamily = (
 export const createRemoteOsc7BootstrapPlan = (
   enabled: boolean,
   osc7Host = "localhost",
-  shellFamily?: Osc7ShellFamily
+  shellFamily?: Osc7ShellFamily,
+  shellPath?: string | null
 ): RemoteOsc7BootstrapPlan => {
   if (!enabled) {
     return {
-      enabled: false,
-      env: {}
+      enabled: false
     };
   }
 
-  const rawBootstrap =
+  const normalizedShellPath = shellPath?.trim();
+  const launchShell = normalizedShellPath || shellFamily;
+  const launchCommand =
     shellFamily === "bash"
-      ? OSC7_BASH_BOOTSTRAP
+      ? launchShell
+        ? buildBashLaunchCommand(launchShell, osc7Host)
+        : undefined
       : shellFamily === "zsh"
-        ? OSC7_ZSH_BOOTSTRAP
+        ? launchShell
+          ? buildZshLaunchCommand(launchShell, osc7Host)
+          : undefined
         : undefined;
 
   return {
-    enabled: true,
-    env: {
-      NEXTSHELL_OSC7_HOST: osc7Host
-    },
-    shellBootstrap: rawBootstrap ? wrapBootstrapWithSentinels(rawBootstrap) : undefined,
-    startMarker: rawBootstrap ? OSC7_BS_START : undefined,
-    endMarker: rawBootstrap ? OSC7_BS_END : undefined
+    enabled: Boolean(launchCommand),
+    launchCommand
   };
 };

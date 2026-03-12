@@ -121,6 +121,12 @@ export interface ShellOpenOptions {
   env?: Record<string, string>;
 }
 
+const createWindowOptions = (options: ShellOpenOptions) => ({
+  term: options.term ?? "xterm-256color",
+  cols: options.cols,
+  rows: options.rows
+});
+
 export interface ExecResult {
   stdout: string;
   stderr: string;
@@ -340,11 +346,7 @@ export class SshConnection {
     await this.readyPromise;
 
     return new Promise((resolve, reject) => {
-      const windowOptions = {
-        term: options.term ?? "xterm-256color",
-        cols: options.cols,
-        rows: options.rows
-      };
+      const windowOptions = createWindowOptions(options);
       const onOpen = (error: Error | undefined, channel: ClientChannel | undefined) => {
         if (error || !channel) {
           reject(error ?? new Error("Failed to open SSH shell"));
@@ -359,6 +361,26 @@ export class SshConnection {
       }
 
       this.client.shell(windowOptions, onOpen);
+    });
+  }
+
+  async openExecChannel(command: string, options: ShellOpenOptions): Promise<ClientChannel> {
+    await this.readyPromise;
+
+    return new Promise((resolve, reject) => {
+      const execOptions = {
+        pty: createWindowOptions(options),
+        env: options.env
+      };
+
+      this.client.exec(command, execOptions, (error, channel) => {
+        if (error || !channel) {
+          reject(error ?? new Error("Failed to open SSH exec channel"));
+          return;
+        }
+
+        resolve(channel);
+      });
     });
   }
 
