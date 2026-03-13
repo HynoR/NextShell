@@ -9,6 +9,7 @@ import type {
   ConnectionImportResult,
   ConnectionListQuery,
   ConnectionProfile,
+  CloudSyncWorkspaceProfile,
   MigrationRecord,
   MonitorSnapshot,
   NetworkConnection,
@@ -16,6 +17,7 @@ import type {
   ProcessDetailSnapshot,
   ProcessSnapshot,
   ProxyProfile,
+  RecycleBinEntry,
   RemoteFileEntry,
   SavedCommand,
   SessionDescriptor,
@@ -126,7 +128,18 @@ import type {
   TracerouteEvent,
   UpdateCheckResult,
   PingRequestInput,
-  PingResult
+  PingResult,
+  CloudSyncV2WorkspaceAddInput,
+  CloudSyncV2WorkspaceUpdateInput,
+  CloudSyncV2WorkspaceRemoveInput,
+  CloudSyncV2SyncNowInput,
+  CloudSyncV2ResolveConflictInput,
+  ResourceCopyConnectionInput,
+  ResourceDangerMoveConnectionInput,
+  ResourceDeleteConnectionInput,
+  ResourceDeleteSshKeyInput,
+  RecycleBinRestoreInput,
+  RecycleBinPurgeInput
 } from "./contracts";
 
 export type SessionEventUnsubscribe = () => void;
@@ -297,5 +310,28 @@ export interface NextShellApi {
     enableLog: () => Promise<{ ok: true }>;
     disableLog: () => Promise<{ ok: true }>;
     onLogEvent: (listener: (entry: DebugLogEntry) => void) => SessionEventUnsubscribe;
+  };
+  cloudSyncV2: {
+    workspaceList: () => Promise<CloudSyncWorkspaceProfile[]>;
+    workspaceAdd: (payload: CloudSyncV2WorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
+    workspaceUpdate: (payload: CloudSyncV2WorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
+    workspaceRemove: (payload: CloudSyncV2WorkspaceRemoveInput) => Promise<{ ok: true }>;
+    status: () => Promise<{ workspaces: Array<{ workspaceId: string; state: string; lastSyncAt: string | null; lastError: string | null; pendingCount: number; conflictCount: number; currentVersion: number | null }> }>;
+    syncNow: (payload?: CloudSyncV2SyncNowInput) => Promise<{ ok: true }>;
+    listConflicts: () => Promise<Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>>;
+    resolveConflict: (payload: CloudSyncV2ResolveConflictInput) => Promise<{ ok: true }>;
+    onStatus: (listener: (event: unknown) => void) => SessionEventUnsubscribe;
+    onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
+  };
+  resourceOps: {
+    copyConnection: (payload: ResourceCopyConnectionInput) => Promise<ConnectionProfile>;
+    dangerMoveConnection: (payload: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
+    deleteConnection: (payload: ResourceDeleteConnectionInput) => Promise<{ ok: true }>;
+    deleteSshKey: (payload: ResourceDeleteSshKeyInput) => Promise<{ ok: true }>;
+  };
+  recycleBin: {
+    list: () => Promise<RecycleBinEntry[]>;
+    restore: (payload: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
+    purge: (payload: RecycleBinPurgeInput) => Promise<{ ok: true }>;
   };
 }

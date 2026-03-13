@@ -6,6 +6,8 @@ export { CommandSection } from "./command-section";
 export { TerminalSection } from "./terminal-section";
 export { NetworkSection } from "./network-section";
 export { CloudSyncSection } from "./cloud-sync-section";
+export { CloudSyncV2Section } from "./cloud-sync-v2-section";
+export { RecycleBinSection } from "./recycle-bin-section";
 export { BackupSection } from "./backup-section";
 export { SecuritySection } from "./security-section";
 export { AboutSection } from "./about-section";

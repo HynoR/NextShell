@@ -103,5 +103,28 @@ export const IPCChannel = {
   Ping: "nextshell:ping",
   TracerouteRun: "nextshell:traceroute:run",
   TracerouteStop: "nextshell:traceroute:stop",
-  TracerouteData: "nextshell:traceroute:data"
+  TracerouteData: "nextshell:traceroute:data",
+
+  // ── Cloud Sync v2: Workspace Management ──
+  CloudSyncV2WorkspaceList: "nextshell:cloud-sync-v2:workspace:list",
+  CloudSyncV2WorkspaceAdd: "nextshell:cloud-sync-v2:workspace:add",
+  CloudSyncV2WorkspaceUpdate: "nextshell:cloud-sync-v2:workspace:update",
+  CloudSyncV2WorkspaceRemove: "nextshell:cloud-sync-v2:workspace:remove",
+  CloudSyncV2Status: "nextshell:cloud-sync-v2:status",
+  CloudSyncV2SyncNow: "nextshell:cloud-sync-v2:sync-now",
+  CloudSyncV2ListConflicts: "nextshell:cloud-sync-v2:list-conflicts",
+  CloudSyncV2ResolveConflict: "nextshell:cloud-sync-v2:resolve-conflict",
+  CloudSyncV2StatusEvent: "nextshell:cloud-sync-v2:status:event",
+  CloudSyncV2AppliedEvent: "nextshell:cloud-sync-v2:applied:event",
+
+  // ── Resource Operations ──
+  ResourceCopyConnection: "nextshell:resource:copy-connection",
+  ResourceDangerMoveConnection: "nextshell:resource:danger-move-connection",
+  ResourceDeleteConnection: "nextshell:resource:delete-connection",
+  ResourceDeleteSshKey: "nextshell:resource:delete-ssh-key",
+
+  // ── Recycle Bin ──
+  RecycleBinList: "nextshell:recycle-bin:list",
+  RecycleBinRestore: "nextshell:recycle-bin:restore",
+  RecycleBinPurge: "nextshell:recycle-bin:purge"
 } as const;

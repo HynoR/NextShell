@@ -7,6 +7,86 @@ export type SessionTarget = "remote" | "local";
 export type LocalShellMode = "preset" | "custom";
 export type LocalShellPreset = "system" | "powershell" | "cmd" | "zsh" | "sh" | "bash";
 
+// ────── Cloud Sync v2: Resource Origin Model ──────
+
+export type OriginKind = "local" | "cloud";
+
+export interface ResourceOrigin {
+  kind: OriginKind;
+  scopeKey: string;
+  workspaceId?: string;
+}
+
+/** 云同步 workspace 配置（多 workspace 并发模型） */
+export interface CloudSyncWorkspaceProfile {
+  id: string;
+  apiBaseUrl: string;
+  workspaceName: string;
+  displayName: string;
+  pullIntervalSec: number;
+  ignoreTlsErrors: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncAt: string | null;
+  lastError: string | null;
+}
+
+export type RecycleBinReason = "delete" | "conflict_accept_remote" | "conflict_keep_local" | "danger_move";
+
+/** 回收站条目 — 物理隔离存储，恢复时总是创建新副本 */
+export interface RecycleBinEntry {
+  id: string;
+  resourceType: "server" | "sshKey";
+  displayName: string;
+  originalResourceId: string;
+  originalScopeKey: string;
+  reason: RecycleBinReason;
+  snapshotJson: string;
+  createdAt: string;
+}
+
+/** 带 workspace 作用域的 pending 操作 */
+export interface CloudSyncPendingOp {
+  id?: number;
+  workspaceId: string;
+  resourceType: "server" | "sshKey";
+  resourceId: string;
+  action: "upsert" | "delete";
+  baseRevision: number | null;
+  force: boolean;
+  payloadJson?: string;
+  queuedAt: string;
+  lastAttemptAt?: string;
+  lastError?: string;
+}
+
+/** 带 workspace 作用域的资源同步状态 */
+export interface CloudSyncResourceStateV2 {
+  workspaceId: string;
+  resourceType: "server" | "sshKey";
+  resourceId: string;
+  serverRevision?: number;
+  conflictRemoteRevision?: number;
+  conflictRemotePayloadJson?: string;
+  conflictRemoteUpdatedAt?: string;
+  conflictRemoteDeleted: boolean;
+  conflictDetectedAt?: string;
+}
+
+export const LOCAL_DEFAULT_SCOPE_KEY = "local-default";
+
+/** 构造 scopeKey: 对本地来说是 "local-default", 对云来说是 "<apiBaseUrl>-<workspaceName>" */
+export const buildScopeKey = (origin: { kind: OriginKind; apiBaseUrl?: string; workspaceName?: string }): string => {
+  if (origin.kind === "local") return LOCAL_DEFAULT_SCOPE_KEY;
+  const base = (origin.apiBaseUrl ?? "").replace(/^https?:\/\//, "").replace(/[\/\s]+$/g, "");
+  return `${base}-${origin.workspaceName ?? ""}`;
+};
+
+/** 构造 resourceId = "<scopeKey>-<uuidInScope>" */
+export const buildResourceId = (scopeKey: string, uuidInScope: string): string =>
+  `${scopeKey}-${uuidInScope}`;
+
 /** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
 export interface SshKeyProfile {
   id: string;
@@ -17,6 +97,18 @@ export interface SshKeyProfile {
   passphraseRef?: string;
   createdAt: string;
   updatedAt: string;
+  /** 全局唯一资源 ID = "<scopeKey>-<uuidInScope>" */
+  resourceId?: string;
+  /** 等于 id，scope 内的 UUID */
+  uuidInScope?: string;
+  /** 来源类型 */
+  originKind?: OriginKind;
+  /** 来源 scope key */
+  originScopeKey?: string;
+  /** 云来源时指向 cloud_sync_workspaces.id */
+  originWorkspaceId?: string;
+  /** 副本溯源 */
+  copiedFromResourceId?: string;
 }
 
 /** 代理实体 — 独立于服务器连接，可被多个连接引用 */
@@ -64,6 +156,20 @@ export interface ConnectionProfile {
   createdAt: string;
   updatedAt: string;
   lastConnectedAt?: string;
+  /** 全局唯一资源 ID = "<scopeKey>-<uuidInScope>" */
+  resourceId?: string;
+  /** 等于 id，scope 内的 UUID */
+  uuidInScope?: string;
+  /** 来源类型 */
+  originKind?: OriginKind;
+  /** 来源 scope key */
+  originScopeKey?: string;
+  /** 云来源时指向 cloud_sync_workspaces.id */
+  originWorkspaceId?: string;
+  /** 引用 SSH 密钥的 resourceId（替代原裸 sshKeyId 做跨来源引用） */
+  sshKeyResourceId?: string;
+  /** 副本溯源 */
+  copiedFromResourceId?: string;
 }
 
 export interface ConnectionListQuery {

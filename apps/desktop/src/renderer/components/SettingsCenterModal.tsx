@@ -23,6 +23,8 @@ import {
   TerminalSection,
   NetworkSection,
   CloudSyncSection,
+  CloudSyncV2Section,
+  RecycleBinSection,
   BackupSection,
   SecuritySection,
   AboutSection,
@@ -886,6 +888,12 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
             void handleResolveCloudSyncConflict(resourceType, resourceId, strategy)
           }
         />;
+
+      case "cloudSyncV2":
+        return <CloudSyncV2Section />;
+
+      case "recycleBin":
+        return <RecycleBinSection />;
 
       case "backup":
         return <BackupSection

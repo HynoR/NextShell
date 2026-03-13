@@ -21,6 +21,7 @@ interface ConnectionTreePanelProps {
   onConnect: (connectionId: string) => void;
   onQuickSave: (payload: ConnectionUpsertInput) => Promise<void>;
   onOpenManagerForConnection: (connectionId: string) => void;
+  onDelete?: (connectionId: string) => void;
 }
 
 interface ConnectionContextMenuState {
@@ -319,7 +320,8 @@ const ConnectionContextMenu = ({
   onClose,
   onEditName,
   onEditCredentials,
-  onEditServer
+  onEditServer,
+  onDelete
 }: {
   state: ConnectionContextMenuState;
   connection: ConnectionProfile;
@@ -328,6 +330,7 @@ const ConnectionContextMenu = ({
   onEditName: (connection: ConnectionProfile) => void;
   onEditCredentials: (connection: ConnectionProfile) => void;
   onEditServer: (connectionId: string) => void;
+  onDelete: (connectionId: string) => void;
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number }>({
@@ -411,6 +414,13 @@ const ConnectionContextMenu = ({
         </span>
         修改服务器
       </button>
+      <div className="ct-ctx-divider" />
+      <button className="ct-ctx-item ct-ctx-item--danger" disabled={busy} onClick={() => run(() => onDelete(connection.id))}>
+        <span className="ct-ctx-icon">
+          <i className="ri-delete-bin-line" aria-hidden="true" />
+        </span>
+        删除到回收站
+      </button>
       <div className="ct-ctx-connection-hint">
         {connection.host}:{connection.port}
       </div>
@@ -447,7 +457,8 @@ export const ConnectionTreePanel = ({
   onConnectByDoubleClick,
   onConnect,
   onQuickSave,
-  onOpenManagerForConnection
+  onOpenManagerForConnection,
+  onDelete
 }: ConnectionTreePanelProps) => {
   const { modal } = AntdApp.useApp();
   const cloudSyncStatus = useCloudSyncStatus();
@@ -572,6 +583,31 @@ export const ConnectionTreePanel = ({
     [onOpenManagerForConnection]
   );
 
+  const handleDeleteConnection = useCallback(
+    (connectionId: string) => {
+      const conn = connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+
+      modal.confirm({
+        title: "删除连接",
+        content: `确定将「${conn.name}」移入回收站？可在设置中心的回收站页恢复。`,
+        okText: "删除",
+        okButtonProps: { danger: true },
+        cancelText: "取消",
+        onOk: async () => {
+          try {
+            await window.nextshell.resourceOps.deleteConnection({ id: connectionId });
+            message.success("已移入回收站");
+          } catch (error) {
+            message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
+          }
+          onDelete?.(connectionId);
+        },
+      });
+    },
+    [connections, modal, onDelete]
+  );
+
   return (
     <section className="ct-panel">
 
@@ -638,6 +674,9 @@ export const ConnectionTreePanel = ({
           }}
           onEditCredentials={handleOpenCredentialEditor}
           onEditServer={handleOpenManager}
+          onDelete={(connectionId) => {
+            void handleDeleteConnection(connectionId);
+          }}
         />
       ) : null}
 

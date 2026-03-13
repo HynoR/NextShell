@@ -80,7 +80,7 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   sshKey: "SSH 密钥",
 };
 
-export const CloudSyncSection = () => {
+export const CloudSyncV2Section = () => {
   const [workspaces, setWorkspaces] = useState<CloudSyncWorkspaceProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,8 +99,8 @@ export const CloudSyncSection = () => {
     setLoading(true);
     try {
       const [list, statusResult] = await Promise.all([
-        api().cloudSync.workspaceList(),
-        api().cloudSync.status(),
+        api().cloudSyncV2.workspaceList(),
+        api().cloudSyncV2.status(),
       ]);
       setWorkspaces(list);
       const map = new Map<string, WorkspaceStatus>();
@@ -118,7 +118,7 @@ export const CloudSyncSection = () => {
   const refreshConflicts = useCallback(async () => {
     setConflictsLoading(true);
     try {
-      const list = await api().cloudSync.listConflicts();
+      const list = await api().cloudSyncV2.listConflicts();
       setConflicts(list);
     } catch {
       // Ignore
@@ -130,11 +130,11 @@ export const CloudSyncSection = () => {
   useEffect(() => {
     refresh();
     refreshConflicts();
-    const unsubStatus = api().cloudSync.onStatus(() => {
+    const unsubStatus = api().cloudSyncV2.onStatus(() => {
       refresh();
       refreshConflicts();
     });
-    const unsubApplied = api().cloudSync.onApplied(() => {
+    const unsubApplied = api().cloudSyncV2.onApplied(() => {
       refresh();
       refreshConflicts();
     });
@@ -169,7 +169,7 @@ export const CloudSyncSection = () => {
     setSaving(true);
     try {
       if (isEditing && editForm.id) {
-        await api().cloudSync.workspaceUpdate({
+        await api().cloudSyncV2.workspaceUpdate({
           id: editForm.id,
           apiBaseUrl: editForm.apiBaseUrl,
           workspaceName: editForm.workspaceName,
@@ -180,7 +180,7 @@ export const CloudSyncSection = () => {
           enabled: editForm.enabled,
         });
       } else {
-        await api().cloudSync.workspaceAdd({
+        await api().cloudSyncV2.workspaceAdd({
           apiBaseUrl: editForm.apiBaseUrl,
           workspaceName: editForm.workspaceName,
           displayName: editForm.displayName || undefined,
@@ -201,7 +201,7 @@ export const CloudSyncSection = () => {
 
   const handleRemove = async (id: string) => {
     try {
-      await api().cloudSync.workspaceRemove({ id });
+      await api().cloudSyncV2.workspaceRemove({ id });
       await refresh();
     } catch {
       // Ignore
@@ -211,7 +211,7 @@ export const CloudSyncSection = () => {
   const handleSync = async (workspaceId: string) => {
     setSyncingId(workspaceId);
     try {
-      await api().cloudSync.syncNow({ workspaceId });
+      await api().cloudSyncV2.syncNow({ workspaceId });
       await refresh();
       await refreshConflicts();
     } catch {
@@ -230,7 +230,7 @@ export const CloudSyncSection = () => {
     const key = `${workspaceId}:${resourceType}:${resourceId}:${strategy}`;
     setConflictBusyKey(key);
     try {
-      await api().cloudSync.resolveConflict({
+      await api().cloudSyncV2.resolveConflict({
         workspaceId,
         resourceType: resourceType as "server" | "sshKey",
         resourceId,
@@ -258,7 +258,7 @@ export const CloudSyncSection = () => {
 
   return (
     <>
-      <SettingsCard title="云同步 — 工作区管理" description="管理多个云同步工作区，每个工作区独立同步。">
+      <SettingsCard title="云同步 v2 — 多工作区" description="管理多个云同步工作区，每个工作区独立同步。">
         <div style={{ marginBottom: 12 }}>
           <Button type="primary" size="small" onClick={openAddModal}>
             添加工作区

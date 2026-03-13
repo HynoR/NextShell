@@ -10,11 +10,13 @@ import type {
   ConnectionImportResult,
   ConnectionListQuery,
   ConnectionProfile,
+  CloudSyncWorkspaceProfile,
   DeleteMode,
   BackspaceMode,
   NetworkConnection,
   ProcessDetailSnapshot,
   ProxyProfile,
+  RecycleBinEntry,
   RemoteFileEntry,
   RestoreConflictPolicy,
   SavedCommand,
@@ -62,6 +64,17 @@ import type {
   UpdateCheckResult,
   ProxyUpsertInput,
   ProxyRemoveInput,
+  CloudSyncV2WorkspaceAddInput,
+  CloudSyncV2WorkspaceUpdateInput,
+  CloudSyncV2WorkspaceRemoveInput,
+  CloudSyncV2SyncNowInput,
+  CloudSyncV2ResolveConflictInput,
+  ResourceCopyConnectionInput,
+  ResourceDangerMoveConnectionInput,
+  ResourceDeleteConnectionInput,
+  ResourceDeleteSshKeyInput,
+  RecycleBinRestoreInput,
+  RecycleBinPurgeInput,
 } from "../../../../../packages/shared/src/index";
 import type { SystemMonitorController } from "./monitor/system-monitor-controller";
 import type { ProcessMonitorController } from "./monitor/process-monitor-controller";
@@ -283,5 +296,27 @@ export interface ServiceContainer {
   clearTemplateParams: (input: TemplateParamsClearInput) => { ok: true };
   enableDebugLog: (sender: WebContents) => { ok: true };
   disableDebugLog: (sender: WebContents) => { ok: true };
+
+  // Cloud Sync v2
+  cloudSyncV2WorkspaceList: () => CloudSyncWorkspaceProfile[];
+  cloudSyncV2WorkspaceAdd: (input: CloudSyncV2WorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
+  cloudSyncV2WorkspaceUpdate: (input: CloudSyncV2WorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
+  cloudSyncV2WorkspaceRemove: (input: CloudSyncV2WorkspaceRemoveInput) => Promise<void>;
+  cloudSyncV2Status: () => { workspaces: Array<{ workspaceId: string; state: string; lastSyncAt: string | null; lastError: string | null; pendingCount: number; conflictCount: number; currentVersion: number | null }> };
+  cloudSyncV2SyncNow: (input: CloudSyncV2SyncNowInput) => Promise<void>;
+  cloudSyncV2ListConflicts: () => Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>;
+  cloudSyncV2ResolveConflict: (input: CloudSyncV2ResolveConflictInput) => Promise<void>;
+
+  // Resource Operations
+  resourceCopyConnection: (input: ResourceCopyConnectionInput) => Promise<ConnectionProfile>;
+  resourceDangerMoveConnection: (input: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
+  resourceDeleteConnection: (input: ResourceDeleteConnectionInput) => Promise<void>;
+  resourceDeleteSshKey: (input: ResourceDeleteSshKeyInput) => Promise<void>;
+
+  // Recycle Bin
+  recycleBinList: () => RecycleBinEntry[];
+  recycleBinRestore: (input: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
+  recycleBinPurge: (input: RecycleBinPurgeInput) => void;
+
   dispose: () => Promise<void>;
 }

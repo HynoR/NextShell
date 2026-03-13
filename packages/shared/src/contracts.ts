@@ -1015,3 +1015,104 @@ export type TracerouteEvent =
   | { type: "data"; line: string }
   | { type: "done"; exitCode: number | null }
   | { type: "error"; message: string };
+
+// ─── Cloud Sync v2: Workspace Management ─────────────────────────────────
+
+export const cloudSyncV2WorkspaceListSchema = z.object({});
+
+export const cloudSyncV2WorkspaceAddSchema = z.object({
+  apiBaseUrl: z.string().trim().min(1).max(500),
+  workspaceName: z.string().trim().min(1).max(200),
+  displayName: z.string().trim().max(200).optional(),
+  workspacePassword: z.string().min(1).max(200),
+  pullIntervalSec: z.number().int().min(10).max(86400).optional(),
+  ignoreTlsErrors: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const cloudSyncV2WorkspaceUpdateSchema = z.object({
+  id: z.string().trim().min(1),
+  apiBaseUrl: z.string().trim().min(1).max(500),
+  workspaceName: z.string().trim().min(1).max(200),
+  displayName: z.string().trim().max(200).optional(),
+  workspacePassword: z.string().min(1).max(200),
+  pullIntervalSec: z.number().int().min(10).max(86400).optional(),
+  ignoreTlsErrors: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const cloudSyncV2WorkspaceRemoveSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+export const cloudSyncV2StatusSchema = z.object({});
+
+export const cloudSyncV2SyncNowSchema = z.object({
+  workspaceId: z.string().trim().min(1).optional(),
+});
+
+export const cloudSyncV2ListConflictsSchema = z.object({});
+
+export const cloudSyncV2ResolveConflictSchema = z.object({
+  workspaceId: z.string().trim().min(1),
+  resourceType: z.enum(["server", "sshKey"]),
+  resourceId: z.string().trim().min(1),
+  strategy: z.enum(["keep_local", "accept_remote"]),
+});
+
+export type CloudSyncV2WorkspaceListInput = z.infer<typeof cloudSyncV2WorkspaceListSchema>;
+export type CloudSyncV2WorkspaceAddInput = z.infer<typeof cloudSyncV2WorkspaceAddSchema>;
+export type CloudSyncV2WorkspaceUpdateInput = z.infer<typeof cloudSyncV2WorkspaceUpdateSchema>;
+export type CloudSyncV2WorkspaceRemoveInput = z.infer<typeof cloudSyncV2WorkspaceRemoveSchema>;
+export type CloudSyncV2StatusInput = z.infer<typeof cloudSyncV2StatusSchema>;
+export type CloudSyncV2SyncNowInput = z.infer<typeof cloudSyncV2SyncNowSchema>;
+export type CloudSyncV2ListConflictsInput = z.infer<typeof cloudSyncV2ListConflictsSchema>;
+export type CloudSyncV2ResolveConflictInput = z.infer<typeof cloudSyncV2ResolveConflictSchema>;
+
+// ─── Resource Operations ─────────────────────────────────────────────────
+
+export const resourceCopyConnectionSchema = z.object({
+  sourceId: z.string().trim().min(1),
+  targetOriginKind: z.enum(["local", "cloud"]),
+  targetWorkspaceId: z.string().trim().min(1).optional(),
+  targetGroupSubPath: z.string().trim().max(500).optional(),
+});
+
+export const resourceDangerMoveConnectionSchema = z.object({
+  sourceId: z.string().trim().min(1),
+  targetOriginKind: z.enum(["local", "cloud"]),
+  targetWorkspaceId: z.string().trim().min(1).optional(),
+  targetGroupSubPath: z.string().trim().max(500).optional(),
+});
+
+export const resourceDeleteConnectionSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+export const resourceDeleteSshKeySchema = z.object({
+  id: z.string().trim().min(1),
+  force: z.boolean().optional(),
+});
+
+export type ResourceCopyConnectionInput = z.infer<typeof resourceCopyConnectionSchema>;
+export type ResourceDangerMoveConnectionInput = z.infer<typeof resourceDangerMoveConnectionSchema>;
+export type ResourceDeleteConnectionInput = z.infer<typeof resourceDeleteConnectionSchema>;
+export type ResourceDeleteSshKeyInput = z.infer<typeof resourceDeleteSshKeySchema>;
+
+// ─── Recycle Bin ─────────────────────────────────────────────────────────
+
+export const recycleBinListSchema = z.object({});
+
+export const recycleBinRestoreSchema = z.object({
+  recycleBinEntryId: z.string().trim().min(1),
+  targetOriginKind: z.enum(["local", "cloud"]),
+  targetWorkspaceId: z.string().trim().min(1).optional(),
+});
+
+export const recycleBinPurgeSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+export type RecycleBinListInput = z.infer<typeof recycleBinListSchema>;
+export type RecycleBinRestoreInput = z.infer<typeof recycleBinRestoreSchema>;
+export type RecycleBinPurgeInput = z.infer<typeof recycleBinPurgeSchema>;

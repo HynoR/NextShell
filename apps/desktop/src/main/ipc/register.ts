@@ -91,7 +91,22 @@ import {
   proxyRemoveSchema,
   updateCheckSchema,
   pingRequestSchema,
-  tracerouteRunSchema
+  tracerouteRunSchema,
+  cloudSyncV2WorkspaceListSchema,
+  cloudSyncV2WorkspaceAddSchema,
+  cloudSyncV2WorkspaceUpdateSchema,
+  cloudSyncV2WorkspaceRemoveSchema,
+  cloudSyncV2StatusSchema,
+  cloudSyncV2SyncNowSchema,
+  cloudSyncV2ListConflictsSchema,
+  cloudSyncV2ResolveConflictSchema,
+  resourceCopyConnectionSchema,
+  resourceDangerMoveConnectionSchema,
+  resourceDeleteConnectionSchema,
+  resourceDeleteSshKeySchema,
+  recycleBinListSchema,
+  recycleBinRestoreSchema,
+  recycleBinPurgeSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -643,5 +658,86 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
 
   ipcMain.handle(IPCChannel.DebugLogDisable, (event) => {
     return services.disableDebugLog(event.sender);
+  });
+
+  // ─── Cloud Sync v2 ───────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.CloudSyncV2WorkspaceList, (_event, payload) => {
+    parsePayload(cloudSyncV2WorkspaceListSchema, payload ?? {}, "云同步工作区列表");
+    return services.cloudSyncV2WorkspaceList();
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2WorkspaceAdd, (_event, payload) => {
+    const input = parsePayload(cloudSyncV2WorkspaceAddSchema, payload, "云同步添加工作区");
+    return services.cloudSyncV2WorkspaceAdd(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2WorkspaceUpdate, (_event, payload) => {
+    const input = parsePayload(cloudSyncV2WorkspaceUpdateSchema, payload, "云同步更新工作区");
+    return services.cloudSyncV2WorkspaceUpdate(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2WorkspaceRemove, (_event, payload) => {
+    const input = parsePayload(cloudSyncV2WorkspaceRemoveSchema, payload, "云同步删除工作区");
+    return services.cloudSyncV2WorkspaceRemove(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2Status, (_event, payload) => {
+    parsePayload(cloudSyncV2StatusSchema, payload ?? {}, "云同步v2状态");
+    return services.cloudSyncV2Status();
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2SyncNow, (_event, payload) => {
+    const input = parsePayload(cloudSyncV2SyncNowSchema, payload ?? {}, "云同步v2立即同步");
+    return services.cloudSyncV2SyncNow(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2ListConflicts, (_event, payload) => {
+    parsePayload(cloudSyncV2ListConflictsSchema, payload ?? {}, "云同步v2冲突列表");
+    return services.cloudSyncV2ListConflicts();
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncV2ResolveConflict, (_event, payload) => {
+    const input = parsePayload(cloudSyncV2ResolveConflictSchema, payload, "云同步v2冲突处理");
+    return services.cloudSyncV2ResolveConflict(input);
+  });
+
+  // ─── Resource Operations ──────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.ResourceCopyConnection, (_event, payload) => {
+    const input = parsePayload(resourceCopyConnectionSchema, payload, "复制连接");
+    return services.resourceCopyConnection(input);
+  });
+
+  ipcMain.handle(IPCChannel.ResourceDangerMoveConnection, (_event, payload) => {
+    const input = parsePayload(resourceDangerMoveConnectionSchema, payload, "危险移动连接");
+    return services.resourceDangerMoveConnection(input);
+  });
+
+  ipcMain.handle(IPCChannel.ResourceDeleteConnection, (_event, payload) => {
+    const input = parsePayload(resourceDeleteConnectionSchema, payload, "删除连接");
+    return services.resourceDeleteConnection(input);
+  });
+
+  ipcMain.handle(IPCChannel.ResourceDeleteSshKey, (_event, payload) => {
+    const input = parsePayload(resourceDeleteSshKeySchema, payload, "删除密钥");
+    return services.resourceDeleteSshKey(input);
+  });
+
+  // ─── Recycle Bin ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.RecycleBinList, (_event, payload) => {
+    parsePayload(recycleBinListSchema, payload ?? {}, "回收站列表");
+    return services.recycleBinList();
+  });
+
+  ipcMain.handle(IPCChannel.RecycleBinRestore, (_event, payload) => {
+    const input = parsePayload(recycleBinRestoreSchema, payload, "回收站恢复");
+    return services.recycleBinRestore(input);
+  });
+
+  ipcMain.handle(IPCChannel.RecycleBinPurge, (_event, payload) => {
+    const input = parsePayload(recycleBinPurgeSchema, payload, "回收站永久删除");
+    return services.recycleBinPurge(input);
   });
 };

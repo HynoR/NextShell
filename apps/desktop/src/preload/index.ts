@@ -304,6 +304,41 @@ const api: NextShellApi = {
       };
     }
   },
+  cloudSyncV2: {
+    workspaceList: () => ipcRenderer.invoke(IPCChannel.CloudSyncV2WorkspaceList, {}),
+    workspaceAdd: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncV2WorkspaceAdd, payload),
+    workspaceUpdate: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncV2WorkspaceUpdate, payload),
+    workspaceRemove: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncV2WorkspaceRemove, payload),
+    status: () => ipcRenderer.invoke(IPCChannel.CloudSyncV2Status, {}),
+    syncNow: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncV2SyncNow, payload ?? {}),
+    listConflicts: () => ipcRenderer.invoke(IPCChannel.CloudSyncV2ListConflicts, {}),
+    resolveConflict: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncV2ResolveConflict, payload),
+    onStatus: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.CloudSyncV2StatusEvent, handler);
+      return () => { ipcRenderer.off(IPCChannel.CloudSyncV2StatusEvent, handler); };
+    },
+    onApplied: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { workspaceId: string }) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.CloudSyncV2AppliedEvent, handler);
+      return () => { ipcRenderer.off(IPCChannel.CloudSyncV2AppliedEvent, handler); };
+    }
+  },
+  resourceOps: {
+    copyConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceCopyConnection, payload),
+    dangerMoveConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDangerMoveConnection, payload),
+    deleteConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDeleteConnection, payload),
+    deleteSshKey: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDeleteSshKey, payload)
+  },
+  recycleBin: {
+    list: () => ipcRenderer.invoke(IPCChannel.RecycleBinList, {}),
+    restore: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinRestore, payload),
+    purge: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinPurge, payload)
+  },
   platform: process.platform,
   ui: {
     titlebarSafeTop: WINDOWS_TITLEBAR_SAFE_TOP

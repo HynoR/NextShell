@@ -22,6 +22,10 @@ import {
   MAX_COMMAND_HISTORY_ENTRIES,
   type AppPreferences,
   type CloudSyncResourceSyncState,
+  type CloudSyncResourceStateV2,
+  type CloudSyncPendingOp,
+  type CloudSyncWorkspaceProfile,
+  type RecycleBinEntry,
   type AuditLogRecord,
   type CommandHistoryEntry,
   type CommandTemplateParam,
@@ -265,6 +269,65 @@ export class CachedConnectionRepository implements ConnectionRepository {
     resourceId: string
   ): void {
     this.inner.removeCloudSyncResourceState(resourceType, resourceId);
+  }
+
+  // ── Cloud Sync v2 pass-through ──
+  listCloudSyncWorkspaces(): CloudSyncWorkspaceProfile[] {
+    return this.inner.listCloudSyncWorkspaces();
+  }
+  getCloudSyncWorkspace(id: string): CloudSyncWorkspaceProfile | undefined {
+    return this.inner.getCloudSyncWorkspace(id);
+  }
+  saveCloudSyncWorkspace(ws: CloudSyncWorkspaceProfile): void {
+    this.inner.saveCloudSyncWorkspace(ws);
+  }
+  removeCloudSyncWorkspace(id: string): void {
+    this.inner.removeCloudSyncWorkspace(id);
+  }
+  listResourceStatesV2(workspaceId: string): CloudSyncResourceStateV2[] {
+    return this.inner.listResourceStatesV2(workspaceId);
+  }
+  getResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): CloudSyncResourceStateV2 | undefined {
+    return this.inner.getResourceStateV2(workspaceId, resourceType, resourceId);
+  }
+  saveResourceStateV2(state: CloudSyncResourceStateV2): void {
+    this.inner.saveResourceStateV2(state);
+  }
+  removeResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): void {
+    this.inner.removeResourceStateV2(workspaceId, resourceType, resourceId);
+  }
+  clearResourceStatesV2(workspaceId: string): void {
+    this.inner.clearResourceStatesV2(workspaceId);
+  }
+  listPendingOps(workspaceId: string): CloudSyncPendingOp[] {
+    return this.inner.listPendingOps(workspaceId);
+  }
+  savePendingOp(op: CloudSyncPendingOp): number {
+    return this.inner.savePendingOp(op);
+  }
+  updatePendingOp(op: CloudSyncPendingOp): void {
+    this.inner.updatePendingOp(op);
+  }
+  removePendingOp(id: number): void {
+    this.inner.removePendingOp(id);
+  }
+  clearPendingOps(workspaceId: string): void {
+    this.inner.clearPendingOps(workspaceId);
+  }
+  listRecycleBinEntries(): RecycleBinEntry[] {
+    return this.inner.listRecycleBinEntries();
+  }
+  getRecycleBinEntry(id: string): RecycleBinEntry | undefined {
+    return this.inner.getRecycleBinEntry(id);
+  }
+  saveRecycleBinEntry(entry: RecycleBinEntry): void {
+    this.inner.saveRecycleBinEntry(entry);
+  }
+  removeRecycleBinEntry(id: string): void {
+    this.inner.removeRecycleBinEntry(id);
+  }
+  clearRecycleBin(): number {
+    return this.inner.clearRecycleBin();
   }
 
   private schedulePrefsFlush(): void {

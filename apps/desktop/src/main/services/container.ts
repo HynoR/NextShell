@@ -57,6 +57,8 @@ import { BackupPasswordService } from "./backup-password-service";
 import { ConnectionService } from "./connection-service";
 import { ImportExportService } from "./import-export-service";
 import { CloudSyncBridge } from "./cloud-sync-bridge";
+import { CloudSyncManager } from "./cloud-sync-manager";
+import { ResourceOperationsService } from "./resource-operations-service";
 import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
@@ -446,6 +448,56 @@ export const createServiceContainer = (
     connections,
   });
 
+  // Cloud Sync v2 Manager
+  const cloudSyncManager = new CloudSyncManager({
+    listConnections: () => connections.list({}),
+    saveConnection: (conn) => connections.save(conn),
+    removeConnection: (id) => connections.remove(id),
+    listSshKeys: () => sshKeyRepo.list(),
+    saveSshKey: (key) => sshKeyRepo.save(key),
+    removeSshKey: (id) => sshKeyRepo.remove(id),
+    listWorkspaces: () => connections.listCloudSyncWorkspaces(),
+    saveWorkspace: (ws) => connections.saveCloudSyncWorkspace(ws),
+    removeWorkspace: (id) => connections.removeCloudSyncWorkspace(id),
+    listPendingOps: (wId) => connections.listPendingOps(wId),
+    savePendingOp: (op) => connections.savePendingOp(op),
+    updatePendingOp: (op) => connections.updatePendingOp(op),
+    removePendingOp: (id) => connections.removePendingOp(id),
+    clearPendingOps: (wId) => connections.clearPendingOps(wId),
+    listResourceStates: (wId) => connections.listResourceStatesV2(wId),
+    getResourceState: (wId, rType, rId) => connections.getResourceStateV2(wId, rType, rId),
+    saveResourceState: (s) => connections.saveResourceStateV2(s),
+    removeResourceState: (wId, rType, rId) => connections.removeResourceStateV2(wId, rType, rId),
+    clearResourceStates: (wId) => connections.clearResourceStatesV2(wId),
+    saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
+    listRecycleBinEntries: () => connections.listRecycleBinEntries(),
+    removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
+    storeWorkspacePassword: async (wId, pwd) => {
+      await vault.storeCredential(`cloud-sync-ws-${wId}`, pwd);
+    },
+    getWorkspacePassword: async (wId) => {
+      try { return await vault.readCredential(`cloud-sync-ws-${wId}`); } catch { return undefined; }
+    },
+    deleteWorkspacePassword: async (wId) => {
+      await vault.deleteCredential(`cloud-sync-ws-${wId}`).catch(() => {});
+    },
+    broadcastStatus: (status) => broadcastToAllWindows(IPCChannel.CloudSyncV2StatusEvent, status),
+    broadcastApplied: (wId) => broadcastToAllWindows(IPCChannel.CloudSyncV2AppliedEvent, { workspaceId: wId }),
+  });
+  cloudSyncManager.initialize();
+
+  // Resource Operations Service
+  const resourceOpsSvc = new ResourceOperationsService({
+    connections,
+    sshKeyRepo,
+    vault,
+    cloudSyncManager,
+    saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
+    listRecycleBinEntries: () => connections.listRecycleBinEntries(),
+    removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
+  });
+
   // ─── Dispose ─────────────────────────────────────────────────────────────
   const dispose = async (): Promise<void> => {
     connections.flush();
@@ -458,6 +510,7 @@ export const createServiceContainer = (
     await remoteEditManager.dispose();
     networkToolSvc.tracerouteStop();
     cloudSyncBridge?.dispose();
+    cloudSyncManager.dispose();
 
     const sessionIds = Array.from(activeSessions.keys());
     await Promise.all(sessionIds.map((id) => sessionSvc.closeSession(id)));
@@ -584,6 +637,27 @@ export const createServiceContainer = (
     cloudSyncPreviewPull: (i) => cloudSyncBridge!.previewPull(i),
     cloudSyncListConflicts: () => cloudSyncBridge!.listConflicts(),
     cloudSyncResolveConflict: (i) => cloudSyncBridge!.resolveConflict(i),
+
+    // Cloud Sync v2
+    cloudSyncV2WorkspaceList: () => cloudSyncManager.listWorkspaces(),
+    cloudSyncV2WorkspaceAdd: (i) => cloudSyncManager.addWorkspace(i),
+    cloudSyncV2WorkspaceUpdate: (i) => cloudSyncManager.updateWorkspace({ ...i, id: i.id }),
+    cloudSyncV2WorkspaceRemove: (i) => cloudSyncManager.removeWorkspace(i.id),
+    cloudSyncV2Status: () => cloudSyncManager.getStatus(),
+    cloudSyncV2SyncNow: (i) => cloudSyncManager.syncNow(i.workspaceId),
+    cloudSyncV2ListConflicts: () => cloudSyncManager.listConflicts(),
+    cloudSyncV2ResolveConflict: (i) => cloudSyncManager.resolveConflict(i.workspaceId, i.resourceType as "server" | "sshKey", i.resourceId, i.strategy),
+
+    // Resource Operations
+    resourceCopyConnection: (i) => resourceOpsSvc.copyConnection(i),
+    resourceDangerMoveConnection: (i) => resourceOpsSvc.dangerMoveConnection(i),
+    resourceDeleteConnection: (i) => resourceOpsSvc.deleteConnection(i),
+    resourceDeleteSshKey: (i) => resourceOpsSvc.deleteSshKey(i),
+
+    // Recycle Bin
+    recycleBinList: () => connections.listRecycleBinEntries(),
+    recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
+    recycleBinPurge: (i) => { resourceOpsSvc.purgeRecycleBinEntry(i.id); },
 
     dispose,
   };

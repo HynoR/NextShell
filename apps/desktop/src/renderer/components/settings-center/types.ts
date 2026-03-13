@@ -8,6 +8,8 @@ export type SettingsSection =
   | "terminal"
   | "network"
   | "cloudSync"
+  | "cloudSyncV2"
+  | "recycleBin"
   | "backup"
   | "security"
   | "about";
