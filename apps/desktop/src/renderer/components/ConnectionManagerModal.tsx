@@ -268,6 +268,9 @@ const MgrServerRow = ({
           <i className="ri-star-fill mgr-server-star" aria-hidden="true" />
         ) : null}
         <span className="mgr-server-name">{connection.name}</span>
+        {connection.originKind === "cloud" && (
+          <i className="ri-cloud-line" aria-hidden="true" style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 4 }} />
+        )}
         <span className="mgr-server-host">{connection.host}</span>
       </button>
     </div>

@@ -906,7 +906,7 @@ export const cloudSyncWorkspaceUpdateSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().max(200).optional(),
-  workspacePassword: z.string().min(1).max(200),
+  workspacePassword: z.string().min(1).max(200).optional(),
   pullIntervalSec: z.number().int().min(10).max(86400).optional(),
   ignoreTlsErrors: z.boolean().optional(),
   enabled: z.boolean().optional(),
@@ -984,6 +984,16 @@ export const recycleBinPurgeSchema = z.object({
   id: z.string().trim().min(1),
 });
 
+export const recycleBinClearSchema = z.object({});
+
+export const resourceCopySshKeySchema = z.object({
+  sourceId: z.string().trim().min(1),
+  targetOriginKind: z.enum(["local", "cloud"]),
+  targetWorkspaceId: z.string().trim().min(1).optional(),
+});
+
 export type RecycleBinListInput = z.infer<typeof recycleBinListSchema>;
 export type RecycleBinRestoreInput = z.infer<typeof recycleBinRestoreSchema>;
 export type RecycleBinPurgeInput = z.infer<typeof recycleBinPurgeSchema>;
+export type RecycleBinClearInput = z.infer<typeof recycleBinClearSchema>;
+export type ResourceCopySshKeyInput = z.infer<typeof resourceCopySshKeySchema>;

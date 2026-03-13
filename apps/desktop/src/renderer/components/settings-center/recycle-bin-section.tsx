@@ -1,7 +1,8 @@
-import { Button, List, Popconfirm, Space, Tag, Typography, Empty } from "antd";
+import { Button, List, Popconfirm, Space, Tag, Typography, Empty, message } from "antd";
 import { useState, useEffect, useCallback } from "react";
 import type { RecycleBinEntry } from "@nextshell/core";
 import { SettingsCard } from "./shared-components";
+import { formatRelativeTime, formatDateTime } from "../../utils/formatTime";
 
 const api = () =>
   (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
@@ -18,6 +19,12 @@ const TYPE_LABELS: Record<string, string> = {
   sshKey: "密钥",
 };
 
+const formatScopeKey = (scopeKey: string): string => {
+  if (scopeKey === "local-default") return "本地";
+  if (scopeKey.startsWith("cloud:")) return `云工作区 ${scopeKey.slice(6)}`;
+  return scopeKey;
+};
+
 export const RecycleBinSection = () => {
   const [entries, setEntries] = useState<RecycleBinEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,8 +35,8 @@ export const RecycleBinSection = () => {
     try {
       const list = await api().recycleBin.list();
       setEntries(list);
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -44,8 +51,8 @@ export const RecycleBinSection = () => {
     try {
       await api().recycleBin.restore({ recycleBinEntryId: entryId, targetOriginKind: "local" });
       await refresh();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyId(null);
     }
@@ -56,8 +63,20 @@ export const RecycleBinSection = () => {
     try {
       await api().recycleBin.purge({ id: entryId });
       await refresh();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleClear = async () => {
+    setBusyId("__clearing__");
+    try {
+      await api().recycleBin.clear();
+      await refresh();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyId(null);
     }
@@ -65,6 +84,22 @@ export const RecycleBinSection = () => {
 
   return (
     <SettingsCard title="回收站" description="被删除或因冲突替换的资源会保留在此，可恢复或永久删除。">
+      {entries.length > 0 && (
+        <div style={{ marginBottom: 12, textAlign: "right" }}>
+          <Popconfirm
+            title="清空回收站？"
+            description="所有条目将被永久删除，此操作不可恢复。"
+            onConfirm={handleClear}
+            okText="清空"
+            cancelText="取消"
+            okButtonProps={{ danger: true }}
+          >
+            <Button size="small" danger loading={busyId === "__clearing__"}>
+              清空回收站
+            </Button>
+          </Popconfirm>
+        </div>
+      )}
       <List
         loading={loading}
         dataSource={entries}
@@ -109,8 +144,8 @@ export const RecycleBinSection = () => {
               }
               description={
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  删除时间: {entry.createdAt}
-                  {entry.originalScopeKey && ` · 来自: ${entry.originalScopeKey}`}
+                  删除时间: <span title={formatDateTime(entry.createdAt)}>{formatRelativeTime(entry.createdAt)}</span>
+                  {entry.originalScopeKey && ` · 来自: ${formatScopeKey(entry.originalScopeKey)}`}
                 </Typography.Text>
               }
             />

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
+  CloudSyncManagerStatusEvent,
   DebugLogEntry,
   SessionDataEvent,
   SessionStatusEvent,
@@ -237,7 +238,7 @@ const api: NextShellApi = {
     listConflicts: () => ipcRenderer.invoke(IPCChannel.CloudSyncListConflicts, {}),
     resolveConflict: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncResolveConflict, payload),
     onStatus: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: CloudSyncManagerStatusEvent) => {
         listener(payload);
       };
       ipcRenderer.on(IPCChannel.CloudSyncStatusEvent, handler);
@@ -303,12 +304,14 @@ const api: NextShellApi = {
     copyConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceCopyConnection, payload),
     dangerMoveConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDangerMoveConnection, payload),
     deleteConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDeleteConnection, payload),
-    deleteSshKey: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDeleteSshKey, payload)
+    deleteSshKey: (payload) => ipcRenderer.invoke(IPCChannel.ResourceDeleteSshKey, payload),
+    copySshKey: (payload) => ipcRenderer.invoke(IPCChannel.ResourceCopySshKey, payload)
   },
   recycleBin: {
     list: () => ipcRenderer.invoke(IPCChannel.RecycleBinList, {}),
     restore: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinRestore, payload),
-    purge: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinPurge, payload)
+    purge: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinPurge, payload),
+    clear: () => ipcRenderer.invoke(IPCChannel.RecycleBinClear, {})
   },
   platform: process.platform,
   ui: {

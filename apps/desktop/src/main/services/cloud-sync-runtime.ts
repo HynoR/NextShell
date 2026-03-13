@@ -51,6 +51,9 @@ export interface CloudSyncRuntimeDeps {
   removeConnection: (id: string) => void;
   removeSshKey: (id: string) => void;
 
+  /** Credential access */
+  readCredential: (ref: string) => Promise<string | undefined>;
+
   /** Pending ops storage */
   listPendingOps: (workspaceId: string) => CloudSyncPendingOp[];
   savePendingOp: (op: CloudSyncPendingOp) => number;
@@ -71,6 +74,10 @@ export interface CloudSyncRuntimeDeps {
   /** Workspace config updates */
   saveWorkspace: (ws: CloudSyncWorkspaceProfile) => void;
 
+  /** Version persistence */
+  getRuntimeCurrentVersion: (workspaceId: string) => number | null;
+  saveRuntimeCurrentVersion: (workspaceId: string, currentVersion: number) => void;
+
   /** Credential access */
   getWorkspacePassword: (workspaceId: string) => Promise<string | undefined>;
 
@@ -87,9 +94,10 @@ export class CloudSyncRuntime {
   private state: RuntimeState = "idle";
   private lastError: string | null = null;
   private currentVersion: number | null = null;
-  private pullTimer: ReturnType<typeof setInterval> | undefined;
+  private pullTimer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
   private syncInProgress = false;
+  private consecutiveErrors = 0;
 
   private readonly api = new CloudSyncApiV2Client();
 
@@ -106,16 +114,17 @@ export class CloudSyncRuntime {
     });
   }
 
-  /** Start the runtime: schedule periodic pull */
+  /** Start the runtime: load persisted version, schedule periodic pull */
   start(): void {
     if (this.disposed) return;
+    this.currentVersion = this.deps.getRuntimeCurrentVersion(this.workspaceId);
     this.schedulePull();
   }
 
   /** Stop the runtime: cancel timer */
   stop(): void {
     if (this.pullTimer) {
-      clearInterval(this.pullTimer);
+      clearTimeout(this.pullTimer);
       this.pullTimer = undefined;
     }
   }
@@ -161,14 +170,18 @@ export class CloudSyncRuntime {
     resourceType: "server" | "sshKey",
     resourceId: string,
     action: "upsert" | "delete",
-    baseRevision: number | null = null,
+    baseRevision?: number | null,
   ): void {
+    // Use provided baseRevision, or look up from resource state
+    const resolvedBaseRevision = baseRevision ??
+      this.deps.getResourceState(this.workspaceId, resourceType, resourceId)?.serverRevision ?? null;
+
     const op: CloudSyncPendingOp = {
       workspaceId: this.workspaceId,
       resourceType,
       resourceId,
       action,
-      baseRevision,
+      baseRevision: resolvedBaseRevision,
       force: false,
       queuedAt: new Date().toISOString(),
     };
@@ -244,12 +257,19 @@ export class CloudSyncRuntime {
   // ── Private ───────────────────────────────────────────────────────────────
 
   private schedulePull(): void {
-    const intervalMs = (this.workspace.pullIntervalSec ?? 60) * 1000;
-    this.pullTimer = setInterval(() => {
+    const baseMs = (this.workspace.pullIntervalSec ?? 60) * 1000;
+    const backoffMs = Math.min(baseMs * Math.pow(2, this.consecutiveErrors), 15 * 60 * 1000);
+    this.pullTimer = setTimeout(() => {
       if (!this.syncInProgress && !this.disposed) {
-        this.runSyncCycle().catch(() => {});
+        this.runSyncCycle()
+          .catch(() => {})
+          .finally(() => {
+            if (!this.disposed) this.schedulePull();
+          });
+      } else if (!this.disposed) {
+        this.schedulePull();
       }
-    }, intervalMs);
+    }, backoffMs);
   }
 
   private async runSyncCycle(): Promise<void> {
@@ -283,10 +303,17 @@ export class CloudSyncRuntime {
 
       this.state = "idle";
       this.lastError = null;
+      this.consecutiveErrors = 0;
+
+      // Persist version for restart recovery
+      if (this.currentVersion != null) {
+        this.deps.saveRuntimeCurrentVersion(this.workspaceId, this.currentVersion);
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.state = "error";
       this.lastError = errorMsg;
+      this.consecutiveErrors++;
       this.workspace = { ...this.workspace, lastError: errorMsg };
       this.deps.saveWorkspace(this.workspace);
     } finally {
@@ -309,7 +336,7 @@ export class CloudSyncRuntime {
       let payload: Record<string, unknown> | undefined;
       if (op.action === "upsert") {
         // Serialize current local resource as payload
-        payload = this.serializeResourceForPush(op.resourceType, op.resourceId);
+        payload = await this.serializeResourceForPush(op.resourceType, op.resourceId);
         if (!payload) {
           // Resource no longer exists locally, skip this op
           this.deps.removePendingOp(op.id!);
@@ -385,14 +412,17 @@ export class CloudSyncRuntime {
     const response: PullResponse = await this.api.pull(creds, this.currentVersion ?? 0);
     this.currentVersion = response.workspaceVersion;
 
+    // Batch-get pending ops once before iterating
+    const allPendingOps = this.deps.listPendingOps(this.workspaceId);
+
     // Apply servers
     for (const item of response.servers) {
-      this.applyPulledResource("server", item);
+      this.applyPulledResource("server", item, allPendingOps);
     }
 
     // Apply SSH keys
     for (const item of response.sshKeys) {
-      this.applyPulledResource("sshKey", item);
+      this.applyPulledResource("sshKey", item, allPendingOps);
     }
 
     // Apply deletions
@@ -403,11 +433,10 @@ export class CloudSyncRuntime {
     this.deps.emitApplied(this.workspaceId);
   }
 
-  private applyPulledResource(resourceType: "server" | "sshKey", item: ServerSnapshotItem): void {
+  private applyPulledResource(resourceType: "server" | "sshKey", item: ServerSnapshotItem, pendingOps: CloudSyncPendingOp[]): void {
     const existingState = this.deps.getResourceState(this.workspaceId, resourceType, item.uuid);
 
     // Check for local pending changes → potential conflict
-    const pendingOps = this.deps.listPendingOps(this.workspaceId);
     const hasPending = pendingOps.some(
       (op) => op.resourceType === resourceType && op.resourceId === item.uuid
     );
@@ -560,10 +589,10 @@ export class CloudSyncRuntime {
     }
   }
 
-  private serializeResourceForPush(
+  private async serializeResourceForPush(
     resourceType: "server" | "sshKey",
     resourceId: string,
-  ): Record<string, unknown> | undefined {
+  ): Promise<Record<string, unknown> | undefined> {
     if (resourceType === "server") {
       const conns = this.deps.listConnections();
       const conn = conns.find((c) => c.id === resourceId);
@@ -586,9 +615,22 @@ export class CloudSyncRuntime {
       const keys = this.deps.listSshKeys();
       const key = keys.find((k) => k.id === resourceId);
       if (!key) return undefined;
+
+      // Include encrypted key content for server-side storage
+      let keyCipher: string | undefined;
+      let passphraseCipher: string | undefined;
+      if (key.keyContentRef) {
+        try { keyCipher = await this.deps.readCredential(key.keyContentRef); } catch { /* skip */ }
+      }
+      if (key.passphraseRef) {
+        try { passphraseCipher = await this.deps.readCredential(key.passphraseRef); } catch { /* skip */ }
+      }
+
       return {
         name: key.name,
         updatedAt: key.updatedAt,
+        keyCipher,
+        passphraseCipher,
       };
     }
   }

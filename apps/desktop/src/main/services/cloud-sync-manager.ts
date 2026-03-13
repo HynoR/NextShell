@@ -34,7 +34,7 @@ export interface CloudSyncWorkspaceInput {
   apiBaseUrl: string;
   workspaceName: string;
   displayName?: string;
-  workspacePassword: string;
+  workspacePassword?: string;
   pullIntervalSec?: number;
   ignoreTlsErrors?: boolean;
   enabled?: boolean;
@@ -67,6 +67,9 @@ export interface CloudSyncManagerDeps {
   saveSshKey: (key: SshKeyProfile) => void;
   removeSshKey: (id: string) => void;
 
+  /** Credential access */
+  readCredential: (ref: string) => Promise<string | undefined>;
+
   /** Workspace config persistence */
   listWorkspaces: () => CloudSyncWorkspaceProfile[];
   saveWorkspace: (ws: CloudSyncWorkspaceProfile) => void;
@@ -95,6 +98,10 @@ export interface CloudSyncManagerDeps {
   storeWorkspacePassword: (workspaceId: string, password: string) => Promise<void>;
   getWorkspacePassword: (workspaceId: string) => Promise<string | undefined>;
   deleteWorkspacePassword: (workspaceId: string) => Promise<void>;
+
+  /** Version persistence */
+  getRuntimeCurrentVersion: (workspaceId: string) => number | null;
+  saveRuntimeCurrentVersion: (workspaceId: string, currentVersion: number) => void;
 
   /** Event broadcast */
   broadcastStatus: (status: CloudSyncManagerStatus) => void;
@@ -144,7 +151,7 @@ export class CloudSyncManager {
       apiBaseUrl: input.apiBaseUrl.replace(/\/+$/, ""),
       workspaceName: input.workspaceName,
       displayName: input.displayName ?? input.workspaceName,
-      pullIntervalSec: input.pullIntervalSec ?? 60,
+      pullIntervalSec: input.pullIntervalSec ?? 300,
       ignoreTlsErrors: input.ignoreTlsErrors ?? false,
       enabled: input.enabled ?? true,
       createdAt: now,
@@ -154,6 +161,9 @@ export class CloudSyncManager {
     };
 
     // Store password securely
+    if (!input.workspacePassword) {
+      throw new Error("工作区密码不能为空");
+    }
     await this.deps.storeWorkspacePassword(id, input.workspacePassword);
 
     // Persist workspace config
@@ -391,6 +401,7 @@ export class CloudSyncManager {
       saveSshKey: (key) => this.deps.saveSshKey(key),
       removeConnection: (id) => this.deps.removeConnection(id),
       removeSshKey: (id) => this.deps.removeSshKey(id),
+      readCredential: (ref) => this.deps.readCredential(ref),
 
       listPendingOps: (wId) => this.deps.listPendingOps(wId),
       savePendingOp: (op) => this.deps.savePendingOp(op),
@@ -406,6 +417,8 @@ export class CloudSyncManager {
 
       saveRecycleBinEntry: (entry) => this.deps.saveRecycleBinEntry(entry),
       saveWorkspace: (w) => this.deps.saveWorkspace(w),
+      getRuntimeCurrentVersion: (wId) => this.deps.getRuntimeCurrentVersion(wId),
+      saveRuntimeCurrentVersion: (wId, v) => this.deps.saveRuntimeCurrentVersion(wId, v),
       getWorkspacePassword: (wId) => this.deps.getWorkspacePassword(wId),
 
       emitStatus: () => this.broadcastManagerStatus(),

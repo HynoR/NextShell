@@ -127,11 +127,29 @@ import type {
   ResourceDangerMoveConnectionInput,
   ResourceDeleteConnectionInput,
   ResourceDeleteSshKeyInput,
+  ResourceCopySshKeyInput,
   RecycleBinRestoreInput,
   RecycleBinPurgeInput
 } from "./contracts";
 
 export type SessionEventUnsubscribe = () => void;
+
+export type CloudSyncRuntimeState = "idle" | "syncing" | "error" | "disabled";
+
+export interface CloudSyncRuntimeStatusEvent {
+  workspaceId: string;
+  state: CloudSyncRuntimeState;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  pendingCount: number;
+  conflictCount: number;
+  currentVersion: number | null;
+}
+
+export interface CloudSyncManagerStatusEvent {
+  workspaces: CloudSyncRuntimeStatusEvent[];
+}
+
 export interface StreamDeliveryEnvelope<T> {
   deliveryId: number;
   payload: T;
@@ -255,11 +273,11 @@ export interface NextShellApi {
     workspaceAdd: (payload: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceUpdate: (payload: CloudSyncWorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceRemove: (payload: CloudSyncWorkspaceRemoveInput) => Promise<{ ok: true }>;
-    status: () => Promise<{ workspaces: Array<{ workspaceId: string; state: string; lastSyncAt: string | null; lastError: string | null; pendingCount: number; conflictCount: number; currentVersion: number | null }> }>;
+    status: () => Promise<CloudSyncManagerStatusEvent>;
     syncNow: (payload?: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
     listConflicts: () => Promise<Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>>;
     resolveConflict: (payload: CloudSyncResolveConflictInput) => Promise<{ ok: true }>;
-    onStatus: (listener: (event: unknown) => void) => SessionEventUnsubscribe;
+    onStatus: (listener: (event: CloudSyncManagerStatusEvent) => void) => SessionEventUnsubscribe;
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
   };
   masterPassword: {
@@ -306,10 +324,12 @@ export interface NextShellApi {
     dangerMoveConnection: (payload: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
     deleteConnection: (payload: ResourceDeleteConnectionInput) => Promise<{ ok: true }>;
     deleteSshKey: (payload: ResourceDeleteSshKeyInput) => Promise<{ ok: true }>;
+    copySshKey: (payload: ResourceCopySshKeyInput) => Promise<SshKeyProfile>;
   };
   recycleBin: {
     list: () => Promise<RecycleBinEntry[]>;
     restore: (payload: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
     purge: (payload: RecycleBinPurgeInput) => Promise<{ ok: true }>;
+    clear: () => Promise<{ ok: true; deleted: number }>;
   };
 }

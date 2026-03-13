@@ -97,9 +97,11 @@ import {
   resourceDangerMoveConnectionSchema,
   resourceDeleteConnectionSchema,
   resourceDeleteSshKeySchema,
+  resourceCopySshKeySchema,
   recycleBinListSchema,
   recycleBinRestoreSchema,
-  recycleBinPurgeSchema
+  recycleBinPurgeSchema,
+  recycleBinClearSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -682,6 +684,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.resourceDeleteSshKey(input);
   });
 
+  ipcMain.handle(IPCChannel.ResourceCopySshKey, (_event, payload) => {
+    const input = parsePayload(resourceCopySshKeySchema, payload, "复制密钥");
+    return services.resourceCopySshKey(input);
+  });
+
   // ─── Recycle Bin ──────────────────────────────────────────────────────────
 
   ipcMain.handle(IPCChannel.RecycleBinList, (_event, payload) => {
@@ -697,5 +704,10 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.RecycleBinPurge, (_event, payload) => {
     const input = parsePayload(recycleBinPurgeSchema, payload, "回收站永久删除");
     return services.recycleBinPurge(input);
+  });
+
+  ipcMain.handle(IPCChannel.RecycleBinClear, (_event, payload) => {
+    parsePayload(recycleBinClearSchema, payload ?? {}, "清空回收站");
+    return services.recycleBinClear();
   });
 };

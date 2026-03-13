@@ -163,7 +163,17 @@ export class CloudSyncApiV2Client {
     const isHttps = requestUrl.protocol === "https:";
     const transport = isHttps ? httpsRequest : httpRequest;
 
+    const TIMEOUT_MS = 30_000;
+    const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB
+
     const { statusCode, bodyText } = await new Promise<{ statusCode: number; bodyText: string }>((resolve, reject) => {
+      const abortController = new AbortController();
+      const timer = setTimeout(() => {
+        abortController.abort();
+        clientRequest.destroy();
+        reject(new Error("请求超时（30s）"));
+      }, TIMEOUT_MS);
+
       const clientRequest = transport(
         requestUrl,
         {
@@ -175,13 +185,24 @@ export class CloudSyncApiV2Client {
             "Content-Type": "application/json",
           },
           rejectUnauthorized: isHttps ? !creds.ignoreTlsErrors : undefined,
+          signal: abortController.signal,
         },
         (response) => {
           const chunks: Buffer[] = [];
+          let totalBytes = 0;
           response.on("data", (chunk) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            totalBytes += buf.length;
+            if (totalBytes > MAX_BODY_BYTES) {
+              clearTimeout(timer);
+              clientRequest.destroy();
+              reject(new Error("响应体超过 10MB 限制"));
+              return;
+            }
+            chunks.push(buf);
           });
           response.on("end", () => {
+            clearTimeout(timer);
             resolve({
               statusCode: response.statusCode ?? 0,
               bodyText: Buffer.concat(chunks).toString("utf8"),
@@ -190,7 +211,10 @@ export class CloudSyncApiV2Client {
         },
       );
 
-      clientRequest.on("error", reject);
+      clientRequest.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
       clientRequest.write(body);
       clientRequest.end();
     });

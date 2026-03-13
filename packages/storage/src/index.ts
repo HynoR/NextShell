@@ -1164,6 +1164,28 @@ const migrations: MigrationDefinition[] = [
       // ── 7. Clean up old pending queue JSON setting ──
       db.exec(`DELETE FROM app_settings WHERE key = 'cloud_sync_pending_queue'`);
     }
+  },
+  {
+    version: 20,
+    name: "cloud_sync_v2_indexes_and_runtime_state",
+    apply: (db) => {
+      // Unique partial indexes to prevent duplicate resource_id
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_conn_resource_id
+          ON connections(resource_id) WHERE resource_id IS NOT NULL;
+      `);
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sshkey_resource_id
+          ON ssh_keys(resource_id) WHERE resource_id IS NOT NULL;
+      `);
+      // Runtime state table for persisting currentVersion across restarts
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS cloud_sync_runtime_state (
+          workspace_id TEXT PRIMARY KEY,
+          current_version INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+    }
   }
 ];
 
@@ -1230,6 +1252,10 @@ export interface ConnectionRepository {
   updatePendingOp: (op: CloudSyncPendingOp) => void;
   removePendingOp: (id: number) => void;
   clearPendingOps: (workspaceId: string) => void;
+  // ── Cloud Sync v2: runtime state persistence ──
+  getRuntimeCurrentVersion: (workspaceId: string) => number | null;
+  saveRuntimeCurrentVersion: (workspaceId: string, currentVersion: number) => void;
+  removeRuntimeCurrentVersion: (workspaceId: string) => void;
   // ── Recycle bin ──
   listRecycleBinEntries: () => RecycleBinEntry[];
   getRecycleBinEntry: (id: string) => RecycleBinEntry | undefined;
@@ -2060,10 +2086,13 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   }
 
   removeCloudSyncWorkspace(id: string): void {
-    // Also clean up associated pending ops and resource states
-    this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(id);
-    this.db.prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?").run(id);
-    this.db.prepare("DELETE FROM cloud_sync_workspaces WHERE id = ?").run(id);
+    // Atomically clean up workspace + associated data
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM cloud_sync_workspaces WHERE id = ?").run(id);
+    })();
   }
 
   // ── Cloud Sync v2: pending ops ──
@@ -2115,6 +2144,25 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   clearPendingOps(workspaceId: string): void {
     this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(workspaceId);
+  }
+
+  // ── Cloud Sync v2: runtime state persistence ──
+  getRuntimeCurrentVersion(workspaceId: string): number | null {
+    const row = this.db.prepare(
+      "SELECT current_version FROM cloud_sync_runtime_state WHERE workspace_id = ?"
+    ).get(workspaceId) as { current_version: number } | undefined;
+    return row?.current_version ?? null;
+  }
+
+  saveRuntimeCurrentVersion(workspaceId: string, currentVersion: number): void {
+    this.db.prepare(
+      `INSERT INTO cloud_sync_runtime_state (workspace_id, current_version) VALUES (?, ?)
+       ON CONFLICT(workspace_id) DO UPDATE SET current_version = excluded.current_version`
+    ).run(workspaceId, currentVersion);
+  }
+
+  removeRuntimeCurrentVersion(workspaceId: string): void {
+    this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(workspaceId);
   }
 
   // ── Recycle bin ──

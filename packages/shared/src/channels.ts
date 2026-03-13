@@ -116,5 +116,9 @@ export const IPCChannel = {
   // ── Recycle Bin ──
   RecycleBinList: "nextshell:recycle-bin:list",
   RecycleBinRestore: "nextshell:recycle-bin:restore",
-  RecycleBinPurge: "nextshell:recycle-bin:purge"
+  RecycleBinPurge: "nextshell:recycle-bin:purge",
+  RecycleBinClear: "nextshell:recycle-bin:clear",
+
+  // ── Resource Operations (SSH Key) ──
+  ResourceCopySshKey: "nextshell:resource:copy-ssh-key"
 } as const;

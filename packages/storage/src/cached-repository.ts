@@ -291,6 +291,15 @@ export class CachedConnectionRepository implements ConnectionRepository {
   clearPendingOps(workspaceId: string): void {
     this.inner.clearPendingOps(workspaceId);
   }
+  getRuntimeCurrentVersion(workspaceId: string): number | null {
+    return this.inner.getRuntimeCurrentVersion(workspaceId);
+  }
+  saveRuntimeCurrentVersion(workspaceId: string, currentVersion: number): void {
+    this.inner.saveRuntimeCurrentVersion(workspaceId, currentVersion);
+  }
+  removeRuntimeCurrentVersion(workspaceId: string): void {
+    this.inner.removeRuntimeCurrentVersion(workspaceId);
+  }
   listRecycleBinEntries(): RecycleBinEntry[] {
     return this.inner.listRecycleBinEntries();
   }

@@ -67,6 +67,7 @@ import type {
   ResourceDangerMoveConnectionInput,
   ResourceDeleteConnectionInput,
   ResourceDeleteSshKeyInput,
+  ResourceCopySshKeyInput,
   RecycleBinRestoreInput,
   RecycleBinPurgeInput,
 } from "../../../../../packages/shared/src/index";
@@ -299,11 +300,13 @@ export interface ServiceContainer {
   resourceDangerMoveConnection: (input: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
   resourceDeleteConnection: (input: ResourceDeleteConnectionInput) => Promise<void>;
   resourceDeleteSshKey: (input: ResourceDeleteSshKeyInput) => Promise<void>;
+  resourceCopySshKey: (input: ResourceCopySshKeyInput) => Promise<SshKeyProfile>;
 
   // Recycle Bin
   recycleBinList: () => RecycleBinEntry[];
   recycleBinRestore: (input: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
   recycleBinPurge: (input: RecycleBinPurgeInput) => void;
+  recycleBinClear: () => void;
 
   dispose: () => Promise<void>;
 }

@@ -229,7 +229,15 @@ export class ResourceOperationsService {
     const conn = connections.getById(input.id);
     if (!conn) throw new Error(`Connection not found: ${input.id}`);
 
-    // Step 1: Snapshot to recycle bin
+    // Step 1: Snapshot to recycle bin (with embedded credential for restore)
+    const snapshotData: Record<string, unknown> = { ...conn };
+    if (conn.credentialRef) {
+      try {
+        const password = await vault.readCredential(conn.credentialRef);
+        if (password) snapshotData._savedCredential = password;
+      } catch { /* best effort */ }
+    }
+
     const entry: RecycleBinEntry = {
       id: randomUUID(),
       resourceType: "server",
@@ -240,7 +248,7 @@ export class ResourceOperationsService {
       ),
       originalScopeKey: conn.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
       reason,
-      snapshotJson: JSON.stringify(conn),
+      snapshotJson: JSON.stringify(snapshotData),
       createdAt: new Date().toISOString(),
     };
 
@@ -288,7 +296,21 @@ export class ResourceOperationsService {
       }
     }
 
-    // Step 1: Snapshot to recycle bin
+    // Step 1: Snapshot to recycle bin (with embedded credentials for restore)
+    const snapshotData: Record<string, unknown> = { ...key };
+    if (key.keyContentRef) {
+      try {
+        const content = await vault.readCredential(key.keyContentRef);
+        if (content) snapshotData._savedKeyContent = content;
+      } catch { /* best effort */ }
+    }
+    if (key.passphraseRef) {
+      try {
+        const pass = await vault.readCredential(key.passphraseRef);
+        if (pass) snapshotData._savedPassphrase = pass;
+      } catch { /* best effort */ }
+    }
+
     const entry: RecycleBinEntry = {
       id: randomUUID(),
       resourceType: "sshKey",
@@ -299,7 +321,7 @@ export class ResourceOperationsService {
       ),
       originalScopeKey: key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
       reason: "delete",
-      snapshotJson: JSON.stringify(key),
+      snapshotJson: JSON.stringify(snapshotData),
       createdAt: new Date().toISOString(),
     };
 
@@ -343,6 +365,23 @@ export class ResourceOperationsService {
 
     if (entry.resourceType === "server") {
       const zone = input.targetOriginKind === "cloud" ? "workspace" : "server";
+
+      // Restore credential from snapshot if available
+      let credentialRef: string | undefined;
+      if (typeof snapshot._savedCredential === "string" && snapshot._savedCredential) {
+        credentialRef = await this.deps.vault.storeCredential(`conn-${newUuid}`, snapshot._savedCredential);
+      }
+
+      // Check SSH key dependency
+      let sshKeyId: string | undefined;
+      if (typeof snapshot.sshKeyId === "string" && snapshot.sshKeyId) {
+        const keyExists = this.deps.sshKeyRepo.getById(snapshot.sshKeyId);
+        if (keyExists) {
+          sshKeyId = snapshot.sshKeyId;
+        }
+        // If key doesn't exist, leave sshKeyId undefined (user must re-attach)
+      }
+
       const restored: ConnectionProfile = {
         id: newUuid,
         name: String(snapshot.name ?? ""),
@@ -350,6 +389,8 @@ export class ResourceOperationsService {
         port: Number(snapshot.port ?? 22),
         username: String(snapshot.username ?? "root"),
         authType: (snapshot.authType as ConnectionProfile["authType"]) ?? "password",
+        credentialRef,
+        sshKeyId,
         strictHostKeyChecking: Boolean(snapshot.strictHostKeyChecking),
         groupPath: `/${zone}`,
         tags: Array.isArray(snapshot.tags) ? snapshot.tags.filter((t): t is string => typeof t === "string") : [],
@@ -387,12 +428,24 @@ export class ResourceOperationsService {
 
       return restored;
     } else {
-      // SSH key restore
+      // SSH key restore — re-store credentials from snapshot
+      let keyContentRef = String(snapshot.keyContentRef ?? "");
+      if (typeof snapshot._savedKeyContent === "string" && snapshot._savedKeyContent) {
+        keyContentRef = await this.deps.vault.storeCredential(`sshkey-${newUuid}`, snapshot._savedKeyContent);
+      }
+
+      let passphraseRef: string | undefined;
+      if (typeof snapshot._savedPassphrase === "string" && snapshot._savedPassphrase) {
+        passphraseRef = await this.deps.vault.storeCredential(`sshkey-${newUuid}-pass`, snapshot._savedPassphrase);
+      } else if (typeof snapshot.passphraseRef === "string") {
+        passphraseRef = snapshot.passphraseRef;
+      }
+
       const restored: SshKeyProfile = {
         id: newUuid,
         name: String(snapshot.name ?? ""),
-        keyContentRef: String(snapshot.keyContentRef ?? ""),
-        passphraseRef: typeof snapshot.passphraseRef === "string" ? snapshot.passphraseRef : undefined,
+        keyContentRef,
+        passphraseRef,
         createdAt: now,
         updatedAt: now,
         resourceId: newResourceId,
@@ -436,6 +489,21 @@ export class ResourceOperationsService {
     });
   }
 
+  /**
+   * Copy an SSH key to a target origin scope.
+   */
+  async copySshKey(input: {
+    sourceId: string;
+    targetOriginKind: OriginKind;
+    targetWorkspaceId?: string;
+  }): Promise<SshKeyProfile> {
+    const targetScope = this.resolveScope(input.targetOriginKind, input.targetWorkspaceId);
+    const newId = await this.ensureSshKeyInScope(input.sourceId, targetScope);
+    const result = this.deps.sshKeyRepo.getById(newId);
+    if (!result) throw new Error("Failed to copy SSH key");
+    return result;
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────
 
   /**
@@ -450,7 +518,7 @@ export class ResourceOperationsService {
     const { sshKeyRepo, vault } = this.deps;
 
     const sourceKey = sshKeyRepo.getById(sourceKeyId);
-    if (!sourceKey) return sourceKeyId; // Key not found, leave as-is
+    if (!sourceKey) throw new Error(`Source SSH key not found: ${sourceKeyId}`);
 
     // If source key already belongs to target scope, reuse it
     const sourceScopeKey = sourceKey.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;

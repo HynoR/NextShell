@@ -430,6 +430,9 @@ export const createServiceContainer = (
     listSshKeys: () => sshKeyRepo.list(),
     saveSshKey: (key) => sshKeyRepo.save(key),
     removeSshKey: (id) => sshKeyRepo.remove(id),
+    readCredential: async (ref) => {
+      try { return await vault.readCredential(ref); } catch { return undefined; }
+    },
     listWorkspaces: () => connections.listCloudSyncWorkspaces(),
     saveWorkspace: (ws) => connections.saveCloudSyncWorkspace(ws),
     removeWorkspace: (id) => connections.removeCloudSyncWorkspace(id),
@@ -455,6 +458,8 @@ export const createServiceContainer = (
     deleteWorkspacePassword: async (wId) => {
       await vault.deleteCredential(`cloud-sync-ws-${wId}`).catch(() => {});
     },
+    getRuntimeCurrentVersion: (wId) => connections.getRuntimeCurrentVersion(wId),
+    saveRuntimeCurrentVersion: (wId, v) => connections.saveRuntimeCurrentVersion(wId, v),
     broadcastStatus: (status) => broadcastToAllWindows(IPCChannel.CloudSyncStatusEvent, status),
     broadcastApplied: (wId) => broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId }),
   });
@@ -500,10 +505,19 @@ export const createServiceContainer = (
     // Connection CRUD
     listConnections: (q) => connectionSvc.listConnections(q),
     upsertConnection: (i) => connectionSvc.upsertConnection(i),
-    removeConnection: (id) => connectionSvc.removeConnection(id),
+    removeConnection: async (id) => {
+      // 1. Snapshot to recycle bin + DB remove + push tombstone + delete credentials
+      await resourceOpsSvc.deleteConnection({ id });
+      // 2. Clean up runtime state (sessions, monitors, SSH connections)
+      await connectionSvc.removeConnectionRecord(id, { skipAudit: true });
+      return { ok: true as const };
+    },
     listSshKeys: () => connectionSvc.listSshKeys(),
     upsertSshKey: (i) => connectionSvc.upsertSshKey(i),
-    removeSshKey: (i) => connectionSvc.removeSshKey(i),
+    removeSshKey: async (i) => {
+      await resourceOpsSvc.deleteSshKey({ id: i.id, force: i.force });
+      return { ok: true as const };
+    },
     listProxies: () => connectionSvc.listProxies(),
     upsertProxy: (i) => connectionSvc.upsertProxy(i),
     removeProxy: (i) => connectionSvc.removeProxy(i),
@@ -617,11 +631,13 @@ export const createServiceContainer = (
     resourceDangerMoveConnection: (i) => resourceOpsSvc.dangerMoveConnection(i),
     resourceDeleteConnection: (i) => resourceOpsSvc.deleteConnection(i),
     resourceDeleteSshKey: (i) => resourceOpsSvc.deleteSshKey(i),
+    resourceCopySshKey: (i) => resourceOpsSvc.copySshKey(i),
 
     // Recycle Bin
     recycleBinList: () => connections.listRecycleBinEntries(),
     recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
     recycleBinPurge: (i) => { resourceOpsSvc.purgeRecycleBinEntry(i.id); },
+    recycleBinClear: () => { connections.clearRecycleBin(); },
 
     dispose,
   };

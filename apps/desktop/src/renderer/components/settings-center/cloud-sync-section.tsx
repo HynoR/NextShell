@@ -11,6 +11,7 @@ import {
   InputNumber,
   Popconfirm,
   Skeleton,
+  message,
 } from "antd";
 import { useState, useEffect, useCallback } from "react";
 import type { CloudSyncWorkspaceProfile } from "@nextshell/core";
@@ -34,7 +35,7 @@ const emptyForm: WorkspaceFormState = {
   workspaceName: "",
   displayName: "",
   workspacePassword: "",
-  pullIntervalSec: 60,
+  pullIntervalSec: 300,
   ignoreTlsErrors: false,
   enabled: true,
 };
@@ -108,8 +109,8 @@ export const CloudSyncSection = () => {
         map.set(s.workspaceId, s);
       }
       setStatusMap(map);
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -120,8 +121,8 @@ export const CloudSyncSection = () => {
     try {
       const list = await api().cloudSync.listConflicts();
       setConflicts(list);
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setConflictsLoading(false);
     }
@@ -166,6 +167,18 @@ export const CloudSyncSection = () => {
   };
 
   const handleSave = async () => {
+    if (!editForm.apiBaseUrl.trim()) {
+      message.warning("请填写 API 地址");
+      return;
+    }
+    if (!editForm.workspaceName.trim()) {
+      message.warning("请填写工作区名称");
+      return;
+    }
+    if (!isEditing && !editForm.workspacePassword) {
+      message.warning("新建工作区时需设置密码");
+      return;
+    }
     setSaving(true);
     try {
       if (isEditing && editForm.id) {
@@ -174,7 +187,7 @@ export const CloudSyncSection = () => {
           apiBaseUrl: editForm.apiBaseUrl,
           workspaceName: editForm.workspaceName,
           displayName: editForm.displayName || undefined,
-          workspacePassword: editForm.workspacePassword || "placeholder",
+          workspacePassword: editForm.workspacePassword || undefined,
           pullIntervalSec: editForm.pullIntervalSec,
           ignoreTlsErrors: editForm.ignoreTlsErrors,
           enabled: editForm.enabled,
@@ -192,8 +205,8 @@ export const CloudSyncSection = () => {
       }
       setModalOpen(false);
       await refresh();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
@@ -203,8 +216,8 @@ export const CloudSyncSection = () => {
     try {
       await api().cloudSync.workspaceRemove({ id });
       await refresh();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -214,8 +227,8 @@ export const CloudSyncSection = () => {
       await api().cloudSync.syncNow({ workspaceId });
       await refresh();
       await refreshConflicts();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSyncingId(null);
     }
@@ -238,8 +251,8 @@ export const CloudSyncSection = () => {
       });
       await refreshConflicts();
       await refresh();
-    } catch {
-      // Ignore
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setConflictBusyKey(null);
     }
@@ -464,7 +477,7 @@ export const CloudSyncSection = () => {
               min={10}
               max={86400}
               value={editForm.pullIntervalSec}
-              onChange={(v) => setEditForm((f) => ({ ...f, pullIntervalSec: v ?? 60 }))}
+              onChange={(v) => setEditForm((f) => ({ ...f, pullIntervalSec: v ?? 300 }))}
               style={{ width: "100%" }}
             />
           </div>

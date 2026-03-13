@@ -189,6 +189,9 @@ const ServerRow = ({
         <i className="ri-star-fill ct-star" aria-hidden="true" />
       ) : null}
       <span className="ct-server-name">{c.name}</span>
+      {c.originKind === "cloud" && (
+        <i className="ri-cloud-line ct-cloud-badge" title="云同步" aria-hidden="true" />
+      )}
       <span className="ct-server-host">{c.host}</span>
       <span
         className="ct-connect-btn"
@@ -295,6 +298,8 @@ const ConnectionContextMenu = ({
   onEditName,
   onEditCredentials,
   onEditServer,
+  onCopyTo,
+  onMoveTo,
   onDelete
 }: {
   state: ConnectionContextMenuState;
@@ -304,6 +309,8 @@ const ConnectionContextMenu = ({
   onEditName: (connection: ConnectionProfile) => void;
   onEditCredentials: (connection: ConnectionProfile) => void;
   onEditServer: (connectionId: string) => void;
+  onCopyTo: (connectionId: string) => void;
+  onMoveTo: (connectionId: string) => void;
   onDelete: (connectionId: string) => void;
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -387,6 +394,19 @@ const ConnectionContextMenu = ({
           <i className="ri-settings-3-line" aria-hidden="true" />
         </span>
         修改服务器
+      </button>
+      <div className="ct-ctx-divider" />
+      <button className="ct-ctx-item" disabled={busy} onClick={() => run(() => onCopyTo(connection.id))}>
+        <span className="ct-ctx-icon">
+          <i className="ri-file-copy-line" aria-hidden="true" />
+        </span>
+        复制到...
+      </button>
+      <button className="ct-ctx-item ct-ctx-item--danger" disabled={busy} onClick={() => run(() => onMoveTo(connection.id))}>
+        <span className="ct-ctx-icon">
+          <i className="ri-drag-move-line" aria-hidden="true" />
+        </span>
+        移动到...
       </button>
       <div className="ct-ctx-divider" />
       <button className="ct-ctx-item ct-ctx-item--danger" disabled={busy} onClick={() => run(() => onDelete(connection.id))}>
@@ -581,6 +601,48 @@ export const ConnectionTreePanel = ({
     [connections, modal, onDelete]
   );
 
+  const handleCopyTo = useCallback(
+    async (connectionId: string) => {
+      try {
+        await window.nextshell.resourceOps.copyConnection({
+          sourceId: connectionId,
+          targetOriginKind: "local",
+        });
+        message.success("连接已复制到本地");
+      } catch (error) {
+        message.error(`复制失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
+    },
+    []
+  );
+
+  const handleMoveTo = useCallback(
+    (connectionId: string) => {
+      const conn = connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+
+      modal.confirm({
+        title: "移动连接",
+        content: `确定将「${conn.name}」移动到本地？此操作会将原连接移入回收站。`,
+        okText: "移动",
+        okButtonProps: { danger: true },
+        cancelText: "取消",
+        onOk: async () => {
+          try {
+            await window.nextshell.resourceOps.dangerMoveConnection({
+              sourceId: connectionId,
+              targetOriginKind: "local",
+            });
+            message.success("连接已移动到本地");
+          } catch (error) {
+            message.error(`移动失败：${formatErrorMessage(error, "请稍后重试")}`);
+          }
+        },
+      });
+    },
+    [connections, modal]
+  );
+
   return (
     <section className="ct-panel">
 
@@ -646,6 +708,12 @@ export const ConnectionTreePanel = ({
           }}
           onEditCredentials={handleOpenCredentialEditor}
           onEditServer={handleOpenManager}
+          onCopyTo={(connectionId) => {
+            void handleCopyTo(connectionId);
+          }}
+          onMoveTo={(connectionId) => {
+            void handleMoveTo(connectionId);
+          }}
           onDelete={(connectionId) => {
             void handleDeleteConnection(connectionId);
           }}

@@ -8,6 +8,7 @@ import type {
   ProxyProfile,
   SshKeyProfile,
 } from "@nextshell/core";
+import { LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import type {
   ConnectionUpsertInput,
   SessionAuthOverrideInput,
@@ -93,6 +94,14 @@ export class ConnectionService {
       const keyProfile = sshKeyRepo.getById(input.sshKeyId);
       if (!keyProfile) {
         throw new Error("Referenced SSH key not found.");
+      }
+      // Cross-origin validation: SSH key must belong to the same origin scope
+      if (input.authType === "privateKey") {
+        const connScopeKey = current?.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+        const keyScopeKey = keyProfile.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+        if (connScopeKey !== keyScopeKey) {
+          throw new Error("禁止跨来源引用 SSH 密钥");
+        }
       }
     }
     if (input.proxyId) {
