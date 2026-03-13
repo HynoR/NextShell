@@ -202,6 +202,28 @@ export const CloudSyncSection = ({
             </div>
 
             <div className="cloud-sync-status-card">
+              <div className="cloud-sync-status-label">钥匙串能力</div>
+              <div className="cloud-sync-status-value">
+                <Typography.Text>
+                  {status.keytarAvailable === null
+                    ? "未知"
+                    : status.keytarAvailable
+                      ? "可用"
+                      : "不可用"}
+                </Typography.Text>
+              </div>
+            </div>
+
+            <div className="cloud-sync-status-card">
+              <div className="cloud-sync-status-label">API 地址</div>
+              <div className="cloud-sync-status-value">
+                <Typography.Text ellipsis={{ tooltip: status.apiBaseUrl || "未配置" }}>
+                  {status.apiBaseUrl || "未配置"}
+                </Typography.Text>
+              </div>
+            </div>
+
+            <div className="cloud-sync-status-card">
               <div className="cloud-sync-status-label">当前工作区</div>
               <div className="cloud-sync-status-value">
                 <Typography.Text ellipsis={{ tooltip: status.workspaceName || "未配置" }}>
