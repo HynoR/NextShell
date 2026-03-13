@@ -3,8 +3,6 @@ import {
   Badge,
   Button,
   Input,
-  InputNumber,
-  List,
   Skeleton,
   Space,
   Switch,
@@ -130,20 +128,22 @@ export const CloudSyncSection = ({
 
             <div className="cloud-sync-field cloud-sync-field--simple">
               <div className="cloud-sync-field-label">自动同步间隔</div>
-              <InputNumber
-                style={{ width: "100%" }}
-                min={10}
-                precision={0}
-                addonAfter="秒"
-                value={pullIntervalSec}
-                disabled={controlsDisabled}
-                onChange={(value) => {
-                  if (typeof value !== "number" || !Number.isFinite(value)) {
-                    return;
-                  }
-                  setPullIntervalSec(Math.max(10, Math.round(value)));
-                }}
-              />
+              <Space.Compact style={{ width: "100%" }}>
+                <Input
+                  type="number"
+                  min={10}
+                  value={pullIntervalSec}
+                  disabled={controlsDisabled}
+                  onChange={(event) => {
+                    const value = parseInt(event.target.value, 10);
+                    if (Number.isNaN(value)) {
+                      return;
+                    }
+                    setPullIntervalSec(Math.max(10, value));
+                  }}
+                />
+                <Button disabled>秒</Button>
+              </Space.Compact>
             </div>
 
             <div className="cloud-sync-field cloud-sync-field--simple cloud-sync-field--toggle">
@@ -193,70 +193,63 @@ export const CloudSyncSection = ({
         {loading ? (
           <Skeleton active paragraph={{ rows: 3 }} />
         ) : (
-          <div className="cloud-sync-status-grid cloud-sync-status-grid--simple">
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">同步状态</div>
-              <div className="cloud-sync-status-value">
-                <Tag color={runtime.color}>{runtime.label}</Tag>
+          <div className="cloud-sync-status-list">
+            {[
+              {
+                label: "同步状态",
+                value: <Tag color={runtime.color}>{runtime.label}</Tag>
+              },
+              {
+                label: "钥匙串能力",
+                value: (
+                  <Typography.Text>
+                    {status.keytarAvailable === null
+                      ? "未知"
+                      : status.keytarAvailable
+                        ? "可用"
+                        : "不可用"}
+                  </Typography.Text>
+                )
+              },
+              {
+                label: "API 地址",
+                value: (
+                  <Typography.Text ellipsis={{ tooltip: status.apiBaseUrl || "未配置" }}>
+                    {status.apiBaseUrl || "未配置"}
+                  </Typography.Text>
+                )
+              },
+              {
+                label: "当前工作区",
+                value: (
+                  <Typography.Text ellipsis={{ tooltip: status.workspaceName || "未配置" }}>
+                    {status.workspaceName || "未配置"}
+                  </Typography.Text>
+                )
+              },
+              {
+                label: "上次同步",
+                value: <Typography.Text>{formatCloudSyncTime(status.lastSyncAt)}</Typography.Text>
+              },
+              {
+                label: "待同步",
+                value: status.pendingCount
+              },
+              {
+                label: "冲突",
+                value: (
+                  <Space size={4}>
+                    <span>{status.conflictCount}</span>
+                    {status.conflictCount > 0 && <Badge status="error" />}
+                  </Space>
+                )
+              }
+            ].map((item, index) => (
+              <div key={index} className="cloud-sync-status-list-item">
+                <span className="cloud-sync-status-list-label">{item.label}</span>
+                <span className="cloud-sync-status-list-value">{item.value}</span>
               </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">钥匙串能力</div>
-              <div className="cloud-sync-status-value">
-                <Typography.Text>
-                  {status.keytarAvailable === null
-                    ? "未知"
-                    : status.keytarAvailable
-                      ? "可用"
-                      : "不可用"}
-                </Typography.Text>
-              </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">API 地址</div>
-              <div className="cloud-sync-status-value">
-                <Typography.Text ellipsis={{ tooltip: status.apiBaseUrl || "未配置" }}>
-                  {status.apiBaseUrl || "未配置"}
-                </Typography.Text>
-              </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">当前工作区</div>
-              <div className="cloud-sync-status-value">
-                <Typography.Text ellipsis={{ tooltip: status.workspaceName || "未配置" }}>
-                  {status.workspaceName || "未配置"}
-                </Typography.Text>
-              </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">上次同步</div>
-              <div className="cloud-sync-status-value">
-                <Typography.Text>{formatCloudSyncTime(status.lastSyncAt)}</Typography.Text>
-              </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">待同步</div>
-              <div className="cloud-sync-status-value cloud-sync-status-value--metric">
-                {status.pendingCount}
-              </div>
-            </div>
-
-            <div className="cloud-sync-status-card">
-              <div className="cloud-sync-status-label">冲突</div>
-              <div className="cloud-sync-status-value cloud-sync-status-value--metric">
-                <Space size={4}>
-                  <span>{status.conflictCount}</span>
-                  {status.conflictCount > 0 && (
-                    <Badge status="error" />
-                  )}
-                </Space>
-              </div>
-            </div>
+            ))}
           </div>
         )}
 
@@ -281,51 +274,27 @@ export const CloudSyncSection = ({
             <span>没有待处理的冲突</span>
           </div>
         ) : (
-          <List
-            className="cloud-sync-conflict-list"
-            dataSource={conflicts}
-            renderItem={(item) => {
+          <div className="cloud-sync-conflict-list">
+            {conflicts.map((item) => {
               const overwriteBusy = conflictBusyKey === `${item.resourceType}:${item.resourceId}:overwrite_local`;
               const keepBusy = conflictBusyKey === `${item.resourceType}:${item.resourceId}:keep_local`;
-              const resourceTypeLabel = {
+              const resourceTypeLabel: Record<string, string> = {
                 connection: "连接",
                 sshKey: "SSH 密钥",
                 proxy: "代理"
-              }[item.resourceType];
+              };
               
               return (
-                <List.Item
-                  className="cloud-sync-conflict-item"
-                  actions={[
-                    <Button
-                      key="keep"
-                      type="primary"
-                      size="small"
-                      loading={keepBusy}
-                      onClick={() => onResolveConflict(item.resourceType, item.resourceId, "keep_local")}
-                    >
-                      保留本地
-                    </Button>,
-                    <Button
-                      key="overwrite"
-                      size="small"
-                      danger
-                      loading={overwriteBusy}
-                      onClick={() => onResolveConflict(item.resourceType, item.resourceId, "overwrite_local")}
-                    >
-                      使用云端
-                    </Button>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
+                <div key={`${item.resourceType}:${item.resourceId}`} className="cloud-sync-conflict-item">
+                  <div className="cloud-sync-conflict-content">
+                    <div className="cloud-sync-conflict-title">
                       <Space size={8}>
                         <span>{item.displayName}</span>
-                        <Tag className="cloud-sync-resource-tag">{resourceTypeLabel}</Tag>
+                        <Tag className="cloud-sync-resource-tag">{resourceTypeLabel[item.resourceType]}</Tag>
                       </Space>
-                    }
-                    description={
-                      <Space size={16} className="cloud-sync-conflict-meta">
+                    </div>
+                    <div className="cloud-sync-conflict-meta">
+                      <Space size={16}>
                         {item.serverDeleted ? (
                           <span className="cloud-sync-conflict-deleted">云端已删除</span>
                         ) : (
@@ -337,12 +306,30 @@ export const CloudSyncSection = ({
                           <span>本地: {formatCloudSyncTime(item.localUpdatedAt)}</span>
                         </Tooltip>
                       </Space>
-                    }
-                  />
-                </List.Item>
+                    </div>
+                  </div>
+                  <div className="cloud-sync-conflict-actions">
+                    <Button
+                      type="primary"
+                      size="small"
+                      loading={keepBusy}
+                      onClick={() => onResolveConflict(item.resourceType, item.resourceId, "keep_local")}
+                    >
+                      保留本地
+                    </Button>
+                    <Button
+                      size="small"
+                      danger
+                      loading={overwriteBusy}
+                      onClick={() => onResolveConflict(item.resourceType, item.resourceId, "overwrite_local")}
+                    >
+                      使用云端
+                    </Button>
+                  </div>
+                </div>
               );
-            }}
-          />
+            })}
+          </div>
         )}
       </SettingsCard>
     </>
