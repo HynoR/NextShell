@@ -14,7 +14,7 @@ type LocalAwareSessionDescriptor = SessionDescriptor & {
   connectionId?: string;
 };
 
-export type BottomTab = "connections" | "files" | "quick-transfer" | "live-edit" | "commands" | "system-info" | "traceroute";
+export type BottomTab = "files" | "quick-transfer" | "live-edit" | "commands" | "system-info" | "traceroute";
 
 export interface NetworkPoint {
   inMbps: number;
@@ -133,7 +133,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   sshKeys: [],
   proxies: [],
   sessions: [],
-  bottomTab: "connections",
+  bottomTab: "files",
   processSnapshots: {},
   networkSnapshots: {},
   networkRateHistory: {},
@@ -365,11 +365,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         tab === "commands" ||
         tab === "files" ||
         tab === "quick-transfer" ||
-        tab === "connections" ||
         tab === "live-edit" ||
         tab === "system-info" ||
         tab === "traceroute"
           ? tab
-          : "connections"
+          : "files"
     })
 }));

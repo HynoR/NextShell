@@ -57,7 +57,7 @@ const resetStore = (): void => {
     processSnapshots: {},
     networkSnapshots: {},
     networkRateHistory: {},
-    bottomTab: "connections"
+    bottomTab: "files"
   });
 };
 

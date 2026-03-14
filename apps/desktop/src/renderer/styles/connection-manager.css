@@ -328,6 +328,31 @@
   font-weight: 500;
 }
 
+.mgr-quick-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  opacity: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.12s;
+}
+
+.mgr-server-row:hover .mgr-quick-connect-btn {
+  opacity: 1;
+}
+
+.mgr-quick-connect-btn:hover {
+  background: var(--accent-dim);
+}
+
 .mgr-server-status {
   width: 6px;
   height: 6px;

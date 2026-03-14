@@ -35,6 +35,7 @@ interface ConnectionManagerModalProps {
   onConnectionsImported: () => Promise<void>;
   onReloadSshKeys: () => Promise<void>;
   onReloadProxies: () => Promise<void>;
+  onOpenLocalTerminal: () => void;
 }
 
 const sanitizeOptionalText = (value: string | undefined): string | undefined => {
@@ -225,13 +226,17 @@ const MgrServerRow = ({
   isSelected,
   isExportSelected,
   onSelect,
-  onToggleExportSelect
+  onToggleExportSelect,
+  onDoubleClick,
+  onQuickConnect
 }: {
   connection: ConnectionProfile;
   isSelected: boolean;
   isExportSelected: boolean;
   onSelect: () => void;
   onToggleExportSelect: () => void;
+  onDoubleClick: () => void;
+  onQuickConnect: () => void;
 }) => {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: connection.id,
@@ -261,6 +266,7 @@ const MgrServerRow = ({
         type="button"
         className="mgr-server-select-btn"
         onClick={onSelect}
+        onDoubleClick={onDoubleClick}
         title={`${connection.name} (${connection.host}:${connection.port})`}
       >
         <span className="mgr-server-status" />
@@ -272,6 +278,15 @@ const MgrServerRow = ({
           <i className="ri-cloud-line" aria-hidden="true" style={{ fontSize: 12, color: "var(--text-tertiary)", marginLeft: 4 }} />
         )}
         <span className="mgr-server-host">{connection.host}</span>
+      </button>
+      <button
+        type="button"
+        className="mgr-quick-connect-btn"
+        onClick={onQuickConnect}
+        title="快速连接"
+        aria-label="快速连接"
+      >
+        <i className="ri-terminal-box-line" aria-hidden="true" />
       </button>
     </div>
   );
@@ -285,7 +300,9 @@ const MgrTreeGroup = ({
   selectedConnectionId,
   selectedExportIds,
   onSelect,
-  onToggleExportSelect
+  onToggleExportSelect,
+  onDoubleClick,
+  onQuickConnect
 }: {
   node: MgrGroupNode;
   depth: number;
@@ -295,6 +312,8 @@ const MgrTreeGroup = ({
   selectedExportIds: Set<string>;
   onSelect: (id: string) => void;
   onToggleExportSelect: (id: string) => void;
+  onDoubleClick: (connectionId: string) => void;
+  onQuickConnect: (connectionId: string) => void;
 }) => {
   const isExpanded = expanded.has(node.key);
   return (
@@ -320,6 +339,8 @@ const MgrTreeGroup = ({
                 selectedExportIds={selectedExportIds}
                 onSelect={onSelect}
                 onToggleExportSelect={onToggleExportSelect}
+                onDoubleClick={onDoubleClick}
+                onQuickConnect={onQuickConnect}
               />
             ) : (
               <MgrServerRow
@@ -329,6 +350,8 @@ const MgrTreeGroup = ({
                 isExportSelected={selectedExportIds.has(child.connection.id)}
                 onSelect={() => onSelect(child.connection.id)}
                 onToggleExportSelect={() => onToggleExportSelect(child.connection.id)}
+                onDoubleClick={() => onDoubleClick(child.connection.id)}
+                onQuickConnect={() => onQuickConnect(child.connection.id)}
               />
             )
           )}
@@ -407,7 +430,8 @@ export const ConnectionManagerModal = ({
   onConnectionRemoved,
   onConnectionsImported,
   onReloadSshKeys,
-  onReloadProxies
+  onReloadProxies,
+  onOpenLocalTerminal
 }: ConnectionManagerModalProps) => {
   const { modal, message } = AntdApp.useApp();
   const [activeTab, setActiveTab] = useState<ManagerTab>("connections");
@@ -754,10 +778,16 @@ export const ConnectionManagerModal = ({
     setConnectingFromForm(true);
     try {
       await onConnectConnection(connectionId);
+      onClose();
     } finally {
       setConnectingFromForm(false);
     }
-  }, [connectingFromForm, form, onConnectConnection, saveConnection, saving, setFormTab]);
+  }, [connectingFromForm, form, onClose, onConnectConnection, saveConnection, saving, setFormTab]);
+
+  const handleQuickConnect = useCallback(async (connectionId: string) => {
+    await onConnectConnection(connectionId);
+    onClose();
+  }, [onConnectConnection, onClose]);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -1330,13 +1360,22 @@ export const ConnectionManagerModal = ({
                 <span className="mgr-count-badge">{connections.length}</span>
               )}
             </div>
-            <button
-              className="mgr-new-btn"
-              onClick={handleNew}
-              title="新建连接"
-            >
-              <i className="ri-add-line" aria-hidden="true" />
-            </button>
+            <div className="mgr-sidebar-title-row">
+              <button
+                className="mgr-new-btn"
+                onClick={() => { onOpenLocalTerminal(); onClose(); }}
+                title="本地终端"
+              >
+                <i className="ri-terminal-box-line" aria-hidden="true" />
+              </button>
+              <button
+                className="mgr-new-btn"
+                onClick={handleNew}
+                title="新建连接"
+              >
+                <i className="ri-add-line" aria-hidden="true" />
+              </button>
+            </div>
           </div>
 
           {/* Search */}
@@ -1390,6 +1429,8 @@ export const ConnectionManagerModal = ({
                 selectedExportIds={selectedExportIds}
                 onSelect={handleSelect}
                 onToggleExportSelect={handleToggleExportSelect}
+                onDoubleClick={(id) => void handleQuickConnect(id)}
+                onQuickConnect={(id) => void handleQuickConnect(id)}
               />
             )}
           </MgrRootDropZone>

@@ -7,11 +7,10 @@ import type {
     SessionType,
     SshKeyProfile,
 } from "@nextshell/core";
-import type { ConnectionUpsertInput, SessionAuthOverrideInput } from "@nextshell/shared";
+import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
-import { ConnectionTreePanel } from "./ConnectionTreePanel";
 import { EditorPane } from "./EditorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { QuickTransferPane } from "./QuickTransferPane";
@@ -184,15 +183,11 @@ interface WorkspaceLayoutProps {
     bottomTab: string;
     onLoadConnections: () => void;
     onOpenManager: () => void;
-    onOpenLocalTerminal: () => void;
     onOpenSettings: () => void;
     onActivateConnection: (connectionId: string) => void;
-    onTreeDoubleConnect: (connectionId: string) => void;
     onTreeConnect: (connectionId: string) => void;
-    onTreeQuickSaveConnection: (payload: ConnectionUpsertInput) => Promise<void>;
     onTitlebarQuickConnect: (raw: string) => Promise<boolean>;
     onTitlebarQuickCreateConnection: (input: QuickCreateConnectionInput) => Promise<boolean>;
-    onTreeEditServer: (connectionId: string) => void;
     onCloseSession: (sessionId: string) => void;
     onReconnectSession: (sessionId: string) => void;
     onRenameSession: (sessionId: string, title: string) => void;
@@ -236,15 +231,11 @@ export const WorkspaceLayout = ({
     bottomTab,
     onLoadConnections,
     onOpenManager,
-    onOpenLocalTerminal,
     onOpenSettings,
     onActivateConnection,
-    onTreeDoubleConnect,
     onTreeConnect,
-    onTreeQuickSaveConnection,
     onTitlebarQuickConnect,
     onTitlebarQuickCreateConnection,
-    onTreeEditServer,
     onCloseSession,
     onReconnectSession,
     onRenameSession,
@@ -592,14 +583,6 @@ export const WorkspaceLayout = ({
                     <button className="hdr-btn" onClick={onOpenManager} title="管理连接">
                         <i className="ri-links-line" aria-hidden="true" />
                         服务器
-                    </button>
-                    <button
-                        className="hdr-btn"
-                        onClick={onOpenLocalTerminal}
-                        title="打开本地终端"
-                    >
-                        <i className="ri-terminal-box-line" aria-hidden="true" />
-                        本地终端
                     </button>
                     <button className="hdr-btn" onClick={onOpenSettings} title="打开设置中心">
                         <i className="ri-settings-3-line" aria-hidden="true" />
@@ -974,35 +957,6 @@ export const WorkspaceLayout = ({
                                                 ),
                                             }}
                                             items={[
-                                                {
-                                                    key: "connections",
-                                                    label: "连接中心",
-                                                    children: (
-                                                        <ConnectionTreePanel
-                                                            connections={connections}
-                                                            sshKeys={sshKeys}
-                                                            sessions={sessions}
-                                                            activeConnectionId={activeConnectionId}
-                                                            onSelect={onActivateConnection}
-                                                            onConnectByDoubleClick={(
-                                                                connectionId,
-                                                            ) => {
-                                                                void onTreeDoubleConnect(
-                                                                    connectionId,
-                                                                );
-                                                            }}
-                                                            onConnect={(connectionId) => {
-                                                                void onTreeConnect(connectionId);
-                                                            }}
-                                                            onQuickSave={(payload) =>
-                                                                onTreeQuickSaveConnection(payload)
-                                                            }
-                                                            onOpenManagerForConnection={
-                                                                onTreeEditServer
-                                                            }
-                                                        />
-                                                    ),
-                                                },
                                                 {
                                                     key: "files",
                                                     label: "SFTP",

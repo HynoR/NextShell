@@ -529,15 +529,11 @@ export const App = () => {
           bottomTab={bottomTab}
           onLoadConnections={() => void loadConnections()}
           onOpenManager={handleOpenManager}
-          onOpenLocalTerminal={handleOpenLocalTerminal}
           onOpenSettings={() => setSettingsOpen(true)}
           onActivateConnection={activateConnection}
-          onTreeDoubleConnect={(connectionId) => void startSession(connectionId)}
           onTreeConnect={(connectionId) => void startSession(connectionId)}
-          onTreeQuickSaveConnection={handleTreeQuickSaveConnection}
           onTitlebarQuickConnect={handleTitlebarQuickConnect}
           onTitlebarQuickCreateConnection={handleTitlebarQuickCreateConnection}
-          onTreeEditServer={handleOpenManagerForConnection}
           onCloseSession={handleCloseSession}
           onReconnectSession={handleReconnectSession}
           onRenameSession={handleRenameSession}
@@ -559,7 +555,6 @@ export const App = () => {
               tab === "commands" ||
               tab === "files" ||
               tab === "quick-transfer" ||
-              tab === "connections" ||
               tab === "live-edit" ||
               tab === "system-info" ||
               tab === "traceroute"
@@ -587,6 +582,7 @@ export const App = () => {
           onConnectionsImported={loadConnections}
           onReloadSshKeys={loadSshKeys}
           onReloadProxies={loadProxies}
+          onOpenLocalTerminal={handleOpenLocalTerminal}
         />
 
         <SettingsCenterModal
