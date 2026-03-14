@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, message } from "antd";
 import type { ConnectionProfile, SessionDescriptor, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
@@ -456,6 +456,7 @@ export const ConnectionTreePanel = ({
 }: ConnectionTreePanelProps) => {
   const { modal } = AntdApp.useApp();
   const [keyword, setKeyword] = useState("");
+  const deferredKeyword = useDeferredValue(keyword);
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(["root", ...ZONE_ORDER.map((z) => `zone:${z}`)])
   );
@@ -464,8 +465,8 @@ export const ConnectionTreePanel = ({
   const [savingName, setSavingName] = useState(false);
 
   const tree = useMemo(
-    () => buildTree(connections, sessions, keyword),
-    [connections, sessions, keyword]
+    () => buildTree(connections, sessions, deferredKeyword),
+    [connections, sessions, deferredKeyword]
   );
 
   const hasVisibleConnections = useMemo(
@@ -515,7 +516,7 @@ export const ConnectionTreePanel = ({
 
   // Auto-expand all groups when keyword changes
   useMemo(() => {
-    if (keyword.trim()) {
+    if (deferredKeyword.trim()) {
       const keys = new Set<string>(["root"]);
       const walk = (node: GroupNode) => {
         keys.add(node.key);
@@ -526,7 +527,7 @@ export const ConnectionTreePanel = ({
       walk(tree);
       setExpanded(keys);
     }
-  }, [keyword, tree]);
+  }, [deferredKeyword, tree]);
 
   const handleServerContextMenu = useCallback(
     (event: React.MouseEvent<HTMLButtonElement>, connectionId: string) => {

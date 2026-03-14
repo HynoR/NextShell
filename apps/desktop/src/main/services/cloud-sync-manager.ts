@@ -78,6 +78,7 @@ export interface CloudSyncManagerDeps {
   /** Pending ops persistence */
   listPendingOps: (workspaceId: string) => CloudSyncPendingOp[];
   savePendingOp: (op: CloudSyncPendingOp) => number;
+  upsertPendingOp: (op: CloudSyncPendingOp) => number;
   updatePendingOp: (op: CloudSyncPendingOp) => void;
   removePendingOp: (id: number) => void;
   clearPendingOps: (workspaceId: string) => void;
@@ -405,6 +406,7 @@ export class CloudSyncManager {
 
       listPendingOps: (wId) => this.deps.listPendingOps(wId),
       savePendingOp: (op) => this.deps.savePendingOp(op),
+      upsertPendingOp: (op) => this.deps.upsertPendingOp(op),
       updatePendingOp: (op) => this.deps.updatePendingOp(op),
       removePendingOp: (id) => this.deps.removePendingOp(id),
       clearPendingOps: (wId) => this.deps.clearPendingOps(wId),

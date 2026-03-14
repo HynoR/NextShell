@@ -57,6 +57,7 @@ export interface CloudSyncRuntimeDeps {
   /** Pending ops storage */
   listPendingOps: (workspaceId: string) => CloudSyncPendingOp[];
   savePendingOp: (op: CloudSyncPendingOp) => number;
+  upsertPendingOp: (op: CloudSyncPendingOp) => number;
   updatePendingOp: (op: CloudSyncPendingOp) => void;
   removePendingOp: (id: number) => void;
   clearPendingOps: (workspaceId: string) => void;
@@ -90,6 +91,9 @@ export class CloudSyncRuntime {
   readonly workspaceId: string;
   readonly scopeKey: string;
 
+  private static readonly MAX_PUSH_BATCH_SIZE = 50;
+  private static readonly SYNC_NOW_MIN_INTERVAL_MS = 10_000;
+
   private workspace: CloudSyncWorkspaceProfile;
   private state: RuntimeState = "idle";
   private lastError: string | null = null;
@@ -98,6 +102,7 @@ export class CloudSyncRuntime {
   private disposed = false;
   private syncInProgress = false;
   private consecutiveErrors = 0;
+  private lastSyncNowAt = 0;
 
   private readonly api = new CloudSyncApiV2Client();
 
@@ -159,9 +164,12 @@ export class CloudSyncRuntime {
     };
   }
 
-  /** Manually trigger a sync cycle */
+  /** Manually trigger a sync cycle (throttled to 10s minimum interval) */
   async syncNow(): Promise<void> {
     if (this.disposed || this.syncInProgress) return;
+    const now = Date.now();
+    if (now - this.lastSyncNowAt < CloudSyncRuntime.SYNC_NOW_MIN_INTERVAL_MS) return;
+    this.lastSyncNowAt = now;
     await this.runSyncCycle();
   }
 
@@ -185,7 +193,7 @@ export class CloudSyncRuntime {
       force: false,
       queuedAt: new Date().toISOString(),
     };
-    this.deps.savePendingOp(op);
+    this.deps.upsertPendingOp(op);
   }
 
   /** Resolve a conflict for a specific resource */
@@ -323,87 +331,97 @@ export class CloudSyncRuntime {
   }
 
   private async flushPendingQueue(creds: CloudSyncApiCredentials): Promise<void> {
-    const pendingOps = this.deps.listPendingOps(this.workspaceId);
-    if (pendingOps.length === 0) return;
+    const allPendingOps = this.deps.listPendingOps(this.workspaceId);
+    if (allPendingOps.length === 0) return;
 
-    // Build push operations
-    const operations: PushOperation[] = [];
-    for (const op of pendingOps) {
-      const pushType = op.action === "upsert"
-        ? (op.resourceType === "server" ? "upsertServer" : "upsertSshKey")
-        : (op.resourceType === "server" ? "deleteServer" : "deleteSshKey");
+    for (let i = 0; i < allPendingOps.length; i += CloudSyncRuntime.MAX_PUSH_BATCH_SIZE) {
+      const batch = allPendingOps.slice(i, i + CloudSyncRuntime.MAX_PUSH_BATCH_SIZE);
 
-      let payload: Record<string, unknown> | undefined;
-      if (op.action === "upsert") {
-        // Serialize current local resource as payload
-        payload = await this.serializeResourceForPush(op.resourceType, op.resourceId);
-        if (!payload) {
-          // Resource no longer exists locally, skip this op
-          this.deps.removePendingOp(op.id!);
-          continue;
+      // Build push operations for this batch
+      const operations: PushOperation[] = [];
+      const validOps: CloudSyncPendingOp[] = [];
+      for (const op of batch) {
+        const pushType = op.action === "upsert"
+          ? (op.resourceType === "server" ? "upsertServer" : "upsertSshKey")
+          : (op.resourceType === "server" ? "deleteServer" : "deleteSshKey");
+
+        let payload: Record<string, unknown> | undefined;
+        if (op.action === "upsert") {
+          payload = await this.serializeResourceForPush(op.resourceType, op.resourceId);
+          if (!payload) {
+            // Resource no longer exists locally, skip this op
+            this.deps.removePendingOp(op.id!);
+            continue;
+          }
         }
-      }
 
-      operations.push({
-        type: pushType,
-        uuid: op.resourceId,
-        baseRevision: op.baseRevision,
-        payload,
-      });
-    }
-
-    if (operations.length === 0) return;
-
-    const response: PushResponse = await this.api.push(
-      creds,
-      this.currentVersion ?? 0,
-      operations,
-    );
-
-    if (response.ok) {
-      // Success: update revisions and remove pending ops
-      this.currentVersion = response.workspaceVersion;
-      for (const result of response.results) {
-        const resourceType = result.type.includes("Server") ? "server" : "sshKey";
-        const state = this.deps.getResourceState(this.workspaceId, resourceType, result.uuid);
-        this.deps.saveResourceState({
-          workspaceId: this.workspaceId,
-          resourceType: resourceType as "server" | "sshKey",
-          resourceId: result.uuid,
-          serverRevision: result.revision,
-          conflictRemoteRevision: state?.conflictRemoteRevision,
-          conflictRemotePayloadJson: state?.conflictRemotePayloadJson,
-          conflictRemoteUpdatedAt: state?.conflictRemoteUpdatedAt,
-          conflictRemoteDeleted: state?.conflictRemoteDeleted ?? false,
-          conflictDetectedAt: state?.conflictDetectedAt,
+        operations.push({
+          type: pushType,
+          uuid: op.resourceId,
+          baseRevision: op.baseRevision,
+          payload,
         });
+        validOps.push(op);
       }
-      // Remove all flushed pending ops
-      for (const op of pendingOps) {
-        if (op.id != null) this.deps.removePendingOp(op.id);
-      }
-    } else {
-      // Conflict: record conflict state, remove conflicting ops from pending
-      this.currentVersion = response.workspaceVersion;
-      for (const conflict of response.conflicts) {
-        const resourceType = conflict.resourceType;
-        this.deps.saveResourceState({
-          workspaceId: this.workspaceId,
-          resourceType,
-          resourceId: conflict.uuid,
-          serverRevision: conflict.serverRevision,
-          conflictRemoteRevision: conflict.serverRevision,
-          conflictRemotePayloadJson: conflict.serverPayload ? JSON.stringify(conflict.serverPayload) : undefined,
-          conflictRemoteUpdatedAt: conflict.serverUpdatedAt ?? undefined,
-          conflictRemoteDeleted: conflict.serverDeleted,
-          conflictDetectedAt: new Date().toISOString(),
-        });
 
-        // Remove the conflicting pending op
-        const matchingOp = pendingOps.find(
-          (op) => op.resourceId === conflict.uuid && op.resourceType === resourceType
+      if (operations.length === 0) continue;
+
+      const response: PushResponse = await this.api.push(
+        creds,
+        this.currentVersion ?? 0,
+        operations,
+      );
+
+      if (response.ok) {
+        // Success: update revisions and remove pending ops
+        this.currentVersion = response.workspaceVersion;
+        for (const result of response.results) {
+          const resourceType = result.type.includes("Server") ? "server" : "sshKey";
+          const state = this.deps.getResourceState(this.workspaceId, resourceType, result.uuid);
+          this.deps.saveResourceState({
+            workspaceId: this.workspaceId,
+            resourceType: resourceType as "server" | "sshKey",
+            resourceId: result.uuid,
+            serverRevision: result.revision,
+            conflictRemoteRevision: state?.conflictRemoteRevision,
+            conflictRemotePayloadJson: state?.conflictRemotePayloadJson,
+            conflictRemoteUpdatedAt: state?.conflictRemoteUpdatedAt,
+            conflictRemoteDeleted: state?.conflictRemoteDeleted ?? false,
+            conflictDetectedAt: state?.conflictDetectedAt,
+          });
+        }
+        // Remove all flushed pending ops in this batch
+        for (const op of validOps) {
+          if (op.id != null) this.deps.removePendingOp(op.id);
+        }
+      } else {
+        // Conflict: record conflict state
+        this.currentVersion = response.workspaceVersion;
+        const conflictResourceIds = new Set(
+          response.conflicts.map((c) => c.uuid)
         );
-        if (matchingOp?.id != null) this.deps.removePendingOp(matchingOp.id);
+        for (const conflict of response.conflicts) {
+          const resourceType = conflict.resourceType;
+          this.deps.saveResourceState({
+            workspaceId: this.workspaceId,
+            resourceType,
+            resourceId: conflict.uuid,
+            serverRevision: conflict.serverRevision,
+            conflictRemoteRevision: conflict.serverRevision,
+            conflictRemotePayloadJson: conflict.serverPayload ? JSON.stringify(conflict.serverPayload) : undefined,
+            conflictRemoteUpdatedAt: conflict.serverUpdatedAt ?? undefined,
+            conflictRemoteDeleted: conflict.serverDeleted,
+            conflictDetectedAt: new Date().toISOString(),
+          });
+        }
+        // Remove non-conflicting ops (they were accepted); keep only conflicting ones
+        for (const op of validOps) {
+          if (op.id != null && !conflictResourceIds.has(op.resourceId)) {
+            this.deps.removePendingOp(op.id);
+          }
+        }
+        // Stop processing further batches on conflict — wait for next sync cycle
+        break;
       }
     }
   }

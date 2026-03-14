@@ -438,6 +438,7 @@ export const createServiceContainer = (
     removeWorkspace: (id) => connections.removeCloudSyncWorkspace(id),
     listPendingOps: (wId) => connections.listPendingOps(wId),
     savePendingOp: (op) => connections.savePendingOp(op),
+    upsertPendingOp: (op) => connections.upsertPendingOp(op),
     updatePendingOp: (op) => connections.updatePendingOp(op),
     removePendingOp: (id) => connections.removePendingOp(id),
     clearPendingOps: (wId) => connections.clearPendingOps(wId),
