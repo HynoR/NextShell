@@ -1186,6 +1186,25 @@ const migrations: MigrationDefinition[] = [
         );
       `);
     }
+  },
+  {
+    version: 21,
+    name: "pending_ops_dedup_unique_index",
+    apply: (db) => {
+      // Deduplicate any existing pending ops before adding unique constraint:
+      // keep only the row with the highest id for each (workspace_id, resource_type, resource_id).
+      db.exec(`
+        DELETE FROM cloud_sync_pending_ops
+        WHERE id NOT IN (
+          SELECT MAX(id) FROM cloud_sync_pending_ops
+          GROUP BY workspace_id, resource_type, resource_id
+        );
+      `);
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_ops_resource
+          ON cloud_sync_pending_ops(workspace_id, resource_type, resource_id);
+      `);
+    }
   }
 ];
 
@@ -1249,6 +1268,7 @@ export interface ConnectionRepository {
   // ── Cloud Sync v2: pending ops ──
   listPendingOps: (workspaceId: string) => CloudSyncPendingOp[];
   savePendingOp: (op: CloudSyncPendingOp) => number;
+  upsertPendingOp: (op: CloudSyncPendingOp) => number;
   updatePendingOp: (op: CloudSyncPendingOp) => void;
   removePendingOp: (id: number) => void;
   clearPendingOps: (workspaceId: string) => void;
@@ -2107,6 +2127,34 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const result = this.db.prepare(
       `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
        VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)`
+    ).run({
+      workspace_id: op.workspaceId,
+      resource_type: op.resourceType,
+      resource_id: op.resourceId,
+      action: op.action,
+      base_revision: op.baseRevision,
+      force: op.force ? 1 : 0,
+      payload_json: op.payloadJson ?? null,
+      queued_at: op.queuedAt,
+      last_attempt_at: op.lastAttemptAt ?? null,
+      last_error: op.lastError ?? null
+    });
+    return Number(result.lastInsertRowid);
+  }
+
+  upsertPendingOp(op: CloudSyncPendingOp): number {
+    const result = this.db.prepare(
+      `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
+       VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)
+       ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
+         action = CASE
+           WHEN excluded.action = 'delete' THEN 'delete'
+           ELSE excluded.action
+         END,
+         force = MAX(cloud_sync_pending_ops.force, excluded.force),
+         queued_at = excluded.queued_at,
+         last_attempt_at = NULL,
+         last_error = NULL`
     ).run({
       workspace_id: op.workspaceId,
       resource_type: op.resourceType,

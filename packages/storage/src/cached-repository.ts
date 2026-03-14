@@ -282,6 +282,9 @@ export class CachedConnectionRepository implements ConnectionRepository {
   savePendingOp(op: CloudSyncPendingOp): number {
     return this.inner.savePendingOp(op);
   }
+  upsertPendingOp(op: CloudSyncPendingOp): number {
+    return this.inner.upsertPendingOp(op);
+  }
   updatePendingOp(op: CloudSyncPendingOp): void {
     this.inner.updatePendingOp(op);
   }
