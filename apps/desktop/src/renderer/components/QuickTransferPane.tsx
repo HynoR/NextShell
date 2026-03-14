@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App as AntdApp, Modal, Table, Tooltip, Typography } from "antd";
+import { App as AntdApp, Modal, Switch, Table, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ConnectionProfile, RemoteFileEntry, SessionDescriptor } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
@@ -132,6 +132,7 @@ export const QuickTransferPane = ({
   const rightHomeRequestIdRef = useRef(0);
   const lastLocalRightPathRef = useRef(preferences.transfer.downloadDefaultDir);
   const [transferBusy, setTransferBusy] = useState(false);
+  const [loadEnabled, setLoadEnabled] = useState(false);
 
   const leftSelectedEntries = useMemo(() => {
     const selected = new Set(leftSelectedPaths);
@@ -215,7 +216,7 @@ export const QuickTransferPane = ({
   );
 
   const loadLeftFiles = useCallback(async (): Promise<void> => {
-    if (!active) {
+    if (!active || !loadEnabled) {
       return;
     }
     if (!sourceConnection || !connected || !leftPathReady) {
@@ -240,10 +241,10 @@ export const QuickTransferPane = ({
     } finally {
       setLeftLoading(false);
     }
-  }, [active, connected, leftPath, leftPathReady, message, sourceConnection]);
+  }, [active, connected, loadEnabled, leftPath, leftPathReady, message, sourceConnection]);
 
   const loadRightFiles = useCallback(async (): Promise<void> => {
-    if (!active) {
+    if (!active || !loadEnabled) {
       return;
     }
     const currentPath = rightPath.trim();
@@ -280,7 +281,7 @@ export const QuickTransferPane = ({
     } finally {
       setRightLoading(false);
     }
-  }, [active, message, rightPath, rightRemotePathReady, targetConnectionId, targetMode]);
+  }, [active, loadEnabled, message, rightPath, rightRemotePathReady, targetConnectionId, targetMode]);
 
   const leftNavigate = useCallback((nextPath: string) => {
     setLeftPath(normalizeRemotePath(nextPath));
@@ -323,7 +324,7 @@ export const QuickTransferPane = ({
     leftHomeRequestIdRef.current += 1;
     const requestId = leftHomeRequestIdRef.current;
     setLeftSelectedPaths([]);
-    if (!sourceConnection || !connected) {
+    if (!loadEnabled || !sourceConnection || !connected) {
       setLeftPathReady(false);
       setLeftPath("/");
       setLeftFiles([]);
@@ -344,7 +345,7 @@ export const QuickTransferPane = ({
       setLeftPath(initialPath);
       setLeftPathReady(true);
     })();
-  }, [sourceConnection?.id, connected]);
+  }, [loadEnabled, sourceConnection?.id, connected]);
 
   useEffect(() => {
     if (!active) return;
@@ -379,7 +380,7 @@ export const QuickTransferPane = ({
     rightHomeRequestIdRef.current += 1;
     const requestId = rightHomeRequestIdRef.current;
 
-    if (targetMode !== "server") {
+    if (!loadEnabled || targetMode !== "server") {
       setRightRemotePathReady(false);
       return;
     }
@@ -405,7 +406,7 @@ export const QuickTransferPane = ({
       setRightPath(initialPath);
       setRightRemotePathReady(true);
     })();
-  }, [targetConnectionId, targetMode]);
+  }, [loadEnabled, targetConnectionId, targetMode]);
 
   useEffect(() => {
     void loadLeftFiles();
@@ -896,6 +897,16 @@ export const QuickTransferPane = ({
 
   return (
     <div className="qtp-root">
+      <div className="qtp-enable-bar">
+        <span className="qtp-enable-label">
+          <Switch checked={loadEnabled} onChange={setLoadEnabled} />
+          <span>启用加载</span>
+        </span>
+        {!loadEnabled && (
+          <span className="qtp-enable-hint text-[var(--t3)]">点击开关后才会加载目录和文件</span>
+        )}
+      </div>
+      <div className="qtp-content">
       <section className="qtp-pane">
         <div className="qtp-pane-header">
           <span className="qtp-pane-title">左侧：{sourceConnection.name}</span>
@@ -970,6 +981,7 @@ export const QuickTransferPane = ({
         <button
           className="qtp-transfer-btn"
           disabled={
+            !loadEnabled ||
             transferBusy ||
             leftLoading ||
             rightLoading ||
@@ -983,6 +995,7 @@ export const QuickTransferPane = ({
         <button
           className="qtp-transfer-btn"
           disabled={
+            !loadEnabled ||
             transferBusy ||
             leftLoading ||
             rightLoading ||
@@ -1095,6 +1108,7 @@ export const QuickTransferPane = ({
           </div>
         ) : null}
       </section>
+      </div>
       <Modal
         title="选择目标服务器"
         open={targetPickerOpen}
