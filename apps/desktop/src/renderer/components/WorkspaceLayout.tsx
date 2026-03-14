@@ -182,6 +182,7 @@ interface WorkspaceLayoutProps {
     monitor?: import("@nextshell/core").MonitorSnapshot;
     transferTasks: TransferTask[];
     transferPanelCollapsed: boolean;
+    liveEditPanelCollapsed: boolean;
     bottomTab: string;
     onLoadConnections: () => void;
     onOpenManager: () => void;
@@ -209,6 +210,7 @@ interface WorkspaceLayoutProps {
     onClearFinishedTransfers: () => void;
     onOpenLocalFile: (task: TransferTask) => void;
     onTransferPanelToggle: () => void;
+    onLiveEditPanelToggle: () => void;
     onSetBottomTab: (tab: string) => void;
 }
 
@@ -230,6 +232,7 @@ export const WorkspaceLayout = ({
     monitor,
     transferTasks,
     transferPanelCollapsed,
+    liveEditPanelCollapsed,
     bottomTab,
     onLoadConnections,
     onOpenManager,
@@ -254,6 +257,7 @@ export const WorkspaceLayout = ({
     onClearFinishedTransfers,
     onOpenLocalFile,
     onTransferPanelToggle,
+    onLiveEditPanelToggle,
     onSetBottomTab,
 }: WorkspaceLayoutProps) => {
     const { modal } = AntdApp.useApp();
@@ -670,6 +674,12 @@ export const WorkspaceLayout = ({
                                         }
                                     }}
                                 />
+                                <LiveEditPane
+                                    connections={connections}
+                                    active={!liveEditPanelCollapsed}
+                                    collapsed={liveEditPanelCollapsed}
+                                    onToggle={onLiveEditPanelToggle}
+                                />
                             </div>
                         )}
                 </aside>
@@ -946,16 +956,6 @@ export const WorkspaceLayout = ({
                                                             sessions={sessions}
                                                         />
                                                     ) : null,
-                                                },
-                                                {
-                                                    key: "live-edit",
-                                                    label: "实时编辑",
-                                                    children: (
-                                                        <LiveEditPane
-                                                            active={bottomTab === "live-edit"}
-                                                            connections={connections}
-                                                        />
-                                                    ),
                                                 },
                                                 {
                                                     key: "commands",

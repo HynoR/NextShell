@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { Spin, Tag, Tooltip, message } from "antd";
+import { Button, Tag, Tooltip, message } from "antd";
 import type { ConnectionProfile } from "@nextshell/core";
 import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { useEditSessionStore } from "../store/useEditSessionStore";
 import { PanelSkeleton } from "./LoadingSkeletons";
 
 interface LiveEditPaneProps {
-  active: boolean;
   connections: ConnectionProfile[];
+  /** When true, panel is expanded and polling is enabled */
+  active: boolean;
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
 const formatTimeAgo = (timestamp: number): string => {
@@ -28,7 +31,7 @@ const statusTag = (status: string): { color: string; text: string } => {
   }
 };
 
-export const LiveEditPane = ({ active, connections }: LiveEditPaneProps) => {
+export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveEditPaneProps) => {
   const { sessions, loading, fetchSessions, applyEvent, stopSession, stopAllSessions } =
     useEditSessionStore();
 
@@ -72,88 +75,88 @@ export const LiveEditPane = ({ active, connections }: LiveEditPaneProps) => {
   }, [sessions.length, stopAllSessions]);
 
   return (
-    <div className="le-pane">
-      {/* header – compact control bar */}
-      <div className="le-header">
-        <div className="le-header-left">
-          <i className="ri-eye-line le-header-icon" aria-hidden="true" />
-          <span className="le-header-title">实时编辑</span>
-          {sessions.length > 0 && (
-            <span className="le-badge">{sessions.length}</span>
-          )}
+    <section className="live-edit-panel">
+      <div className="live-edit-panel-header" onClick={onToggle}>
+        <i className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"} aria-hidden="true" />
+        <span className="live-edit-panel-title">实时编辑</span>
+        <div className="live-edit-header-right" onClick={(e) => e.stopPropagation()}>
+          {collapsed && sessions.length > 0 ? (
+            <span className="live-edit-summary">{sessions.length} 个监听</span>
+          ) : !collapsed && sessions.length > 0 ? (
+            <Button
+              type="text"
+              size="small"
+              className="live-edit-stop-all-btn"
+              onClick={handleStopAll}
+            >
+              全部断开
+            </Button>
+          ) : null}
         </div>
-        {sessions.length > 0 && (
-          <button
-            className="le-stop-all-btn"
-            onClick={handleStopAll}
-            title="停止所有监听"
-          >
-            <i className="ri-stop-circle-line" aria-hidden="true" />
-            <span>全部断开</span>
-          </button>
-        )}
       </div>
 
-      {/* content */}
-      {loading && sessions.length === 0 ? (
-        <PanelSkeleton rows={3} compact className="le-empty" />
-      ) : sessions.length === 0 ? (
-        <div className="le-empty">
-          <i className="ri-file-edit-line le-empty-icon" aria-hidden="true" />
-          <span className="le-empty-text">暂无正在编辑的远程文件</span>
-          <span className="le-empty-hint">
-            在 SFTP 文件列表中双击文件或右键「远程编辑」即可开始
-          </span>
-        </div>
-      ) : (
-        <div className="le-list">
-          {sessions.map((session) => {
-            const conn = connMap.get(session.connectionId);
-            const fileName = session.remotePath.split("/").pop() || session.remotePath;
-            const dirPath = session.remotePath.slice(0, session.remotePath.lastIndexOf("/")) || "/";
-            const tag = statusTag(session.status);
+      {!collapsed ? (
+        <div className="live-edit-list">
+          {loading && sessions.length === 0 ? (
+            <PanelSkeleton rows={3} compact className="live-edit-empty" />
+          ) : sessions.length === 0 ? (
+            <div className="live-edit-empty">
+              <i className="ri-file-edit-line live-edit-empty-icon" aria-hidden="true" />
+              <span className="live-edit-empty-text">暂无正在编辑的远程文件</span>
+              <span className="live-edit-empty-hint">
+                在 SFTP 文件列表中双击文件或右键「远程编辑」即可开始
+              </span>
+            </div>
+          ) : (
+            sessions.map((session) => {
+              const conn = connMap.get(session.connectionId);
+              const fileName = session.remotePath.split("/").pop() || session.remotePath;
+              const dirPath = session.remotePath.slice(0, session.remotePath.lastIndexOf("/")) || "/";
+              const tag = statusTag(session.status);
 
-            return (
-              <div key={session.editId} className="le-item">
-                <div className="le-item-header">
-                  <div className="le-item-name">
-                    <i className="ri-file-code-line le-file-icon" aria-hidden="true" />
-                    <Tooltip title={session.remotePath}>
-                      <span className="le-file-name">{fileName}</span>
-                    </Tooltip>
-                    <Tag color={tag.color} className="le-status-tag">
-                      {tag.text}
-                    </Tag>
+              return (
+                <div key={session.editId} className="live-edit-item">
+                  <div className="live-edit-item-header">
+                    <div className="live-edit-item-name">
+                      <i className="ri-file-code-line live-edit-file-icon" aria-hidden="true" />
+                      <Tooltip title={session.remotePath}>
+                        <span className="live-edit-file-name">{fileName}</span>
+                      </Tooltip>
+                      <Tag color={tag.color} bordered={false} className="live-edit-task-tag">
+                        {tag.text}
+                      </Tag>
+                    </div>
+                    <button
+                      type="button"
+                      className="live-edit-close-btn"
+                      onClick={() => handleStop(session.editId)}
+                      title="停止监听并清理本地临时文件"
+                    >
+                      <i className="ri-close-circle-line" aria-hidden="true" />
+                    </button>
                   </div>
-                  <button
-                    className="le-close-btn"
-                    onClick={() => handleStop(session.editId)}
-                    title="停止监听并清理本地临时文件"
-                  >
-                    <i className="ri-close-circle-line" aria-hidden="true" />
-                  </button>
+                  <div className="live-edit-item-meta">
+                    <span className="live-edit-meta-row">
+                      <i className="ri-server-line" aria-hidden="true" />
+                      {conn ? conn.name : session.connectionId.slice(0, 8)}
+                    </span>
+                    <span className="live-edit-meta-row">
+                      <i className="ri-folder-3-line" aria-hidden="true" />
+                      <Tooltip title={dirPath}>
+                        <span className="live-edit-meta-path">{dirPath}</span>
+                      </Tooltip>
+                    </span>
+                    <span className="live-edit-meta-row live-edit-meta-time">
+                      <i className="ri-time-line" aria-hidden="true" />
+                      {formatTimeAgo(session.lastActivityAt)}
+                    </span>
+                  </div>
                 </div>
-                <div className="le-item-meta">
-                  <span className="le-meta-row">
-                    <i className="ri-server-line" aria-hidden="true" />
-                    {conn ? conn.name : session.connectionId.slice(0, 8)}
-                  </span>
-                  <span className="le-meta-row">
-                    <i className="ri-folder-3-line" aria-hidden="true" />
-                    <Tooltip title={dirPath}>
-                      <span className="le-meta-path">{dirPath}</span>
-                    </Tooltip>
-                  </span>
-                  <span className="le-meta-row le-meta-time">
-                    <i className="ri-time-line" aria-hidden="true" />
-                    {formatTimeAgo(session.lastActivityAt)}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
-      )}
-    </div>
+      ) : null}
+    </section>
   );
 };

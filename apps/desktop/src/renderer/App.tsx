@@ -66,6 +66,7 @@ export const App = () => {
   const [managerFocusConnectionId, setManagerFocusConnectionId] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [transferPanelCollapsed, setTransferPanelCollapsed] = useState(false);
+  const [liveEditPanelCollapsed, setLiveEditPanelCollapsed] = useState(false);
 
   const initializePreferences = usePreferencesStore((state) => state.initialize);
   const appBackgroundImagePath = usePreferencesStore((state) => state.preferences.window.backgroundImagePath);
@@ -526,6 +527,7 @@ export const App = () => {
           monitor={monitor}
           transferTasks={transferTasks}
           transferPanelCollapsed={transferPanelCollapsed}
+          liveEditPanelCollapsed={liveEditPanelCollapsed}
           bottomTab={bottomTab}
           onLoadConnections={() => void loadConnections()}
           onOpenManager={handleOpenManager}
@@ -550,12 +552,12 @@ export const App = () => {
           onClearFinishedTransfers={clearFinishedTransfers}
           onOpenLocalFile={(task) => void handleOpenTransferLocalFile(task.localPath)}
           onTransferPanelToggle={() => setTransferPanelCollapsed((v) => !v)}
+          onLiveEditPanelToggle={() => setLiveEditPanelCollapsed((v) => !v)}
           onSetBottomTab={(tab) => {
             if (
               tab === "commands" ||
               tab === "files" ||
               tab === "quick-transfer" ||
-              tab === "live-edit" ||
               tab === "system-info" ||
               tab === "traceroute"
             ) {
