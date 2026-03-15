@@ -13,7 +13,6 @@ export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string
   { key: "terminal", label: "终端主题", icon: "ri-palette-line" },
   { key: "network", label: "网络工具", icon: "ri-route-line" },
   { key: "cloudSync", label: "云同步", icon: "ri-git-merge-line" },
-  { key: "recycleBin", label: "回收站", icon: "ri-delete-bin-line" },
   { key: "backup", label: "云存档", icon: "ri-cloud-line" },
   { key: "security", label: "安全与审计", icon: "ri-shield-keyhole-line" },
   { key: "about", label: "关于", icon: "ri-information-line" },
@@ -185,4 +184,3 @@ export const formatTimestamp = (ts: number): string => {
 export const truncateCommand = (cmd: string, maxLen = 80): string => {
   return cmd.length > maxLen ? `${cmd.slice(0, maxLen)}…` : cmd;
 };
-

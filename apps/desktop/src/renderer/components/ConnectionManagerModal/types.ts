@@ -1,7 +1,7 @@
 import type { ConnectionImportEntry, ConnectionProfile } from "@nextshell/core";
 import type { ConnectionZone } from "@nextshell/shared";
 
-export type ManagerTab = "connections" | "keys" | "proxies";
+export type ManagerTab = "connections" | "keys" | "proxies" | "recycleBin";
 export type ManagerMode = "idle" | "new" | "edit";
 export type FormTab = "basic" | "property" | "network" | "advanced";
 export type SortMode = "name" | "host" | "createdAt";

@@ -918,6 +918,24 @@ export const cloudSyncWorkspaceRemoveSchema = z.object({
   id: z.string().trim().min(1),
 });
 
+export const cloudSyncWorkspaceTokenDraftSchema = z.object({
+  apiBaseUrl: z.string().trim().min(1).max(500).transform((value) => value.replace(/\/+$/, "")),
+  workspaceName: z.string().trim().min(1).max(200),
+  displayName: z.string().trim().max(200),
+  workspacePassword: z.string().min(1).max(200),
+  pullIntervalSec: z.number().int().min(10).max(86400),
+  ignoreTlsErrors: z.boolean(),
+  enabled: z.boolean(),
+});
+
+export const cloudSyncWorkspaceExportTokenSchema = z.object({
+  id: z.string().trim().min(1),
+});
+
+export const cloudSyncWorkspaceParseTokenSchema = z.object({
+  token: z.string().trim().min(1),
+});
+
 export const cloudSyncStatusSchema = z.object({});
 
 export const cloudSyncSyncNowSchema = z.object({
@@ -937,6 +955,9 @@ export type CloudSyncWorkspaceListInput = z.infer<typeof cloudSyncWorkspaceListS
 export type CloudSyncWorkspaceAddInput = z.infer<typeof cloudSyncWorkspaceAddSchema>;
 export type CloudSyncWorkspaceUpdateInput = z.infer<typeof cloudSyncWorkspaceUpdateSchema>;
 export type CloudSyncWorkspaceRemoveInput = z.infer<typeof cloudSyncWorkspaceRemoveSchema>;
+export type CloudSyncWorkspaceTokenDraft = z.infer<typeof cloudSyncWorkspaceTokenDraftSchema>;
+export type CloudSyncWorkspaceExportTokenInput = z.infer<typeof cloudSyncWorkspaceExportTokenSchema>;
+export type CloudSyncWorkspaceParseTokenInput = z.infer<typeof cloudSyncWorkspaceParseTokenSchema>;
 export type CloudSyncStatusInput = z.infer<typeof cloudSyncStatusSchema>;
 export type CloudSyncSyncNowInput = z.infer<typeof cloudSyncSyncNowSchema>;
 export type CloudSyncListConflictsInput = z.infer<typeof cloudSyncListConflictsSchema>;

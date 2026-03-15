@@ -1,9 +1,3 @@
-declare const Bun: {
-  file(path: string | URL): {
-    text(): Promise<string>;
-  };
-};
-
 declare module "bun:test" {
   interface PromiseMatchers {
     toThrow(expected?: RegExp | string): Promise<void>;
@@ -14,8 +8,6 @@ declare module "bun:test" {
   export function expect<T>(actual: T): {
     toBe(expected: T): void;
     toEqual(expected: unknown): void;
-    toMatch(expected: RegExp | string): void;
-    toMatchObject(expected: unknown): void;
     rejects: PromiseMatchers;
   };
 }

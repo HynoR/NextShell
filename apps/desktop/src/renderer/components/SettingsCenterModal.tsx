@@ -16,7 +16,6 @@ import {
   TerminalSection,
   NetworkSection,
   CloudSyncSection,
-  RecycleBinSection,
   BackupSection,
   SecuritySection,
   AboutSection,
@@ -446,9 +445,6 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
       case "cloudSync":
         return <CloudSyncSection />;
-
-      case "recycleBin":
-        return <RecycleBinSection />;
 
       case "backup":
         return <BackupSection

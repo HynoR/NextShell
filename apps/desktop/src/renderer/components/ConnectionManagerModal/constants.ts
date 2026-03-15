@@ -1,5 +1,22 @@
 import { CONNECTION_ZONES } from "@nextshell/shared";
-import type { FormTab } from "./types";
+import type { FormTab, ManagerTab } from "./types";
+
+export const MANAGER_TABS: Array<{
+  key: ManagerTab;
+  label: string;
+  icon: string;
+  labelClassName?: string;
+}> = [
+  { key: "connections", label: "连接", icon: "ri-server-line" },
+  { key: "keys", label: "密钥", icon: "ri-key-2-line" },
+  { key: "proxies", label: "代理", icon: "ri-shield-line" },
+  {
+    key: "recycleBin",
+    label: "回收站",
+    icon: "ri-delete-bin-line",
+    labelClassName: "mgr-tab-label--danger"
+  }
+];
 
 export const FIELD_TAB_MAP: Record<string, FormTab> = {
   name: "basic",

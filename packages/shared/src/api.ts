@@ -121,6 +121,9 @@ import type {
   CloudSyncWorkspaceAddInput,
   CloudSyncWorkspaceUpdateInput,
   CloudSyncWorkspaceRemoveInput,
+  CloudSyncWorkspaceTokenDraft,
+  CloudSyncWorkspaceExportTokenInput,
+  CloudSyncWorkspaceParseTokenInput,
   CloudSyncSyncNowInput,
   CloudSyncResolveConflictInput,
   ResourceCopyConnectionInput,
@@ -273,6 +276,8 @@ export interface NextShellApi {
     workspaceAdd: (payload: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceUpdate: (payload: CloudSyncWorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceRemove: (payload: CloudSyncWorkspaceRemoveInput) => Promise<{ ok: true }>;
+    workspaceExportToken: (payload: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
+    workspaceParseToken: (payload: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
     status: () => Promise<CloudSyncManagerStatusEvent>;
     syncNow: (payload?: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
     listConflicts: () => Promise<Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>>;

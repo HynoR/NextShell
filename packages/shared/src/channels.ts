@@ -67,6 +67,8 @@ export const IPCChannel = {
   CloudSyncWorkspaceAdd: "nextshell:cloud-sync:workspace:add",
   CloudSyncWorkspaceUpdate: "nextshell:cloud-sync:workspace:update",
   CloudSyncWorkspaceRemove: "nextshell:cloud-sync:workspace:remove",
+  CloudSyncWorkspaceExportToken: "nextshell:cloud-sync:workspace:export-token",
+  CloudSyncWorkspaceParseToken: "nextshell:cloud-sync:workspace:parse-token",
   CloudSyncStatus: "nextshell:cloud-sync:status",
   CloudSyncSyncNow: "nextshell:cloud-sync:sync-now",
   CloudSyncListConflicts: "nextshell:cloud-sync:list-conflicts",

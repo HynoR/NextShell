@@ -9,6 +9,7 @@
  * - Provides the same public surface used by IPC handlers
  */
 
+import type { CloudSyncWorkspaceTokenDraft } from "@nextshell/shared";
 import type {
   CloudSyncPendingOp,
   CloudSyncResourceStateV2,
@@ -22,6 +23,10 @@ import {
   type CloudSyncRuntimeDeps,
   type CloudSyncRuntimeStatus,
 } from "./cloud-sync-runtime";
+import {
+  encodeCloudSyncWorkspaceToken,
+  parseCloudSyncWorkspaceToken,
+} from "./cloud-sync-workspace-token";
 
 // ── Public types used by IPC ────────────────────────────────────────────────
 
@@ -141,6 +146,34 @@ export class CloudSyncManager {
 
   listWorkspaces(): CloudSyncWorkspaceProfile[] {
     return this.deps.listWorkspaces();
+  }
+
+  async exportWorkspaceToken(workspaceId: string): Promise<{ token: string }> {
+    const workspace = this.deps.listWorkspaces().find((item) => item.id === workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
+    }
+
+    const workspacePassword = await this.deps.getWorkspacePassword(workspaceId);
+    if (!workspacePassword) {
+      throw new Error("该工作区缺少可导出的完整配置");
+    }
+
+    const draft: CloudSyncWorkspaceTokenDraft = {
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName,
+      displayName: workspace.displayName,
+      workspacePassword,
+      pullIntervalSec: workspace.pullIntervalSec,
+      ignoreTlsErrors: workspace.ignoreTlsErrors,
+      enabled: workspace.enabled,
+    };
+
+    return { token: encodeCloudSyncWorkspaceToken(draft) };
+  }
+
+  async parseWorkspaceToken(token: string): Promise<CloudSyncWorkspaceTokenDraft> {
+    return parseCloudSyncWorkspaceToken(token);
   }
 
   async addWorkspace(input: CloudSyncWorkspaceInput): Promise<CloudSyncWorkspaceProfile> {

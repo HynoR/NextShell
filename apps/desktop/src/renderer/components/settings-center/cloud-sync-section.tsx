@@ -89,6 +89,8 @@ export const CloudSyncSection = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [copyingTokenId, setCopyingTokenId] = useState<string | null>(null);
+  const [pastingToken, setPastingToken] = useState(false);
 
   // Status & conflicts
   const [statusMap, setStatusMap] = useState<Map<string, WorkspaceStatus>>(new Map());
@@ -145,8 +147,8 @@ export const CloudSyncSection = () => {
     };
   }, [refresh, refreshConflicts]);
 
-  const openAddModal = () => {
-    setEditForm(emptyForm);
+  const openAddModal = (prefill?: Partial<WorkspaceFormState>) => {
+    setEditForm({ ...emptyForm, ...prefill });
     setIsEditing(false);
     setModalOpen(true);
   };
@@ -221,6 +223,41 @@ export const CloudSyncSection = () => {
     }
   };
 
+  const handleCopyToken = async (id: string) => {
+    setCopyingTokenId(id);
+    try {
+      const { token } = await api().cloudSync.workspaceExportToken({ id });
+      await navigator.clipboard.writeText(token);
+      message.success("已复制工作区 Token，内容包含敏感信息");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCopyingTokenId(null);
+    }
+  };
+
+  const handlePasteToken = async () => {
+    setPastingToken(true);
+    try {
+      const token = await navigator.clipboard.readText();
+      const draft = await api().cloudSync.workspaceParseToken({ token });
+      openAddModal({
+        apiBaseUrl: draft.apiBaseUrl,
+        workspaceName: draft.workspaceName,
+        displayName: draft.displayName,
+        workspacePassword: draft.workspacePassword,
+        pullIntervalSec: draft.pullIntervalSec,
+        ignoreTlsErrors: draft.ignoreTlsErrors,
+        enabled: draft.enabled,
+      });
+      message.success("已从工作区 Token 自动填充表单");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPastingToken(false);
+    }
+  };
+
   const handleSync = async (workspaceId: string) => {
     setSyncingId(workspaceId);
     try {
@@ -273,9 +310,17 @@ export const CloudSyncSection = () => {
     <>
       <SettingsCard title="云同步 v2 — 多工作区" description="管理多个云同步工作区，每个工作区独立同步。">
         <div style={{ marginBottom: 12 }}>
-          <Button type="primary" size="small" onClick={openAddModal}>
-            添加工作区
-          </Button>
+          <Space size={8} wrap>
+            <Button type="primary" size="small" onClick={() => openAddModal()}>
+              添加工作区
+            </Button>
+            <Button size="small" onClick={() => void handlePasteToken()} loading={pastingToken}>
+              粘贴 Token
+            </Button>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              可粘贴从其他 NextShell 复制的 Token 自动填充
+            </Typography.Text>
+          </Space>
         </div>
 
         <List
@@ -298,6 +343,14 @@ export const CloudSyncSection = () => {
                   </Button>,
                   <Button key="edit" size="small" onClick={() => openEditModal(ws)}>
                     编辑
+                  </Button>,
+                  <Button
+                    key="copy-token"
+                    size="small"
+                    loading={copyingTokenId === ws.id}
+                    onClick={() => void handleCopyToken(ws.id)}
+                  >
+                    复制 Token
                   </Button>,
                   <Popconfirm
                     key="del"
@@ -439,6 +492,11 @@ export const CloudSyncSection = () => {
         cancelText="取消"
       >
         <Space direction="vertical" style={{ width: "100%" }}>
+          {!isEditing && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              可粘贴从其他 NextShell 复制的工作区 Token 自动填充以下字段。
+            </Typography.Text>
+          )}
           <div>
             <Typography.Text>API 地址</Typography.Text>
             <Input

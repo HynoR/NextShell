@@ -6,7 +6,6 @@ export type SettingsSection =
   | "terminal"
   | "network"
   | "cloudSync"
-  | "recycleBin"
   | "backup"
   | "security"
   | "about";

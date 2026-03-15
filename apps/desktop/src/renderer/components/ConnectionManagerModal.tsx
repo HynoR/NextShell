@@ -14,9 +14,10 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
+import { RecycleBinSection } from "./settings-center";
 import { ConnectionSidebar } from "./ConnectionManagerModal/components/ConnectionSidebar";
 import { ConnectionFormPanel } from "./ConnectionManagerModal/components/ConnectionFormPanel";
-import { DEFAULT_VALUES, FIELD_TAB_MAP } from "./ConnectionManagerModal/constants";
+import { DEFAULT_VALUES, FIELD_TAB_MAP, MANAGER_TABS } from "./ConnectionManagerModal/constants";
 import { useConnectionExportActions } from "./ConnectionManagerModal/hooks/useConnectionExportActions";
 import { useConnectionImportFlow } from "./ConnectionManagerModal/hooks/useConnectionImportFlow";
 import { useConnectionPasswordReveal } from "./ConnectionManagerModal/hooks/useConnectionPasswordReveal";
@@ -702,30 +703,17 @@ export const ConnectionManagerModal = ({
         destroyOnHidden
       >
         <div className="mgr-tab-bar">
-          <button
-            type="button"
-            className={`mgr-tab${activeTab === "connections" ? " mgr-tab--active" : ""}`}
-            onClick={() => setActiveTab("connections")}
-          >
-            <i className="ri-server-line" aria-hidden="true" />
-            连接
-          </button>
-          <button
-            type="button"
-            className={`mgr-tab${activeTab === "keys" ? " mgr-tab--active" : ""}`}
-            onClick={() => setActiveTab("keys")}
-          >
-            <i className="ri-key-2-line" aria-hidden="true" />
-            密钥
-          </button>
-          <button
-            type="button"
-            className={`mgr-tab${activeTab === "proxies" ? " mgr-tab--active" : ""}`}
-            onClick={() => setActiveTab("proxies")}
-          >
-            <i className="ri-shield-line" aria-hidden="true" />
-            代理
-          </button>
+          {MANAGER_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`mgr-tab${activeTab === tab.key ? " mgr-tab--active" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              <i className={tab.icon} aria-hidden="true" />
+              <span className={tab.labelClassName}>{tab.label}</span>
+            </button>
+          ))}
         </div>
 
         {activeTab === "connections" ? (
@@ -815,6 +803,12 @@ export const ConnectionManagerModal = ({
 
         {activeTab === "proxies" ? (
           <ProxyManagerPanel proxies={proxies} onReload={onReloadProxies} />
+        ) : null}
+
+        {activeTab === "recycleBin" ? (
+          <div className="mgr-recycle-bin-panel">
+            <RecycleBinSection />
+          </div>
         ) : null}
       </Modal>
 

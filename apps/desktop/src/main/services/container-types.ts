@@ -61,6 +61,9 @@ import type {
   CloudSyncWorkspaceAddInput,
   CloudSyncWorkspaceUpdateInput,
   CloudSyncWorkspaceRemoveInput,
+  CloudSyncWorkspaceTokenDraft,
+  CloudSyncWorkspaceExportTokenInput,
+  CloudSyncWorkspaceParseTokenInput,
   CloudSyncSyncNowInput,
   CloudSyncResolveConflictInput,
   ResourceCopyConnectionInput,
@@ -169,6 +172,8 @@ export interface ServiceContainer {
   cloudSyncWorkspaceAdd: (input: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
   cloudSyncWorkspaceUpdate: (input: CloudSyncWorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
   cloudSyncWorkspaceRemove: (input: CloudSyncWorkspaceRemoveInput) => Promise<void>;
+  cloudSyncWorkspaceExportToken: (input: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
+  cloudSyncWorkspaceParseToken: (input: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
   cloudSyncStatus: () => { workspaces: Array<{ workspaceId: string; state: string; lastSyncAt: string | null; lastError: string | null; pendingCount: number; conflictCount: number; currentVersion: number | null }> };
   cloudSyncSyncNow: (input: CloudSyncSyncNowInput) => Promise<void>;
   cloudSyncListConflicts: () => Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>;

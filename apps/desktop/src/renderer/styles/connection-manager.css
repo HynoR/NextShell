@@ -919,6 +919,17 @@
 
 .mgr-tab i { font-size: 14px; }
 
+.mgr-tab-label--danger {
+  color: var(--err);
+}
+
+.mgr-recycle-bin-panel {
+  padding: 16px 18px 18px;
+  max-height: 580px;
+  overflow: auto;
+  background: var(--bg-panel);
+}
+
 /* Flat list for keys/proxies sidebar */
 .mgr-flat-list {
   display: flex;
@@ -1154,4 +1165,3 @@
 .mgr-clipboard-clear:hover {
   background: rgba(77, 159, 255, 0.18);
 }
-

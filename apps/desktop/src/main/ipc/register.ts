@@ -71,6 +71,8 @@ import {
   cloudSyncWorkspaceAddSchema,
   cloudSyncWorkspaceUpdateSchema,
   cloudSyncWorkspaceRemoveSchema,
+  cloudSyncWorkspaceExportTokenSchema,
+  cloudSyncWorkspaceParseTokenSchema,
   cloudSyncStatusSchema,
   cloudSyncSyncNowSchema,
   cloudSyncListConflictsSchema,
@@ -556,6 +558,16 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.CloudSyncWorkspaceRemove, (_event, payload) => {
     const input = parsePayload(cloudSyncWorkspaceRemoveSchema, payload, "云同步删除工作区");
     return services.cloudSyncWorkspaceRemove(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncWorkspaceExportToken, (_event, payload) => {
+    const input = parsePayload(cloudSyncWorkspaceExportTokenSchema, payload, "云同步导出工作区 token");
+    return services.cloudSyncWorkspaceExportToken(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncWorkspaceParseToken, (_event, payload) => {
+    const input = parsePayload(cloudSyncWorkspaceParseTokenSchema, payload, "云同步解析工作区 token");
+    return services.cloudSyncWorkspaceParseToken(input);
   });
 
   ipcMain.handle(IPCChannel.CloudSyncStatus, (_event, payload) => {
