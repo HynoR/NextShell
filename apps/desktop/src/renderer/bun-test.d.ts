@@ -3,5 +3,8 @@ declare module "bun:test" {
   export function test(name: string, fn: () => void | Promise<void>): void;
   export function expect<T>(actual: T): {
     toBe(expected: T): void;
+    toEqual(expected: unknown): void;
+    toMatch(expected: RegExp | string): void;
+    toMatchObject(expected: unknown): void;
   };
 }
