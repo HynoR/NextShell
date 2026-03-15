@@ -13,6 +13,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
+import { CloudSyncManagerPanel } from "./CloudSyncManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
 import { RecycleBinSection } from "./settings-center";
 import { ConnectionSidebar } from "./ConnectionManagerModal/components/ConnectionSidebar";
@@ -396,7 +397,7 @@ export const ConnectionManagerModal = ({
     });
 
     if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在设置中配置云同步工作区");
+      message.warning("请先在连接管理器的云同步中配置云同步工作区");
       return undefined;
     }
 
@@ -513,7 +514,7 @@ export const ConnectionManagerModal = ({
     const safePath = groupKeyToPath(overId);
 
     if (extractZone(safePath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在设置中配置云同步工作区");
+      message.warning("请先在连接管理器的云同步中配置云同步工作区");
       return;
     }
 
@@ -610,7 +611,7 @@ export const ConnectionManagerModal = ({
   const handleCtxPaste = useCallback(async (targetGroupPath: string) => {
     if (!clipboard) return;
     if (extractZone(targetGroupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在设置中配置云同步工作区");
+      message.warning("请先在连接管理器的云同步中配置云同步工作区");
       return;
     }
     try {
@@ -707,7 +708,7 @@ export const ConnectionManagerModal = ({
             <button
               key={tab.key}
               type="button"
-              className={`mgr-tab${activeTab === tab.key ? " mgr-tab--active" : ""}`}
+              className={`mgr-tab${tab.tabClassName ? ` ${tab.tabClassName}` : ""}${activeTab === tab.key ? " mgr-tab--active" : ""}`}
               onClick={() => setActiveTab(tab.key)}
             >
               <i className={tab.icon} aria-hidden="true" />
@@ -803,6 +804,12 @@ export const ConnectionManagerModal = ({
 
         {activeTab === "proxies" ? (
           <ProxyManagerPanel proxies={proxies} onReload={onReloadProxies} />
+        ) : null}
+
+        {activeTab === "cloudSync" ? (
+          <div className="mgr-cloud-sync-panel">
+            <CloudSyncManagerPanel />
+          </div>
         ) : null}
 
         {activeTab === "recycleBin" ? (

@@ -12,7 +12,6 @@ export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string
   { key: "command", label: "命令中心", icon: "ri-terminal-box-line" },
   { key: "terminal", label: "终端主题", icon: "ri-palette-line" },
   { key: "network", label: "网络工具", icon: "ri-route-line" },
-  { key: "cloudSync", label: "云同步", icon: "ri-git-merge-line" },
   { key: "backup", label: "云存档", icon: "ri-cloud-line" },
   { key: "security", label: "安全与审计", icon: "ri-shield-keyhole-line" },
   { key: "about", label: "关于", icon: "ri-information-line" },

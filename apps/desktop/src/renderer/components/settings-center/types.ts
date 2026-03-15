@@ -5,7 +5,6 @@ export type SettingsSection =
   | "command"
   | "terminal"
   | "network"
-  | "cloudSync"
   | "backup"
   | "security"
   | "about";

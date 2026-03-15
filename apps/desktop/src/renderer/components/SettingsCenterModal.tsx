@@ -15,7 +15,6 @@ import {
   CommandSection,
   TerminalSection,
   NetworkSection,
-  CloudSyncSection,
   BackupSection,
   SecuritySection,
   AboutSection,
@@ -442,9 +441,6 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           save={save}
           message={message}
         />;
-
-      case "cloudSync":
-        return <CloudSyncSection />;
 
       case "backup":
         return <BackupSection

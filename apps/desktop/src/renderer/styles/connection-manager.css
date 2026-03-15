@@ -919,10 +919,39 @@
 
 .mgr-tab i { font-size: 14px; }
 
+.mgr-tab--success,
+.mgr-tab--success:hover {
+  color: var(--ok);
+}
+
+.mgr-tab--success.mgr-tab--active {
+  color: var(--ok);
+  border-bottom-color: var(--ok);
+}
+
+.mgr-tab-label--success {
+  color: var(--ok);
+}
+
+.mgr-tab--danger,
+.mgr-tab--danger:hover {
+  color: var(--err);
+}
+
+.mgr-tab--danger i {
+  color: var(--err);
+}
+
+.mgr-tab--danger.mgr-tab--active {
+  color: var(--err);
+  border-bottom-color: var(--err);
+}
+
 .mgr-tab-label--danger {
   color: var(--err);
 }
 
+.mgr-cloud-sync-panel,
 .mgr-recycle-bin-panel {
   padding: 16px 18px 18px;
   max-height: 580px;
