@@ -13,7 +13,7 @@
   "scripts": {
     "dev": "vite",
     "build": "bunx tsc --noEmit -p tsconfig.node.json && bunx tsc --noEmit -p tsconfig.web.json && bunx vite build",
-    "dist": "bun run build && bunx electron-builder --config build/electron-builder.yml",
+    "dist": "bun run build && bunx electron-builder --config build/electron-builder.yml --publish never",
     "dist:dir": "bun run build && bunx electron-builder --dir --config build/electron-builder.yml",
     "typecheck": "bunx tsc --noEmit -p tsconfig.node.json && bunx tsc --noEmit -p tsconfig.web.json",
     "preview": "vite preview",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { App as AntdApp } from "antd";
 import type { AiExecutionPlan } from "@nextshell/core";
 import { useAiChatStore } from "../../store/useAiChatStore";
@@ -19,6 +19,27 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
   const { message } = AntdApp.useApp();
   const aiEnabled = usePreferencesStore((s) => s.preferences.ai.enabled);
   const hasProvider = usePreferencesStore((s) => s.preferences.ai.providers.length > 0);
+
+  // 计划窗口高度状态（默认 40vh，最小 200px，最大 80vh）
+  const [planHeight, setPlanHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("nextshell.ai.planHeight");
+      return saved ? Math.max(200, Math.min(window.innerHeight * 0.8, parseInt(saved, 10))) : Math.max(200, window.innerHeight * 0.4);
+    } catch {
+      return Math.max(200, window.innerHeight * 0.4);
+    }
+  });
+
+  const isResizingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const currentHeightRef = useRef(planHeight);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 同步 ref 和 state
+  useEffect(() => {
+    currentHeightRef.current = planHeight;
+  }, [planHeight]);
 
   const {
     conversations,
@@ -93,8 +114,54 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
     useAiChatStore.setState({ pendingPlan: undefined });
   }, []);
 
+  // 拖动开始
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    startYRef.current = e.clientY;
+    startHeightRef.current = planHeight;
+    document.addEventListener("mousemove", handleResizeMove);
+    document.addEventListener("mouseup", handleResizeEnd);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, [planHeight]);
+
+  // 拖动中
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizingRef.current || !contentRef.current) return;
+    const deltaY = startYRef.current - e.clientY; // 向上拖动为正
+    const newHeight = Math.max(200, Math.min(window.innerHeight * 0.8, startHeightRef.current + deltaY));
+    setPlanHeight(newHeight);
+  }, []);
+
+  // 拖动结束
+  const handleResizeEnd = useCallback(() => {
+    if (!isResizingRef.current) return;
+    isResizingRef.current = false;
+    document.removeEventListener("mousemove", handleResizeMove);
+    document.removeEventListener("mouseup", handleResizeEnd);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    
+    // 保存当前高度（使用 ref 确保是最新值）
+    try {
+      localStorage.setItem("nextshell.ai.planHeight", currentHeightRef.current.toString());
+    } catch {
+      // ignore
+    }
+  }, [handleResizeMove]);
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener("mousemove", handleResizeMove);
+      document.removeEventListener("mouseup", handleResizeEnd);
+    };
+  }, [handleResizeMove, handleResizeEnd]);
+
   const isConfigured = aiEnabled && hasProvider;
   const hasConnection = !!boundConnectionId;
+  const showPlanCard = !!(pendingPlan && !executionProgress);
+  const showProgressCard = !!executionProgress;
 
   return (
     <div className="ai-chat-pane">
@@ -150,25 +217,44 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
         />
       ) : (
         <>
-          <AiMessageList
-            messages={messages.filter((m) => m.role !== "system")}
-            streamingContent={streamingContent}
-            isStreaming={isStreaming}
-          />
+          <div className="ai-chat-content" ref={contentRef}>
+            <div className="ai-messages-container">
+              <AiMessageList
+                messages={messages.filter((m) => m.role !== "system")}
+                streamingContent={streamingContent}
+                isStreaming={isStreaming}
+              />
+            </div>
 
-          {pendingPlan && !executionProgress && (
-            <AiExecutionPlanCard
-              plan={pendingPlan}
-              userRequest={pendingPlanUserRequest}
-              onApprove={(plan) => void handleApprove(plan)}
-              onReject={handleReject}
-              onAbort={() => void handleAbort()}
-            />
-          )}
-
-          {executionProgress && (
-            <AiExecutionProgressCard progress={executionProgress} phase={executionPhase} />
-          )}
+            {(showPlanCard || showProgressCard) && (
+              <>
+                <div
+                  className="ai-plan-resizer"
+                  onMouseDown={handleResizeStart}
+                  title="拖动调整计划窗口大小"
+                >
+                  <div className="ai-plan-resizer-handle" />
+                </div>
+                <div
+                  className="ai-plan-container"
+                  style={{ height: `${planHeight}px` }}
+                >
+                  {showPlanCard && (
+                    <AiExecutionPlanCard
+                      plan={pendingPlan}
+                      userRequest={pendingPlanUserRequest}
+                      onApprove={(plan) => void handleApprove(plan)}
+                      onReject={handleReject}
+                      onAbort={() => void handleAbort()}
+                    />
+                  )}
+                  {showProgressCard && (
+                    <AiExecutionProgressCard progress={executionProgress} phase={executionPhase} />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
           {statusHint && (
             <div className="ai-status-bar">
