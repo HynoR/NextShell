@@ -251,6 +251,25 @@ export const mergePreferences = (
         patch.audit.retentionDays <= 365
           ? patch.audit.retentionDays
           : current.audit.retentionDays
+    },
+    ai: {
+      enabled: patch.ai?.enabled ?? current.ai.enabled,
+      activeProviderId:
+        patch.ai?.activeProviderId !== undefined
+          ? patch.ai.activeProviderId
+          : current.ai.activeProviderId,
+      providers: patch.ai?.providers ?? current.ai.providers,
+      systemPromptOverride:
+        patch.ai?.systemPromptOverride !== undefined
+          ? patch.ai.systemPromptOverride
+          : current.ai.systemPromptOverride,
+      executionTimeoutSec:
+        patch.ai?.executionTimeoutSec !== undefined &&
+        Number.isInteger(patch.ai.executionTimeoutSec) &&
+        patch.ai.executionTimeoutSec >= 5 &&
+        patch.ai.executionTimeoutSec <= 300
+          ? patch.ai.executionTimeoutSec
+          : current.ai.executionTimeoutSec
     }
   };
 };
