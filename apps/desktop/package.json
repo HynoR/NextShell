@@ -12,10 +12,10 @@
   "main": "dist-electron/main/index.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && vite build",
-    "dist": "bun run build && electron-builder --config build/electron-builder.yml",
-    "dist:dir": "bun run build && electron-builder --dir --config build/electron-builder.yml",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "build": "bunx tsc --noEmit -p tsconfig.node.json && bunx tsc --noEmit -p tsconfig.web.json && bunx vite build",
+    "dist": "bun run build && bunx electron-builder --config build/electron-builder.yml",
+    "dist:dir": "bun run build && bunx electron-builder --dir --config build/electron-builder.yml",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.node.json && bunx tsc --noEmit -p tsconfig.web.json",
     "preview": "vite preview",
     "rebuild:native": "electron-rebuild -f --only better-sqlite3,keytar,ssh2,node-pty"
   },

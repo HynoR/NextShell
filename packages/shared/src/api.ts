@@ -1,4 +1,5 @@
 import type {
+  AiConversation,
   AuditLogRecord,
   BackupArchiveMeta,
   BatchCommandExecutionResult,
@@ -118,6 +119,13 @@ import type {
   UpdateCheckResult,
   PingRequestInput,
   PingResult,
+  AiChatInput,
+  AiApproveInput,
+  AiAbortInput,
+  AiProviderTestInput,
+  AiProviderSetApiKeyInput,
+  AiStreamEvent,
+  AiProgressEvent,
   CloudSyncWorkspaceAddInput,
   CloudSyncWorkspaceUpdateInput,
   CloudSyncWorkspaceRemoveInput,
@@ -336,5 +344,15 @@ export interface NextShellApi {
     restore: (payload: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
     purge: (payload: RecycleBinPurgeInput) => Promise<{ ok: true }>;
     clear: () => Promise<{ ok: true; deleted: number }>;
+  };
+  ai: {
+    chat: (payload: AiChatInput) => Promise<{ conversationId: string }>;
+    approve: (payload: AiApproveInput) => Promise<{ ok: true }>;
+    abort: (payload: AiAbortInput) => Promise<{ ok: true }>;
+    history: () => Promise<AiConversation[]>;
+    testProvider: (payload: AiProviderTestInput) => Promise<{ ok: boolean; error?: string }>;
+    setApiKey: (payload: AiProviderSetApiKeyInput) => Promise<{ ok: true }>;
+    onStream: (listener: (event: AiStreamEvent) => void) => SessionEventUnsubscribe;
+    onProgress: (listener: (event: AiProgressEvent) => void) => SessionEventUnsubscribe;
   };
 }

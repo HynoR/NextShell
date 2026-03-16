@@ -482,6 +482,7 @@ export interface AppPreferences {
     /** 审计日志保留天数，0 表示永不清理 */
     retentionDays: number;
   };
+  ai: AiPreferences;
 }
 
 export interface AppPreferencesPatch {
@@ -547,6 +548,13 @@ export interface AppPreferencesPatch {
   audit?: {
     enabled?: boolean;
     retentionDays?: number;
+  };
+  ai?: {
+    enabled?: boolean;
+    activeProviderId?: string;
+    providers?: AiProviderConfig[];
+    systemPromptOverride?: string;
+    executionTimeoutSec?: number;
   };
 }
 
@@ -635,6 +643,81 @@ export interface ConnectionImportResult {
   errors: string[];
 }
 
+// ────── AI Assistant ──────
+
+export type AiProviderType = "openai" | "anthropic" | "gemini";
+
+export interface AiProviderConfig {
+  id: string;
+  type: AiProviderType;
+  name: string;
+  baseUrl: string;
+  model: string;
+  /** secret:// 引用，密钥不明文存储 */
+  apiKeyRef?: string;
+  enabled: boolean;
+}
+
+export interface AiPreferences {
+  enabled: boolean;
+  activeProviderId?: string;
+  providers: AiProviderConfig[];
+  systemPromptOverride?: string;
+  /** 命令执行超时（秒） */
+  executionTimeoutSec: number;
+}
+
+export type AiChatRole = "user" | "assistant" | "system";
+
+export interface AiChatMessage {
+  id: string;
+  role: AiChatRole;
+  content: string;
+  timestamp: string;
+  /** 若包含执行计划，存储在此 */
+  plan?: AiExecutionPlan;
+  /** 执行进度快照 */
+  executionProgress?: AiExecutionProgress;
+}
+
+export interface AiExecutionStep {
+  step: number;
+  command: string;
+  description: string;
+  risky: boolean;
+}
+
+export interface AiExecutionPlan {
+  steps: AiExecutionStep[];
+  summary: string;
+}
+
+export type AiStepStatus = "pending" | "running" | "success" | "failed" | "skipped";
+
+export interface AiStepResult {
+  step: number;
+  status: AiStepStatus;
+  output?: string;
+  error?: string;
+}
+
+export interface AiExecutionProgress {
+  planSummary: string;
+  steps: AiStepResult[];
+  currentStep: number;
+  completed: boolean;
+}
+
+export interface AiConversation {
+  id: string;
+  title: string;
+  messages: AiChatMessage[];
+  sessionId?: string;
+  connectionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   transfer: {
     uploadDefaultDir: "~",
@@ -698,6 +781,13 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   audit: {
     enabled: false,
     retentionDays: 7
+  },
+  ai: {
+    enabled: false,
+    activeProviderId: undefined,
+    providers: [],
+    systemPromptOverride: undefined,
+    executionTimeoutSec: 30
   }
 };
 

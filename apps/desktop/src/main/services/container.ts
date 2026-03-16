@@ -61,6 +61,7 @@ import { ResourceOperationsService } from "./resource-operations-service";
 import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
+import { AiService } from "./ai/ai-service";
 
 // Re-export for consumers (index.ts, register.ts)
 export type { ServiceContainer, CreateServiceContainerOptions } from "./container-types";
@@ -466,6 +467,14 @@ export const createServiceContainer = (
   });
   cloudSyncManager.initialize();
 
+  // AI Service
+  const aiSvc = new AiService({
+    writeSession: (sessionId, data) => sessionSvc.writeSession(sessionId, data),
+    execCommand: (connectionId, cmd) => commandSvc.execCommand(connectionId, cmd),
+    vault,
+    getPreferences: () => connections.getAppPreferences(),
+  });
+
   // Resource Operations Service
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
@@ -483,6 +492,7 @@ export const createServiceContainer = (
     connections.flush();
     if (auditPurgeTimer) clearInterval(auditPurgeTimer);
     prefsSvc.dispose();
+    aiSvc.dispose();
 
     const allMonitorIds = monitorSvc.getAllConnectionIds();
     await Promise.all(allMonitorIds.map((id) => monitorSvc.disposeAllMonitorSessions(id)));
@@ -641,6 +651,14 @@ export const createServiceContainer = (
     recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
     recycleBinPurge: (i) => { resourceOpsSvc.purgeRecycleBinEntry(i.id); },
     recycleBinClear: () => { connections.clearRecycleBin(); },
+
+    // AI Assistant
+    aiChat: (i) => aiSvc.chat(i),
+    aiApprove: (i) => aiSvc.approve(i),
+    aiAbort: (i) => aiSvc.abort(i),
+    aiHistory: () => aiSvc.history(),
+    aiTestProvider: (i) => aiSvc.testProvider(i),
+    aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 
     dispose,
   };
