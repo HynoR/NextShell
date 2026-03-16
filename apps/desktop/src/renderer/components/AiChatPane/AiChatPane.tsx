@@ -24,6 +24,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     streamingContent,
     executionProgress,
     pendingPlan,
+    pendingPlanUserRequest,
     sendMessage,
     approvePlan,
     abortExecution,
@@ -107,6 +108,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
           {pendingPlan && !executionProgress && (
             <AiExecutionPlanCard
               plan={pendingPlan}
+              userRequest={pendingPlanUserRequest}
               onApprove={() => void handleApprove()}
               onReject={handleReject}
             />

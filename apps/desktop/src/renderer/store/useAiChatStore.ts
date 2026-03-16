@@ -18,6 +18,7 @@ interface AiChatState {
   streamingContent: string;
   executionProgress?: AiExecutionProgress;
   pendingPlan?: AiExecutionPlan;
+  pendingPlanUserRequest?: string;
 
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
@@ -46,6 +47,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   streamingContent: "",
   executionProgress: undefined,
   pendingPlan: undefined,
+  pendingPlanUserRequest: undefined,
 
   togglePanel: () => {
     const next = !get().panelOpen;
@@ -63,7 +65,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   },
 
   sendMessage: async (content, sessionId, connectionId) => {
-    set({ isStreaming: true, streamingContent: "", pendingPlan: undefined });
+    set({ isStreaming: true, streamingContent: "", pendingPlan: undefined, pendingPlanUserRequest: content });
 
     const state = get();
     const activeId = state.activeConversationId;
@@ -151,6 +153,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       streamingContent: "",
       executionProgress: undefined,
       pendingPlan: undefined,
+      pendingPlanUserRequest: undefined,
     });
   },
 

@@ -217,6 +217,28 @@
   overflow: hidden;
 }
 
+.ai-plan-user-request {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--primary, #1677ff);
+  background: var(--primary-bg, rgba(22, 119, 255, 0.06));
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-plan-user-request i {
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+.ai-plan-user-request span {
+  word-break: break-word;
+}
+
 .ai-plan-header {
   display: flex;
   align-items: center;

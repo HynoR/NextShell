@@ -3,17 +3,25 @@ import type { AiExecutionPlan } from "@nextshell/core";
 
 interface AiExecutionPlanProps {
   plan: AiExecutionPlan;
+  userRequest?: string;
   onApprove: () => void;
   onReject: () => void;
 }
 
 export const AiExecutionPlanCard = ({
   plan,
+  userRequest,
   onApprove,
   onReject,
 }: AiExecutionPlanProps) => {
   return (
     <div className="ai-plan-card">
+      {userRequest && (
+        <div className="ai-plan-user-request">
+          <i className="ri-user-3-line" />
+          <span>{userRequest}</span>
+        </div>
+      )}
       <div className="ai-plan-header">
         <i className="ri-file-list-3-line" />
         <span>执行计划</span>
