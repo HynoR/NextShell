@@ -49,18 +49,29 @@ export const SYSTEM_PROMPT = `你是 NextShell AI 运维助手，一个专业的
 - 涉及敏感操作时必须在 description 中明确警告
 - 密码和密钥等敏感信息不要出现在命令中`;
 
-export const buildAnalysisPrompt = (
-  command: string,
-  output: string,
-  exitCode: number | null
-): string => {
+export interface AnalysisPromptOptions {
+  command: string;
+  output: string;
+  exitCode: number | null;
+  wasTruncated: boolean;
+  totalLines: number;
+  totalChars: number;
+}
+
+export const buildAnalysisPrompt = (opts: AnalysisPromptOptions): string => {
+  const { command, output, exitCode, wasTruncated, totalLines, totalChars } = opts;
+
+  const truncateNotice = wasTruncated
+    ? `\n⚠️ 输出过长（共 ${totalLines} 行 / ${totalChars} 字符），已截取头部和尾部关键内容。如需查看完整输出中的特定部分，请生成执行计划使用管道命令（如 grep、head、tail、awk）提取。\n`
+    : "";
+
   return `刚才执行了命令：\`${command}\`
 
 退出码：${exitCode ?? "未知"}
-
+${truncateNotice}
 输出：
 \`\`\`
-${output.slice(0, 4000)}
+${output}
 \`\`\`
 
 请分析这个执行结果：

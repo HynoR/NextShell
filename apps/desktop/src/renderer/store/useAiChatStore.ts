@@ -12,6 +12,14 @@ const AI_PANEL_STORAGE_KEY = "nextshell.workspace.aiPanelCollapsed";
 
 export type ExecutionPhase = "executing" | "collecting" | "analyzing" | "receiving";
 
+/** 当前 AI 面板的活动状态提示 */
+export interface StatusHint {
+  icon: string;
+  text: string;
+  /** 是否显示动画 */
+  animate?: boolean;
+}
+
 interface AiChatState {
   panelOpen: boolean;
   conversations: AiConversation[];
@@ -23,11 +31,12 @@ interface AiChatState {
   pendingPlan?: AiExecutionPlan;
   pendingPlanUserRequest?: string;
   showHistory: boolean;
+  statusHint?: StatusHint;
 
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   sendMessage: (content: string, sessionId?: string, connectionId?: string) => Promise<void>;
-  approvePlan: () => Promise<void>;
+  approvePlan: (editedPlan?: AiExecutionPlan) => Promise<void>;
   abortExecution: () => Promise<void>;
   newConversation: () => void;
   setShowHistory: (show: boolean) => void;
@@ -57,6 +66,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   pendingPlan: undefined,
   pendingPlanUserRequest: undefined,
   showHistory: false,
+  statusHint: undefined,
 
   togglePanel: () => {
     const next = !get().panelOpen;
@@ -74,7 +84,13 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   },
 
   sendMessage: async (content, sessionId, connectionId) => {
-    set({ isStreaming: true, streamingContent: "", pendingPlan: undefined, pendingPlanUserRequest: content });
+    set({
+      isStreaming: true,
+      streamingContent: "",
+      pendingPlan: undefined,
+      pendingPlanUserRequest: content,
+      statusHint: { icon: "ri-loader-4-line", text: "正在连接 AI 模型...", animate: true },
+    });
 
     const state = get();
     const activeId = state.activeConversationId;
@@ -125,26 +141,38 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     }
   },
 
-  approvePlan: async () => {
+  approvePlan: async (editedPlan) => {
     const state = get();
     if (!state.activeConversationId) return;
+
+    const planToExecute = editedPlan ?? state.pendingPlan;
+    if (!planToExecute) return;
+
+    set({
+      pendingPlan: planToExecute,
+    });
 
     set({
       pendingPlan: undefined,
       executionPhase: "executing",
       executionProgress: {
-        planSummary: state.pendingPlan?.summary ?? "",
-        steps: (state.pendingPlan?.steps ?? []).map((s) => ({
+        planSummary: planToExecute.summary ?? "",
+        steps: planToExecute.steps.map((s) => ({
           step: s.step,
           status: "pending",
         })),
         currentStep: 0,
         completed: false,
       },
+      statusHint: { icon: "ri-terminal-box-line", text: "正在执行计划...", animate: true },
     });
 
     await window.nextshell.ai.approve({
       conversationId: state.activeConversationId,
+      plan: {
+        steps: planToExecute.steps,
+        summary: planToExecute.summary,
+      },
     });
   },
 
@@ -154,7 +182,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     await window.nextshell.ai.abort({
       conversationId: state.activeConversationId,
     });
-    set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, pendingPlan: undefined });
+    set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, pendingPlan: undefined, statusHint: undefined });
   },
 
   newConversation: () => {
@@ -167,6 +195,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       pendingPlan: undefined,
       pendingPlanUserRequest: undefined,
       showHistory: false,
+      statusHint: undefined,
     });
   },
 
@@ -183,6 +212,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       executionPhase: undefined,
       pendingPlan: undefined,
       showHistory: false,
+      statusHint: undefined,
     });
   },
 
@@ -214,9 +244,11 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       const updates: Partial<AiChatState> = {
         streamingContent: state.streamingContent + event.token,
         isStreaming: true,
+        statusHint: { icon: "ri-robot-2-line", text: "AI 正在回复...", animate: true },
       };
       if (state.executionPhase === "analyzing") {
         updates.executionPhase = "receiving";
+        updates.statusHint = { icon: "ri-robot-2-line", text: "正在接收分析结论...", animate: true };
       }
       set(updates);
     }
@@ -226,7 +258,13 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
         steps: event.plan.steps,
         summary: event.plan.summary,
       };
-      set({ pendingPlan: plan, isStreaming: false, executionProgress: undefined, executionPhase: undefined });
+      set({
+        pendingPlan: plan,
+        isStreaming: false,
+        executionProgress: undefined,
+        executionPhase: undefined,
+        statusHint: { icon: "ri-file-list-3-line", text: "已生成执行计划，等待审批" },
+      });
 
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent, plan);
@@ -234,14 +272,14 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     }
 
     if (event.type === "done") {
-      set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined });
+      set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, statusHint: undefined });
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent);
       }
     }
 
     if (event.type === "error") {
-      set({ isStreaming: false });
+      set({ isStreaming: false, statusHint: { icon: "ri-error-warning-line", text: "发生错误" } });
       if (event.error) {
         addAssistantMessage(event.conversationId, `错误：${event.error}`);
       }
@@ -286,6 +324,11 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
             steps: updatedSteps,
             currentStep: event.step,
           },
+          statusHint: {
+            icon: "ri-terminal-box-line",
+            text: `正在执行步骤 ${event.step}/${progress.steps.length}...`,
+            animate: true,
+          },
         };
       }
 
@@ -301,6 +344,10 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
         return {
           executionPhase: "collecting" as const,
           executionProgress: { ...progress, steps: updatedSteps },
+          statusHint: {
+            icon: event.status === "success" ? "ri-check-line" : "ri-close-line",
+            text: `步骤 ${event.step} ${event.status === "success" ? "执行成功" : "执行失败"}`,
+          },
         };
       }
 
@@ -319,20 +366,38 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       }
 
       if (event.type === "analysis_start") {
-        return { executionPhase: "analyzing" as const };
+        for (let i = 0; i < updatedSteps.length; i++) {
+          const st = updatedSteps[i]!;
+          if (st.status === "running" || st.status === "pending") {
+            updatedSteps[i] = { ...st, status: "success" };
+          }
+        }
+        return {
+          executionPhase: "analyzing" as const,
+          executionProgress: { ...progress, steps: updatedSteps },
+          statusHint: { icon: "ri-brain-line", text: "正在将执行结果提交 AI 分析...", animate: true },
+        };
       }
 
       if (event.type === "all_done") {
-        return { executionProgress: undefined, executionPhase: undefined };
+        return { executionProgress: undefined, executionPhase: undefined, statusHint: undefined };
       }
 
       if (event.type === "error") {
+        if (event.step !== undefined) {
+          const idx = updatedSteps.findIndex((st) => st.step === event.step);
+          if (idx >= 0) {
+            updatedSteps[idx] = { ...updatedSteps[idx]!, status: "failed", error: event.error };
+          }
+        }
         return {
           executionPhase: undefined,
           executionProgress: {
             ...progress,
+            steps: updatedSteps,
             completed: true,
           },
+          statusHint: { icon: "ri-error-warning-line", text: event.error ?? "执行出错" },
         };
       }
 

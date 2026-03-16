@@ -282,6 +282,34 @@
   white-space: pre;
 }
 
+/* ─── Status Bar ───────────────────────────────────────────────────────── */
+
+.ai-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  margin: 0;
+  background: var(--primary-bg, rgba(22, 119, 255, 0.06));
+  border-top: 1px solid var(--primary, rgba(22, 119, 255, 0.2));
+  flex-shrink: 0;
+  min-height: 32px;
+}
+
+.ai-status-icon {
+  font-size: 14px;
+  color: var(--primary, #1677ff);
+  flex-shrink: 0;
+}
+
+.ai-status-text {
+  font-size: 12px;
+  color: var(--primary, #1677ff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── Chat Input ───────────────────────────────────────────────────────── */
 
 .ai-chat-input-bar {
@@ -327,6 +355,9 @@
   border-radius: 8px;
   background: var(--bg-elevated, #1a1a2e);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 200px);
 }
 
 .ai-plan-user-request {
@@ -339,6 +370,7 @@
   color: var(--primary, #1677ff);
   background: var(--primary-bg, rgba(22, 119, 255, 0.06));
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .ai-plan-user-request i {
@@ -360,6 +392,7 @@
   font-weight: 600;
   border-bottom: 1px solid var(--border);
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .ai-plan-summary {
@@ -367,10 +400,14 @@
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
+  flex-shrink: 0;
 }
 
 .ai-plan-steps {
   padding: 0 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .ai-plan-step {
@@ -412,6 +449,95 @@
 .ai-plan-actions {
   padding: 8px 12px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* ─── Plan Edit Mode ──────────────────────────────────────────────────── */
+
+.ai-plan-editing {
+  border-color: var(--primary, #1677ff);
+}
+
+.ai-plan-edit-summary {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ai-plan-step-edit {
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.ai-plan-step-edit:last-child {
+  border-bottom: none;
+}
+
+.ai-plan-step-edit.risky {
+  background: rgba(255, 77, 79, 0.05);
+  margin: 0 -12px;
+  padding: 8px 12px;
+}
+
+.ai-plan-step-edit-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ai-plan-step-edit-toolbar {
+  display: flex;
+  gap: 2px;
+}
+
+.ai-plan-edit-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.ai-plan-edit-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.ai-plan-edit-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ai-plan-edit-btn.danger:hover:not(:disabled) {
+  color: #ff4d4f;
+  border-color: rgba(255, 77, 79, 0.3);
+  background: rgba(255, 77, 79, 0.06);
+}
+
+.ai-plan-edit-btn.active-danger {
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.08);
+}
+
+.ai-plan-edit-desc-input {
+  margin-bottom: 4px;
+}
+
+.ai-plan-edit-cmd-input textarea {
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 12px !important;
+}
+
+.ai-plan-empty-hint {
+  padding: 16px 0;
+  text-align: center;
 }
 
 /* ─── Execution Progress Card ──────────────────────────────────────────── */

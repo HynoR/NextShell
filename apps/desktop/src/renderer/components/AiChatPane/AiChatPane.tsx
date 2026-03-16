@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from "react";
 import { App as AntdApp } from "antd";
+import type { AiExecutionPlan } from "@nextshell/core";
 import { useAiChatStore } from "../../store/useAiChatStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { AiMessageList } from "./AiMessageList";
@@ -28,6 +29,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     pendingPlan,
     pendingPlanUserRequest,
     showHistory,
+    statusHint,
     sendMessage,
     approvePlan,
     abortExecution,
@@ -57,9 +59,9 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     [sendMessage, sessionId, connectionId, message]
   );
 
-  const handleApprove = useCallback(async () => {
+  const handleApprove = useCallback(async (plan?: AiExecutionPlan) => {
     try {
-      await approvePlan();
+      await approvePlan(plan);
     } catch (err) {
       message.error(`批准执行失败：${err instanceof Error ? err.message : "未知错误"}`);
     }
@@ -131,7 +133,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
             <AiExecutionPlanCard
               plan={pendingPlan}
               userRequest={pendingPlanUserRequest}
-              onApprove={() => void handleApprove()}
+              onApprove={(plan) => void handleApprove(plan)}
               onReject={handleReject}
               onAbort={() => void handleAbort()}
             />
@@ -139,6 +141,13 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
 
           {executionProgress && (
             <AiExecutionProgressCard progress={executionProgress} phase={executionPhase} />
+          )}
+
+          {statusHint && (
+            <div className="ai-status-bar">
+              <i className={`ai-status-icon ${statusHint.animate ? "ai-spin" : ""} ${statusHint.icon}`} />
+              <span className="ai-status-text">{statusHint.text}</span>
+            </div>
           )}
 
           <AiChatInput

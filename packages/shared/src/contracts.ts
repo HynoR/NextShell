@@ -1064,6 +1064,15 @@ export const aiChatSchema = z.object({
 
 export const aiApproveSchema = z.object({
   conversationId: z.string().uuid(),
+  plan: z.object({
+    steps: z.array(z.object({
+      step: z.number(),
+      command: z.string(),
+      description: z.string(),
+      risky: z.boolean(),
+    })),
+    summary: z.string(),
+  }).optional(),
 });
 
 export const aiAbortSchema = z.object({
