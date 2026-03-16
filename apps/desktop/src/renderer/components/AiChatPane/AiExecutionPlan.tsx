@@ -6,6 +6,7 @@ interface AiExecutionPlanProps {
   userRequest?: string;
   onApprove: () => void;
   onReject: () => void;
+  onAbort: () => void;
 }
 
 export const AiExecutionPlanCard = ({
@@ -13,6 +14,7 @@ export const AiExecutionPlanCard = ({
   userRequest,
   onApprove,
   onReject,
+  onAbort,
 }: AiExecutionPlanProps) => {
   return (
     <div className="ai-plan-card">
@@ -49,6 +51,9 @@ export const AiExecutionPlanCard = ({
           </Button>
           <Button onClick={onReject}>
             修改计划
+          </Button>
+          <Button danger onClick={onAbort}>
+            <i className="ri-stop-circle-line" /> 中止
           </Button>
         </Space>
       </div>

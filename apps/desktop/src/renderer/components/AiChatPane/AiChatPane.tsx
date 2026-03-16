@@ -6,6 +6,7 @@ import { AiMessageList } from "./AiMessageList";
 import { AiChatInput } from "./AiChatInput";
 import { AiExecutionPlanCard } from "./AiExecutionPlan";
 import { AiExecutionProgressCard } from "./AiExecutionProgress";
+import { AiConversationHistory } from "./AiConversationHistory";
 
 interface AiChatPaneProps {
   sessionId?: string;
@@ -23,12 +24,17 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     isStreaming,
     streamingContent,
     executionProgress,
+    executionPhase,
     pendingPlan,
     pendingPlanUserRequest,
+    showHistory,
     sendMessage,
     approvePlan,
     abortExecution,
     newConversation,
+    setShowHistory,
+    switchConversation,
+    loadHistory,
     initListeners,
   } = useAiChatStore();
 
@@ -84,6 +90,14 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
           <button
             type="button"
             className="ai-header-btn"
+            onClick={() => setShowHistory(!showHistory)}
+            title="历史对话"
+          >
+            <i className="ri-chat-history-line" />
+          </button>
+          <button
+            type="button"
+            className="ai-header-btn"
             onClick={newConversation}
             title="新对话"
           >
@@ -97,6 +111,14 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
           <i className="ri-robot-2-line" style={{ fontSize: 32, opacity: 0.3 }} />
           <p>请先在设置中启用 AI 助手并配置提供商</p>
         </div>
+      ) : showHistory ? (
+        <AiConversationHistory
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelect={switchConversation}
+          onBack={() => setShowHistory(false)}
+          onLoad={loadHistory}
+        />
       ) : (
         <>
           <AiMessageList
@@ -111,11 +133,12 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
               userRequest={pendingPlanUserRequest}
               onApprove={() => void handleApprove()}
               onReject={handleReject}
+              onAbort={() => void handleAbort()}
             />
           )}
 
           {executionProgress && (
-            <AiExecutionProgressCard progress={executionProgress} />
+            <AiExecutionProgressCard progress={executionProgress} phase={executionPhase} />
           )}
 
           <AiChatInput

@@ -306,6 +306,14 @@ export class AiService {
       }
     }
 
+    // Notify frontend: entering analysis phase
+    const analysisStartEvent: AiProgressEvent = {
+      conversationId,
+      type: "analysis_start",
+      status: "running",
+    };
+    this.broadcastToAll(IPCChannel.AiProgressEvent, analysisStartEvent);
+
     // Send analysis request to LLM
     try {
       const provider = this.getActiveProvider();

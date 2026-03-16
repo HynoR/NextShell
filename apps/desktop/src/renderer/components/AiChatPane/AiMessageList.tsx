@@ -1,4 +1,5 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { Tag } from "antd";
 import type { AiChatMessage } from "@nextshell/core";
 
 interface AiMessageListProps {
@@ -6,6 +7,85 @@ interface AiMessageListProps {
   streamingContent: string;
   isStreaming: boolean;
 }
+
+interface ParsedPlan {
+  plan: Array<{
+    step: number;
+    command: string;
+    description: string;
+    risky?: boolean;
+  }>;
+  summary?: string;
+}
+
+const tryParsePlan = (json: string): ParsedPlan | undefined => {
+  try {
+    const parsed = JSON.parse(json) as ParsedPlan;
+    if (Array.isArray(parsed.plan) && parsed.plan.length > 0) return parsed;
+  } catch { /* not a valid plan */ }
+  return undefined;
+};
+
+const InlinePlanBlock = ({ code, blockKey }: { code: string; blockKey: string }) => {
+  const [showRaw, setShowRaw] = useState(false);
+  const plan = tryParsePlan(code);
+
+  if (!plan) {
+    return (
+      <pre className="ai-msg-code">
+        <span className="ai-msg-code-lang">json</span>
+        <code>{code}</code>
+      </pre>
+    );
+  }
+
+  return (
+    <div className="ai-inline-plan">
+      <div className="ai-inline-plan-header">
+        <div className="ai-inline-plan-title">
+          <i className="ri-file-list-3-line" />
+          <span>执行计划</span>
+          {plan.plan.some((s) => s.risky) && (
+            <Tag color="red" style={{ marginLeft: 4, fontSize: 10 }}>含危险操作</Tag>
+          )}
+        </div>
+        <button
+          type="button"
+          className="ai-inline-plan-toggle"
+          onClick={() => setShowRaw(!showRaw)}
+          title={showRaw ? "查看结构化视图" : "查看原始 JSON"}
+        >
+          <i className={showRaw ? "ri-layout-grid-line" : "ri-code-s-slash-line"} />
+        </button>
+      </div>
+
+      {showRaw ? (
+        <pre className="ai-inline-plan-raw">
+          <code>{code}</code>
+        </pre>
+      ) : (
+        <>
+          {plan.summary && (
+            <div className="ai-inline-plan-summary">{plan.summary}</div>
+          )}
+          <div className="ai-inline-plan-steps">
+            {plan.plan.map((step, i) => (
+              <div key={`${blockKey}-step-${i}`} className={`ai-inline-plan-step ${step.risky ? "risky" : ""}`}>
+                <div className="ai-inline-plan-step-head">
+                  <Tag color={step.risky ? "red" : "blue"} style={{ fontSize: 10 }}>
+                    {step.risky ? "危险" : `#${step.step ?? i + 1}`}
+                  </Tag>
+                  <span className="ai-inline-plan-step-desc">{step.description}</span>
+                </div>
+                <code className="ai-inline-plan-step-cmd">{step.command}</code>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 const renderMarkdownSimple = (content: string) => {
   const blocks = content.split(/```(\w*)\n([\s\S]*?)```/g);
@@ -35,12 +115,19 @@ const renderMarkdownSimple = (content: string) => {
     } else if (i % 3 === 2) {
       const code = blocks[i] ?? "";
       const lang = blocks[i - 1] ?? "";
-      elements.push(
-        <pre key={`code-${i}`} className="ai-msg-code">
-          {lang && <span className="ai-msg-code-lang">{lang}</span>}
-          <code>{code}</code>
-        </pre>
-      );
+
+      if (lang === "json") {
+        elements.push(
+          <InlinePlanBlock key={`plan-${i}`} code={code} blockKey={`plan-${i}`} />
+        );
+      } else {
+        elements.push(
+          <pre key={`code-${i}`} className="ai-msg-code">
+            {lang && <span className="ai-msg-code-lang">{lang}</span>}
+            <code>{code}</code>
+          </pre>
+        );
+      }
     }
   }
 

@@ -10,6 +10,8 @@ import type { AiStreamEvent, AiProgressEvent } from "@nextshell/shared";
 
 const AI_PANEL_STORAGE_KEY = "nextshell.workspace.aiPanelCollapsed";
 
+export type ExecutionPhase = "executing" | "collecting" | "analyzing" | "receiving";
+
 interface AiChatState {
   panelOpen: boolean;
   conversations: AiConversation[];
@@ -17,8 +19,10 @@ interface AiChatState {
   isStreaming: boolean;
   streamingContent: string;
   executionProgress?: AiExecutionProgress;
+  executionPhase?: ExecutionPhase;
   pendingPlan?: AiExecutionPlan;
   pendingPlanUserRequest?: string;
+  showHistory: boolean;
 
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
@@ -26,6 +30,9 @@ interface AiChatState {
   approvePlan: () => Promise<void>;
   abortExecution: () => Promise<void>;
   newConversation: () => void;
+  setShowHistory: (show: boolean) => void;
+  switchConversation: (conversationId: string) => void;
+  loadHistory: () => Promise<void>;
   handleStreamEvent: (event: AiStreamEvent) => void;
   handleProgressEvent: (event: AiProgressEvent) => void;
   initListeners: () => () => void;
@@ -46,8 +53,10 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   isStreaming: false,
   streamingContent: "",
   executionProgress: undefined,
+  executionPhase: undefined,
   pendingPlan: undefined,
   pendingPlanUserRequest: undefined,
+  showHistory: false,
 
   togglePanel: () => {
     const next = !get().panelOpen;
@@ -121,6 +130,8 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     if (!state.activeConversationId) return;
 
     set({
+      pendingPlan: undefined,
+      executionPhase: "executing",
       executionProgress: {
         planSummary: state.pendingPlan?.summary ?? "",
         steps: (state.pendingPlan?.steps ?? []).map((s) => ({
@@ -143,7 +154,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     await window.nextshell.ai.abort({
       conversationId: state.activeConversationId,
     });
-    set({ isStreaming: false, executionProgress: undefined });
+    set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, pendingPlan: undefined });
   },
 
   newConversation: () => {
@@ -152,16 +163,62 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: "",
       executionProgress: undefined,
+      executionPhase: undefined,
       pendingPlan: undefined,
       pendingPlanUserRequest: undefined,
+      showHistory: false,
     });
+  },
+
+  setShowHistory: (show) => {
+    set({ showHistory: show });
+  },
+
+  switchConversation: (conversationId) => {
+    set({
+      activeConversationId: conversationId,
+      isStreaming: false,
+      streamingContent: "",
+      executionProgress: undefined,
+      executionPhase: undefined,
+      pendingPlan: undefined,
+      showHistory: false,
+    });
+  },
+
+  loadHistory: async () => {
+    try {
+      const history = await window.nextshell.ai.history();
+      if (Array.isArray(history)) {
+        set((s) => {
+          const existingIds = new Set(s.conversations.map((c) => c.id));
+          const merged = [...s.conversations];
+          for (const conv of history) {
+            if (!existingIds.has(conv.id)) {
+              merged.push(conv);
+            }
+          }
+          merged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+          return { conversations: merged };
+        });
+      }
+    } catch {
+      // history load is best-effort
+    }
   },
 
   handleStreamEvent: (event) => {
     const state = get();
 
     if (event.type === "token" && event.token) {
-      set({ streamingContent: state.streamingContent + event.token });
+      const updates: Partial<AiChatState> = {
+        streamingContent: state.streamingContent + event.token,
+        isStreaming: true,
+      };
+      if (state.executionPhase === "analyzing") {
+        updates.executionPhase = "receiving";
+      }
+      set(updates);
     }
 
     if (event.type === "plan" && event.plan) {
@@ -169,7 +226,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
         steps: event.plan.steps,
         summary: event.plan.summary,
       };
-      set({ pendingPlan: plan, isStreaming: false });
+      set({ pendingPlan: plan, isStreaming: false, executionProgress: undefined, executionPhase: undefined });
 
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent, plan);
@@ -177,7 +234,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     }
 
     if (event.type === "done") {
-      set({ isStreaming: false });
+      set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined });
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent);
       }
@@ -223,6 +280,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
           updatedSteps[idx] = { ...updatedSteps[idx]!, status: "running" };
         }
         return {
+          executionPhase: "executing" as const,
           executionProgress: {
             ...progress,
             steps: updatedSteps,
@@ -240,7 +298,10 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
             output: event.output,
           };
         }
-        return { executionProgress: { ...progress, steps: updatedSteps } };
+        return {
+          executionPhase: "collecting" as const,
+          executionProgress: { ...progress, steps: updatedSteps },
+        };
       }
 
       if (event.type === "step_output" && event.step !== undefined) {
@@ -251,20 +312,23 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
             output: event.output,
           };
         }
-        return { executionProgress: { ...progress, steps: updatedSteps } };
+        return {
+          executionPhase: "collecting" as const,
+          executionProgress: { ...progress, steps: updatedSteps },
+        };
+      }
+
+      if (event.type === "analysis_start") {
+        return { executionPhase: "analyzing" as const };
       }
 
       if (event.type === "all_done") {
-        return {
-          executionProgress: {
-            ...progress,
-            completed: true,
-          },
-        };
+        return { executionProgress: undefined, executionPhase: undefined };
       }
 
       if (event.type === "error") {
         return {
+          executionPhase: undefined,
           executionProgress: {
             ...progress,
             completed: true,

@@ -1105,7 +1105,7 @@ export interface AiStreamEvent {
 
 export interface AiProgressEvent {
   conversationId: string;
-  type: "step_start" | "step_output" | "step_done" | "all_done" | "error";
+  type: "step_start" | "step_output" | "step_done" | "all_done" | "analysis_start" | "error";
   step?: number;
   command?: string;
   output?: string;
