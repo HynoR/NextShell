@@ -175,6 +175,10 @@ export class AiService {
         updatedAt: new Date().toISOString(),
       };
       this.conversations.set(id, conversation);
+    } else {
+      // 同步最新的 session/connection（用户可能重连或切换了终端 tab）
+      conversation.sessionId = input.sessionId;
+      conversation.connectionId = input.connectionId;
     }
 
     const userMessage: AiChatMessage = {

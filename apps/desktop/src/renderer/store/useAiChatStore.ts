@@ -22,6 +22,12 @@ export interface StatusHint {
 
 interface AiChatState {
   panelOpen: boolean;
+
+  /** 当前 AI 面板绑定的连接 */
+  boundConnectionId?: string;
+  boundSessionId?: string;
+  boundConnectionLabel?: string;
+
   conversations: AiConversation[];
   activeConversationId?: string;
   isStreaming: boolean;
@@ -35,7 +41,9 @@ interface AiChatState {
 
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
-  sendMessage: (content: string, sessionId?: string, connectionId?: string) => Promise<void>;
+  /** 当活动终端 tab 切换时调用，将 AI 面板绑定到新连接 */
+  setConnection: (connectionId?: string, sessionId?: string, label?: string) => void;
+  sendMessage: (content: string) => Promise<void>;
   approvePlan: (editedPlan?: AiExecutionPlan) => Promise<void>;
   abortExecution: () => Promise<void>;
   newConversation: () => void;
@@ -55,8 +63,43 @@ const readPanelState = (): boolean => {
   }
 };
 
+/**
+ * 从对话消息中恢复未审批的执行计划。
+ * 判定规则：从后往前找到第一条 assistant 消息，如果它带有 plan 且后面没有 user 消息
+ * （user 消息出现意味着计划已开始执行，因为执行结果会以 user 角色追加），
+ * 则该计划仍处于待审批状态。
+ */
+const restorePendingPlan = (
+  conv: AiConversation
+): { plan: AiExecutionPlan; userRequest?: string } | undefined => {
+  const msgs = conv.messages;
+  if (msgs.length === 0) return undefined;
+
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const msg = msgs[i]!;
+    if (msg.role === "assistant" && msg.plan) {
+      const hasFollowUp = msgs.slice(i + 1).some((m) => m.role === "user");
+      if (hasFollowUp) return undefined;
+
+      let userRequest: string | undefined;
+      for (let j = i - 1; j >= 0; j--) {
+        if (msgs[j]!.role === "user") {
+          userRequest = msgs[j]!.content;
+          break;
+        }
+      }
+      return { plan: msg.plan, userRequest };
+    }
+    if (msg.role === "user") return undefined;
+  }
+  return undefined;
+};
+
 export const useAiChatStore = create<AiChatState>((set, get) => ({
   panelOpen: readPanelState(),
+  boundConnectionId: undefined,
+  boundSessionId: undefined,
+  boundConnectionLabel: undefined,
   conversations: [],
   activeConversationId: undefined,
   isStreaming: false,
@@ -83,7 +126,44 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     } catch { /* ignore */ }
   },
 
-  sendMessage: async (content, sessionId, connectionId) => {
+  setConnection: (connectionId, sessionId, label) => {
+    const state = get();
+
+    // 同一连接只更新 session（重连场景）
+    if (state.boundConnectionId === connectionId) {
+      set({ boundSessionId: sessionId, boundConnectionLabel: label });
+      return;
+    }
+
+    // 连接切换 - 自动切到新连接最近的对话
+    const latestConv = connectionId
+      ? state.conversations
+          .filter((c) => c.connectionId === connectionId)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+      : undefined;
+
+    const restored = latestConv ? restorePendingPlan(latestConv) : undefined;
+
+    set({
+      boundConnectionId: connectionId,
+      boundSessionId: sessionId,
+      boundConnectionLabel: label,
+      activeConversationId: latestConv?.id,
+      isStreaming: false,
+      streamingContent: "",
+      executionProgress: undefined,
+      executionPhase: undefined,
+      pendingPlan: restored?.plan,
+      pendingPlanUserRequest: restored?.userRequest,
+      showHistory: false,
+      statusHint: restored ? { icon: "ri-file-list-3-line", text: "有待审批的执行计划" } : undefined,
+    });
+  },
+
+  sendMessage: async (content) => {
+    const { boundConnectionId, boundSessionId } = get();
+    if (!boundConnectionId) throw new Error("未选择终端连接");
+
     set({
       isStreaming: true,
       streamingContent: "",
@@ -116,8 +196,8 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       const result = await window.nextshell.ai.chat({
         conversationId: activeId,
         message: content,
-        sessionId,
-        connectionId,
+        sessionId: boundSessionId,
+        connectionId: boundConnectionId,
       });
 
       if (!activeId) {
@@ -125,8 +205,8 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
           id: result.conversationId,
           title: content.slice(0, 50),
           messages: [userMessage],
-          sessionId,
-          connectionId,
+          sessionId: boundSessionId,
+          connectionId: boundConnectionId,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
@@ -204,15 +284,19 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   },
 
   switchConversation: (conversationId) => {
+    const conv = get().conversations.find((c) => c.id === conversationId);
+    const restored = conv ? restorePendingPlan(conv) : undefined;
+
     set({
       activeConversationId: conversationId,
       isStreaming: false,
       streamingContent: "",
       executionProgress: undefined,
       executionPhase: undefined,
-      pendingPlan: undefined,
+      pendingPlan: restored?.plan,
+      pendingPlanUserRequest: restored?.userRequest,
       showHistory: false,
-      statusHint: undefined,
+      statusHint: restored ? { icon: "ri-file-list-3-line", text: "有待审批的执行计划" } : undefined,
     });
   },
 
@@ -239,8 +323,10 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
 
   handleStreamEvent: (event) => {
     const state = get();
+    const isActiveConv = event.conversationId === state.activeConversationId;
 
-    if (event.type === "token" && event.token) {
+    // 无论是否活跃，都将消息追加到对应对话
+    if (event.type === "token" && event.token && isActiveConv) {
       const updates: Partial<AiChatState> = {
         streamingContent: state.streamingContent + event.token,
         isStreaming: true,
@@ -258,13 +344,15 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
         steps: event.plan.steps,
         summary: event.plan.summary,
       };
-      set({
-        pendingPlan: plan,
-        isStreaming: false,
-        executionProgress: undefined,
-        executionPhase: undefined,
-        statusHint: { icon: "ri-file-list-3-line", text: "已生成执行计划，等待审批" },
-      });
+      if (isActiveConv) {
+        set({
+          pendingPlan: plan,
+          isStreaming: false,
+          executionProgress: undefined,
+          executionPhase: undefined,
+          statusHint: { icon: "ri-file-list-3-line", text: "已生成执行计划，等待审批" },
+        });
+      }
 
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent, plan);
@@ -272,14 +360,18 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     }
 
     if (event.type === "done") {
-      set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, statusHint: undefined });
+      if (isActiveConv) {
+        set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, statusHint: undefined });
+      }
       if (event.fullContent) {
         addAssistantMessage(event.conversationId, event.fullContent);
       }
     }
 
     if (event.type === "error") {
-      set({ isStreaming: false, statusHint: { icon: "ri-error-warning-line", text: "发生错误" } });
+      if (isActiveConv) {
+        set({ isStreaming: false, statusHint: { icon: "ri-error-warning-line", text: "发生错误" } });
+      }
       if (event.error) {
         addAssistantMessage(event.conversationId, `错误：${event.error}`);
       }
@@ -295,7 +387,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       };
 
       set((s) => ({
-        streamingContent: "",
+        streamingContent: isActiveConv ? "" : s.streamingContent,
         conversations: s.conversations.map((c) =>
           c.id === convId
             ? { ...c, messages: [...c.messages, msg], updatedAt: new Date().toISOString() }
@@ -306,6 +398,12 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   },
 
   handleProgressEvent: (event) => {
+    const state = get();
+    const isActiveConv = event.conversationId === state.activeConversationId;
+
+    // 非活跃对话的进度事件忽略 UI 更新（后端仍在执行）
+    if (!isActiveConv) return;
+
     set((s) => {
       const progress = s.executionProgress;
       if (!progress) return {};

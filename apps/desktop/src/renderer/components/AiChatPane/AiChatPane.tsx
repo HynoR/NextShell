@@ -12,9 +12,10 @@ import { AiConversationHistory } from "./AiConversationHistory";
 interface AiChatPaneProps {
   sessionId?: string;
   connectionId?: string;
+  connectionLabel?: string;
 }
 
-export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
+export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatPaneProps) => {
   const { message } = AntdApp.useApp();
   const aiEnabled = usePreferencesStore((s) => s.preferences.ai.enabled);
   const hasProvider = usePreferencesStore((s) => s.preferences.ai.providers.length > 0);
@@ -22,6 +23,8 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
   const {
     conversations,
     activeConversationId,
+    boundConnectionId,
+    boundConnectionLabel,
     isStreaming,
     streamingContent,
     executionProgress,
@@ -30,6 +33,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     pendingPlanUserRequest,
     showHistory,
     statusHint,
+    setConnection,
     sendMessage,
     approvePlan,
     abortExecution,
@@ -45,18 +49,28 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
     return cleanup;
   }, [initListeners]);
 
+  // 当活动终端 tab 切换时，同步绑定连接
+  useEffect(() => {
+    setConnection(connectionId, sessionId, connectionLabel);
+  }, [connectionId, sessionId, connectionLabel, setConnection]);
+
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const messages = activeConversation?.messages ?? [];
+
+  // 只显示当前连接的对话
+  const connectionConversations = boundConnectionId
+    ? conversations.filter((c) => c.connectionId === boundConnectionId)
+    : [];
 
   const handleSend = useCallback(
     async (content: string) => {
       try {
-        await sendMessage(content, sessionId, connectionId);
+        await sendMessage(content);
       } catch (err) {
         message.error(`发送失败：${err instanceof Error ? err.message : "未知错误"}`);
       }
     },
-    [sendMessage, sessionId, connectionId, message]
+    [sendMessage, message]
   );
 
   const handleApprove = useCallback(async (plan?: AiExecutionPlan) => {
@@ -80,6 +94,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
   }, []);
 
   const isConfigured = aiEnabled && hasProvider;
+  const hasConnection = !!boundConnectionId;
 
   return (
     <div className="ai-chat-pane">
@@ -87,6 +102,12 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
         <div className="ai-chat-header-left">
           <i className="ri-robot-2-line" />
           <span>AI 助手</span>
+          {boundConnectionLabel && (
+            <span className="ai-connection-badge" title={`目标机器：${boundConnectionLabel}`}>
+              <i className="ri-server-line" />
+              {boundConnectionLabel}
+            </span>
+          )}
         </div>
         <div className="ai-chat-header-actions">
           <button
@@ -113,10 +134,16 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
           <i className="ri-robot-2-line" style={{ fontSize: 32, opacity: 0.3 }} />
           <p>请先在设置中启用 AI 助手并配置提供商</p>
         </div>
+      ) : !hasConnection ? (
+        <div className="ai-chat-empty">
+          <i className="ri-server-line" style={{ fontSize: 32, opacity: 0.3 }} />
+          <p>请先连接一个 SSH 终端会话</p>
+        </div>
       ) : showHistory ? (
         <AiConversationHistory
-          conversations={conversations}
+          conversations={connectionConversations}
           activeConversationId={activeConversationId}
+          connectionLabel={boundConnectionLabel}
           onSelect={switchConversation}
           onBack={() => setShowHistory(false)}
           onLoad={loadHistory}
@@ -151,7 +178,7 @@ export const AiChatPane = ({ sessionId, connectionId }: AiChatPaneProps) => {
           )}
 
           <AiChatInput
-            disabled={!isConfigured}
+            disabled={!isConfigured || !hasConnection}
             isStreaming={isStreaming}
             onSend={(msg) => void handleSend(msg)}
             onAbort={() => void handleAbort()}

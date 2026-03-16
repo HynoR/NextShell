@@ -5,6 +5,7 @@ import type { AiConversation } from "@nextshell/core";
 interface AiConversationHistoryProps {
   conversations: AiConversation[];
   activeConversationId?: string;
+  connectionLabel?: string;
   onSelect: (conversationId: string) => void;
   onBack: () => void;
   onLoad: () => void;
@@ -46,6 +47,7 @@ const getMessageStats = (conv: AiConversation): string => {
 export const AiConversationHistory = ({
   conversations,
   activeConversationId,
+  connectionLabel,
   onSelect,
   onBack,
   onLoad,
@@ -64,6 +66,11 @@ export const AiConversationHistory = ({
         </button>
         <span>历史对话</span>
         <span className="ai-history-count">{sorted.length}</span>
+        {connectionLabel && (
+          <span className="ai-history-connection-tag" title={`仅显示 ${connectionLabel} 的对话`}>
+            <i className="ri-server-line" /> {connectionLabel}
+          </span>
+        )}
       </div>
       <div className="ai-history-list">
         {sorted.length === 0 ? (

@@ -1060,6 +1060,11 @@ export const WorkspaceLayout = ({
                         <AiChatPane
                             sessionId={activeTerminalSession?.id}
                             connectionId={activeConnectionId}
+                            connectionLabel={
+                                activeTerminalConnection
+                                    ? `${activeTerminalConnection.username}@${activeTerminalConnection.host}`
+                                    : undefined
+                            }
                         />
                     </aside>
                 )}
