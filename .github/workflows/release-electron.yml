@@ -65,8 +65,10 @@ jobs:
         include:
           - os: windows-latest
             platform: win
+            build_args: --win
           - os: macos-latest
             platform: mac
+            build_args: --mac --arm64
     env:
       ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
@@ -101,7 +103,7 @@ jobs:
 
       - name: Build ${{ matrix.platform }}
         shell: bash
-        run: bun run --cwd apps/desktop dist -- --${{ matrix.platform }} --publish never -c.extraMetadata.version=${{ env.RELEASE_VERSION }}
+        run: bun run --cwd apps/desktop dist -- ${{ matrix.build_args }} --publish never -c.extraMetadata.version=${{ env.RELEASE_VERSION }}
 
       - name: Upload Windows artifact
         if: matrix.platform == 'win'
