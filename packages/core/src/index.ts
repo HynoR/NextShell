@@ -665,13 +665,20 @@ export interface AiPreferences {
   systemPromptOverride?: string;
   /** 命令执行超时（秒） */
   executionTimeoutSec: number;
+  /** 模型请求超时（秒） */
+  providerRequestTimeoutSec: number;
+  /** 模型请求失败后的最大重试次数 */
+  providerMaxRetries: number;
 }
 
 export type AiChatRole = "user" | "assistant" | "system";
+export type AiMessageKind = "chat" | "execution_result";
 
 export interface AiChatMessage {
   id: string;
   role: AiChatRole;
+  /** 区分用户真实输入与系统生成的执行结果消息，避免前端仅靠 role 推断语义 */
+  kind?: AiMessageKind;
   content: string;
   timestamp: string;
   /** 若包含执行计划，存储在此 */
@@ -787,7 +794,9 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     activeProviderId: undefined,
     providers: [],
     systemPromptOverride: undefined,
-    executionTimeoutSec: 30
+    executionTimeoutSec: 30,
+    providerRequestTimeoutSec: 30,
+    providerMaxRetries: 1
   }
 };
 

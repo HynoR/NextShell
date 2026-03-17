@@ -7,6 +7,7 @@ import type {
   AiStepResult,
 } from "@nextshell/core";
 import type { AiStreamEvent, AiProgressEvent } from "@nextshell/shared";
+import { formatAiErrorMessage, summarizeAiError } from "../utils/ai-error-message";
 
 const AI_PANEL_STORAGE_KEY = "nextshell.workspace.aiPanelCollapsed";
 
@@ -65,32 +66,33 @@ const readPanelState = (): boolean => {
 
 /**
  * 从对话消息中恢复未审批的执行计划。
- * 判定规则：从后往前找到第一条 assistant 消息，如果它带有 plan 且后面没有 user 消息
- * （user 消息出现意味着计划已开始执行，因为执行结果会以 user 角色追加），
+ * 判定规则：从后往前找到第一条 assistant 消息，如果它带有 plan 且后面没有新的真实用户输入，
  * 则该计划仍处于待审批状态。
  */
-const restorePendingPlan = (
+export const restorePendingPlan = (
   conv: AiConversation
 ): { plan: AiExecutionPlan; userRequest?: string } | undefined => {
   const msgs = conv.messages;
   if (msgs.length === 0) return undefined;
+  const isUserPromptMessage = (message: AiChatMessage): boolean =>
+    message.role === "user" && message.kind !== "execution_result";
 
   for (let i = msgs.length - 1; i >= 0; i--) {
     const msg = msgs[i]!;
     if (msg.role === "assistant" && msg.plan) {
-      const hasFollowUp = msgs.slice(i + 1).some((m) => m.role === "user");
+      const hasFollowUp = msgs.slice(i + 1).some((m) => isUserPromptMessage(m));
       if (hasFollowUp) return undefined;
 
       let userRequest: string | undefined;
       for (let j = i - 1; j >= 0; j--) {
-        if (msgs[j]!.role === "user") {
+        if (isUserPromptMessage(msgs[j]!)) {
           userRequest = msgs[j]!.content;
           break;
         }
       }
       return { plan: msg.plan, userRequest };
     }
-    if (msg.role === "user") return undefined;
+    if (isUserPromptMessage(msg)) return undefined;
   }
   return undefined;
 };
@@ -178,6 +180,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     const userMessage: AiChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
+      kind: "chat",
       content,
       timestamp: new Date().toISOString(),
     };
@@ -302,16 +305,16 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
 
   loadHistory: async () => {
     try {
-      const history = await window.nextshell.ai.history();
+      const history = await window.nextshell.ai.history({
+        connectionId: get().boundConnectionId,
+      });
       if (Array.isArray(history)) {
         set((s) => {
-          const existingIds = new Set(s.conversations.map((c) => c.id));
-          const merged = [...s.conversations];
+          const mergedById = new Map(s.conversations.map((c) => [c.id, c]));
           for (const conv of history) {
-            if (!existingIds.has(conv.id)) {
-              merged.push(conv);
-            }
+            mergedById.set(conv.id, conv);
           }
+          const merged = Array.from(mergedById.values());
           merged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
           return { conversations: merged };
         });
@@ -369,18 +372,21 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     }
 
     if (event.type === "error") {
+      const readableError = formatAiErrorMessage(event.error, "AI 请求失败");
       if (isActiveConv) {
-        set({ isStreaming: false, statusHint: { icon: "ri-error-warning-line", text: "发生错误" } });
+        set({
+          isStreaming: false,
+          statusHint: { icon: "ri-error-warning-line", text: summarizeAiError(event.error, "AI 请求失败") },
+        });
       }
-      if (event.error) {
-        addAssistantMessage(event.conversationId, `错误：${event.error}`);
-      }
+      addAssistantMessage(event.conversationId, `错误：${readableError}`);
     }
 
     function addAssistantMessage(convId: string, content: string, plan?: AiExecutionPlan): void {
       const msg: AiChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
+        kind: "chat",
         content,
         timestamp: new Date().toISOString(),
         plan,
@@ -482,10 +488,11 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       }
 
       if (event.type === "error") {
+        const readableError = formatAiErrorMessage(event.error, "执行出错");
         if (event.step !== undefined) {
           const idx = updatedSteps.findIndex((st) => st.step === event.step);
           if (idx >= 0) {
-            updatedSteps[idx] = { ...updatedSteps[idx]!, status: "failed", error: event.error };
+            updatedSteps[idx] = { ...updatedSteps[idx]!, status: "failed", error: readableError };
           }
         }
         return {
@@ -495,7 +502,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
             steps: updatedSteps,
             completed: true,
           },
-          statusHint: { icon: "ri-error-warning-line", text: event.error ?? "执行出错" },
+          statusHint: { icon: "ri-error-warning-line", text: summarizeAiError(event.error, "执行出错") },
         };
       }
 

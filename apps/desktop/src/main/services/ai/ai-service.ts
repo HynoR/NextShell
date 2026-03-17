@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import path from "node:path";
 import type { WebContents } from "electron";
-import { BrowserWindow } from "electron";
 import type {
   AiConversation,
   AiChatMessage,
@@ -12,6 +14,7 @@ import type {
   AiChatInput,
   AiApproveInput,
   AiAbortInput,
+  AiHistoryInput,
   AiProviderTestInput,
   AiStreamEvent,
   AiProgressEvent,
@@ -22,7 +25,8 @@ import type { ChatMessage } from "./adapters/types";
 import { LlmRouter } from "./llm-router";
 import { SYSTEM_PROMPT, buildAnalysisPrompt } from "./prompt-templates";
 import { extractPlanFromResponse } from "./plan-parser";
-import { truncateOutput } from "./output-capture";
+import { sanitizeAiOutput, truncateOutput } from "./output-capture";
+import { normalizeApprovedPlan } from "./plan-guard";
 import { logger } from "../../logger";
 
 /**
@@ -97,28 +101,245 @@ const escapeShellArg = (arg: string): string => {
   return "'" + arg.replace(/'/g, "'\\''") + "'";
 };
 
+class AiTaskAbortedError extends Error {
+  constructor(message = "AI 执行已中止") {
+    super(message);
+    this.name = "AiTaskAbortedError";
+  }
+}
+
+const AI_HISTORY_FILE = "ai-conversations.json";
+const MAX_HISTORY_ITEMS = 100;
+
+interface AiTaskContext {
+  chatController?: AbortController;
+  executionController?: AbortController;
+  analysisController?: AbortController;
+  aborted: boolean;
+}
+
 interface AiServiceDeps {
-  writeSession: (sessionId: string, data: string) => { ok: true };
-  execCommand: (connectionId: string, cmd: string) => Promise<CommandExecutionResult>;
+  execCommand: (
+    connectionId: string,
+    cmd: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => Promise<CommandExecutionResult>;
   vault: EncryptedSecretVault;
   getPreferences: () => AppPreferences;
+  dataDir: string;
 }
+
+interface ProviderRuntimeOptions {
+  timeoutMs: number;
+  maxRetries: number;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const normalizeLoadedPlan = (value: unknown): AiExecutionPlan | undefined => {
+  if (!isRecord(value) || typeof value.summary !== "string" || !Array.isArray(value.steps)) {
+    return undefined;
+  }
+
+  const steps = value.steps
+    .map((step): AiExecutionPlan["steps"][number] | undefined => {
+      if (!isRecord(step)) return undefined;
+      if (
+        typeof step.step !== "number" ||
+        typeof step.command !== "string" ||
+        typeof step.description !== "string" ||
+        typeof step.risky !== "boolean"
+      ) {
+        return undefined;
+      }
+      return {
+        step: step.step,
+        command: step.command,
+        description: step.description,
+        risky: step.risky,
+      };
+    })
+    .filter((step): step is AiExecutionPlan["steps"][number] => Boolean(step));
+
+  return { summary: value.summary, steps };
+};
+
+const normalizeLoadedMessage = (value: unknown): AiChatMessage | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.content !== "string" ||
+    typeof value.timestamp !== "string" ||
+    (value.role !== "user" && value.role !== "assistant" && value.role !== "system")
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    role: value.role,
+    kind: value.kind === "execution_result" ? "execution_result" : "chat",
+    content: value.content,
+    timestamp: value.timestamp,
+    plan: normalizeLoadedPlan(value.plan),
+  };
+};
+
+const normalizeLoadedConversation = (value: unknown): AiConversation | undefined => {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !Array.isArray(value.messages)
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    title: value.title,
+    messages: value.messages
+      .map((message) => normalizeLoadedMessage(message))
+      .filter((message): message is AiChatMessage => Boolean(message)),
+    sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
+    connectionId: typeof value.connectionId === "string" ? value.connectionId : undefined,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+};
 
 export class AiService {
   private readonly deps: AiServiceDeps;
   private readonly router = new LlmRouter();
   private readonly conversations = new Map<string, AiConversation>();
-  private readonly abortControllers = new Map<string, AbortController>();
+  private readonly conversationOwners = new Map<string, WebContents>();
   private readonly apiKeys = new Map<string, string>();
+  private readonly taskContexts = new Map<string, AiTaskContext>();
+  private readonly historyFilePath: string;
+  private persistQueue: Promise<void> = Promise.resolve();
 
   constructor(deps: AiServiceDeps) {
     this.deps = deps;
+    this.historyFilePath = path.join(deps.dataDir, AI_HISTORY_FILE);
+    this.loadPersistedConversations();
   }
 
-  private broadcastToAll(channel: string, payload: unknown): void {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send(channel, payload);
+  private loadPersistedConversations(): void {
+    try {
+      const raw = fs.readFileSync(this.historyFilePath, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        throw new Error("历史文件格式不正确");
+      }
+
+      for (const item of parsed) {
+        const conversation = normalizeLoadedConversation(item);
+        if (conversation) {
+          this.conversations.set(conversation.id, conversation);
+        }
+      }
+    } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError?.code !== "ENOENT") {
+        logger.warn("[AI] 加载历史会话失败，已降级为空历史", error);
+      }
     }
+  }
+
+  private getConversationOwner(conversationId: string): WebContents | undefined {
+    const owner = this.conversationOwners.get(conversationId);
+    if (owner?.isDestroyed()) {
+      this.conversationOwners.delete(conversationId);
+      return undefined;
+    }
+    return owner;
+  }
+
+  private bindConversationOwner(conversationId: string, sender: WebContents): void {
+    if (!sender.isDestroyed()) {
+      this.conversationOwners.set(conversationId, sender);
+    }
+  }
+
+  private canAccessConversation(
+    conversation: AiConversation,
+    sender: WebContents,
+    connectionId?: string
+  ): boolean {
+    const owner = this.getConversationOwner(conversation.id);
+    if (owner) {
+      return owner.id === sender.id;
+    }
+    return Boolean(connectionId && conversation.connectionId === connectionId);
+  }
+
+  private emitToSender(sender: WebContents, channel: string, payload: unknown): void {
+    if (!sender.isDestroyed()) {
+      sender.send(channel, payload);
+    }
+  }
+
+  private queuePersist(): void {
+    const content = JSON.stringify(
+      Array.from(this.conversations.values())
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, MAX_HISTORY_ITEMS),
+      null,
+      2
+    );
+
+    this.persistQueue = this.persistQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await fsp.mkdir(path.dirname(this.historyFilePath), { recursive: true });
+          const tempPath = `${this.historyFilePath}.tmp`;
+          await fsp.writeFile(tempPath, content, "utf-8");
+          await fsp.rename(tempPath, this.historyFilePath);
+        } catch (error) {
+          logger.error("[AI] 持久化历史会话失败", error);
+        }
+      });
+  }
+
+  private getTaskContext(conversationId: string): AiTaskContext {
+    const existing = this.taskContexts.get(conversationId);
+    if (existing) {
+      return existing;
+    }
+    const created: AiTaskContext = { aborted: false };
+    this.taskContexts.set(conversationId, created);
+    return created;
+  }
+
+  private resetTaskContext(conversationId: string): AiTaskContext {
+    const current = this.getTaskContext(conversationId);
+    current.chatController?.abort(new AiTaskAbortedError());
+    current.executionController?.abort(new AiTaskAbortedError());
+    current.analysisController?.abort(new AiTaskAbortedError());
+    const next: AiTaskContext = { aborted: false };
+    this.taskContexts.set(conversationId, next);
+    return next;
+  }
+
+  private ensureTaskNotAborted(conversationId: string): void {
+    if (this.taskContexts.get(conversationId)?.aborted) {
+      throw new AiTaskAbortedError();
+    }
+  }
+
+  private isAbortError(error: unknown): boolean {
+    if (error instanceof AiTaskAbortedError) {
+      return true;
+    }
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return true;
+    }
+    return error instanceof Error && error.name === "AbortError";
   }
 
   private getActiveProvider(): AiProviderConfig | undefined {
@@ -126,6 +347,14 @@ export class AiService {
     if (!prefs.ai.enabled) return undefined;
     const activeId = prefs.ai.activeProviderId;
     return prefs.ai.providers.find((p) => p.id === activeId && p.enabled);
+  }
+
+  private getProviderRuntimeOptions(): ProviderRuntimeOptions {
+    const prefs = this.deps.getPreferences();
+    return {
+      timeoutMs: (prefs.ai.providerRequestTimeoutSec ?? 30) * 1000,
+      maxRetries: prefs.ai.providerMaxRetries ?? 1,
+    };
   }
 
   private async resolveApiKey(provider: AiProviderConfig): Promise<string> {
@@ -152,12 +381,13 @@ export class AiService {
     this.router.clearCache();
   }
 
-  async chat(input: AiChatInput): Promise<{ conversationId: string }> {
+  async chat(sender: WebContents, input: AiChatInput): Promise<{ conversationId: string }> {
     const provider = this.getActiveProvider();
     if (!provider) throw new Error("未启用 AI 助手或未配置提供商");
 
     const apiKey = await this.resolveApiKey(provider);
     const adapter = this.router.getAdapter(provider, apiKey);
+    const providerRuntimeOptions = this.getProviderRuntimeOptions();
 
     let conversation = input.conversationId
       ? this.conversations.get(input.conversationId)
@@ -181,13 +411,18 @@ export class AiService {
       conversation.connectionId = input.connectionId;
     }
 
+    this.bindConversationOwner(conversation.id, sender);
+
     const userMessage: AiChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
+      kind: "chat",
       content: input.message,
       timestamp: new Date().toISOString(),
     };
     conversation.messages.push(userMessage);
+    conversation.updatedAt = userMessage.timestamp;
+    this.queuePersist();
 
     const prefs = this.deps.getPreferences();
     const systemPrompt = prefs.ai.systemPromptOverride?.trim() || SYSTEM_PROMPT;
@@ -200,10 +435,10 @@ export class AiService {
       })),
     ]);
 
-    const abortController = new AbortController();
-    this.abortControllers.set(conversation.id, abortController);
-
     const conversationId = conversation.id;
+    const taskContext = this.resetTaskContext(conversationId);
+    const chatController = new AbortController();
+    taskContext.chatController = chatController;
 
     // Stream in background
     void (async () => {
@@ -217,9 +452,13 @@ export class AiService {
               type: "token",
               token,
             };
-            this.broadcastToAll(IPCChannel.AiStreamEvent, event);
+            this.emitToSender(sender, IPCChannel.AiStreamEvent, event);
           },
-          { signal: abortController.signal }
+          {
+            signal: chatController.signal,
+            timeoutMs: providerRuntimeOptions.timeoutMs,
+            maxRetries: providerRuntimeOptions.maxRetries,
+          }
         );
 
         const plan = extractPlanFromResponse(fullContent);
@@ -227,12 +466,14 @@ export class AiService {
         const assistantMessage: AiChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
+          kind: "chat",
           content: fullContent,
           timestamp: new Date().toISOString(),
           plan: plan ?? undefined,
         };
         conversation!.messages.push(assistantMessage);
-        conversation!.updatedAt = new Date().toISOString();
+        conversation!.updatedAt = assistantMessage.timestamp;
+        this.queuePersist();
 
         const doneEvent: AiStreamEvent = {
           conversationId,
@@ -240,9 +481,11 @@ export class AiService {
           fullContent,
           ...(plan ? { plan } : {}),
         };
-        this.broadcastToAll(IPCChannel.AiStreamEvent, doneEvent);
+        this.emitToSender(sender, IPCChannel.AiStreamEvent, doneEvent);
       } catch (err) {
-        if (abortController.signal.aborted) return;
+        if (this.isAbortError(err) || chatController.signal.aborted) {
+          return;
+        }
         const errorMsg = err instanceof Error ? err.message : String(err);
         logger.error("[AI] chat error", err);
         const errorEvent: AiStreamEvent = {
@@ -250,18 +493,22 @@ export class AiService {
           type: "error",
           error: errorMsg,
         };
-        this.broadcastToAll(IPCChannel.AiStreamEvent, errorEvent);
+        this.emitToSender(sender, IPCChannel.AiStreamEvent, errorEvent);
       } finally {
-        this.abortControllers.delete(conversationId);
+        const currentTask = this.taskContexts.get(conversationId);
+        if (currentTask?.chatController === chatController) {
+          currentTask.chatController = undefined;
+        }
       }
     })();
 
     return { conversationId };
   }
 
-  async approve(input: AiApproveInput): Promise<{ ok: true }> {
+  async approve(sender: WebContents, input: AiApproveInput): Promise<{ ok: true }> {
     const conversation = this.conversations.get(input.conversationId);
     if (!conversation) throw new Error("对话不存在");
+    this.bindConversationOwner(conversation.id, sender);
 
     let planToExecute = input.plan;
 
@@ -273,57 +520,66 @@ export class AiService {
       planToExecute = lastAssistant.plan;
     }
 
-    const sessionId = conversation.sessionId;
-    const connectionId = conversation.connectionId;
-    if (!sessionId && !connectionId) throw new Error("没有关联的会话或连接");
+    planToExecute = normalizeApprovedPlan(planToExecute);
 
-    void this.executePlan(conversation, planToExecute, sessionId, connectionId);
+    const connectionId = conversation.connectionId;
+    if (!connectionId) throw new Error("没有关联的远端连接");
+
+    void this.executePlan(sender, conversation, planToExecute, connectionId);
 
     return { ok: true as const };
   }
 
   private async executePlan(
+    sender: WebContents,
     conversation: AiConversation,
     plan: AiExecutionPlan,
-    sessionId?: string,
-    connectionId?: string
+    connectionId: string
   ): Promise<void> {
     const conversationId = conversation.id;
     const prefs = this.deps.getPreferences();
     const timeoutMs = (prefs.ai.executionTimeoutSec ?? 30) * 1000;
+    const taskContext = this.getTaskContext(conversationId);
+    taskContext.aborted = false;
+    const executionController = new AbortController();
+    taskContext.executionController = executionController;
 
-    for (let i = 0; i < plan.steps.length; i++) {
-      const step = plan.steps[i];
-      if (!step) continue;
+    try {
+      for (let i = 0; i < plan.steps.length; i++) {
+        const step = plan.steps[i];
+        if (!step) continue;
 
-      // Notify step start
-      const startEvent: AiProgressEvent = {
-        conversationId,
-        type: "step_start",
-        step: step.step,
-        command: step.command,
-        status: "running",
-      };
-      this.broadcastToAll(IPCChannel.AiProgressEvent, startEvent);
+        this.ensureTaskNotAborted(conversationId);
 
-      try {
-        let output: string;
-        let exitCode: number | null = null;
+        const startEvent: AiProgressEvent = {
+          conversationId,
+          type: "step_start",
+          step: step.step,
+          command: step.command,
+          status: "running",
+        };
+        this.emitToSender(sender, IPCChannel.AiProgressEvent, startEvent);
 
-        if (connectionId) {
+        try {
           // 通过 exec 通道执行，包裹在交互式登录 shell 中以加载完整用户环境
           // 在命令末尾追加 exit code 标记，因为 bash -lic 的外层退出码不可靠
           const EXIT_MARKER = "__NEXTSHELL_EXIT__";
           const innerCmd = `${step.command}; echo "${EXIT_MARKER}$?"`;
           const wrappedCmd = `bash -lic ${escapeShellArg(innerCmd)}`;
-          const result = await this.deps.execCommand(connectionId, wrappedCmd);
+          const result = await this.deps.execCommand(connectionId, wrappedCmd, {
+            signal: executionController.signal,
+            timeoutMs,
+          });
 
-          // 从 stdout 中提取真实退出码并移除标记行
+          this.ensureTaskNotAborted(conversationId);
+
           const stdoutLines = result.stdout.split("\n");
           let markerIdx = -1;
           for (let k = stdoutLines.length - 1; k >= 0; k--) {
             if (stdoutLines[k]!.startsWith(EXIT_MARKER)) { markerIdx = k; break; }
           }
+
+          let exitCode: number | null = null;
           if (markerIdx >= 0) {
             const code = parseInt(stdoutLines[markerIdx]!.slice(EXIT_MARKER.length), 10);
             exitCode = Number.isFinite(code) ? code : null;
@@ -331,101 +587,86 @@ export class AiService {
           }
           const cleanStdout = stdoutLines.join("\n");
 
-          // 过滤 bash -i 产生的无害 stderr 噪声
           const cleanStderr = (result.stderr ?? "")
             .split("\n")
             .filter((l) => !l.includes("cannot set terminal process group") && !l.includes("no job control"))
             .join("\n")
             .trim();
-          output = cleanStdout + (cleanStderr ? `\n${cleanStderr}` : "");
+          const output = cleanStdout + (cleanStderr ? `\n${cleanStderr}` : "");
 
-          // 同时写入终端让用户看到命令（最终用户看到的和 AI 分析的是同一条命令）
-          if (sessionId) {
-            try {
-              this.deps.writeSession(sessionId, `${step.command}\r`);
-            } catch {
-              // terminal write is best-effort for visibility
-            }
+          const truncated = truncateOutput(output);
+          const sanitizedOutput = sanitizeAiOutput(truncated.text);
+
+          const displayOutput = output.length > 2000
+            ? output.slice(0, 1000) + `\n... [省略 ${output.length - 2000} 字符] ...\n` + output.slice(-1000)
+            : output;
+          const outputEvent: AiProgressEvent = {
+            conversationId,
+            type: "step_output",
+            step: step.step,
+            output: displayOutput,
+            status: "success",
+          };
+          this.emitToSender(sender, IPCChannel.AiProgressEvent, outputEvent);
+
+          const doneEvent: AiProgressEvent = {
+            conversationId,
+            type: "step_done",
+            step: step.step,
+            status: exitCode === 0 || exitCode === null ? "success" : "failed",
+            output: displayOutput,
+          };
+          this.emitToSender(sender, IPCChannel.AiProgressEvent, doneEvent);
+
+          const resultMessage: AiChatMessage = {
+            id: crypto.randomUUID(),
+            role: "user",
+            kind: "execution_result",
+            content: buildAnalysisPrompt({
+              command: step.command,
+              output: sanitizedOutput,
+              exitCode,
+              wasTruncated: truncated.wasTruncated,
+              totalLines: truncated.totalLines,
+              totalChars: truncated.totalChars,
+            }),
+            timestamp: new Date().toISOString(),
+          };
+          conversation.messages.push(resultMessage);
+          conversation.updatedAt = resultMessage.timestamp;
+          this.queuePersist();
+        } catch (err) {
+          if (this.isAbortError(err) || executionController.signal.aborted) {
+            return;
           }
-        } else if (sessionId) {
-          // 无 exec 通道时通过终端执行并等待输出
-          this.deps.writeSession(sessionId, `${step.command}\r`);
-          await new Promise((r) => setTimeout(r, 3000));
-          output = "(仅终端执行，请查看终端窗口中的输出)";
-        } else {
-          throw new Error("无可用的执行通道");
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorEvent: AiProgressEvent = {
+            conversationId,
+            type: "error",
+            step: step.step,
+            error: errorMsg,
+            status: "failed",
+          };
+          this.emitToSender(sender, IPCChannel.AiProgressEvent, errorEvent);
+          logger.error(`[AI] step ${step.step} failed`, err);
+          return;
         }
-
-        const truncated = truncateOutput(output);
-
-        // Notify step output (前端展示用，限 2000 字符)
-        const displayOutput = output.length > 2000
-          ? output.slice(0, 1000) + `\n... [省略 ${output.length - 2000} 字符] ...\n` + output.slice(-1000)
-          : output;
-        const outputEvent: AiProgressEvent = {
-          conversationId,
-          type: "step_output",
-          step: step.step,
-          output: displayOutput,
-          status: "success",
-        };
-        this.broadcastToAll(IPCChannel.AiProgressEvent, outputEvent);
-
-        // Notify step done
-        const doneEvent: AiProgressEvent = {
-          conversationId,
-          type: "step_done",
-          step: step.step,
-          status: exitCode === 0 || exitCode === null ? "success" : "failed",
-          output: displayOutput,
-        };
-        this.broadcastToAll(IPCChannel.AiProgressEvent, doneEvent);
-
-        // Add execution result to conversation for analysis
-        const resultMessage: AiChatMessage = {
-          id: crypto.randomUUID(),
-          role: "user",
-          content: buildAnalysisPrompt({
-            command: step.command,
-            output: truncated.text,
-            exitCode,
-            wasTruncated: truncated.wasTruncated,
-            totalLines: truncated.totalLines,
-            totalChars: truncated.totalChars,
-          }),
-          timestamp: new Date().toISOString(),
-        };
-        conversation.messages.push(resultMessage);
-
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        const errorEvent: AiProgressEvent = {
-          conversationId,
-          type: "error",
-          step: step.step,
-          error: errorMsg,
-          status: "failed",
-        };
-        this.broadcastToAll(IPCChannel.AiProgressEvent, errorEvent);
-        logger.error(`[AI] step ${step.step} failed`, err);
-        break;
       }
-    }
 
-    // Notify frontend: entering analysis phase
-    const analysisStartEvent: AiProgressEvent = {
-      conversationId,
-      type: "analysis_start",
-      status: "running",
-    };
-    this.broadcastToAll(IPCChannel.AiProgressEvent, analysisStartEvent);
+      this.ensureTaskNotAborted(conversationId);
 
-    // Send analysis request to LLM
-    try {
+      const analysisStartEvent: AiProgressEvent = {
+        conversationId,
+        type: "analysis_start",
+        status: "running",
+      };
+      this.emitToSender(sender, IPCChannel.AiProgressEvent, analysisStartEvent);
+
       const provider = this.getActiveProvider();
       if (provider) {
         const apiKey = await this.resolveApiKey(provider);
         const adapter = this.router.getAdapter(provider, apiKey);
+        const providerRuntimeOptions = this.getProviderRuntimeOptions();
 
         const prefs = this.deps.getPreferences();
         const systemPrompt = prefs.ai.systemPromptOverride?.trim() || SYSTEM_PROMPT;
@@ -438,76 +679,120 @@ export class AiService {
           })),
         ]);
 
+        const analysisController = new AbortController();
+        taskContext.analysisController = analysisController;
+
         const analysis = await adapter.streamChat(
           chatMessages,
           (token) => {
-            this.broadcastToAll(IPCChannel.AiStreamEvent, {
+            this.emitToSender(sender, IPCChannel.AiStreamEvent, {
               conversationId,
               type: "token",
               token,
             } satisfies AiStreamEvent);
+          },
+          {
+            signal: analysisController.signal,
+            timeoutMs: providerRuntimeOptions.timeoutMs,
+            maxRetries: providerRuntimeOptions.maxRetries,
           }
         );
+
+        this.ensureTaskNotAborted(conversationId);
 
         const newPlan = extractPlanFromResponse(analysis);
         const analysisMsg: AiChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
+          kind: "chat",
           content: analysis,
           timestamp: new Date().toISOString(),
           plan: newPlan ?? undefined,
         };
         conversation.messages.push(analysisMsg);
+        conversation.updatedAt = analysisMsg.timestamp;
+        this.queuePersist();
 
-        this.broadcastToAll(IPCChannel.AiStreamEvent, {
+        this.emitToSender(sender, IPCChannel.AiStreamEvent, {
           conversationId,
           type: newPlan ? "plan" : "done",
           fullContent: analysis,
           ...(newPlan ? { plan: newPlan } : {}),
         } satisfies AiStreamEvent);
       }
-    } catch (err) {
-      logger.error("[AI] post-execution analysis failed", err);
-    }
 
-    const allDoneEvent: AiProgressEvent = {
-      conversationId,
-      type: "all_done",
-      summary: plan.summary,
-    };
-    this.broadcastToAll(IPCChannel.AiProgressEvent, allDoneEvent);
+      const allDoneEvent: AiProgressEvent = {
+        conversationId,
+        type: "all_done",
+        summary: plan.summary,
+      };
+      this.emitToSender(sender, IPCChannel.AiProgressEvent, allDoneEvent);
+    } catch (err) {
+      if (this.isAbortError(err)) {
+        return;
+      }
+      logger.error("[AI] post-execution analysis failed", err);
+    } finally {
+      const currentTask = this.taskContexts.get(conversationId);
+      if (currentTask === taskContext) {
+        currentTask.executionController = undefined;
+        currentTask.analysisController = undefined;
+        if (!currentTask.aborted) {
+          this.taskContexts.delete(conversationId);
+        }
+      }
+    }
   }
 
-  abort(input: AiAbortInput): { ok: true } {
-    const controller = this.abortControllers.get(input.conversationId);
-    if (controller) {
-      controller.abort();
-      this.abortControllers.delete(input.conversationId);
+  abort(sender: WebContents, input: AiAbortInput): { ok: true } {
+    this.bindConversationOwner(input.conversationId, sender);
+    const context = this.taskContexts.get(input.conversationId);
+    if (context) {
+      context.aborted = true;
+      context.chatController?.abort(new AiTaskAbortedError());
+      context.executionController?.abort(new AiTaskAbortedError());
+      context.analysisController?.abort(new AiTaskAbortedError());
     }
     return { ok: true as const };
   }
 
-  history(): AiConversation[] {
-    return Array.from(this.conversations.values())
+  history(sender: WebContents, input: AiHistoryInput): AiConversation[] {
+    const connectionId = input.connectionId;
+    const visible = Array.from(this.conversations.values()).filter((conversation) =>
+      this.canAccessConversation(conversation, sender, connectionId)
+    );
+
+    for (const conversation of visible) {
+      this.bindConversationOwner(conversation.id, sender);
+    }
+
+    return visible
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 50);
   }
 
   async testProvider(input: AiProviderTestInput): Promise<{ ok: boolean; error?: string }> {
-    const adapter = this.router.createTemporary(
-      input.type,
-      input.baseUrl,
-      input.model,
-      input.apiKey
-    );
-    return adapter.testConnection();
+    try {
+      const adapter = this.router.createTemporary(
+        input.type,
+        input.baseUrl,
+        input.model,
+        input.apiKey
+      );
+      return await adapter.testConnection();
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   dispose(): void {
-    for (const controller of this.abortControllers.values()) {
-      controller.abort();
+    for (const context of this.taskContexts.values()) {
+      context.chatController?.abort(new AiTaskAbortedError());
+      context.executionController?.abort(new AiTaskAbortedError());
+      context.analysisController?.abort(new AiTaskAbortedError());
     }
-    this.abortControllers.clear();
+    this.taskContexts.clear();
+    this.conversationOwners.clear();
     this.router.clearCache();
   }
 }

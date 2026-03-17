@@ -1,4 +1,5 @@
 import type { ChatMessage, LlmAdapter, LlmOptions } from "./types";
+import { fetchWithRetry } from "./request-utils";
 
 interface AnthropicConfig {
   baseUrl: string;
@@ -42,17 +43,15 @@ export class AnthropicAdapter implements LlmAdapter {
 
   async chat(messages: ChatMessage[], options?: LlmOptions): Promise<string> {
     const { url, headers, body } = this.buildPayload(messages, options, false);
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("Anthropic", url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Anthropic API error ${response.status}: ${text}`);
-    }
 
     const data = await response.json() as {
       content: Array<{ type: string; text?: string }>;
@@ -69,17 +68,15 @@ export class AnthropicAdapter implements LlmAdapter {
     options?: LlmOptions
   ): Promise<string> {
     const { url, headers, body } = this.buildPayload(messages, options, true);
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("Anthropic", url, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Anthropic API error ${response.status}: ${text}`);
-    }
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
@@ -123,7 +120,7 @@ export class AnthropicAdapter implements LlmAdapter {
     try {
       const result = await this.chat(
         [{ role: "user", content: "Reply with OK" }],
-        { maxTokens: 10 }
+        { maxTokens: 10, timeoutMs: 10_000, maxRetries: 1 }
       );
       return { ok: result.length > 0 };
     } catch (err) {

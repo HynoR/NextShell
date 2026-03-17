@@ -3,15 +3,20 @@ import type { LlmAdapter } from "./adapters/types";
 import { OpenAiAdapter } from "./adapters/openai-adapter";
 import { AnthropicAdapter } from "./adapters/anthropic-adapter";
 import { GeminiAdapter } from "./adapters/gemini-adapter";
+import { validateProviderCapability } from "./adapters/request-utils";
 
 const createAdapter = (type: AiProviderType, baseUrl: string, model: string, apiKey: string): LlmAdapter => {
+  const normalizedBaseUrl = baseUrl.trim();
+  const normalizedModel = model.trim();
+  validateProviderCapability(type, normalizedBaseUrl, normalizedModel);
+
   switch (type) {
     case "openai":
-      return new OpenAiAdapter({ baseUrl, apiKey, model });
+      return new OpenAiAdapter({ baseUrl: normalizedBaseUrl, apiKey, model: normalizedModel });
     case "anthropic":
-      return new AnthropicAdapter({ baseUrl, apiKey, model });
+      return new AnthropicAdapter({ baseUrl: normalizedBaseUrl, apiKey, model: normalizedModel });
     case "gemini":
-      return new GeminiAdapter({ baseUrl, apiKey, model });
+      return new GeminiAdapter({ baseUrl: normalizedBaseUrl, apiKey, model: normalizedModel });
   }
 };
 

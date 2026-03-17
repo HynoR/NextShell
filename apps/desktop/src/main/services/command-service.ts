@@ -35,6 +35,18 @@ interface CommandServiceOptions {
   }) => void;
 }
 
+export class CommandExecTimeoutError extends Error {
+  constructor(message = "远端命令执行超时") {
+    super(message);
+    this.name = "CommandExecTimeoutError";
+  }
+}
+
+export interface CommandExecOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
 export class CommandService {
   private readonly connections: CachedConnectionRepository;
   private readonly getConnectionOrThrow: (id: string) => ConnectionProfile;
@@ -51,10 +63,50 @@ export class CommandService {
   async execCommand(
     connectionId: string,
     command: string,
+    options?: CommandExecOptions,
   ): Promise<CommandExecutionResult> {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
-    const result = await connection.exec(command);
+    const controller = new AbortController();
+    const timeoutMs = options?.timeoutMs;
+    const externalSignal = options?.signal;
+
+    if (externalSignal?.aborted) {
+      throw externalSignal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+    }
+
+    const forwardAbort = () => {
+      controller.abort(
+        externalSignal?.reason ?? new DOMException("The operation was aborted.", "AbortError")
+      );
+    };
+    externalSignal?.addEventListener("abort", forwardAbort, { once: true });
+
+    const timeoutId = Number.isFinite(timeoutMs) && (timeoutMs ?? 0) > 0
+      ? setTimeout(() => {
+          controller.abort(new CommandExecTimeoutError());
+        }, timeoutMs)
+      : undefined;
+
+    let result;
+    try {
+      result = await connection.exec(command, { signal: controller.signal });
+    } catch (error) {
+      const reason = controller.signal.reason;
+      if (reason instanceof CommandExecTimeoutError) {
+        throw reason;
+      }
+      if (externalSignal?.aborted && externalSignal.reason) {
+        throw externalSignal.reason;
+      }
+      throw error;
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      externalSignal?.removeEventListener("abort", forwardAbort);
+    }
+
     const execution: CommandExecutionResult = {
       connectionId,
       command,

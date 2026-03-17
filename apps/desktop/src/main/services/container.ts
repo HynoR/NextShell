@@ -469,10 +469,10 @@ export const createServiceContainer = (
 
   // AI Service
   const aiSvc = new AiService({
-    writeSession: (sessionId, data) => sessionSvc.writeSession(sessionId, data),
-    execCommand: (connectionId, cmd) => commandSvc.execCommand(connectionId, cmd),
+    execCommand: (connectionId, cmd, execOptions) => commandSvc.execCommand(connectionId, cmd, execOptions),
     vault,
     getPreferences: () => connections.getAppPreferences(),
+    dataDir: options.dataDir,
   });
 
   // Resource Operations Service
@@ -653,10 +653,10 @@ export const createServiceContainer = (
     recycleBinClear: () => { connections.clearRecycleBin(); },
 
     // AI Assistant
-    aiChat: (i) => aiSvc.chat(i),
-    aiApprove: (i) => aiSvc.approve(i),
-    aiAbort: (i) => aiSvc.abort(i),
-    aiHistory: () => aiSvc.history(),
+    aiChat: (sender, i) => aiSvc.chat(sender, i),
+    aiApprove: (sender, i) => aiSvc.approve(sender, i),
+    aiAbort: (sender, i) => aiSvc.abort(sender, i),
+    aiHistory: (sender, i) => aiSvc.history(sender, i),
     aiTestProvider: (i) => aiSvc.testProvider(i),
     aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 

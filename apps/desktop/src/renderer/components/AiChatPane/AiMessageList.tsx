@@ -140,6 +140,10 @@ export const AiMessageList = ({
   isStreaming,
 }: AiMessageListProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const getMessageIcon = (msg: AiChatMessage): string => {
+    if (msg.kind === "execution_result") return "ri-terminal-box-line";
+    return msg.role === "user" ? "ri-user-3-line" : "ri-robot-2-line";
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -150,7 +154,7 @@ export const AiMessageList = ({
       {messages.map((msg) => (
         <div key={msg.id} className={`ai-message ai-message-${msg.role}`}>
           <div className="ai-message-avatar">
-            <i className={msg.role === "user" ? "ri-user-3-line" : "ri-robot-2-line"} />
+            <i className={getMessageIcon(msg)} />
           </div>
           <div className="ai-message-body">
             {renderMarkdownSimple(msg.content)}

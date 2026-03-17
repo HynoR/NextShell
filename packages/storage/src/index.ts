@@ -763,7 +763,21 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.ai.executionTimeoutSec >= 5 &&
           parsed.ai.executionTimeoutSec <= 300
             ? parsed.ai.executionTimeoutSec
-            : fallback.ai.executionTimeoutSec
+            : fallback.ai.executionTimeoutSec,
+        providerRequestTimeoutSec:
+          typeof parsed.ai?.providerRequestTimeoutSec === "number" &&
+          Number.isInteger(parsed.ai.providerRequestTimeoutSec) &&
+          parsed.ai.providerRequestTimeoutSec >= 5 &&
+          parsed.ai.providerRequestTimeoutSec <= 120
+            ? parsed.ai.providerRequestTimeoutSec
+            : fallback.ai.providerRequestTimeoutSec,
+        providerMaxRetries:
+          typeof parsed.ai?.providerMaxRetries === "number" &&
+          Number.isInteger(parsed.ai.providerMaxRetries) &&
+          parsed.ai.providerMaxRetries >= 0 &&
+          parsed.ai.providerMaxRetries <= 3
+            ? parsed.ai.providerMaxRetries
+            : fallback.ai.providerMaxRetries
       }
     };
   } catch {

@@ -269,7 +269,21 @@ export const mergePreferences = (
         patch.ai.executionTimeoutSec >= 5 &&
         patch.ai.executionTimeoutSec <= 300
           ? patch.ai.executionTimeoutSec
-          : current.ai.executionTimeoutSec
+          : current.ai.executionTimeoutSec,
+      providerRequestTimeoutSec:
+        patch.ai?.providerRequestTimeoutSec !== undefined &&
+        Number.isInteger(patch.ai.providerRequestTimeoutSec) &&
+        patch.ai.providerRequestTimeoutSec >= 5 &&
+        patch.ai.providerRequestTimeoutSec <= 120
+          ? patch.ai.providerRequestTimeoutSec
+          : current.ai.providerRequestTimeoutSec,
+      providerMaxRetries:
+        patch.ai?.providerMaxRetries !== undefined &&
+        Number.isInteger(patch.ai.providerMaxRetries) &&
+        patch.ai.providerMaxRetries >= 0 &&
+        patch.ai.providerMaxRetries <= 3
+          ? patch.ai.providerMaxRetries
+          : current.ai.providerMaxRetries
     }
   };
 };

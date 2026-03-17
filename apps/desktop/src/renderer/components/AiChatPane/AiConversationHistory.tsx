@@ -30,14 +30,17 @@ const formatTime = (iso: string): string => {
 };
 
 const getPreviewText = (conv: AiConversation): string => {
-  const lastMsg = [...conv.messages].reverse().find((m) => m.role !== "system");
+  const lastMsg = [...conv.messages]
+    .reverse()
+    .find((m) => m.role !== "system" && m.kind !== "execution_result")
+    ?? [...conv.messages].reverse().find((m) => m.role !== "system");
   if (!lastMsg) return "暂无消息";
   const text = lastMsg.content.replace(/```[\s\S]*?```/g, "[代码]").replace(/\n+/g, " ");
   return text.length > 60 ? `${text.slice(0, 60)}...` : text;
 };
 
 const getMessageStats = (conv: AiConversation): string => {
-  const userCount = conv.messages.filter((m) => m.role === "user").length;
+  const userCount = conv.messages.filter((m) => m.role === "user" && m.kind !== "execution_result").length;
   const hasPlan = conv.messages.some((m) => m.plan);
   const parts: string[] = [`${userCount} 条对话`];
   if (hasPlan) parts.push("含执行计划");

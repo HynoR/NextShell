@@ -7,6 +7,8 @@ export interface LlmOptions {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  timeoutMs?: number;
+  maxRetries?: number;
 }
 
 export interface LlmAdapter {

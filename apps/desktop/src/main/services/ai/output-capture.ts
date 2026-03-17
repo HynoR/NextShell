@@ -48,6 +48,38 @@ export const truncateOutput = (raw: string, limit = LLM_OUTPUT_LIMIT): Truncated
   return { text: combined, totalLines, totalChars, wasTruncated: true };
 };
 
+const PARTIAL_MASK = "****";
+
+const maskKeepEdges = (value: string, prefixLength = 4, suffixLength = 4): string => {
+  if (value.length <= prefixLength + suffixLength) {
+    return PARTIAL_MASK;
+  }
+  return `${value.slice(0, prefixLength)}${PARTIAL_MASK}${value.slice(-suffixLength)}`;
+};
+
+/**
+ * 脱敏 AI 分析前的命令输出，避免把常见密钥或口令原样发给外部模型。
+ */
+export const sanitizeAiOutput = (raw: string): string => {
+  return raw
+    .replace(
+      /(authorization\s*:\s*bearer\s+)([^\s]+)/gi,
+      (_match, prefix: string, token: string) => `${prefix}${maskKeepEdges(token)}`
+    )
+    .replace(
+      /((?:token|password|passwd|pwd|apikey|api_key)\s*[:=]\s*)([^\s"'`]+)/gi,
+      (_match, prefix: string, secret: string) => `${prefix}${maskKeepEdges(secret)}`
+    )
+    .replace(
+      /((?:OPENAI|ANTHROPIC|GEMINI)_[A-Z_]*KEY\s*[:=]\s*)([^\s"'`]+)/g,
+      (_match, prefix: string, secret: string) => `${prefix}${maskKeepEdges(secret)}`
+    )
+    .replace(
+      /(-----BEGIN [A-Z ]*PRIVATE KEY-----)([\s\S]*?)(-----END [A-Z ]*PRIVATE KEY-----)/g,
+      (_match, begin: string, _body: string, end: string) => `${begin}\n${PARTIAL_MASK}\n${end}`
+    );
+};
+
 /**
  * 去除 ANSI 控制序列，保留纯文本内容。
  */

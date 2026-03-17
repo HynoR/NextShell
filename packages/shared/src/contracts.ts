@@ -479,7 +479,9 @@ export const appPreferencesSchema = z.object({
       enabled: z.boolean()
     })).default(DEFAULT_APP_PREFERENCES.ai.providers),
     systemPromptOverride: z.string().optional(),
-    executionTimeoutSec: z.coerce.number().int().min(5).max(300).default(DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec)
+    executionTimeoutSec: z.coerce.number().int().min(5).max(300).default(DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec),
+    providerRequestTimeoutSec: z.coerce.number().int().min(5).max(120).default(DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec),
+    providerMaxRetries: z.coerce.number().int().min(0).max(3).default(DEFAULT_APP_PREFERENCES.ai.providerMaxRetries)
   }).default(DEFAULT_APP_PREFERENCES.ai)
 }).default(DEFAULT_APP_PREFERENCES);
 
@@ -568,7 +570,9 @@ export const appPreferencesPatchSchema = z.object({
       enabled: z.boolean()
     })).optional(),
     systemPromptOverride: z.string().optional(),
-    executionTimeoutSec: z.coerce.number().int().min(5).max(300).optional()
+    executionTimeoutSec: z.coerce.number().int().min(5).max(300).optional(),
+    providerRequestTimeoutSec: z.coerce.number().int().min(5).max(120).optional(),
+    providerMaxRetries: z.coerce.number().int().min(0).max(3).optional()
   }).optional()
 });
 
@@ -1079,7 +1083,9 @@ export const aiAbortSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
-export const aiHistorySchema = z.object({});
+export const aiHistorySchema = z.object({
+  connectionId: z.string().uuid().optional(),
+});
 
 export const aiProviderTestSchema = z.object({
   type: aiProviderTypeSchema,

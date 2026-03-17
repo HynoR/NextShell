@@ -1,4 +1,5 @@
 import type { ChatMessage, LlmAdapter, LlmOptions } from "./types";
+import { fetchWithRetry } from "./request-utils";
 
 interface OpenAiConfig {
   baseUrl: string;
@@ -15,7 +16,7 @@ export class OpenAiAdapter implements LlmAdapter {
 
   async chat(messages: ChatMessage[], options?: LlmOptions): Promise<string> {
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("OpenAI", url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -28,13 +29,11 @@ export class OpenAiAdapter implements LlmAdapter {
         max_tokens: options?.maxTokens ?? 4096,
         stream: false,
       }),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`OpenAI API error ${response.status}: ${text}`);
-    }
 
     const data = await response.json() as {
       choices: Array<{ message: { content: string } }>;
@@ -48,7 +47,7 @@ export class OpenAiAdapter implements LlmAdapter {
     options?: LlmOptions
   ): Promise<string> {
     const url = `${this.config.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("OpenAI", url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -61,13 +60,11 @@ export class OpenAiAdapter implements LlmAdapter {
         max_tokens: options?.maxTokens ?? 4096,
         stream: true,
       }),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`OpenAI API error ${response.status}: ${text}`);
-    }
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
@@ -112,7 +109,7 @@ export class OpenAiAdapter implements LlmAdapter {
     try {
       const result = await this.chat(
         [{ role: "user", content: "Reply with OK" }],
-        { maxTokens: 10 }
+        { maxTokens: 10, timeoutMs: 10_000, maxRetries: 1 }
       );
       return { ok: result.length > 0 };
     } catch (err) {

@@ -731,24 +731,24 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
 
   // ─── AI Assistant ──────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPCChannel.AiChat, (_event, payload) => {
+  ipcMain.handle(IPCChannel.AiChat, (event, payload) => {
     const input = parsePayload(aiChatSchema, payload, "AI 对话");
-    return services.aiChat(input);
+    return services.aiChat(event.sender, input);
   });
 
-  ipcMain.handle(IPCChannel.AiApprove, (_event, payload) => {
+  ipcMain.handle(IPCChannel.AiApprove, (event, payload) => {
     const input = parsePayload(aiApproveSchema, payload, "AI 批准执行");
-    return services.aiApprove(input);
+    return services.aiApprove(event.sender, input);
   });
 
-  ipcMain.handle(IPCChannel.AiAbort, (_event, payload) => {
+  ipcMain.handle(IPCChannel.AiAbort, (event, payload) => {
     const input = parsePayload(aiAbortSchema, payload, "AI 中止");
-    return services.aiAbort(input);
+    return services.aiAbort(event.sender, input);
   });
 
-  ipcMain.handle(IPCChannel.AiHistory, (_event, payload) => {
-    parsePayload(aiHistorySchema, payload ?? {}, "AI 对话历史");
-    return services.aiHistory();
+  ipcMain.handle(IPCChannel.AiHistory, (event, payload) => {
+    const input = parsePayload(aiHistorySchema, payload ?? {}, "AI 对话历史");
+    return services.aiHistory(event.sender, input);
   });
 
   ipcMain.handle(IPCChannel.AiProviderTest, (_event, payload) => {

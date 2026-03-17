@@ -478,6 +478,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           providers={preferences.ai.providers}
           activeProviderId={preferences.ai.activeProviderId}
           executionTimeoutSec={preferences.ai.executionTimeoutSec}
+          providerRequestTimeoutSec={preferences.ai.providerRequestTimeoutSec}
+          providerMaxRetries={preferences.ai.providerMaxRetries}
           save={save}
           message={message}
         />;

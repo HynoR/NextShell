@@ -8,9 +8,10 @@ import {
   Tag,
   Typography
 } from "antd";
-import type { AiProviderConfig, AiProviderType } from "@nextshell/core";
+import { DEFAULT_APP_PREFERENCES, type AiProviderConfig, type AiProviderType } from "@nextshell/core";
 import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-components";
 import type { SaveFn } from "./types";
+import { formatAiErrorMessage } from "../../utils/ai-error-message";
 
 const PROVIDER_TYPE_OPTIONS: Array<{ label: string; value: AiProviderType }> = [
   { label: "OpenAI 兼容", value: "openai" },
@@ -30,12 +31,38 @@ const DEFAULT_MODELS: Record<AiProviderType, string> = {
   gemini: "gemini-2.5-flash",
 };
 
+const AI_RUNTIME_PRESETS = [
+  {
+    id: "cloud",
+    label: "官方云服务",
+    description: "适合直连 OpenAI / Claude / Gemini 官方接口，优先保持响应速度。",
+    providerRequestTimeoutSec: 30,
+    providerMaxRetries: 1,
+  },
+  {
+    id: "proxy",
+    label: "代理 / 中转",
+    description: "适合经代理或网关访问海外模型，适当放宽等待时间并保留一次兜底重试。",
+    providerRequestTimeoutSec: 45,
+    providerMaxRetries: 2,
+  },
+  {
+    id: "local",
+    label: "本地模型",
+    description: "适合 Ollama 或局域网模型网关，给推理时间，避免高重试拖慢交互。",
+    providerRequestTimeoutSec: 75,
+    providerMaxRetries: 0,
+  },
+] as const;
+
 interface AiSectionProps {
   loading: boolean;
   enabled: boolean;
   providers: AiProviderConfig[];
   activeProviderId?: string;
   executionTimeoutSec: number;
+  providerRequestTimeoutSec: number;
+  providerMaxRetries: number;
   save: SaveFn;
   message: { success: (msg: string) => void; error: (msg: string) => void; warning: (msg: string) => void };
 }
@@ -46,12 +73,25 @@ export const AiSection = ({
   providers,
   activeProviderId,
   executionTimeoutSec,
+  providerRequestTimeoutSec,
+  providerMaxRetries,
   save,
   message,
 }: AiSectionProps) => {
   const [editingProvider, setEditingProvider] = useState<AiProviderConfig | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [testing, setTesting] = useState(false);
+  const activeRuntimePreset = AI_RUNTIME_PRESETS.find((preset) =>
+    preset.providerRequestTimeoutSec === providerRequestTimeoutSec
+      && preset.providerMaxRetries === providerMaxRetries
+  );
+  const matchesDefaultRuntime =
+    executionTimeoutSec === DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec
+    && providerRequestTimeoutSec === DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec
+    && providerMaxRetries === DEFAULT_APP_PREFERENCES.ai.providerMaxRetries;
+  const runtimeSummaryLabel = activeRuntimePreset?.label ?? "自定义配置";
+  const runtimeSummaryDescription = activeRuntimePreset?.description
+    ?? "当前值已手动调整，可继续使用下方推荐场景快速切换。";
 
   const startAddProvider = (): void => {
     const defaultType: AiProviderType = "openai";
@@ -157,13 +197,34 @@ export const AiSection = ({
       if (result.ok) {
         message.success("连接测试成功");
       } else {
-        message.error(`连接测试失败：${result.error ?? "未知错误"}`);
+        message.error(`连接测试失败：${formatAiErrorMessage(result.error, "未知错误")}`);
       }
     } catch (err) {
-      message.error(`测试失败：${err instanceof Error ? err.message : "未知错误"}`);
+      message.error(`测试失败：${formatAiErrorMessage(err, "未知错误")}`);
     } finally {
       setTesting(false);
     }
+  };
+
+  const applyRuntimePreset = (preset: typeof AI_RUNTIME_PRESETS[number]): void => {
+    save({
+      ai: {
+        providerRequestTimeoutSec: preset.providerRequestTimeoutSec,
+        providerMaxRetries: preset.providerMaxRetries,
+      },
+    });
+    message.success(`已应用“${preset.label}”推荐值`);
+  };
+
+  const restoreDefaultRuntime = (): void => {
+    save({
+      ai: {
+        executionTimeoutSec: DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec,
+        providerRequestTimeoutSec: DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec,
+        providerMaxRetries: DEFAULT_APP_PREFERENCES.ai.providerMaxRetries,
+      },
+    });
+    message.success("已恢复默认推荐值");
   };
 
   return (
@@ -177,18 +238,143 @@ export const AiSection = ({
         />
 
         {enabled && (
-          <SettingsRow label="命令执行超时（秒）" hint="AI 执行单条命令的最大等待时间">
-            <InputNumber
-              min={5}
-              max={300}
-              value={executionTimeoutSec}
-              disabled={loading}
-              onChange={(v) => {
-                if (v !== null) save({ ai: { executionTimeoutSec: v } });
-              }}
-              style={{ width: 120 }}
-            />
-          </SettingsRow>
+          <>
+            <SettingsRow label="命令执行超时（秒）" hint="AI 执行单条命令的最大等待时间">
+              <InputNumber
+                min={5}
+                max={300}
+                value={executionTimeoutSec}
+                disabled={loading}
+                onChange={(v) => {
+                  if (v !== null) save({ ai: { executionTimeoutSec: v } });
+                }}
+                style={{ width: 120 }}
+              />
+            </SettingsRow>
+
+            <SettingsRow label="模型请求超时（秒）" hint="单次调用 OpenAI / Claude / Gemini 的最大等待时间">
+              <InputNumber
+                min={5}
+                max={120}
+                value={providerRequestTimeoutSec}
+                disabled={loading}
+                onChange={(v) => {
+                  if (v !== null) save({ ai: { providerRequestTimeoutSec: v } });
+                }}
+                style={{ width: 120 }}
+              />
+            </SettingsRow>
+
+            <SettingsRow label="模型请求重试次数" hint="遇到 429 或 5xx 等可重试错误时的最大自动重试次数">
+              <InputNumber
+                min={0}
+                max={3}
+                value={providerMaxRetries}
+                disabled={loading}
+                onChange={(v) => {
+                  if (v !== null) save({ ai: { providerMaxRetries: v } });
+                }}
+                style={{ width: 120 }}
+              />
+            </SettingsRow>
+
+            <SettingsRow label="当前生效策略" hint="摘要会根据当前超时与重试配置自动识别推荐场景">
+              <div
+                style={{
+                  width: "100%",
+                  border: "1px solid var(--border)",
+                  borderRadius: 8,
+                  padding: 10,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Typography.Text strong>{runtimeSummaryLabel}</Typography.Text>
+                  {activeRuntimePreset ? (
+                    <Tag color="green" style={{ marginInlineEnd: 0 }}>推荐匹配</Tag>
+                  ) : (
+                    <Tag color="gold" style={{ marginInlineEnd: 0 }}>手动调整</Tag>
+                  )}
+                  <Button
+                    size="small"
+                    disabled={loading || matchesDefaultRuntime}
+                    onClick={restoreDefaultRuntime}
+                  >
+                    {matchesDefaultRuntime ? "已是默认值" : "恢复默认推荐值"}
+                  </Button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                    请求超时 {providerRequestTimeoutSec}s
+                  </Tag>
+                  <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                    自动重试 {providerMaxRetries} 次
+                  </Tag>
+                  <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
+                    命令超时 {executionTimeoutSec}s
+                  </Tag>
+                </div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {runtimeSummaryDescription}
+                </Typography.Text>
+              </div>
+            </SettingsRow>
+
+            <SettingsRow label="推荐场景" hint="一键套用常见网络环境的推荐值，再按需要微调">
+              <div style={{ display: "grid", gap: 8, width: "100%" }}>
+                {AI_RUNTIME_PRESETS.map((preset) => {
+                  const active = activeRuntimePreset?.id === preset.id;
+                  return (
+                    <div
+                      key={preset.id}
+                      style={{
+                        border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
+                        borderRadius: 8,
+                        padding: 10,
+                        background: active ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          alignItems: "flex-start",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                            <Typography.Text strong>{preset.label}</Typography.Text>
+                            {active && <Tag color="green" style={{ marginInlineEnd: 0 }}>当前匹配</Tag>}
+                          </div>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {preset.description}
+                          </Typography.Text>
+                        </div>
+                        <Button
+                          size="small"
+                          disabled={loading || active}
+                          onClick={() => applyRuntimePreset(preset)}
+                        >
+                          {active ? "已应用" : "应用"}
+                        </Button>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                          超时 {preset.providerRequestTimeoutSec}s
+                        </Tag>
+                        <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                          重试 {preset.providerMaxRetries} 次
+                        </Tag>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </SettingsRow>
+          </>
         )}
       </SettingsCard>
 

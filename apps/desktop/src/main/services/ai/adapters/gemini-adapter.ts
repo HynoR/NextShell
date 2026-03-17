@@ -1,4 +1,5 @@
 import type { ChatMessage, LlmAdapter, LlmOptions } from "./types";
+import { fetchWithRetry } from "./request-utils";
 
 interface GeminiConfig {
   baseUrl: string;
@@ -34,7 +35,7 @@ export class GeminiAdapter implements LlmAdapter {
     const url = `${baseUrl}/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
     const { contents, systemInstruction } = this.buildContents(messages);
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("Gemini", url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -45,13 +46,11 @@ export class GeminiAdapter implements LlmAdapter {
           maxOutputTokens: options?.maxTokens ?? 4096,
         },
       }),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Gemini API error ${response.status}: ${text}`);
-    }
 
     const data = await response.json() as {
       candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
@@ -70,7 +69,7 @@ export class GeminiAdapter implements LlmAdapter {
     const url = `${baseUrl}/v1beta/models/${this.config.model}:streamGenerateContent?key=${this.config.apiKey}&alt=sse`;
     const { contents, systemInstruction } = this.buildContents(messages);
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry("Gemini", url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -81,13 +80,11 @@ export class GeminiAdapter implements LlmAdapter {
           maxOutputTokens: options?.maxTokens ?? 4096,
         },
       }),
+    }, {
       signal: options?.signal,
+      timeoutMs: options?.timeoutMs,
+      maxRetries: options?.maxRetries ?? 1,
     });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`Gemini API error ${response.status}: ${text}`);
-    }
 
     const reader = response.body?.getReader();
     if (!reader) throw new Error("No response body");
@@ -131,7 +128,7 @@ export class GeminiAdapter implements LlmAdapter {
     try {
       const result = await this.chat(
         [{ role: "user", content: "Reply with OK" }],
-        { maxTokens: 10 }
+        { maxTokens: 10, timeoutMs: 10_000, maxRetries: 1 }
       );
       return { ok: result.length > 0 };
     } catch (err) {

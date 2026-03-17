@@ -77,6 +77,7 @@ import type {
   AiChatInput,
   AiApproveInput,
   AiAbortInput,
+  AiHistoryInput,
   AiProviderTestInput,
   AiProviderSetApiKeyInput,
 } from "../../../../../packages/shared/src/index";
@@ -320,10 +321,10 @@ export interface ServiceContainer {
   recycleBinClear: () => void;
 
   // AI Assistant
-  aiChat: (input: AiChatInput) => Promise<{ conversationId: string }>;
-  aiApprove: (input: AiApproveInput) => Promise<{ ok: true }>;
-  aiAbort: (input: AiAbortInput) => { ok: true };
-  aiHistory: () => AiConversation[];
+  aiChat: (sender: WebContents, input: AiChatInput) => Promise<{ conversationId: string }>;
+  aiApprove: (sender: WebContents, input: AiApproveInput) => Promise<{ ok: true }>;
+  aiAbort: (sender: WebContents, input: AiAbortInput) => { ok: true };
+  aiHistory: (sender: WebContents, input: AiHistoryInput) => AiConversation[];
   aiTestProvider: (input: AiProviderTestInput) => Promise<{ ok: boolean; error?: string }>;
   aiSetApiKey: (input: AiProviderSetApiKeyInput) => Promise<void>;
 
