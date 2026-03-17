@@ -9,6 +9,11 @@ export interface AiExecutionCoordinatorDeps {
     cmd: string,
     options?: { signal?: AbortSignal; timeoutMs?: number; skipAudit?: boolean }
   ) => Promise<CommandExecutionResult>;
+  execInSession?: (
+    sessionId: string,
+    cmd: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => Promise<CommandExecutionResult>;
   appendAuditLog: (payload: {
     action: string;
     level: "info" | "warn" | "error";
@@ -30,6 +35,7 @@ export interface AiExecutionStepResult {
 export interface ExecuteAiPlanParams {
   conversationId: string;
   connectionId: string;
+  sessionId?: string;
   plan: AiExecutionPlan;
   timeoutMs: number;
   signal: AbortSignal;
@@ -87,14 +93,7 @@ export class AiExecutionCoordinator {
         });
 
         try {
-          const EXIT_MARKER = "__NEXTSHELL_EXIT__";
-          const innerCmd = `${step.command}; echo "${EXIT_MARKER}$?"`;
-          const wrappedCmd = `bash -lic ${escapeShellArg(innerCmd)}`;
-          const result = await this.deps.execCommand(params.connectionId, wrappedCmd, {
-            signal: params.signal,
-            timeoutMs: params.timeoutMs,
-            skipAudit: true,
-          });
+          const result = await this.executeStepCommand(step.command, params);
 
           params.ensureNotAborted();
           const executionResult = this.normalizeStepResult(step, result);
@@ -220,6 +219,47 @@ export class AiExecutionCoordinator {
       sanitizedOutput: sanitizeAiOutput(truncated.text),
       truncated,
     };
+  }
+
+  private executeHiddenCommand(
+    connectionId: string,
+    command: string,
+    params: Pick<ExecuteAiPlanParams, "signal" | "timeoutMs">
+  ): Promise<CommandExecutionResult> {
+    const EXIT_MARKER = "__NEXTSHELL_EXIT__";
+    const innerCmd = `${command}; echo "${EXIT_MARKER}$?"`;
+    const wrappedCmd = `bash -lic ${escapeShellArg(innerCmd)}`;
+    return this.deps.execCommand(connectionId, wrappedCmd, {
+      signal: params.signal,
+      timeoutMs: params.timeoutMs,
+      skipAudit: true,
+    });
+  }
+
+  private async executeStepCommand(
+    command: string,
+    params: Pick<ExecuteAiPlanParams, "connectionId" | "sessionId" | "signal" | "timeoutMs">
+  ): Promise<CommandExecutionResult> {
+    if (!params.sessionId || !this.deps.execInSession) {
+      return this.executeHiddenCommand(params.connectionId, command, params);
+    }
+
+    try {
+      return await this.deps.execInSession(params.sessionId, command, {
+        signal: params.signal,
+        timeoutMs: params.timeoutMs,
+      });
+    } catch (error) {
+      if (!this.shouldFallbackToHiddenExecution(error)) {
+        throw error;
+      }
+      return this.executeHiddenCommand(params.connectionId, command, params);
+    }
+  }
+
+  private shouldFallbackToHiddenExecution(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return message === "Session not found" || message === "AI 仅支持在远端终端会话中执行命令";
   }
 
   private appendRunAudit(

@@ -125,6 +125,11 @@ interface AiServiceDeps {
     cmd: string,
     options?: { signal?: AbortSignal; timeoutMs?: number; skipAudit?: boolean }
   ) => Promise<CommandExecutionResult>;
+  execInSession: (
+    sessionId: string,
+    cmd: string,
+    options?: { signal?: AbortSignal; timeoutMs?: number }
+  ) => Promise<CommandExecutionResult>;
   vault: EncryptedSecretVault;
   getPreferences: () => AppPreferences;
   dataDir: string;
@@ -247,6 +252,7 @@ export class AiService {
     this.deps = deps;
     this.executionCoordinator = new AiExecutionCoordinator({
       execCommand: deps.execCommand,
+      execInSession: deps.execInSession,
       appendAuditLog: deps.appendAuditLog,
       isAbortError: (error) => this.isAbortError(error),
     });
@@ -574,6 +580,7 @@ export class AiService {
       const executionResult = await this.executionCoordinator.executePlan({
         conversationId,
         connectionId,
+        sessionId: conversation.sessionId,
         plan,
         timeoutMs,
         signal: executionController.signal,

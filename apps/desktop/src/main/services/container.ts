@@ -470,6 +470,7 @@ export const createServiceContainer = (
   // AI Service
   const aiSvc = new AiService({
     execCommand: (connectionId, cmd, execOptions) => commandSvc.execCommand(connectionId, cmd, execOptions),
+    execInSession: (sessionId, cmd, execOptions) => sessionSvc.execCommandInSession(sessionId, cmd, execOptions),
     vault,
     getPreferences: () => connections.getAppPreferences(),
     dataDir: options.dataDir,
