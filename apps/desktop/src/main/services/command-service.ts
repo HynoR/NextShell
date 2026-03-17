@@ -45,6 +45,7 @@ export class CommandExecTimeoutError extends Error {
 export interface CommandExecOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipAudit?: boolean;
 }
 
 export class CommandService {
@@ -115,13 +116,15 @@ export class CommandService {
       exitCode: result.exitCode,
       executedAt: new Date().toISOString(),
     };
-    this.appendAuditLogIfEnabled({
-      action: "command.exec",
-      level: result.exitCode === 0 ? "info" : "warn",
-      connectionId,
-      message: "Executed command on remote host",
-      metadata: { command, exitCode: result.exitCode },
-    });
+    if (!options?.skipAudit) {
+      this.appendAuditLogIfEnabled({
+        action: "command.exec",
+        level: result.exitCode === 0 ? "info" : "warn",
+        connectionId,
+        message: "Executed command on remote host",
+        metadata: { command, exitCode: result.exitCode },
+      });
+    }
     return execution;
   }
 

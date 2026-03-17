@@ -2,11 +2,15 @@ import type { AiProviderType } from "../../../../../../../packages/core/src/inde
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRY_DELAY_MS = 400;
+const DEFAULT_MAX_CONCURRENT_REQUESTS = 2;
+const MAX_RETRY_AFTER_MS = 30_000;
 
 export interface ProviderRequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   maxRetries?: number;
+  providerKey?: string;
+  maxConcurrentRequests?: number;
 }
 
 export class ProviderCapabilityError extends Error {
@@ -19,14 +23,41 @@ export class ProviderCapabilityError extends Error {
 export class ProviderHttpError extends Error {
   readonly status: number;
   readonly retryable: boolean;
+  readonly retryAfterMs?: number;
 
-  constructor(message: string, status: number, retryable = false) {
+  constructor(message: string, status: number, retryable = false, retryAfterMs?: number) {
     super(message);
     this.name = "ProviderHttpError";
     this.status = status;
     this.retryable = retryable;
+    this.retryAfterMs = retryAfterMs;
   }
 }
+
+interface ProviderRuntimeState {
+  activeCount: number;
+  nextAllowedAt: number;
+  waiters: Array<() => void>;
+}
+
+const providerRuntimeStates = new Map<string, ProviderRuntimeState>();
+
+const getProviderRuntimeState = (providerKey: string): ProviderRuntimeState => {
+  const existing = providerRuntimeStates.get(providerKey);
+  if (existing) return existing;
+  const created: ProviderRuntimeState = {
+    activeCount: 0,
+    nextAllowedAt: 0,
+    waiters: [],
+  };
+  providerRuntimeStates.set(providerKey, created);
+  return created;
+};
+
+const notifyProviderWaiters = (state: ProviderRuntimeState): void => {
+  const waiters = state.waiters.splice(0, state.waiters.length);
+  for (const wake of waiters) wake();
+};
 
 const sleep = async (ms: number, signal?: AbortSignal): Promise<void> => {
   if (ms <= 0) return;
@@ -43,6 +74,73 @@ const sleep = async (ms: number, signal?: AbortSignal): Promise<void> => {
 
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+};
+
+const waitForProviderWindow = async (
+  state: ProviderRuntimeState,
+  waitMs: number,
+  signal?: AbortSignal
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    };
+
+    const onAbort = (): void => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      state.waiters = state.waiters.filter((wake) => wake !== finish);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+
+    if (waitMs > 0) {
+      timer = setTimeout(finish, waitMs);
+    }
+
+    state.waiters.push(finish);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+};
+
+const acquireProviderSlot = async (
+  providerKey: string,
+  signal?: AbortSignal,
+  maxConcurrentRequests = DEFAULT_MAX_CONCURRENT_REQUESTS
+): Promise<() => void> => {
+  const state = getProviderRuntimeState(providerKey);
+
+  while (true) {
+    if (signal?.aborted) {
+      throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+
+    const now = Date.now();
+    const waitMs = Math.max(0, state.nextAllowedAt - now);
+    if (state.activeCount < maxConcurrentRequests && waitMs === 0) {
+      state.activeCount += 1;
+      return () => {
+        state.activeCount = Math.max(0, state.activeCount - 1);
+        notifyProviderWaiters(state);
+      };
+    }
+
+    await waitForProviderWindow(state, waitMs, signal);
+  }
+};
+
+const setProviderBackoff = (providerKey: string, delayMs: number): void => {
+  if (delayMs <= 0) return;
+  const state = getProviderRuntimeState(providerKey);
+  state.nextAllowedAt = Math.max(state.nextAllowedAt, Date.now() + delayMs);
+  notifyProviderWaiters(state);
 };
 
 const createRequestSignal = (
@@ -84,6 +182,30 @@ const shouldRetryStatus = (status: number): boolean => {
 const readErrorText = async (response: Response): Promise<string> => {
   const text = await response.text().catch(() => "");
   return text.length > 300 ? `${text.slice(0, 300)}...` : text;
+};
+
+const parseRetryAfterMs = (value: string | null): number | undefined => {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
+
+  const dateMs = Date.parse(value);
+  if (Number.isFinite(dateMs)) {
+    return Math.min(Math.max(0, dateMs - Date.now()), MAX_RETRY_AFTER_MS);
+  }
+
+  return undefined;
+};
+
+const getRetryDelayMs = (
+  attempt: number,
+  retryAfterMs?: number
+): number => {
+  if (retryAfterMs !== undefined) return retryAfterMs;
+  return Math.min(DEFAULT_RETRY_DELAY_MS * 2 ** attempt, MAX_RETRY_AFTER_MS);
 };
 
 export const formatProviderTimeoutMessage = (providerLabel: string, timeoutMs: number): string => {
@@ -140,10 +262,13 @@ export const fetchWithRetry = async (
 ): Promise<Response> => {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = Math.max(0, options?.maxRetries ?? 0);
+  const providerKey = options?.providerKey ?? providerLabel;
+  const maxConcurrentRequests = Math.max(1, options?.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS);
 
   let lastError: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const requestSignal = createRequestSignal(options?.signal, timeoutMs);
+    const releaseProviderSlot = await acquireProviderSlot(providerKey, options?.signal, maxConcurrentRequests);
 
     try {
       const response = await fetch(input, {
@@ -153,10 +278,18 @@ export const fetchWithRetry = async (
 
       if (!response.ok) {
         const text = await readErrorText(response);
+        const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
         const message = `${providerLabel} API error ${response.status}${text ? `: ${text}` : ""}`;
-        const error = new ProviderHttpError(message, response.status, shouldRetryStatus(response.status));
+        const error = new ProviderHttpError(
+          message,
+          response.status,
+          shouldRetryStatus(response.status),
+          retryAfterMs
+        );
         if (error.retryable && attempt < maxRetries) {
-          await sleep(DEFAULT_RETRY_DELAY_MS * (attempt + 1), options?.signal);
+          const delayMs = getRetryDelayMs(attempt, retryAfterMs);
+          setProviderBackoff(providerKey, delayMs);
+          await sleep(delayMs, options?.signal);
           continue;
         }
         throw error;
@@ -183,8 +316,14 @@ export const fetchWithRetry = async (
         throw error;
       }
 
-      await sleep(DEFAULT_RETRY_DELAY_MS * (attempt + 1), options?.signal);
+      const delayMs = getRetryDelayMs(
+        attempt,
+        error instanceof ProviderHttpError ? error.retryAfterMs : undefined
+      );
+      setProviderBackoff(providerKey, delayMs);
+      await sleep(delayMs, options?.signal);
     } finally {
+      releaseProviderSlot();
       requestSignal.cleanup();
     }
   }

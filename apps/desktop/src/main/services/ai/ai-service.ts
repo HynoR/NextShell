@@ -10,6 +10,12 @@ import type {
   AppPreferences,
   CommandExecutionResult,
 } from "../../../../../../packages/core/src/index";
+import {
+  getAiMessageCanonicalRole,
+  getAiMessageModelRole,
+  isAiAssistantReplyMessage,
+  resolveAiMessageType,
+} from "../../../../../../packages/core/src/index";
 import type {
   AiChatInput,
   AiApproveInput,
@@ -25,8 +31,8 @@ import type { ChatMessage } from "./adapters/types";
 import { LlmRouter } from "./llm-router";
 import { SYSTEM_PROMPT, buildAnalysisPrompt } from "./prompt-templates";
 import { extractPlanFromResponse } from "./plan-parser";
-import { sanitizeAiOutput, truncateOutput } from "./output-capture";
 import { normalizeApprovedPlan } from "./plan-guard";
+import { AiExecutionCoordinator } from "./ai-execution-coordinator";
 import { logger } from "../../logger";
 
 /**
@@ -96,11 +102,6 @@ const trimMessagesForContext = (
   return result;
 };
 
-/** 将字符串安全包裹为 shell 单引号参数 */
-const escapeShellArg = (arg: string): string => {
-  return "'" + arg.replace(/'/g, "'\\''") + "'";
-};
-
 class AiTaskAbortedError extends Error {
   constructor(message = "AI 执行已中止") {
     super(message);
@@ -122,11 +123,18 @@ interface AiServiceDeps {
   execCommand: (
     connectionId: string,
     cmd: string,
-    options?: { signal?: AbortSignal; timeoutMs?: number }
+    options?: { signal?: AbortSignal; timeoutMs?: number; skipAudit?: boolean }
   ) => Promise<CommandExecutionResult>;
   vault: EncryptedSecretVault;
   getPreferences: () => AppPreferences;
   dataDir: string;
+  appendAuditLog: (payload: {
+    action: string;
+    level: "info" | "warn" | "error";
+    connectionId?: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }) => void;
 }
 
 interface ProviderRuntimeOptions {
@@ -177,10 +185,22 @@ const normalizeLoadedMessage = (value: unknown): AiChatMessage | undefined => {
     return undefined;
   }
 
+  const type = resolveAiMessageType({
+    role: value.role,
+    type:
+      value.type === "user_prompt" ||
+      value.type === "assistant_reply" ||
+      value.type === "execution_result" ||
+      value.type === "system_note"
+        ? value.type
+        : undefined,
+    kind: value.kind === "execution_result" ? "execution_result" : "chat",
+  });
+
   return {
     id: value.id,
-    role: value.role,
-    kind: value.kind === "execution_result" ? "execution_result" : "chat",
+    role: getAiMessageCanonicalRole({ role: value.role, type }),
+    type,
     content: value.content,
     timestamp: value.timestamp,
     plan: normalizeLoadedPlan(value.plan),
@@ -215,6 +235,7 @@ const normalizeLoadedConversation = (value: unknown): AiConversation | undefined
 export class AiService {
   private readonly deps: AiServiceDeps;
   private readonly router = new LlmRouter();
+  private readonly executionCoordinator: AiExecutionCoordinator;
   private readonly conversations = new Map<string, AiConversation>();
   private readonly conversationOwners = new Map<string, WebContents>();
   private readonly apiKeys = new Map<string, string>();
@@ -224,6 +245,11 @@ export class AiService {
 
   constructor(deps: AiServiceDeps) {
     this.deps = deps;
+    this.executionCoordinator = new AiExecutionCoordinator({
+      execCommand: deps.execCommand,
+      appendAuditLog: deps.appendAuditLog,
+      isAbortError: (error) => this.isAbortError(error),
+    });
     this.historyFilePath = path.join(deps.dataDir, AI_HISTORY_FILE);
     this.loadPersistedConversations();
   }
@@ -416,7 +442,7 @@ export class AiService {
     const userMessage: AiChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      kind: "chat",
+      type: "user_prompt",
       content: input.message,
       timestamp: new Date().toISOString(),
     };
@@ -430,7 +456,7 @@ export class AiService {
     const chatMessages = trimMessagesForContext([
       { role: "system", content: systemPrompt },
       ...conversation.messages.map((m) => ({
-        role: m.role as "user" | "assistant",
+        role: getAiMessageModelRole(m) as "user" | "assistant" | "system",
         content: m.content,
       })),
     ]);
@@ -466,7 +492,7 @@ export class AiService {
         const assistantMessage: AiChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          kind: "chat",
+          type: "assistant_reply",
           content: fullContent,
           timestamp: new Date().toISOString(),
           plan: plan ?? undefined,
@@ -515,7 +541,7 @@ export class AiService {
     if (!planToExecute) {
       const lastAssistant = [...conversation.messages]
         .reverse()
-        .find((m) => m.role === "assistant" && m.plan);
+        .find((m) => isAiAssistantReplyMessage(m) && m.plan);
       if (!lastAssistant?.plan) throw new Error("没有待执行的计划");
       planToExecute = lastAssistant.plan;
     }
@@ -545,83 +571,19 @@ export class AiService {
     taskContext.executionController = executionController;
 
     try {
-      for (let i = 0; i < plan.steps.length; i++) {
-        const step = plan.steps[i];
-        if (!step) continue;
-
-        this.ensureTaskNotAborted(conversationId);
-
-        const startEvent: AiProgressEvent = {
-          conversationId,
-          type: "step_start",
-          step: step.step,
-          command: step.command,
-          status: "running",
-        };
-        this.emitToSender(sender, IPCChannel.AiProgressEvent, startEvent);
-
-        try {
-          // 通过 exec 通道执行，包裹在交互式登录 shell 中以加载完整用户环境
-          // 在命令末尾追加 exit code 标记，因为 bash -lic 的外层退出码不可靠
-          const EXIT_MARKER = "__NEXTSHELL_EXIT__";
-          const innerCmd = `${step.command}; echo "${EXIT_MARKER}$?"`;
-          const wrappedCmd = `bash -lic ${escapeShellArg(innerCmd)}`;
-          const result = await this.deps.execCommand(connectionId, wrappedCmd, {
-            signal: executionController.signal,
-            timeoutMs,
-          });
-
-          this.ensureTaskNotAborted(conversationId);
-
-          const stdoutLines = result.stdout.split("\n");
-          let markerIdx = -1;
-          for (let k = stdoutLines.length - 1; k >= 0; k--) {
-            if (stdoutLines[k]!.startsWith(EXIT_MARKER)) { markerIdx = k; break; }
-          }
-
-          let exitCode: number | null = null;
-          if (markerIdx >= 0) {
-            const code = parseInt(stdoutLines[markerIdx]!.slice(EXIT_MARKER.length), 10);
-            exitCode = Number.isFinite(code) ? code : null;
-            stdoutLines.splice(markerIdx, 1);
-          }
-          const cleanStdout = stdoutLines.join("\n");
-
-          const cleanStderr = (result.stderr ?? "")
-            .split("\n")
-            .filter((l) => !l.includes("cannot set terminal process group") && !l.includes("no job control"))
-            .join("\n")
-            .trim();
-          const output = cleanStdout + (cleanStderr ? `\n${cleanStderr}` : "");
-
-          const truncated = truncateOutput(output);
-          const sanitizedOutput = sanitizeAiOutput(truncated.text);
-
-          const displayOutput = output.length > 2000
-            ? output.slice(0, 1000) + `\n... [省略 ${output.length - 2000} 字符] ...\n` + output.slice(-1000)
-            : output;
-          const outputEvent: AiProgressEvent = {
-            conversationId,
-            type: "step_output",
-            step: step.step,
-            output: displayOutput,
-            status: "success",
-          };
-          this.emitToSender(sender, IPCChannel.AiProgressEvent, outputEvent);
-
-          const doneEvent: AiProgressEvent = {
-            conversationId,
-            type: "step_done",
-            step: step.step,
-            status: exitCode === 0 || exitCode === null ? "success" : "failed",
-            output: displayOutput,
-          };
-          this.emitToSender(sender, IPCChannel.AiProgressEvent, doneEvent);
-
+      const executionResult = await this.executionCoordinator.executePlan({
+        conversationId,
+        connectionId,
+        plan,
+        timeoutMs,
+        signal: executionController.signal,
+        ensureNotAborted: () => this.ensureTaskNotAborted(conversationId),
+        onProgress: (event) => this.emitToSender(sender, IPCChannel.AiProgressEvent, event),
+        onStepCompleted: ({ step, exitCode, output, sanitizedOutput, truncated }) => {
           const resultMessage: AiChatMessage = {
             id: crypto.randomUUID(),
-            role: "user",
-            kind: "execution_result",
+            role: "system",
+            type: "execution_result",
             content: buildAnalysisPrompt({
               command: step.command,
               output: sanitizedOutput,
@@ -635,22 +597,17 @@ export class AiService {
           conversation.messages.push(resultMessage);
           conversation.updatedAt = resultMessage.timestamp;
           this.queuePersist();
-        } catch (err) {
-          if (this.isAbortError(err) || executionController.signal.aborted) {
-            return;
-          }
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          const errorEvent: AiProgressEvent = {
-            conversationId,
-            type: "error",
-            step: step.step,
-            error: errorMsg,
-            status: "failed",
-          };
-          this.emitToSender(sender, IPCChannel.AiProgressEvent, errorEvent);
-          logger.error(`[AI] step ${step.step} failed`, err);
-          return;
+        },
+      });
+
+      if (executionResult.status === "aborted") {
+        return;
+      }
+      if (executionResult.status === "failed") {
+        if (executionResult.error) {
+          logger.error("[AI] execution run failed", executionResult.error);
         }
+        return;
       }
 
       this.ensureTaskNotAborted(conversationId);
@@ -674,7 +631,7 @@ export class AiService {
         const chatMessages = trimMessagesForContext([
           { role: "system", content: systemPrompt },
           ...conversation.messages.map((m) => ({
-            role: m.role as "user" | "assistant",
+            role: getAiMessageModelRole(m) as "user" | "assistant" | "system",
             content: m.content,
           })),
         ]);
@@ -704,7 +661,7 @@ export class AiService {
         const analysisMsg: AiChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
-          kind: "chat",
+          type: "assistant_reply",
           content: analysis,
           timestamp: new Date().toISOString(),
           plan: newPlan ?? undefined,

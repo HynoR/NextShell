@@ -673,11 +673,58 @@ export interface AiPreferences {
 
 export type AiChatRole = "user" | "assistant" | "system";
 export type AiMessageKind = "chat" | "execution_result";
+export type AiMessageType = "user_prompt" | "assistant_reply" | "execution_result" | "system_note";
+
+type AiMessageRoleLike = {
+  role: AiChatRole;
+  type?: AiMessageType;
+  kind?: AiMessageKind;
+};
+
+export const resolveAiMessageType = (message: AiMessageRoleLike): AiMessageType => {
+  if (message.type) return message.type;
+  if (message.kind === "execution_result") return "execution_result";
+  if (message.role === "assistant") return "assistant_reply";
+  if (message.role === "system") return "system_note";
+  return "user_prompt";
+};
+
+export const isAiExecutionResultMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "execution_result";
+};
+
+export const isAiUserPromptMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "user_prompt";
+};
+
+export const isAiAssistantReplyMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "assistant_reply";
+};
+
+export const isAiSystemNoteMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "system_note";
+};
+
+export const getAiMessageCanonicalRole = (message: AiMessageRoleLike): AiChatRole => {
+  const type = resolveAiMessageType(message);
+  if (type === "assistant_reply") return "assistant";
+  if (type === "user_prompt") return "user";
+  return "system";
+};
+
+export const getAiMessageModelRole = (message: AiMessageRoleLike): AiChatRole => {
+  const type = resolveAiMessageType(message);
+  if (type === "assistant_reply") return "assistant";
+  if (type === "system_note") return "system";
+  return "user";
+};
 
 export interface AiChatMessage {
   id: string;
   role: AiChatRole;
-  /** 区分用户真实输入与系统生成的执行结果消息，避免前端仅靠 role 推断语义 */
+  /** 业务语义字段，前端与历史恢复逻辑应优先使用它判断消息类型 */
+  type: AiMessageType;
+  /** 兼容旧历史结构，新增写入不再依赖该字段 */
   kind?: AiMessageKind;
   content: string;
   timestamp: string;

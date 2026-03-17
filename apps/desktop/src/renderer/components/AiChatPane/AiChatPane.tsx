@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { App as AntdApp } from "antd";
+import { isAiSystemNoteMessage } from "@nextshell/core";
 import type { AiExecutionPlan } from "@nextshell/core";
 import { useAiChatStore } from "../../store/useAiChatStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
@@ -220,7 +221,7 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
           <div className="ai-chat-content" ref={contentRef}>
             <div className="ai-messages-container">
               <AiMessageList
-                messages={messages.filter((m) => m.role !== "system")}
+                messages={messages.filter((m) => !isAiSystemNoteMessage(m))}
                 streamingContent={streamingContent}
                 isStreaming={isStreaming}
               />

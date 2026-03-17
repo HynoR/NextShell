@@ -6,6 +6,10 @@ import type {
   AiExecutionProgress,
   AiStepResult,
 } from "@nextshell/core";
+import {
+  isAiAssistantReplyMessage,
+  isAiUserPromptMessage,
+} from "@nextshell/core";
 import type { AiStreamEvent, AiProgressEvent } from "@nextshell/shared";
 import { formatAiErrorMessage, summarizeAiError } from "../utils/ai-error-message";
 
@@ -74,25 +78,23 @@ export const restorePendingPlan = (
 ): { plan: AiExecutionPlan; userRequest?: string } | undefined => {
   const msgs = conv.messages;
   if (msgs.length === 0) return undefined;
-  const isUserPromptMessage = (message: AiChatMessage): boolean =>
-    message.role === "user" && message.kind !== "execution_result";
 
   for (let i = msgs.length - 1; i >= 0; i--) {
     const msg = msgs[i]!;
-    if (msg.role === "assistant" && msg.plan) {
-      const hasFollowUp = msgs.slice(i + 1).some((m) => isUserPromptMessage(m));
+    if (isAiAssistantReplyMessage(msg) && msg.plan) {
+      const hasFollowUp = msgs.slice(i + 1).some((m) => isAiUserPromptMessage(m));
       if (hasFollowUp) return undefined;
 
       let userRequest: string | undefined;
       for (let j = i - 1; j >= 0; j--) {
-        if (isUserPromptMessage(msgs[j]!)) {
+        if (isAiUserPromptMessage(msgs[j]!)) {
           userRequest = msgs[j]!.content;
           break;
         }
       }
       return { plan: msg.plan, userRequest };
     }
-    if (isUserPromptMessage(msg)) return undefined;
+    if (isAiUserPromptMessage(msg)) return undefined;
   }
   return undefined;
 };
@@ -180,7 +182,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     const userMessage: AiChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      kind: "chat",
+      type: "user_prompt",
       content,
       timestamp: new Date().toISOString(),
     };
@@ -386,7 +388,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       const msg: AiChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        kind: "chat",
+        type: "assistant_reply",
         content,
         timestamp: new Date().toISOString(),
         plan,

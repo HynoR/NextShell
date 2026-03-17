@@ -9,9 +9,11 @@ interface OpenAiConfig {
 
 export class OpenAiAdapter implements LlmAdapter {
   private readonly config: OpenAiConfig;
+  private readonly providerKey: string;
 
   constructor(config: OpenAiConfig) {
     this.config = config;
+    this.providerKey = `openai:${config.baseUrl}:${config.model}`;
   }
 
   async chat(messages: ChatMessage[], options?: LlmOptions): Promise<string> {
@@ -33,6 +35,7 @@ export class OpenAiAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const data = await response.json() as {
@@ -64,6 +67,7 @@ export class OpenAiAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const reader = response.body?.getReader();

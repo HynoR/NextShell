@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Tag } from "antd";
+import {
+  isAiExecutionResultMessage,
+  isAiUserPromptMessage,
+} from "@nextshell/core";
 import type { AiChatMessage } from "@nextshell/core";
 
 interface AiMessageListProps {
@@ -140,9 +144,14 @@ export const AiMessageList = ({
   isStreaming,
 }: AiMessageListProps) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const getMessageDisplayRole = (msg: AiChatMessage): "user" | "assistant" => {
+    return isAiUserPromptMessage(msg) ? "user" : "assistant";
+  };
+
   const getMessageIcon = (msg: AiChatMessage): string => {
-    if (msg.kind === "execution_result") return "ri-terminal-box-line";
-    return msg.role === "user" ? "ri-user-3-line" : "ri-robot-2-line";
+    if (isAiExecutionResultMessage(msg)) return "ri-terminal-box-line";
+    return isAiUserPromptMessage(msg) ? "ri-user-3-line" : "ri-robot-2-line";
   };
 
   useEffect(() => {
@@ -152,7 +161,7 @@ export const AiMessageList = ({
   return (
     <div className="ai-message-list">
       {messages.map((msg) => (
-        <div key={msg.id} className={`ai-message ai-message-${msg.role}`}>
+        <div key={msg.id} className={`ai-message ai-message-${getMessageDisplayRole(msg)}`}>
           <div className="ai-message-avatar">
             <i className={getMessageIcon(msg)} />
           </div>

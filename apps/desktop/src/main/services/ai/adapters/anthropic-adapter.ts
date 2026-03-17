@@ -9,9 +9,11 @@ interface AnthropicConfig {
 
 export class AnthropicAdapter implements LlmAdapter {
   private readonly config: AnthropicConfig;
+  private readonly providerKey: string;
 
   constructor(config: AnthropicConfig) {
     this.config = config;
+    this.providerKey = `anthropic:${config.baseUrl}:${config.model}`;
   }
 
   private buildPayload(messages: ChatMessage[], options?: LlmOptions, stream = false): {
@@ -51,6 +53,7 @@ export class AnthropicAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const data = await response.json() as {
@@ -76,6 +79,7 @@ export class AnthropicAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const reader = response.body?.getReader();

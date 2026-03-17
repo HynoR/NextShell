@@ -9,9 +9,11 @@ interface GeminiConfig {
 
 export class GeminiAdapter implements LlmAdapter {
   private readonly config: GeminiConfig;
+  private readonly providerKey: string;
 
   constructor(config: GeminiConfig) {
     this.config = config;
+    this.providerKey = `gemini:${config.baseUrl}:${config.model}`;
   }
 
   private buildContents(messages: ChatMessage[]): {
@@ -50,6 +52,7 @@ export class GeminiAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const data = await response.json() as {
@@ -84,6 +87,7 @@ export class GeminiAdapter implements LlmAdapter {
       signal: options?.signal,
       timeoutMs: options?.timeoutMs,
       maxRetries: options?.maxRetries ?? 1,
+      providerKey: options?.providerKey ?? this.providerKey,
     });
 
     const reader = response.body?.getReader();

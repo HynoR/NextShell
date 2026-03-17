@@ -473,6 +473,7 @@ export const createServiceContainer = (
     vault,
     getPreferences: () => connections.getAppPreferences(),
     dataDir: options.dataDir,
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
   });
 
   // Resource Operations Service

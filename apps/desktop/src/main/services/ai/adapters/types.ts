@@ -9,6 +9,7 @@ export interface LlmOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   maxRetries?: number;
+  providerKey?: string;
 }
 
 export interface LlmAdapter {
