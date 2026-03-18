@@ -6,6 +6,7 @@ import {
   isAiUserPromptMessage,
 } from "@nextshell/core";
 import type { AiConversation } from "@nextshell/core";
+import { restorePendingPlan } from "../../store/useAiChatStore";
 
 interface AiConversationHistoryProps {
   conversations: AiConversation[];
@@ -46,9 +47,14 @@ const getPreviewText = (conv: AiConversation): string => {
 
 const getMessageStats = (conv: AiConversation): string => {
   const userCount = conv.messages.filter((m) => isAiUserPromptMessage(m)).length;
+  const hasPendingPlan = Boolean(restorePendingPlan(conv));
   const hasPlan = conv.messages.some((m) => m.plan);
   const parts: string[] = [`${userCount} 条对话`];
-  if (hasPlan) parts.push("含执行计划");
+  if (hasPendingPlan) {
+    parts.push("待审批计划");
+  } else if (hasPlan) {
+    parts.push("含执行计划");
+  }
   return parts.join(" · ");
 };
 

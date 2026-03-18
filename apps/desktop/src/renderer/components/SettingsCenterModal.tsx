@@ -475,6 +475,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
         return <AiSection
           loading={loading}
           enabled={preferences.ai.enabled}
+          persistHistory={preferences.ai.persistHistory}
           providers={preferences.ai.providers}
           activeProviderId={preferences.ai.activeProviderId}
           executionTimeoutSec={preferences.ai.executionTimeoutSec}

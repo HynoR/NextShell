@@ -746,6 +746,10 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.ai?.enabled === "boolean"
             ? parsed.ai.enabled
             : fallback.ai.enabled,
+        persistHistory:
+          typeof parsed.ai?.persistHistory === "boolean"
+            ? parsed.ai.persistHistory
+            : fallback.ai.persistHistory,
         activeProviderId:
           typeof parsed.ai?.activeProviderId === "string"
             ? parsed.ai.activeProviderId

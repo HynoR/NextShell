@@ -34,6 +34,7 @@ const DEFAULT_MODELS: Record<AiProviderType, string> = {
 interface AiSectionProps {
   loading: boolean;
   enabled: boolean;
+  persistHistory: boolean;
   providers: AiProviderConfig[];
   activeProviderId?: string;
   executionTimeoutSec: number;
@@ -46,6 +47,7 @@ interface AiSectionProps {
 export const AiSection = ({
   loading,
   enabled,
+  persistHistory,
   providers,
   activeProviderId,
   executionTimeoutSec,
@@ -183,6 +185,13 @@ export const AiSection = ({
 
         {enabled && (
           <>
+            <SettingsSwitchRow
+              label="保存历史记录"
+              checked={persistHistory}
+              disabled={loading}
+              onChange={(v) => save({ ai: { persistHistory: v } })}
+            />
+
             <SettingsRow label="命令执行超时（秒）" hint="AI 执行单条命令的最大等待时间">
               <InputNumber
                 min={5}

@@ -622,7 +622,14 @@ export const createServiceContainer = (
 
     // Preferences / Dialog
     getAppPreferences: () => prefsSvc.getAppPreferences(),
-    updateAppPreferences: (p) => prefsSvc.updateAppPreferences(p),
+    updateAppPreferences: (p) => {
+      const previous = prefsSvc.getAppPreferences();
+      const next = prefsSvc.updateAppPreferences(p);
+      if (previous.ai.persistHistory && !next.ai.persistHistory) {
+        aiSvc.clearPersistedHistory();
+      }
+      return next;
+    },
     openFilesDialog: (s, i) => prefsSvc.openFilesDialog(s, i),
     openDirectoryDialog: (s, i) => prefsSvc.openDirectoryDialog(s, i),
     openLocalPath: (s, i) => prefsSvc.openLocalPath(s, i),

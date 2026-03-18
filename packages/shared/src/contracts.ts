@@ -468,6 +468,7 @@ export const appPreferencesSchema = z.object({
   }).default(DEFAULT_APP_PREFERENCES.audit),
   ai: z.object({
     enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ai.enabled),
+    persistHistory: z.boolean().default(DEFAULT_APP_PREFERENCES.ai.persistHistory),
     activeProviderId: z.string().optional(),
     providers: z.array(z.object({
       id: z.string(),
@@ -559,6 +560,7 @@ export const appPreferencesPatchSchema = z.object({
   }).optional(),
   ai: z.object({
     enabled: z.boolean().optional(),
+    persistHistory: z.boolean().optional(),
     activeProviderId: z.string().optional(),
     providers: z.array(z.object({
       id: z.string(),
@@ -1064,10 +1066,12 @@ export const aiChatSchema = z.object({
   message: z.string().trim().min(1),
   sessionId: z.string().uuid().optional(),
   connectionId: z.string().uuid().optional(),
+  clientId: z.string().trim().min(1).optional(),
 });
 
 export const aiApproveSchema = z.object({
   conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
   plan: z.object({
     steps: z.array(z.object({
       step: z.number(),
@@ -1081,10 +1085,12 @@ export const aiApproveSchema = z.object({
 
 export const aiAbortSchema = z.object({
   conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
 });
 
 export const aiHistorySchema = z.object({
   connectionId: z.string().uuid().optional(),
+  clientId: z.string().trim().min(1).optional(),
 });
 
 export const aiProviderTestSchema = z.object({

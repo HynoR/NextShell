@@ -14,6 +14,36 @@ import type { AiStreamEvent, AiProgressEvent } from "@nextshell/shared";
 import { formatAiErrorMessage, summarizeAiError } from "../utils/ai-error-message";
 
 const AI_PANEL_STORAGE_KEY = "nextshell.workspace.aiPanelCollapsed";
+const AI_CLIENT_ID_STORAGE_KEY = "nextshell.workspace.aiClientId";
+
+let memoryAiClientId: string | undefined;
+
+const createAiClientId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `ai-client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getAiClientId = (): string => {
+  if (memoryAiClientId) {
+    return memoryAiClientId;
+  }
+  try {
+    const stored = sessionStorage.getItem(AI_CLIENT_ID_STORAGE_KEY);
+    if (stored) {
+      memoryAiClientId = stored;
+      return stored;
+    }
+    const created = createAiClientId();
+    sessionStorage.setItem(AI_CLIENT_ID_STORAGE_KEY, created);
+    memoryAiClientId = created;
+    return created;
+  } catch {
+    memoryAiClientId = createAiClientId();
+    return memoryAiClientId;
+  }
+};
 
 export type ExecutionPhase = "executing" | "collecting" | "analyzing" | "receiving";
 
@@ -203,6 +233,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
         message: content,
         sessionId: boundSessionId,
         connectionId: boundConnectionId,
+        clientId: getAiClientId(),
       });
 
       if (!activeId) {
@@ -254,6 +285,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
 
     await window.nextshell.ai.approve({
       conversationId: state.activeConversationId,
+      clientId: getAiClientId(),
       plan: {
         steps: planToExecute.steps,
         summary: planToExecute.summary,
@@ -266,6 +298,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     if (!state.activeConversationId) return;
     await window.nextshell.ai.abort({
       conversationId: state.activeConversationId,
+      clientId: getAiClientId(),
     });
     set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, pendingPlan: undefined, statusHint: undefined });
   },
@@ -309,6 +342,7 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     try {
       const history = await window.nextshell.ai.history({
         connectionId: get().boundConnectionId,
+        clientId: getAiClientId(),
       });
       if (Array.isArray(history)) {
         set((s) => {
@@ -357,6 +391,17 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
           executionPhase: undefined,
           statusHint: { icon: "ri-file-list-3-line", text: "已生成执行计划，等待审批" },
         });
+      } else {
+        const backgroundConv = state.conversations.find((conv) => conv.id === event.conversationId);
+        if (
+          backgroundConv?.connectionId === state.boundConnectionId
+          && !state.executionProgress
+          && !state.isStreaming
+        ) {
+          set({
+            statusHint: { icon: "ri-notification-3-line", text: "其他对话已生成待审批计划，点击历史查看" },
+          });
+        }
       }
 
       if (event.fullContent) {

@@ -232,6 +232,7 @@ const normalizeLoadedConversation = (value: unknown): AiConversation | undefined
       .filter((message): message is AiChatMessage => Boolean(message)),
     sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
     connectionId: typeof value.connectionId === "string" ? value.connectionId : undefined,
+    ownerClientId: typeof value.ownerClientId === "string" ? value.ownerClientId : undefined,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
@@ -291,22 +292,45 @@ export class AiService {
     return owner;
   }
 
-  private bindConversationOwner(conversationId: string, sender: WebContents): void {
+  private bindConversationOwner(
+    conversation: AiConversation,
+    sender: WebContents,
+    clientId?: string
+  ): void {
     if (!sender.isDestroyed()) {
-      this.conversationOwners.set(conversationId, sender);
+      this.conversationOwners.set(conversation.id, sender);
+    }
+    if (clientId && conversation.ownerClientId !== clientId) {
+      conversation.ownerClientId = clientId;
+      this.queuePersist();
     }
   }
 
   private canAccessConversation(
     conversation: AiConversation,
     sender: WebContents,
+    clientId?: string,
     connectionId?: string
   ): boolean {
     const owner = this.getConversationOwner(conversation.id);
     if (owner) {
       return owner.id === sender.id;
     }
+    if (conversation.ownerClientId) {
+      return Boolean(clientId && conversation.ownerClientId === clientId);
+    }
     return Boolean(connectionId && conversation.connectionId === connectionId);
+  }
+
+  private assertConversationAccess(
+    conversation: AiConversation,
+    sender: WebContents,
+    clientId?: string,
+    connectionId?: string
+  ): void {
+    if (!this.canAccessConversation(conversation, sender, clientId, connectionId)) {
+      throw new Error("当前窗口无权访问该 AI 对话");
+    }
   }
 
   private emitToSender(sender: WebContents, channel: string, payload: unknown): void {
@@ -315,7 +339,15 @@ export class AiService {
     }
   }
 
+  private shouldPersistHistory(): boolean {
+    return this.deps.getPreferences().ai.persistHistory !== false;
+  }
+
   private queuePersist(): void {
+    if (!this.shouldPersistHistory()) {
+      return;
+    }
+
     const content = JSON.stringify(
       Array.from(this.conversations.values())
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -327,6 +359,9 @@ export class AiService {
     this.persistQueue = this.persistQueue
       .catch(() => undefined)
       .then(async () => {
+        if (!this.shouldPersistHistory()) {
+          return;
+        }
         try {
           await fsp.mkdir(path.dirname(this.historyFilePath), { recursive: true });
           const tempPath = `${this.historyFilePath}.tmp`;
@@ -334,6 +369,21 @@ export class AiService {
           await fsp.rename(tempPath, this.historyFilePath);
         } catch (error) {
           logger.error("[AI] 持久化历史会话失败", error);
+        }
+      });
+  }
+
+  clearPersistedHistory(): void {
+    this.persistQueue = this.persistQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await Promise.all([
+            fsp.rm(this.historyFilePath, { force: true }),
+            fsp.rm(`${this.historyFilePath}.tmp`, { force: true }),
+          ]);
+        } catch (error) {
+          logger.warn("[AI] 清理历史会话文件失败", error);
         }
       });
   }
@@ -433,17 +483,19 @@ export class AiService {
         messages: [],
         sessionId: input.sessionId,
         connectionId: input.connectionId,
+        ownerClientId: input.clientId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       this.conversations.set(id, conversation);
     } else {
+      this.assertConversationAccess(conversation, sender, input.clientId);
       // 同步最新的 session/connection（用户可能重连或切换了终端 tab）
       conversation.sessionId = input.sessionId;
       conversation.connectionId = input.connectionId;
     }
 
-    this.bindConversationOwner(conversation.id, sender);
+    this.bindConversationOwner(conversation, sender, input.clientId);
 
     const userMessage: AiChatMessage = {
       id: crypto.randomUUID(),
@@ -540,7 +592,8 @@ export class AiService {
   async approve(sender: WebContents, input: AiApproveInput): Promise<{ ok: true }> {
     const conversation = this.conversations.get(input.conversationId);
     if (!conversation) throw new Error("对话不存在");
-    this.bindConversationOwner(conversation.id, sender);
+    this.assertConversationAccess(conversation, sender, input.clientId);
+    this.bindConversationOwner(conversation, sender, input.clientId);
 
     let planToExecute = input.plan;
 
@@ -709,7 +762,10 @@ export class AiService {
   }
 
   abort(sender: WebContents, input: AiAbortInput): { ok: true } {
-    this.bindConversationOwner(input.conversationId, sender);
+    const conversation = this.conversations.get(input.conversationId);
+    if (!conversation) throw new Error("对话不存在");
+    this.assertConversationAccess(conversation, sender, input.clientId);
+    this.bindConversationOwner(conversation, sender, input.clientId);
     const context = this.taskContexts.get(input.conversationId);
     if (context) {
       context.aborted = true;
@@ -723,11 +779,11 @@ export class AiService {
   history(sender: WebContents, input: AiHistoryInput): AiConversation[] {
     const connectionId = input.connectionId;
     const visible = Array.from(this.conversations.values()).filter((conversation) =>
-      this.canAccessConversation(conversation, sender, connectionId)
+      this.canAccessConversation(conversation, sender, input.clientId, connectionId)
     );
 
     for (const conversation of visible) {
-      this.bindConversationOwner(conversation.id, sender);
+      this.bindConversationOwner(conversation, sender, input.clientId);
     }
 
     return visible

@@ -660,6 +660,8 @@ export interface AiProviderConfig {
 
 export interface AiPreferences {
   enabled: boolean;
+  /** 是否将 AI 对话历史持久化到磁盘 */
+  persistHistory: boolean;
   activeProviderId?: string;
   providers: AiProviderConfig[];
   systemPromptOverride?: string;
@@ -768,6 +770,7 @@ export interface AiConversation {
   messages: AiChatMessage[];
   sessionId?: string;
   connectionId?: string;
+  ownerClientId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -838,6 +841,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   },
   ai: {
     enabled: false,
+    persistHistory: true,
     activeProviderId: undefined,
     providers: [],
     systemPromptOverride: undefined,

@@ -254,6 +254,10 @@ export const mergePreferences = (
     },
     ai: {
       enabled: patch.ai?.enabled ?? current.ai.enabled,
+      persistHistory:
+        patch.ai?.persistHistory !== undefined
+          ? patch.ai.persistHistory
+          : current.ai.persistHistory,
       activeProviderId:
         patch.ai?.activeProviderId !== undefined
           ? patch.ai.activeProviderId
