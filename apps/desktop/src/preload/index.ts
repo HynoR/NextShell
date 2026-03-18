@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
+  AiStreamEvent,
+  AiProgressEvent,
   CloudSyncManagerStatusEvent,
   DebugLogEntry,
   SessionDataEvent,
@@ -314,6 +316,29 @@ const api: NextShellApi = {
     restore: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinRestore, payload),
     purge: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinPurge, payload),
     clear: () => ipcRenderer.invoke(IPCChannel.RecycleBinClear, {})
+  },
+  ai: {
+    chat: (payload) => ipcRenderer.invoke(IPCChannel.AiChat, payload),
+    approve: (payload) => ipcRenderer.invoke(IPCChannel.AiApprove, payload),
+    abort: (payload) => ipcRenderer.invoke(IPCChannel.AiAbort, payload),
+    history: (payload) => ipcRenderer.invoke(IPCChannel.AiHistory, payload ?? {}),
+    exportConversation: (payload) => ipcRenderer.invoke(IPCChannel.AiExportConversation, payload),
+    testProvider: (payload) => ipcRenderer.invoke(IPCChannel.AiProviderTest, payload),
+    setApiKey: (payload) => ipcRenderer.invoke(IPCChannel.AiProviderSetApiKey, payload),
+    onStream: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: AiStreamEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.AiStreamEvent, handler);
+      return () => { ipcRenderer.off(IPCChannel.AiStreamEvent, handler); };
+    },
+    onProgress: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: AiProgressEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.AiProgressEvent, handler);
+      return () => { ipcRenderer.off(IPCChannel.AiProgressEvent, handler); };
+    }
   },
   platform: process.platform,
   ui: {

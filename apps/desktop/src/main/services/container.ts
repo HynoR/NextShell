@@ -1,7 +1,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { BrowserWindow } from "electron";
+import { BrowserWindow, dialog } from "electron";
 import type { WebContents } from "electron";
 import type {
   ConnectionProfile,
@@ -61,6 +61,7 @@ import { ResourceOperationsService } from "./resource-operations-service";
 import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
+import { AiService } from "./ai/ai-service";
 
 // Re-export for consumers (index.ts, register.ts)
 export type { ServiceContainer, CreateServiceContainerOptions } from "./container-types";
@@ -466,6 +467,32 @@ export const createServiceContainer = (
   });
   cloudSyncManager.initialize();
 
+  // AI Service
+  const aiSvc = new AiService({
+    execCommand: (connectionId, cmd, execOptions) => commandSvc.execCommand(connectionId, cmd, execOptions),
+    execInSession: (sessionId, cmd, execOptions) => sessionSvc.execCommandInSession(sessionId, cmd, execOptions),
+    vault,
+    getPreferences: () => connections.getAppPreferences(),
+    dataDir: options.dataDir,
+    saveTextFile: async (sender, input) => {
+      const owner = BrowserWindow.fromWebContents(sender);
+      const saveOptions = {
+        title: input.title,
+        defaultPath: input.defaultPath,
+        filters: input.filters,
+      };
+      const result = owner
+        ? await dialog.showSaveDialog(owner, saveOptions)
+        : await dialog.showSaveDialog(saveOptions);
+      if (result.canceled || !result.filePath) {
+        return { ok: false as const, canceled: true as const };
+      }
+      await fs.promises.writeFile(result.filePath, input.content, "utf-8");
+      return { ok: true as const, filePath: result.filePath };
+    },
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
+  });
+
   // Resource Operations Service
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
@@ -483,6 +510,7 @@ export const createServiceContainer = (
     connections.flush();
     if (auditPurgeTimer) clearInterval(auditPurgeTimer);
     prefsSvc.dispose();
+    aiSvc.dispose();
 
     const allMonitorIds = monitorSvc.getAllConnectionIds();
     await Promise.all(allMonitorIds.map((id) => monitorSvc.disposeAllMonitorSessions(id)));
@@ -610,7 +638,14 @@ export const createServiceContainer = (
 
     // Preferences / Dialog
     getAppPreferences: () => prefsSvc.getAppPreferences(),
-    updateAppPreferences: (p) => prefsSvc.updateAppPreferences(p),
+    updateAppPreferences: (p) => {
+      const previous = prefsSvc.getAppPreferences();
+      const next = prefsSvc.updateAppPreferences(p);
+      if (previous.ai.persistHistory && !next.ai.persistHistory) {
+        aiSvc.clearPersistedHistory();
+      }
+      return next;
+    },
     openFilesDialog: (s, i) => prefsSvc.openFilesDialog(s, i),
     openDirectoryDialog: (s, i) => prefsSvc.openDirectoryDialog(s, i),
     openLocalPath: (s, i) => prefsSvc.openLocalPath(s, i),
@@ -641,6 +676,15 @@ export const createServiceContainer = (
     recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
     recycleBinPurge: (i) => { resourceOpsSvc.purgeRecycleBinEntry(i.id); },
     recycleBinClear: () => { connections.clearRecycleBin(); },
+
+    // AI Assistant
+    aiChat: (sender, i) => aiSvc.chat(sender, i),
+    aiApprove: (sender, i) => aiSvc.approve(sender, i),
+    aiAbort: (sender, i) => aiSvc.abort(sender, i),
+    aiHistory: (sender, i) => aiSvc.history(sender, i),
+    aiExportConversation: (sender, i) => aiSvc.exportConversation(sender, i),
+    aiTestProvider: (i) => aiSvc.testProvider(i),
+    aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 
     dispose,
   };

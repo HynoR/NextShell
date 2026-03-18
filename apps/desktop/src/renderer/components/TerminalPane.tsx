@@ -1018,9 +1018,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   const hasSession = !!sessionIdRef.current;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="flex-1 min-h-0 flex flex-col pb-1">
       <div
-        className="flex-1 min-h-0 py-1.5 px-1"
+        className="flex-1 min-h-0 box-border overflow-hidden py-1.5 px-1"
         ref={containerRef}
         onContextMenu={handleContextMenu}
       />
