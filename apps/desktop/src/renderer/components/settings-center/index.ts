@@ -8,6 +8,7 @@ export { NetworkSection } from "./network-section";
 export { RecycleBinSection } from "./recycle-bin-section";
 export { BackupSection } from "./backup-section";
 export { SecuritySection } from "./security-section";
+export { AiSection } from "./ai-section";
 export { AboutSection } from "./about-section";
 
 export type {

@@ -465,7 +465,11 @@ const cloneDefaultPreferences = (): AppPreferences => {
     backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
-    audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit }
+    audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit },
+    ai: {
+      ...DEFAULT_APP_PREFERENCES_VALUE.ai,
+      providers: DEFAULT_APP_PREFERENCES_VALUE.ai.providers.map((p) => ({ ...p }))
+    }
   };
 };
 
@@ -736,6 +740,44 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.audit.retentionDays <= 365
             ? parsed.audit.retentionDays
             : fallback.audit.retentionDays
+      },
+      ai: {
+        enabled:
+          typeof parsed.ai?.enabled === "boolean"
+            ? parsed.ai.enabled
+            : fallback.ai.enabled,
+        activeProviderId:
+          typeof parsed.ai?.activeProviderId === "string"
+            ? parsed.ai.activeProviderId
+            : fallback.ai.activeProviderId,
+        providers: Array.isArray(parsed.ai?.providers)
+          ? parsed.ai.providers
+          : fallback.ai.providers,
+        systemPromptOverride:
+          typeof parsed.ai?.systemPromptOverride === "string"
+            ? parsed.ai.systemPromptOverride
+            : fallback.ai.systemPromptOverride,
+        executionTimeoutSec:
+          typeof parsed.ai?.executionTimeoutSec === "number" &&
+          Number.isInteger(parsed.ai.executionTimeoutSec) &&
+          parsed.ai.executionTimeoutSec >= 5 &&
+          parsed.ai.executionTimeoutSec <= 300
+            ? parsed.ai.executionTimeoutSec
+            : fallback.ai.executionTimeoutSec,
+        providerRequestTimeoutSec:
+          typeof parsed.ai?.providerRequestTimeoutSec === "number" &&
+          Number.isInteger(parsed.ai.providerRequestTimeoutSec) &&
+          parsed.ai.providerRequestTimeoutSec >= 5 &&
+          parsed.ai.providerRequestTimeoutSec <= 120
+            ? parsed.ai.providerRequestTimeoutSec
+            : fallback.ai.providerRequestTimeoutSec,
+        providerMaxRetries:
+          typeof parsed.ai?.providerMaxRetries === "number" &&
+          Number.isInteger(parsed.ai.providerMaxRetries) &&
+          parsed.ai.providerMaxRetries >= 0 &&
+          parsed.ai.providerMaxRetries <= 3
+            ? parsed.ai.providerMaxRetries
+            : fallback.ai.providerMaxRetries
       }
     };
   } catch {
