@@ -21,6 +21,7 @@ import type {
   AiApproveInput,
   AiAbortInput,
   AiHistoryInput,
+  AiExportConversationInput,
   AiProviderTestInput,
   AiStreamEvent,
   AiProgressEvent,
@@ -133,6 +134,15 @@ interface AiServiceDeps {
   vault: EncryptedSecretVault;
   getPreferences: () => AppPreferences;
   dataDir: string;
+  saveTextFile: (
+    sender: WebContents,
+    input: {
+      title: string;
+      defaultPath: string;
+      content: string;
+      filters: Array<{ name: string; extensions: string[] }>;
+    }
+  ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
   appendAuditLog: (payload: {
     action: string;
     level: "info" | "warn" | "error";
@@ -236,6 +246,140 @@ const normalizeLoadedConversation = (value: unknown): AiConversation | undefined
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
+};
+
+const formatExportTimestamp = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return date.toLocaleString("zh-CN", { hour12: false });
+};
+
+const buildExportFileName = (conversation: AiConversation): string => {
+  const safeTitle = (conversation.title || "untitled")
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  const datePart = conversation.updatedAt.slice(0, 10) || "unknown-date";
+  return `nextshell-ai-${datePart}-${safeTitle || "conversation"}.txt`;
+};
+
+const formatConversationExport = (conversation: AiConversation): string => {
+  const userMessages = conversation.messages.filter((message) => resolveAiMessageType(message) === "user_prompt");
+  const assistantMessages = conversation.messages.filter((message) => resolveAiMessageType(message) === "assistant_reply");
+  const executionMessages = conversation.messages.filter((message) => resolveAiMessageType(message) === "execution_result");
+  const plannedMessages = conversation.messages.filter((message) => Boolean(message.plan));
+  const firstMessageAt = conversation.messages[0]?.timestamp;
+  const lastMessageAt = conversation.messages[conversation.messages.length - 1]?.timestamp;
+
+  const lines: string[] = [
+    "NextShell AI 对话导出",
+    "====================",
+    "",
+    "一、会话概览",
+    "--------------------",
+    "",
+    `标题：${conversation.title || "未命名对话"}`,
+    `对话 ID：${conversation.id}`,
+    `连接 ID：${conversation.connectionId ?? "无"}`,
+    `会话 ID：${conversation.sessionId ?? "无"}`,
+    `客户端 ID：${conversation.ownerClientId ?? "无"}`,
+    `创建时间：${formatExportTimestamp(conversation.createdAt)}`,
+    `更新时间：${formatExportTimestamp(conversation.updatedAt)}`,
+    `导出时间：${formatExportTimestamp(new Date().toISOString())}`,
+    "",
+    "二、消息统计",
+    "--------------------",
+    "",
+    `总消息数：${conversation.messages.length}`,
+    `用户消息：${userMessages.length}`,
+    `AI 回复：${assistantMessages.length}`,
+    `执行结果：${executionMessages.length}`,
+    `包含执行计划的消息：${plannedMessages.length}`,
+    `首条消息时间：${firstMessageAt ? formatExportTimestamp(firstMessageAt) : "无"}`,
+    `末条消息时间：${lastMessageAt ? formatExportTimestamp(lastMessageAt) : "无"}`,
+    "",
+    "三、执行记录摘要",
+    "--------------------",
+    "",
+  ];
+
+  if (plannedMessages.length === 0 && executionMessages.length === 0) {
+    lines.push("本次对话没有执行计划或执行结果记录。");
+  } else {
+    plannedMessages.forEach((message, index) => {
+      lines.push(`计划 ${index + 1}：${message.plan?.summary ?? "无摘要"}`);
+      message.plan?.steps.forEach((step) => {
+        lines.push(
+          `- 步骤 ${step.step} | ${step.risky ? "高风险" : "普通"} | ${step.command} | ${step.description}`
+        );
+      });
+      lines.push("");
+    });
+
+    executionMessages.forEach((message, index) => {
+      lines.push(`执行结果 ${index + 1}：${formatExportTimestamp(message.timestamp)}`);
+      lines.push(message.content || "(空)");
+      lines.push("");
+    });
+  }
+
+  lines.push(
+    "四、详细时间线",
+    "--------------------",
+    ""
+  );
+
+  conversation.messages.forEach((message, index) => {
+    const type = resolveAiMessageType(message);
+    const label = type === "user_prompt"
+      ? "用户"
+      : type === "assistant_reply"
+        ? "AI"
+        : type === "execution_result"
+          ? "执行结果"
+          : "系统";
+
+    lines.push(`[${index + 1}] ${label}`);
+    lines.push(`时间：${formatExportTimestamp(message.timestamp)}`);
+    lines.push(`类型：${type}`);
+    lines.push("");
+    lines.push(message.content || "(空)");
+
+    if (message.plan) {
+      lines.push("");
+      lines.push("执行计划：");
+      lines.push(`摘要：${message.plan.summary}`);
+      message.plan.steps.forEach((step) => {
+        lines.push(
+          `- 步骤 ${step.step} | ${step.risky ? "高风险" : "普通"} | ${step.command} | ${step.description}`
+        );
+      });
+    }
+
+    if (message.executionProgress) {
+      lines.push("");
+      lines.push("执行进度快照：");
+      lines.push(`摘要：${message.executionProgress.planSummary}`);
+      lines.push(`当前步骤：${message.executionProgress.currentStep}`);
+      lines.push(`已完成：${message.executionProgress.completed ? "是" : "否"}`);
+      message.executionProgress.steps.forEach((step) => {
+        lines.push(
+          `- 步骤 ${step.step} | 状态：${step.status}${step.output ? ` | 输出：${step.output}` : ""}${step.error ? ` | 错误：${step.error}` : ""}`
+        );
+      });
+    }
+
+    lines.push("");
+    lines.push("--------------------");
+    lines.push("");
+  });
+
+  return lines.join("\n");
 };
 
 export class AiService {
@@ -789,6 +933,38 @@ export class AiService {
     return visible
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 50);
+  }
+
+  async exportConversation(
+    sender: WebContents,
+    input: AiExportConversationInput
+  ): Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }> {
+    const conversation = this.conversations.get(input.conversationId);
+    if (!conversation) throw new Error("对话不存在");
+    this.assertConversationAccess(conversation, sender, input.clientId);
+    this.bindConversationOwner(conversation, sender, input.clientId);
+
+    const result = await this.deps.saveTextFile(sender, {
+      title: "导出 AI 对话记录",
+      defaultPath: buildExportFileName(conversation),
+      content: formatConversationExport(conversation),
+      filters: [{ name: "Text", extensions: ["txt"] }],
+    });
+
+    if (result.ok) {
+      this.deps.appendAuditLog({
+        action: "ai.export",
+        level: "info",
+        connectionId: conversation.connectionId,
+        message: `Exported AI conversation ${conversation.id}`,
+        metadata: {
+          conversationId: conversation.id,
+          filePath: result.filePath,
+        },
+      });
+    }
+
+    return result;
   }
 
   async testProvider(input: AiProviderTestInput): Promise<{ ok: boolean; error?: string }> {

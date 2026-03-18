@@ -1,7 +1,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { BrowserWindow } from "electron";
+import { BrowserWindow, dialog } from "electron";
 import type { WebContents } from "electron";
 import type {
   ConnectionProfile,
@@ -474,6 +474,22 @@ export const createServiceContainer = (
     vault,
     getPreferences: () => connections.getAppPreferences(),
     dataDir: options.dataDir,
+    saveTextFile: async (sender, input) => {
+      const owner = BrowserWindow.fromWebContents(sender);
+      const saveOptions = {
+        title: input.title,
+        defaultPath: input.defaultPath,
+        filters: input.filters,
+      };
+      const result = owner
+        ? await dialog.showSaveDialog(owner, saveOptions)
+        : await dialog.showSaveDialog(saveOptions);
+      if (result.canceled || !result.filePath) {
+        return { ok: false as const, canceled: true as const };
+      }
+      await fs.promises.writeFile(result.filePath, input.content, "utf-8");
+      return { ok: true as const, filePath: result.filePath };
+    },
     appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
   });
 
@@ -666,6 +682,7 @@ export const createServiceContainer = (
     aiApprove: (sender, i) => aiSvc.approve(sender, i),
     aiAbort: (sender, i) => aiSvc.abort(sender, i),
     aiHistory: (sender, i) => aiSvc.history(sender, i),
+    aiExportConversation: (sender, i) => aiSvc.exportConversation(sender, i),
     aiTestProvider: (i) => aiSvc.testProvider(i),
     aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 

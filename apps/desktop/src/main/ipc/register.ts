@@ -108,6 +108,7 @@ import {
   aiApproveSchema,
   aiAbortSchema,
   aiHistorySchema,
+  aiExportConversationSchema,
   aiProviderTestSchema,
   aiProviderSetApiKeySchema
 } from "../../../../../packages/shared/src/index";
@@ -214,6 +215,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.DialogOpenPath, (event, payload) => {
     const input = parsePayload(dialogOpenPathSchema, payload, "打开路径");
     return services.openLocalPath(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.AiExportConversation, (event, payload) => {
+    const input = parsePayload(aiExportConversationSchema, payload, "AI 对话导出");
+    return services.aiExportConversation(event.sender, input);
   });
 
   ipcMain.handle(IPCChannel.SessionOpen, (event, payload) => {

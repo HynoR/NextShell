@@ -123,6 +123,7 @@ import type {
   AiApproveInput,
   AiAbortInput,
   AiHistoryInput,
+  AiExportConversationInput,
   AiProviderTestInput,
   AiProviderSetApiKeyInput,
   AiStreamEvent,
@@ -351,6 +352,7 @@ export interface NextShellApi {
     approve: (payload: AiApproveInput) => Promise<{ ok: true }>;
     abort: (payload: AiAbortInput) => Promise<{ ok: true }>;
     history: (payload?: AiHistoryInput) => Promise<AiConversation[]>;
+    exportConversation: (payload: AiExportConversationInput) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
     testProvider: (payload: AiProviderTestInput) => Promise<{ ok: boolean; error?: string }>;
     setApiKey: (payload: AiProviderSetApiKeyInput) => Promise<{ ok: true }>;
     onStream: (listener: (event: AiStreamEvent) => void) => SessionEventUnsubscribe;

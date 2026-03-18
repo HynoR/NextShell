@@ -25,7 +25,7 @@ const createAiClientId = (): string => {
   return `ai-client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const getAiClientId = (): string => {
+export const getAiClientId = (): string => {
   if (memoryAiClientId) {
     return memoryAiClientId;
   }

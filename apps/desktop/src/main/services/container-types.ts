@@ -78,6 +78,7 @@ import type {
   AiApproveInput,
   AiAbortInput,
   AiHistoryInput,
+  AiExportConversationInput,
   AiProviderTestInput,
   AiProviderSetApiKeyInput,
 } from "../../../../../packages/shared/src/index";
@@ -325,6 +326,10 @@ export interface ServiceContainer {
   aiApprove: (sender: WebContents, input: AiApproveInput) => Promise<{ ok: true }>;
   aiAbort: (sender: WebContents, input: AiAbortInput) => { ok: true };
   aiHistory: (sender: WebContents, input: AiHistoryInput) => AiConversation[];
+  aiExportConversation: (
+    sender: WebContents,
+    input: AiExportConversationInput
+  ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
   aiTestProvider: (input: AiProviderTestInput) => Promise<{ ok: boolean; error?: string }>;
   aiSetApiKey: (input: AiProviderSetApiKeyInput) => Promise<void>;
 

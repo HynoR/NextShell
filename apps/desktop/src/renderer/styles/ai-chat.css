@@ -766,16 +766,22 @@
 }
 
 .ai-history-item {
-  display: block;
+  display: flex;
+  align-items: stretch;
   width: 100%;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+  color: var(--text-primary);
+}
+
+.ai-history-item-main {
+  flex: 1;
   text-align: left;
   background: none;
   border: none;
   padding: 10px 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--border);
-  transition: background 0.15s;
-  color: var(--text-primary);
+  color: inherit;
   font-family: inherit;
 }
 
@@ -786,6 +792,20 @@
 .ai-history-item.active {
   background: var(--primary-bg, rgba(22, 119, 255, 0.06));
   border-left: 3px solid var(--primary, #1677ff);
+}
+
+.ai-history-export-btn {
+  width: 36px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.ai-history-export-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .ai-history-item-header {

@@ -13,6 +13,7 @@ interface AiConversationHistoryProps {
   activeConversationId?: string;
   connectionLabel?: string;
   onSelect: (conversationId: string) => void;
+  onExport: (conversationId: string) => void | Promise<void>;
   onBack: () => void;
   onLoad: () => void;
 }
@@ -63,6 +64,7 @@ export const AiConversationHistory = ({
   activeConversationId,
   connectionLabel,
   onSelect,
+  onExport,
   onBack,
   onLoad,
 }: AiConversationHistoryProps) => {
@@ -95,19 +97,31 @@ export const AiConversationHistory = ({
           />
         ) : (
           sorted.map((conv) => (
-            <button
+            <div
               key={conv.id}
-              type="button"
               className={`ai-history-item ${conv.id === activeConversationId ? "active" : ""}`}
-              onClick={() => onSelect(conv.id)}
             >
-              <div className="ai-history-item-header">
-                <span className="ai-history-item-title">{conv.title || "未命名对话"}</span>
-                <span className="ai-history-item-time">{formatTime(conv.updatedAt)}</span>
-              </div>
-              <div className="ai-history-item-preview">{getPreviewText(conv)}</div>
-              <div className="ai-history-item-meta">{getMessageStats(conv)}</div>
-            </button>
+              <button
+                type="button"
+                className="ai-history-item-main"
+                onClick={() => onSelect(conv.id)}
+              >
+                <div className="ai-history-item-header">
+                  <span className="ai-history-item-title">{conv.title || "未命名对话"}</span>
+                  <span className="ai-history-item-time">{formatTime(conv.updatedAt)}</span>
+                </div>
+                <div className="ai-history-item-preview">{getPreviewText(conv)}</div>
+                <div className="ai-history-item-meta">{getMessageStats(conv)}</div>
+              </button>
+              <button
+                type="button"
+                className="ai-history-export-btn"
+                onClick={() => void onExport(conv.id)}
+                title="导出对话"
+              >
+                <i className="ri-download-2-line" />
+              </button>
+            </div>
           ))
         )}
       </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { App as AntdApp } from "antd";
 import { isAiSystemNoteMessage } from "@nextshell/core";
 import type { AiExecutionPlan } from "@nextshell/core";
-import { useAiChatStore } from "../../store/useAiChatStore";
+import { getAiClientId, useAiChatStore } from "../../store/useAiChatStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { AiMessageList } from "./AiMessageList";
 import { AiChatInput } from "./AiChatInput";
@@ -115,6 +115,20 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
     useAiChatStore.setState({ pendingPlan: undefined });
   }, []);
 
+  const handleExportConversation = useCallback(async (conversationId: string) => {
+    try {
+      const result = await window.nextshell.ai.exportConversation({
+        conversationId,
+        clientId: getAiClientId(),
+      });
+      if (result.ok) {
+        message.success(`已导出对话记录：${result.filePath}`);
+      }
+    } catch (err) {
+      message.error(`导出失败：${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }, [message]);
+
   // 拖动开始
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -213,6 +227,7 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
           activeConversationId={activeConversationId}
           connectionLabel={boundConnectionLabel}
           onSelect={switchConversation}
+          onExport={handleExportConversation}
           onBack={() => setShowHistory(false)}
           onLoad={loadHistory}
         />

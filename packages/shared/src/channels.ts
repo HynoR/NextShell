@@ -129,6 +129,7 @@ export const IPCChannel = {
   AiApprove: "nextshell:ai:approve",
   AiAbort: "nextshell:ai:abort",
   AiHistory: "nextshell:ai:history",
+  AiExportConversation: "nextshell:ai:export-conversation",
   AiProviderTest: "nextshell:ai:provider:test",
   AiProviderSetApiKey: "nextshell:ai:provider:set-api-key",
   AiStreamEvent: "nextshell:ai:stream:event",

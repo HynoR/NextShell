@@ -322,6 +322,7 @@ const api: NextShellApi = {
     approve: (payload) => ipcRenderer.invoke(IPCChannel.AiApprove, payload),
     abort: (payload) => ipcRenderer.invoke(IPCChannel.AiAbort, payload),
     history: (payload) => ipcRenderer.invoke(IPCChannel.AiHistory, payload ?? {}),
+    exportConversation: (payload) => ipcRenderer.invoke(IPCChannel.AiExportConversation, payload),
     testProvider: (payload) => ipcRenderer.invoke(IPCChannel.AiProviderTest, payload),
     setApiKey: (payload) => ipcRenderer.invoke(IPCChannel.AiProviderSetApiKey, payload),
     onStream: (listener) => {

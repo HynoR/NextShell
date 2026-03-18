@@ -1093,6 +1093,11 @@ export const aiHistorySchema = z.object({
   clientId: z.string().trim().min(1).optional(),
 });
 
+export const aiExportConversationSchema = z.object({
+  conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
+});
+
 export const aiProviderTestSchema = z.object({
   type: aiProviderTypeSchema,
   baseUrl: z.string().trim().min(1),
@@ -1109,6 +1114,7 @@ export type AiChatInput = z.infer<typeof aiChatSchema>;
 export type AiApproveInput = z.infer<typeof aiApproveSchema>;
 export type AiAbortInput = z.infer<typeof aiAbortSchema>;
 export type AiHistoryInput = z.infer<typeof aiHistorySchema>;
+export type AiExportConversationInput = z.infer<typeof aiExportConversationSchema>;
 export type AiProviderTestInput = z.infer<typeof aiProviderTestSchema>;
 export type AiProviderSetApiKeyInput = z.infer<typeof aiProviderSetApiKeySchema>;
 
