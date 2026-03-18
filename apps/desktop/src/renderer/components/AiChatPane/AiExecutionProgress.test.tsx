@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, expect, test } from "bun:test";
 import { Button } from "antd";
-import type { ReactElement, ReactNode } from "react";
+import type { MouseEventHandler, ReactElement, ReactNode } from "react";
 import { AiExecutionProgressCard } from "./AiExecutionProgress";
 
 const collectText = (node: ReactNode): string => {
@@ -15,7 +15,7 @@ const collectText = (node: ReactNode): string => {
     return node.map((item) => collectText(item)).join("");
   }
   if (React.isValidElement(node)) {
-    return collectText(node.props.children);
+    return collectText((node.props as { children?: ReactNode }).children);
   }
   return "";
 };
@@ -38,7 +38,7 @@ const findElements = (
       matches.push(current as ReactElement<Record<string, unknown>>);
     }
 
-    React.Children.forEach(current.props.children, visit);
+    React.Children.forEach((current.props as { children?: ReactNode }).children, visit);
   };
 
   visit(node);
@@ -82,8 +82,8 @@ describe("AiExecutionProgressCard", () => {
 
     expect(buttons).toHaveLength(2);
 
-    buttons[0]?.props.onClick?.();
-    buttons[1]?.props.onClick?.();
+    (buttons[0]?.props.onClick as MouseEventHandler<HTMLButtonElement> | undefined)?.({} as never);
+    (buttons[1]?.props.onClick as MouseEventHandler<HTMLButtonElement> | undefined)?.({} as never);
 
     expect(retried).toBe(true);
     expect(edited).toBe(true);

@@ -551,10 +551,13 @@ export interface AppPreferencesPatch {
   };
   ai?: {
     enabled?: boolean;
+    persistHistory?: boolean;
     activeProviderId?: string;
     providers?: AiProviderConfig[];
     systemPromptOverride?: string;
     executionTimeoutSec?: number;
+    providerRequestTimeoutSec?: number;
+    providerMaxRetries?: number;
   };
 }
 
