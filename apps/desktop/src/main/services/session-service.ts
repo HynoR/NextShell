@@ -52,6 +52,15 @@ interface SessionExecOptions {
   timeoutMs?: number;
 }
 
+interface SessionVisibleFilter {
+  wrappedCommand: string | null;
+  startSentinel: string;
+  endPrefix: string;
+  endSuffix: string;
+  buffer: string;
+  suppressNextNewline: boolean;
+}
+
 export class SessionService {
   private readonly connections: CachedConnectionRepository;
   private readonly activeSessions: Map<string, ActiveSession>;
@@ -69,6 +78,7 @@ export class SessionService {
   private readonly persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
   private readonly sessionOutputListeners = new Map<string, Set<(chunk: string) => void>>();
   private readonly sessionCloseListeners = new Map<string, Set<(reason?: string) => void>>();
+  private readonly sessionVisibleFilters = new Map<string, SessionVisibleFilter>();
   private readonly sessionExecLocks = new Set<string>();
 
   constructor(options: SessionServiceOptions) {
@@ -187,11 +197,15 @@ export class SessionService {
         }
         const decodedChunk = decodeTerminalData(chunk, active.terminalEncoding);
         this.emitSessionOutput(descriptor.id, decodedChunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, decodedChunk);
+        if (!visibleChunk) {
+          return;
+        }
 
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decodedChunk,
+          chunk: visibleChunk,
           onPause: () => shell.pause(),
           onResume: () => shell.resume(),
         });
@@ -204,10 +218,14 @@ export class SessionService {
         }
         const decodedChunk = decodeTerminalData(chunk, active.terminalEncoding);
         this.emitSessionOutput(descriptor.id, decodedChunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, decodedChunk);
+        if (!visibleChunk) {
+          return;
+        }
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decodedChunk,
+          chunk: visibleChunk,
           onPause: () => shell.pause(),
           onResume: () => shell.resume(),
         });
@@ -349,11 +367,15 @@ export class SessionService {
           return;
         }
         this.emitSessionOutput(descriptor.id, chunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, chunk);
+        if (!visibleChunk) {
+          return;
+        }
 
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk,
+          chunk: visibleChunk,
           onPause: () => pty.pause(),
           onResume: () => pty.resume(),
         });
@@ -469,6 +491,8 @@ export class SessionService {
         this.removeSessionOutputListener(sessionId, onChunk);
         this.removeSessionCloseListener(sessionId, onSessionClose);
         options?.signal?.removeEventListener("abort", onAbort);
+        this.flushSessionVisibleFilter(sessionId);
+        this.sessionVisibleFilters.delete(sessionId);
         this.sessionExecLocks.delete(sessionId);
       };
 
@@ -534,6 +558,15 @@ export class SessionService {
 
       this.addSessionOutputListener(sessionId, onChunk);
       this.addSessionCloseListener(sessionId, onSessionClose);
+      this.sessionVisibleFilters.set(sessionId, {
+        wrappedCommand,
+        startSentinel,
+        endPrefix,
+        endSuffix,
+        buffer: "",
+        suppressNextNewline: false,
+      });
+      this.emitVisibleSessionCommand(sessionId, command);
 
       if (options?.signal?.aborted) {
         onAbort();
@@ -595,6 +628,7 @@ export class SessionService {
       this.activeSessions.delete(sessionId);
       this.sessionExecLocks.delete(sessionId);
       this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
       this.sessionOutputListeners.delete(sessionId);
       this.sendSessionStatus(active.sender, {
         sessionId,
@@ -619,6 +653,7 @@ export class SessionService {
     this.activeSessions.delete(sessionId);
     this.sessionExecLocks.delete(sessionId);
     this.sessionCloseListeners.delete(sessionId);
+    this.sessionVisibleFilters.delete(sessionId);
     this.sessionOutputListeners.delete(sessionId);
     this.sendSessionStatus(active.sender, {
       sessionId,
@@ -692,6 +727,7 @@ export class SessionService {
       this.activeSessions.delete(sessionId);
       this.sessionExecLocks.delete(sessionId);
       this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
       this.sessionOutputListeners.delete(sessionId);
       drained.descriptor.status = status;
       this.sendSessionStatus(drained.sender, { sessionId, status, reason });
@@ -720,6 +756,7 @@ export class SessionService {
       this.activeSessions.delete(sessionId);
       this.sessionExecLocks.delete(sessionId);
       this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
       this.sessionOutputListeners.delete(sessionId);
       drained.descriptor.status = status;
       this.sendSessionStatus(drained.sender, { sessionId, status, reason });
@@ -776,6 +813,115 @@ export class SessionService {
     for (const listener of listeners) {
       listener(reason);
     }
+  }
+
+  private emitVisibleSessionCommand(sessionId: string, command: string): void {
+    this.pushSessionVisibleChunk(sessionId, `${command}\r\n`);
+  }
+
+  private flushSessionVisibleFilter(sessionId: string): void {
+    const filter = this.sessionVisibleFilters.get(sessionId);
+    if (!filter) {
+      return;
+    }
+    const visibleChunk = this.transformVisibleSessionOutput(sessionId, "", { flushAll: true });
+    if (visibleChunk) {
+      this.pushSessionVisibleChunk(sessionId, visibleChunk);
+    }
+  }
+
+  private pushSessionVisibleChunk(sessionId: string, chunk: string): void {
+    if (!chunk) {
+      return;
+    }
+    const active = this.activeSessions.get(sessionId);
+    if (!active) {
+      return;
+    }
+    this.sessionDataDispatcher.push({
+      streamId: sessionId,
+      sender: active.sender,
+      chunk,
+      onPause: () => undefined,
+      onResume: () => undefined,
+    });
+  }
+
+  private transformVisibleSessionOutput(
+    sessionId: string,
+    chunk: string,
+    options?: { flushAll?: boolean },
+  ): string {
+    const filter = this.sessionVisibleFilters.get(sessionId);
+    if (!filter) {
+      return chunk;
+    }
+
+    filter.buffer += chunk;
+    let output = filter.buffer;
+
+    if (filter.wrappedCommand) {
+      const wrappedIndex = output.indexOf(filter.wrappedCommand);
+      if (wrappedIndex >= 0) {
+        output = output.slice(0, wrappedIndex) + output.slice(wrappedIndex + filter.wrappedCommand.length);
+        filter.wrappedCommand = null;
+        filter.suppressNextNewline = true;
+      }
+    }
+
+    if (filter.suppressNextNewline) {
+      if (output.startsWith("\r\n")) {
+        output = output.slice(2);
+        filter.suppressNextNewline = false;
+      } else if (output.startsWith("\n") || output.startsWith("\r")) {
+        output = output.slice(1);
+        filter.suppressNextNewline = false;
+      }
+    }
+
+    output = output.split(filter.startSentinel).join("");
+
+    while (true) {
+      const startIndex = output.indexOf(filter.endPrefix);
+      if (startIndex < 0) {
+        break;
+      }
+      const endIndex = output.indexOf(filter.endSuffix, startIndex + filter.endPrefix.length);
+      if (endIndex < 0) {
+        break;
+      }
+      output = output.slice(0, startIndex) + output.slice(endIndex + filter.endSuffix.length);
+    }
+
+    if (options?.flushAll) {
+      if (filter.wrappedCommand) {
+        output = "";
+        filter.wrappedCommand = null;
+      }
+      if (filter.suppressNextNewline) {
+        output = output.replace(/^(?:\r\n|\n|\r)/, "");
+        filter.suppressNextNewline = false;
+      }
+      filter.buffer = "";
+      return output;
+    }
+
+    const tailLength = this.getSessionVisibleFilterTailLength(filter);
+    if (output.length <= tailLength) {
+      filter.buffer = output;
+      return "";
+    }
+
+    const visibleChunk = output.slice(0, output.length - tailLength);
+    filter.buffer = output.slice(output.length - tailLength);
+    return visibleChunk;
+  }
+
+  private getSessionVisibleFilterTailLength(filter: SessionVisibleFilter): number {
+    const echoTail = filter.wrappedCommand ? filter.wrappedCommand.length : 0;
+    const startTail = filter.startSentinel.length;
+    const endTail = filter.endPrefix.length + filter.endSuffix.length + 8;
+    return Math.max(echoTail, startTail, endTail);
   }
 
   private buildSessionExecSentinel(marker: string): string {
