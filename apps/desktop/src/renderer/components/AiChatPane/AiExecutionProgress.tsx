@@ -1,10 +1,14 @@
-import { Tag } from "antd";
+import { Button, Space, Tag } from "antd";
 import type { AiExecutionProgress as ProgressType } from "@nextshell/core";
 import type { ExecutionPhase } from "../../store/useAiChatStore";
 
 interface AiExecutionProgressProps {
   progress: ProgressType;
   phase?: ExecutionPhase;
+  retrySourceStep?: number;
+  canResume?: boolean;
+  onRetry?: () => void;
+  onEditRetryPlan?: () => void;
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -33,17 +37,24 @@ const PHASE_CONFIG: Record<ExecutionPhase, { icon: string; text: string }> = {
 export const AiExecutionProgressCard = ({
   progress,
   phase,
+  retrySourceStep,
+  canResume = false,
+  onRetry,
+  onEditRetryPlan,
 }: AiExecutionProgressProps) => {
   const totalSteps = progress.steps.length;
   const phaseInfo = phase ? PHASE_CONFIG[phase] : undefined;
+  const hasFailedStep = progress.steps.some((step) => step.status === "failed");
 
   const headerIcon = progress.completed
-    ? "ri-check-double-line"
+    ? hasFailedStep
+      ? "ri-error-warning-line"
+      : "ri-check-double-line"
     : phaseInfo?.icon ?? "ri-loader-4-line ai-spin";
 
   let headerText: string;
   if (progress.completed) {
-    headerText = "执行完成";
+    headerText = hasFailedStep ? "执行失败" : "执行完成";
   } else if (phaseInfo) {
     const suffix = (phase === "executing" || phase === "collecting") && progress.currentStep > 0
       ? ` (${progress.currentStep}/${totalSteps})`
@@ -77,6 +88,24 @@ export const AiExecutionProgressCard = ({
           </div>
         ))}
       </div>
+      {canResume && (onRetry || onEditRetryPlan) && (
+        <div className="ai-plan-actions">
+          <Space>
+            {onRetry && (
+              <Button type="primary" onClick={onRetry}>
+                <i className="ri-refresh-line" /> {retrySourceStep
+                  ? `从步骤 ${retrySourceStep} 继续`
+                  : "重试失败步骤及后续"}
+              </Button>
+            )}
+            {onEditRetryPlan && (
+              <Button onClick={onEditRetryPlan}>
+                <i className="ri-edit-2-line" /> 编辑后继续
+              </Button>
+            )}
+          </Space>
+        </div>
+      )}
     </div>
   );
 };

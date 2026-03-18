@@ -51,6 +51,8 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
     streamingContent,
     executionProgress,
     executionPhase,
+    recoveryPlan,
+    recoveryPlanSourceStep,
     pendingPlan,
     pendingPlanUserRequest,
     showHistory,
@@ -64,6 +66,7 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
     switchConversation,
     loadHistory,
     initListeners,
+    openRecoveryPlanEditor,
   } = useAiChatStore();
 
   useEffect(() => {
@@ -110,6 +113,22 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
       message.error(`停止失败：${err instanceof Error ? err.message : "未知错误"}`);
     }
   }, [abortExecution, message]);
+
+  const handleRetryRecoveryPlan = useCallback(async () => {
+    if (!recoveryPlan) {
+      return;
+    }
+
+    try {
+      await approvePlan(recoveryPlan);
+    } catch (err) {
+      message.error(`恢复执行失败：${err instanceof Error ? err.message : "未知错误"}`);
+    }
+  }, [approvePlan, message, recoveryPlan]);
+
+  const handleEditRecoveryPlan = useCallback(() => {
+    openRecoveryPlanEditor();
+  }, [openRecoveryPlanEditor]);
 
   const handleReject = useCallback(() => {
     useAiChatStore.setState({ pendingPlan: undefined });
@@ -265,7 +284,14 @@ export const AiChatPane = ({ sessionId, connectionId, connectionLabel }: AiChatP
                     />
                   )}
                   {showProgressCard && (
-                    <AiExecutionProgressCard progress={executionProgress} phase={executionPhase} />
+                    <AiExecutionProgressCard
+                      progress={executionProgress}
+                      phase={executionPhase}
+                      retrySourceStep={recoveryPlanSourceStep}
+                      canResume={Boolean(recoveryPlan)}
+                      onRetry={recoveryPlan ? () => void handleRetryRecoveryPlan() : undefined}
+                      onEditRetryPlan={recoveryPlan ? handleEditRecoveryPlan : undefined}
+                    />
                   )}
                 </div>
               </>

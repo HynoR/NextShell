@@ -69,6 +69,9 @@ interface AiChatState {
   streamingContent: string;
   executionProgress?: AiExecutionProgress;
   executionPhase?: ExecutionPhase;
+  currentApprovedPlan?: AiExecutionPlan;
+  recoveryPlan?: AiExecutionPlan;
+  recoveryPlanSourceStep?: number;
   pendingPlan?: AiExecutionPlan;
   pendingPlanUserRequest?: string;
   showHistory: boolean;
@@ -87,6 +90,7 @@ interface AiChatState {
   loadHistory: () => Promise<void>;
   handleStreamEvent: (event: AiStreamEvent) => void;
   handleProgressEvent: (event: AiProgressEvent) => void;
+  openRecoveryPlanEditor: () => void;
   initListeners: () => () => void;
 }
 
@@ -129,6 +133,26 @@ export const restorePendingPlan = (
   return undefined;
 };
 
+const buildRecoveryPlan = (
+  plan: AiExecutionPlan,
+  failedStep: number
+): AiExecutionPlan | undefined => {
+  const remainingSteps = plan.steps.filter((step) => step.step >= failedStep);
+  if (remainingSteps.length === 0) {
+    return undefined;
+  }
+
+  return {
+    summary: plan.summary
+      ? `${plan.summary}（从步骤 ${failedStep} 继续）`
+      : `从步骤 ${failedStep} 继续执行`,
+    steps: remainingSteps.map((step, index) => ({
+      ...step,
+      step: index + 1,
+    })),
+  };
+};
+
 export const useAiChatStore = create<AiChatState>((set, get) => ({
   panelOpen: readPanelState(),
   boundConnectionId: undefined,
@@ -140,6 +164,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
   streamingContent: "",
   executionProgress: undefined,
   executionPhase: undefined,
+  currentApprovedPlan: undefined,
+  recoveryPlan: undefined,
+  recoveryPlanSourceStep: undefined,
   pendingPlan: undefined,
   pendingPlanUserRequest: undefined,
   showHistory: false,
@@ -187,6 +214,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       streamingContent: "",
       executionProgress: undefined,
       executionPhase: undefined,
+      currentApprovedPlan: undefined,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
       pendingPlan: restored?.plan,
       pendingPlanUserRequest: restored?.userRequest,
       showHistory: false,
@@ -201,6 +231,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     set({
       isStreaming: true,
       streamingContent: "",
+      currentApprovedPlan: undefined,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
       pendingPlan: undefined,
       pendingPlanUserRequest: content,
       statusHint: { icon: "ri-loader-4-line", text: "正在连接 AI 模型...", animate: true },
@@ -265,10 +298,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
     if (!planToExecute) return;
 
     set({
-      pendingPlan: planToExecute,
-    });
-
-    set({
+      currentApprovedPlan: planToExecute,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
       pendingPlan: undefined,
       executionPhase: "executing",
       executionProgress: {
@@ -283,14 +315,31 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       statusHint: { icon: "ri-terminal-box-line", text: "正在执行计划...", animate: true },
     });
 
-    await window.nextshell.ai.approve({
-      conversationId: state.activeConversationId,
-      clientId: getAiClientId(),
-      plan: {
-        steps: planToExecute.steps,
-        summary: planToExecute.summary,
-      },
-    });
+    try {
+      await window.nextshell.ai.approve({
+        conversationId: state.activeConversationId,
+        clientId: getAiClientId(),
+        plan: {
+          steps: planToExecute.steps,
+          summary: planToExecute.summary,
+        },
+      });
+    } catch (error) {
+      set({
+        currentApprovedPlan: undefined,
+        executionProgress: undefined,
+        executionPhase: undefined,
+        pendingPlan: planToExecute,
+        statusHint: {
+          icon: "ri-error-warning-line",
+          text: summarizeAiError(
+            error instanceof Error ? error.message : String(error),
+            "批准执行失败"
+          ),
+        },
+      });
+      throw error;
+    }
   },
 
   abortExecution: async () => {
@@ -300,7 +349,16 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       conversationId: state.activeConversationId,
       clientId: getAiClientId(),
     });
-    set({ isStreaming: false, executionProgress: undefined, executionPhase: undefined, pendingPlan: undefined, statusHint: undefined });
+    set({
+      isStreaming: false,
+      executionProgress: undefined,
+      executionPhase: undefined,
+      currentApprovedPlan: undefined,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
+      pendingPlan: undefined,
+      statusHint: undefined,
+    });
   },
 
   newConversation: () => {
@@ -310,6 +368,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       streamingContent: "",
       executionProgress: undefined,
       executionPhase: undefined,
+      currentApprovedPlan: undefined,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
       pendingPlan: undefined,
       pendingPlanUserRequest: undefined,
       showHistory: false,
@@ -331,6 +392,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       streamingContent: "",
       executionProgress: undefined,
       executionPhase: undefined,
+      currentApprovedPlan: undefined,
+      recoveryPlan: undefined,
+      recoveryPlanSourceStep: undefined,
       pendingPlan: restored?.plan,
       pendingPlanUserRequest: restored?.userRequest,
       showHistory: false,
@@ -389,6 +453,9 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
           isStreaming: false,
           executionProgress: undefined,
           executionPhase: undefined,
+          currentApprovedPlan: undefined,
+          recoveryPlan: undefined,
+          recoveryPlanSourceStep: undefined,
           statusHint: { icon: "ri-file-list-3-line", text: "已生成执行计划，等待审批" },
         });
       } else {
@@ -531,11 +598,21 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       }
 
       if (event.type === "all_done") {
-        return { executionProgress: undefined, executionPhase: undefined, statusHint: undefined };
+        return {
+          executionProgress: undefined,
+          executionPhase: undefined,
+          currentApprovedPlan: undefined,
+          recoveryPlan: undefined,
+          recoveryPlanSourceStep: undefined,
+          statusHint: undefined,
+        };
       }
 
       if (event.type === "error") {
         const readableError = formatAiErrorMessage(event.error, "执行出错");
+        const recoveryPlan = event.step !== undefined && s.currentApprovedPlan
+          ? buildRecoveryPlan(s.currentApprovedPlan, event.step)
+          : undefined;
         if (event.step !== undefined) {
           const idx = updatedSteps.findIndex((st) => st.step === event.step);
           if (idx >= 0) {
@@ -549,6 +626,8 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
             steps: updatedSteps,
             completed: true,
           },
+          recoveryPlan,
+          recoveryPlanSourceStep: recoveryPlan ? event.step : undefined,
           statusHint: { icon: "ri-error-warning-line", text: summarizeAiError(event.error, "执行出错") },
         };
       }
@@ -570,5 +649,24 @@ export const useAiChatStore = create<AiChatState>((set, get) => ({
       unsubStream();
       unsubProgress();
     };
+  },
+
+  openRecoveryPlanEditor: () => {
+    const state = get();
+    if (!state.recoveryPlan) {
+      return;
+    }
+
+    set({
+      pendingPlan: state.recoveryPlan,
+      executionProgress: undefined,
+      executionPhase: undefined,
+      statusHint: {
+        icon: "ri-edit-2-line",
+        text: state.recoveryPlanSourceStep
+          ? `已生成从步骤 ${state.recoveryPlanSourceStep} 继续的恢复计划`
+          : "已生成恢复计划",
+      },
+    });
   },
 }));
