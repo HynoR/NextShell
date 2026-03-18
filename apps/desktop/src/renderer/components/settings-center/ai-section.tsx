@@ -91,7 +91,7 @@ export const AiSection = ({
     && providerMaxRetries === DEFAULT_APP_PREFERENCES.ai.providerMaxRetries;
   const runtimeSummaryLabel = activeRuntimePreset?.label ?? "自定义配置";
   const runtimeSummaryDescription = activeRuntimePreset?.description
-    ?? "当前值已手动调整，可继续使用下方推荐场景快速切换。";
+    ?? "当前值已手动调整，可按实际网络环境继续微调。";
 
   const startAddProvider = (): void => {
     const defaultType: AiProviderType = "openai";
@@ -206,16 +206,6 @@ export const AiSection = ({
     }
   };
 
-  const applyRuntimePreset = (preset: typeof AI_RUNTIME_PRESETS[number]): void => {
-    save({
-      ai: {
-        providerRequestTimeoutSec: preset.providerRequestTimeoutSec,
-        providerMaxRetries: preset.providerMaxRetries,
-      },
-    });
-    message.success(`已应用“${preset.label}”推荐值`);
-  };
-
   const restoreDefaultRuntime = (): void => {
     save({
       ai: {
@@ -278,7 +268,7 @@ export const AiSection = ({
               />
             </SettingsRow>
 
-            <SettingsRow label="当前生效策略" hint="摘要会根据当前超时与重试配置自动识别推荐场景">
+            <SettingsRow label="当前生效策略" hint="摘要会根据当前超时与重试配置自动识别匹配策略">
               <div
                 style={{
                   width: "100%",
@@ -318,60 +308,6 @@ export const AiSection = ({
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   {runtimeSummaryDescription}
                 </Typography.Text>
-              </div>
-            </SettingsRow>
-
-            <SettingsRow label="推荐场景" hint="一键套用常见网络环境的推荐值，再按需要微调">
-              <div style={{ display: "grid", gap: 8, width: "100%" }}>
-                {AI_RUNTIME_PRESETS.map((preset) => {
-                  const active = activeRuntimePreset?.id === preset.id;
-                  return (
-                    <div
-                      key={preset.id}
-                      style={{
-                        border: active ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        borderRadius: 8,
-                        padding: 10,
-                        background: active ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          alignItems: "flex-start",
-                          marginBottom: 6,
-                        }}
-                      >
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                            <Typography.Text strong>{preset.label}</Typography.Text>
-                            {active && <Tag color="green" style={{ marginInlineEnd: 0 }}>当前匹配</Tag>}
-                          </div>
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            {preset.description}
-                          </Typography.Text>
-                        </div>
-                        <Button
-                          size="small"
-                          disabled={loading || active}
-                          onClick={() => applyRuntimePreset(preset)}
-                        >
-                          {active ? "已应用" : "应用"}
-                        </Button>
-                      </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                          超时 {preset.providerRequestTimeoutSec}s
-                        </Tag>
-                        <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                          重试 {preset.providerMaxRetries} 次
-                        </Tag>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
             </SettingsRow>
           </>
