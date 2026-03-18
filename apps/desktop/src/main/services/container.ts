@@ -61,6 +61,7 @@ import { ResourceOperationsService } from "./resource-operations-service";
 import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
+import { AiService } from "./ai/ai-service";
 
 // Re-export for consumers (index.ts, register.ts)
 export type { ServiceContainer, CreateServiceContainerOptions } from "./container-types";
@@ -466,6 +467,16 @@ export const createServiceContainer = (
   });
   cloudSyncManager.initialize();
 
+  // AI Service
+  const aiSvc = new AiService({
+    execCommand: (connectionId, cmd, execOptions) => commandSvc.execCommand(connectionId, cmd, execOptions),
+    execInSession: (sessionId, cmd, execOptions) => sessionSvc.execCommandInSession(sessionId, cmd, execOptions),
+    vault,
+    getPreferences: () => connections.getAppPreferences(),
+    dataDir: options.dataDir,
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
+  });
+
   // Resource Operations Service
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
@@ -483,6 +494,7 @@ export const createServiceContainer = (
     connections.flush();
     if (auditPurgeTimer) clearInterval(auditPurgeTimer);
     prefsSvc.dispose();
+    aiSvc.dispose();
 
     const allMonitorIds = monitorSvc.getAllConnectionIds();
     await Promise.all(allMonitorIds.map((id) => monitorSvc.disposeAllMonitorSessions(id)));
@@ -641,6 +653,14 @@ export const createServiceContainer = (
     recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
     recycleBinPurge: (i) => { resourceOpsSvc.purgeRecycleBinEntry(i.id); },
     recycleBinClear: () => { connections.clearRecycleBin(); },
+
+    // AI Assistant
+    aiChat: (sender, i) => aiSvc.chat(sender, i),
+    aiApprove: (sender, i) => aiSvc.approve(sender, i),
+    aiAbort: (sender, i) => aiSvc.abort(sender, i),
+    aiHistory: (sender, i) => aiSvc.history(sender, i),
+    aiTestProvider: (i) => aiSvc.testProvider(i),
+    aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 
     dispose,
   };
