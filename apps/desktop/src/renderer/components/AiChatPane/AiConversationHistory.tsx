@@ -120,6 +120,7 @@ export const AiConversationHistory = ({
                 title="导出对话"
               >
                 <i className="ri-download-2-line" />
+                <span>导出</span>
               </button>
             </div>
           ))

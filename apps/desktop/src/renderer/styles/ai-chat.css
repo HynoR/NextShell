@@ -769,6 +769,7 @@
   display: flex;
   align-items: stretch;
   width: 100%;
+  overflow: hidden;
   border-bottom: 1px solid var(--border);
   transition: background 0.15s;
   color: var(--text-primary);
@@ -776,6 +777,7 @@
 
 .ai-history-item-main {
   flex: 1;
+  min-width: 0;
   text-align: left;
   background: none;
   border: none;
@@ -795,11 +797,18 @@
 }
 
 .ai-history-export-btn {
-  width: 36px;
+  flex-shrink: 0;
+  min-width: 62px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  font-size: 12px;
   transition: color 0.15s, background 0.15s;
 }
 
