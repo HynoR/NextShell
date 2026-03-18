@@ -8,7 +8,7 @@ import {
   Tag,
   Typography
 } from "antd";
-import { DEFAULT_APP_PREFERENCES, type AiProviderConfig, type AiProviderType } from "@nextshell/core";
+import { type AiProviderConfig, type AiProviderType } from "@nextshell/core";
 import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-components";
 import type { SaveFn } from "./types";
 import { formatAiErrorMessage } from "../../utils/ai-error-message";
@@ -30,30 +30,6 @@ const DEFAULT_MODELS: Record<AiProviderType, string> = {
   anthropic: "claude-sonnet-4-20250514",
   gemini: "gemini-2.5-flash",
 };
-
-const AI_RUNTIME_PRESETS = [
-  {
-    id: "cloud",
-    label: "官方云服务",
-    description: "适合直连 OpenAI / Claude / Gemini 官方接口，优先保持响应速度。",
-    providerRequestTimeoutSec: 30,
-    providerMaxRetries: 1,
-  },
-  {
-    id: "proxy",
-    label: "代理 / 中转",
-    description: "适合经代理或网关访问海外模型，适当放宽等待时间并保留一次兜底重试。",
-    providerRequestTimeoutSec: 45,
-    providerMaxRetries: 2,
-  },
-  {
-    id: "local",
-    label: "本地模型",
-    description: "适合 Ollama 或局域网模型网关，给推理时间，避免高重试拖慢交互。",
-    providerRequestTimeoutSec: 75,
-    providerMaxRetries: 0,
-  },
-] as const;
 
 interface AiSectionProps {
   loading: boolean;
@@ -81,17 +57,6 @@ export const AiSection = ({
   const [editingProvider, setEditingProvider] = useState<AiProviderConfig | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [testing, setTesting] = useState(false);
-  const activeRuntimePreset = AI_RUNTIME_PRESETS.find((preset) =>
-    preset.providerRequestTimeoutSec === providerRequestTimeoutSec
-      && preset.providerMaxRetries === providerMaxRetries
-  );
-  const matchesDefaultRuntime =
-    executionTimeoutSec === DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec
-    && providerRequestTimeoutSec === DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec
-    && providerMaxRetries === DEFAULT_APP_PREFERENCES.ai.providerMaxRetries;
-  const runtimeSummaryLabel = activeRuntimePreset?.label ?? "自定义配置";
-  const runtimeSummaryDescription = activeRuntimePreset?.description
-    ?? "当前值已手动调整，可按实际网络环境继续微调。";
 
   const startAddProvider = (): void => {
     const defaultType: AiProviderType = "openai";
@@ -206,17 +171,6 @@ export const AiSection = ({
     }
   };
 
-  const restoreDefaultRuntime = (): void => {
-    save({
-      ai: {
-        executionTimeoutSec: DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec,
-        providerRequestTimeoutSec: DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec,
-        providerMaxRetries: DEFAULT_APP_PREFERENCES.ai.providerMaxRetries,
-      },
-    });
-    message.success("已恢复默认推荐值");
-  };
-
   return (
     <>
       <SettingsCard title="AI 助手" description="配置大模型接口，使用 AI 辅助执行运维操作">
@@ -268,48 +222,6 @@ export const AiSection = ({
               />
             </SettingsRow>
 
-            <SettingsRow label="当前生效策略" hint="摘要会根据当前超时与重试配置自动识别匹配策略">
-              <div
-                style={{
-                  width: "100%",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: 10,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Typography.Text strong>{runtimeSummaryLabel}</Typography.Text>
-                  {activeRuntimePreset ? (
-                    <Tag color="green" style={{ marginInlineEnd: 0 }}>推荐匹配</Tag>
-                  ) : (
-                    <Tag color="gold" style={{ marginInlineEnd: 0 }}>手动调整</Tag>
-                  )}
-                  <Button
-                    size="small"
-                    disabled={loading || matchesDefaultRuntime}
-                    onClick={restoreDefaultRuntime}
-                  >
-                    {matchesDefaultRuntime ? "已是默认值" : "恢复默认推荐值"}
-                  </Button>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                    请求超时 {providerRequestTimeoutSec}s
-                  </Tag>
-                  <Tag color="purple" style={{ marginInlineEnd: 0 }}>
-                    自动重试 {providerMaxRetries} 次
-                  </Tag>
-                  <Tag color="cyan" style={{ marginInlineEnd: 0 }}>
-                    命令超时 {executionTimeoutSec}s
-                  </Tag>
-                </div>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  {runtimeSummaryDescription}
-                </Typography.Text>
-              </div>
-            </SettingsRow>
           </>
         )}
       </SettingsCard>
