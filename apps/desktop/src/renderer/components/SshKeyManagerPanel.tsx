@@ -203,7 +203,6 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pem,.key,.ppk,.pub,*"
             aria-label="选择私钥文件"
             className="sr-only"
             onChange={handleFileChange}
