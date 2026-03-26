@@ -42,6 +42,7 @@ export interface SessionServiceOptions {
   processMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   networkMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
+  clearMonitorSuspension: (connectionId: string) => void;
   warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
   persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
 }
@@ -59,6 +60,7 @@ export class SessionService {
   private readonly processMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   private readonly networkMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   private readonly ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
+  private readonly clearMonitorSuspension: (connectionId: string) => void;
   private readonly warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
   private readonly persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
 
@@ -75,6 +77,7 @@ export class SessionService {
     this.processMonitorDispatcher = options.processMonitorDispatcher;
     this.networkMonitorDispatcher = options.networkMonitorDispatcher;
     this.ensureSystemMonitorRuntime = options.ensureSystemMonitorRuntime;
+    this.clearMonitorSuspension = options.clearMonitorSuspension;
     this.warmupSftp = options.warmupSftp;
     this.persistAuthOverride = options.persistAuthOverride;
   }
@@ -223,6 +226,7 @@ export class SessionService {
       }
 
       if (profile.monitorSession) {
+        this.clearMonitorSuspension(connectionId);
         try {
           await this.ensureSystemMonitorRuntime(connectionId);
         } catch (error) {

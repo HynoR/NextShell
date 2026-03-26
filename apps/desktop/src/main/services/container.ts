@@ -418,6 +418,7 @@ export const createServiceContainer = (
     processMonitorDispatcher,
     networkMonitorDispatcher,
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
+    clearMonitorSuspension: (id) => monitorSvc.clearMonitorSuspension(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
     persistAuthOverride: (id, override) => connectionSvc.persistSuccessfulAuthOverride(id, override),
   });

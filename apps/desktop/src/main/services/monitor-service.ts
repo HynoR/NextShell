@@ -251,6 +251,13 @@ export class MonitorService {
     this.networkToolCache.delete(connectionId);
   }
 
+  /** Clear suspension on all monitors for a connection (call on terminal reconnect). */
+  clearMonitorSuspension(connectionId: string): void {
+    this.systemMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
+    this.processMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
+    this.networkMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
+  }
+
   // ─── Generic hidden SSH connection factory ──────────────────────────────
 
   private async establishHiddenConnection(

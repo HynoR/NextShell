@@ -14,14 +14,14 @@ import {
   type ParsedNetworkCounters,
   type ParsedSystemProbeFrame,
 } from "./system-probe-parser";
-import { MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
+import { MonitorBackoff, MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
 
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 const DEFAULT_CPU_MEM_SWAP_INTERVAL_TICKS = 3;
 const DEFAULT_DISK_INTERVAL_TICKS = 10;
 const DEFAULT_INTERFACE_META_INTERVAL_TICKS = 30;
 const DEFAULT_START_DELAY_MS = 300;
-const DEFAULT_EXEC_TIMEOUT_MS = 20_000;
+const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
 
 export type SystemMonitorControllerState = "IDLE" | "STARTING" | "RUNNING" | "STOPPING" | "STOPPED";
@@ -152,9 +152,14 @@ export class SystemMonitorController {
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight = false;
   private consecutiveFailures = 0;
+  private suspended = false;
 
   private networkInterface = "eth0";
   private networkInterfaceOptions: string[] = [];
+
+  private readonly backoff = new MonitorBackoff();
+  private lastProbeDurationMs = 0;
+  private skipCount = 0;
 
   private prevNetRx: number | undefined;
   private prevNetTx: number | undefined;
@@ -188,7 +193,19 @@ export class SystemMonitorController {
     return this.state;
   }
 
+  /** Clear suspension so the monitor can be started again (call on session reconnect). */
+  clearSuspension(): void {
+    this.suspended = false;
+  }
+
   async start(): Promise<{ ok: true }> {
+    if (this.suspended) {
+      this.options.logger.info("[SystemMonitor] start refused: suspended until reconnection", {
+        connectionId: this.options.connectionId,
+      });
+      return { ok: true };
+    }
+
     if (this.state === "RUNNING" || this.state === "STARTING") {
       return { ok: true };
     }
@@ -202,6 +219,9 @@ export class SystemMonitorController {
     this.tickCount = 0;
     this.consecutiveFailures = 0;
     this.inFlight = false;
+    this.backoff.reset();
+    this.lastProbeDurationMs = 0;
+    this.skipCount = 0;
     this.resetSamplingBaselines();
     this.syncSelectionState();
 
@@ -357,6 +377,27 @@ export class SystemMonitorController {
     }
 
     this.tickCount += 1;
+
+    if (this.backoff.isActive()) {
+      this.options.logger.debug("[SystemMonitor] skipping poll: backoff active", {
+        connectionId: this.options.connectionId,
+        remainingMs: this.backoff.remainingMs(),
+      });
+      return;
+    }
+
+    if (this.lastProbeDurationMs > this.pollIntervalMs * 0.5) {
+      this.skipCount += 1;
+      if (this.skipCount % 2 !== 0) {
+        this.options.logger.debug("[SystemMonitor] throttling: slow probe detected, skipping frame", {
+          connectionId: this.options.connectionId,
+          lastProbeDurationMs: this.lastProbeDurationMs,
+        });
+        return;
+      }
+    } else {
+      this.skipCount = 0;
+    }
 
     if (this.inFlight) {
       this.options.logger.debug("[SystemMonitor] drop frame: previous probe still running", {
@@ -536,12 +577,26 @@ export class SystemMonitorController {
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
           await this.options.closeConnection();
-          this.consecutiveFailures = 0;
+          this.backoff.apply();
+          if (this.backoff.isExhausted()) {
+            this.suspended = true;
+            this.options.logger.warn("[SystemMonitor] server unresponsive, suspending monitor until reconnection", {
+              connectionId: this.options.connectionId,
+            });
+            await this.stop();
+            return;
+          }
+          this.options.logger.warn("[SystemMonitor] backing off after consecutive failures", {
+            connectionId: this.options.connectionId,
+            consecutiveFailures: this.consecutiveFailures,
+          });
         }
         return;
       }
 
+      this.lastProbeDurationMs = result.durationMs;
       this.consecutiveFailures = 0;
+      this.backoff.reset();
     } catch (error) {
       if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
         return;
@@ -559,7 +614,20 @@ export class SystemMonitorController {
       this.consecutiveFailures += 1;
       if (error instanceof MonitorExecTimeoutError || this.consecutiveFailures >= this.maxConsecutiveFailures) {
         await this.options.closeConnection();
-        this.consecutiveFailures = 0;
+        this.backoff.apply();
+        if (this.backoff.isExhausted()) {
+          this.options.logger.warn("[SystemMonitor] server unresponsive, stopping monitor", {
+            connectionId: this.options.connectionId,
+            reason: errorMessage,
+          });
+          await this.stop();
+          return;
+        }
+        this.options.logger.warn("[SystemMonitor] backing off after probe failure", {
+          connectionId: this.options.connectionId,
+          consecutiveFailures: this.consecutiveFailures,
+          reason: errorMessage,
+        });
       }
 
       this.options.logger.warn("[SystemMonitor] drop frame: probe execution failed", {
