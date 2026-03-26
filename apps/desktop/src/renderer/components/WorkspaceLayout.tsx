@@ -305,7 +305,7 @@ export const WorkspaceLayout = ({
     const [sessionContextMenu, setSessionContextMenu] =
         useState<SessionTabContextMenuState | null>(null);
     const bottomPanelRef = usePanelRef();
-    const syncingBottomPanelRef = useRef(false);
+    const lastExpandedSizeRef = useRef("32%");
     const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
     const resizeFitRafRef = useRef(0);
     const commandHistory = useCommandHistory();
@@ -463,22 +463,12 @@ export const WorkspaceLayout = ({
 
     useEffect(() => {
         const panel = bottomPanelRef.current;
-        if (!panel) {
-            return;
+        if (!panel) return;
+        if (bottomCollapsed && !panel.isCollapsed()) {
+            panel.resize("4%");
         }
-        if (bottomCollapsed !== panel.isCollapsed()) {
-            syncingBottomPanelRef.current = true;
-            if (bottomCollapsed) {
-                panel.collapse();
-            } else {
-                panel.expand();
-            }
-            const rafId = requestAnimationFrame(() => {
-                syncingBottomPanelRef.current = false;
-            });
-            return () => cancelAnimationFrame(rafId);
-        }
-    }, [bottomCollapsed, bottomPanelRef]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         cancelAnimationFrame(resizeFitRafRef.current);
@@ -488,21 +478,21 @@ export const WorkspaceLayout = ({
     }, [bottomCollapsed]);
 
     const syncBottomCollapsed = useCallback(
-        (_panelSize?: unknown, _panelId?: string | number, prevPanelSize?: unknown) => {
-        if (prevPanelSize === undefined) {
-            return;
-        }
+        (panelSize?: unknown, _panelId?: string | number, prevPanelSize?: unknown) => {
+        if (prevPanelSize === undefined) return;
         const collapsed = bottomPanelRef.current?.isCollapsed() ?? false;
         setBottomCollapsed(collapsed);
-        if (syncingBottomPanelRef.current) {
-            syncingBottomPanelRef.current = false;
-        } else {
-            persistWorkspacePanelState(
-                getWorkspaceLayoutStorage(),
-                BOTTOM_WORKBENCH_STORAGE_KEY,
-                collapsed,
-            );
+        if (!collapsed && panelSize && typeof panelSize === "object" && "asPercentage" in panelSize) {
+            const pct = (panelSize as { asPercentage: number }).asPercentage;
+            if (pct > 5) {
+                lastExpandedSizeRef.current = `${pct}%`;
+            }
         }
+        persistWorkspacePanelState(
+            getWorkspaceLayoutStorage(),
+            BOTTOM_WORKBENCH_STORAGE_KEY,
+            collapsed,
+        );
         cancelAnimationFrame(resizeFitRafRef.current);
         resizeFitRafRef.current = requestAnimationFrame(() => {
             terminalPaneRef.current?.fit();
@@ -518,22 +508,23 @@ export const WorkspaceLayout = ({
         setLeftSidebarCollapsed(collapsed);
     }, []);
 
-    const setBottomCollapsedWithPersistence = useCallback((collapsed: boolean) => {
-        persistWorkspacePanelState(
-            getWorkspaceLayoutStorage(),
-            BOTTOM_WORKBENCH_STORAGE_KEY,
-            collapsed,
-        );
-        setBottomCollapsed(collapsed);
-    }, []);
-
     const handleToggleLeftSidebar = useCallback(() => {
         setLeftSidebarCollapsedWithPersistence(!leftSidebarCollapsed);
     }, [leftSidebarCollapsed, setLeftSidebarCollapsedWithPersistence]);
 
     const handleToggleBottomWorkbench = useCallback(() => {
-        setBottomCollapsedWithPersistence(!bottomCollapsed);
-    }, [bottomCollapsed, setBottomCollapsedWithPersistence]);
+        const panel = bottomPanelRef.current;
+        if (!panel) return;
+        if (panel.isCollapsed()) {
+            panel.resize(lastExpandedSizeRef.current);
+        } else {
+            const size = panel.getSize();
+            if (size && size.asPercentage > 5) {
+                lastExpandedSizeRef.current = `${size.asPercentage}%`;
+            }
+            panel.resize("4%");
+        }
+    }, [bottomPanelRef]);
 
     const collapsedTransferCount = transferTasks.length > 99 ? "99+" : String(transferTasks.length);
 
