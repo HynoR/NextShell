@@ -482,6 +482,7 @@ export interface AppPreferences {
     /** 审计日志保留天数，0 表示永不清理 */
     retentionDays: number;
   };
+  ai: AiPreferences;
 }
 
 export interface AppPreferencesPatch {
@@ -547,6 +548,13 @@ export interface AppPreferencesPatch {
   audit?: {
     enabled?: boolean;
     retentionDays?: number;
+  };
+  ai?: {
+    enabled?: boolean;
+    activeProviderId?: string;
+    providers?: AiProviderConfig[];
+    systemPromptOverride?: string;
+    executionTimeoutSec?: number;
   };
 }
 
@@ -635,6 +643,135 @@ export interface ConnectionImportResult {
   errors: string[];
 }
 
+// ────── AI Assistant ──────
+
+export type AiProviderType = "openai" | "anthropic" | "gemini";
+
+export interface AiProviderConfig {
+  id: string;
+  type: AiProviderType;
+  name: string;
+  baseUrl: string;
+  model: string;
+  /** secret:// 引用，密钥不明文存储 */
+  apiKeyRef?: string;
+  enabled: boolean;
+}
+
+export interface AiPreferences {
+  enabled: boolean;
+  activeProviderId?: string;
+  providers: AiProviderConfig[];
+  systemPromptOverride?: string;
+  /** 命令执行超时（秒） */
+  executionTimeoutSec: number;
+  /** 模型请求超时（秒） */
+  providerRequestTimeoutSec: number;
+  /** 模型请求失败后的最大重试次数 */
+  providerMaxRetries: number;
+}
+
+export type AiChatRole = "user" | "assistant" | "system";
+export type AiMessageKind = "chat" | "execution_result";
+export type AiMessageType = "user_prompt" | "assistant_reply" | "execution_result" | "system_note";
+
+type AiMessageRoleLike = {
+  role: AiChatRole;
+  type?: AiMessageType;
+  kind?: AiMessageKind;
+};
+
+export const resolveAiMessageType = (message: AiMessageRoleLike): AiMessageType => {
+  if (message.type) return message.type;
+  if (message.kind === "execution_result") return "execution_result";
+  if (message.role === "assistant") return "assistant_reply";
+  if (message.role === "system") return "system_note";
+  return "user_prompt";
+};
+
+export const isAiExecutionResultMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "execution_result";
+};
+
+export const isAiUserPromptMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "user_prompt";
+};
+
+export const isAiAssistantReplyMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "assistant_reply";
+};
+
+export const isAiSystemNoteMessage = (message: AiMessageRoleLike): boolean => {
+  return resolveAiMessageType(message) === "system_note";
+};
+
+export const getAiMessageCanonicalRole = (message: AiMessageRoleLike): AiChatRole => {
+  const type = resolveAiMessageType(message);
+  if (type === "assistant_reply") return "assistant";
+  if (type === "user_prompt") return "user";
+  return "system";
+};
+
+export const getAiMessageModelRole = (message: AiMessageRoleLike): AiChatRole => {
+  const type = resolveAiMessageType(message);
+  if (type === "assistant_reply") return "assistant";
+  if (type === "system_note") return "system";
+  return "user";
+};
+
+export interface AiChatMessage {
+  id: string;
+  role: AiChatRole;
+  /** 业务语义字段，前端与历史恢复逻辑应优先使用它判断消息类型 */
+  type: AiMessageType;
+  /** 兼容旧历史结构，新增写入不再依赖该字段 */
+  kind?: AiMessageKind;
+  content: string;
+  timestamp: string;
+  /** 若包含执行计划，存储在此 */
+  plan?: AiExecutionPlan;
+  /** 执行进度快照 */
+  executionProgress?: AiExecutionProgress;
+}
+
+export interface AiExecutionStep {
+  step: number;
+  command: string;
+  description: string;
+  risky: boolean;
+}
+
+export interface AiExecutionPlan {
+  steps: AiExecutionStep[];
+  summary: string;
+}
+
+export type AiStepStatus = "pending" | "running" | "success" | "failed" | "skipped";
+
+export interface AiStepResult {
+  step: number;
+  status: AiStepStatus;
+  output?: string;
+  error?: string;
+}
+
+export interface AiExecutionProgress {
+  planSummary: string;
+  steps: AiStepResult[];
+  currentStep: number;
+  completed: boolean;
+}
+
+export interface AiConversation {
+  id: string;
+  title: string;
+  messages: AiChatMessage[];
+  sessionId?: string;
+  connectionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   transfer: {
     uploadDefaultDir: "~",
@@ -698,6 +835,15 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   audit: {
     enabled: false,
     retentionDays: 7
+  },
+  ai: {
+    enabled: false,
+    activeProviderId: undefined,
+    providers: [],
+    systemPromptOverride: undefined,
+    executionTimeoutSec: 30,
+    providerRequestTimeoutSec: 30,
+    providerMaxRetries: 1
   }
 };
 
