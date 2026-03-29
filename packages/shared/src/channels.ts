@@ -122,5 +122,15 @@ export const IPCChannel = {
   RecycleBinClear: "nextshell:recycle-bin:clear",
 
   // ── Resource Operations (SSH Key) ──
-  ResourceCopySshKey: "nextshell:resource:copy-ssh-key"
+  ResourceCopySshKey: "nextshell:resource:copy-ssh-key",
+
+  // ── AI Assistant ──
+  AiChat: "nextshell:ai:chat",
+  AiApprove: "nextshell:ai:approve",
+  AiAbort: "nextshell:ai:abort",
+  AiHistory: "nextshell:ai:history",
+  AiProviderTest: "nextshell:ai:provider:test",
+  AiProviderSetApiKey: "nextshell:ai:provider:set-api-key",
+  AiStreamEvent: "nextshell:ai:stream:event",
+  AiProgressEvent: "nextshell:ai:progress:event"
 } as const;
