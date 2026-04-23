@@ -105,7 +105,13 @@ import {
   recycleBinListSchema,
   recycleBinRestoreSchema,
   recycleBinPurgeSchema,
-  recycleBinClearSchema
+  recycleBinClearSchema,
+  aiChatSchema,
+  aiApproveSchema,
+  aiAbortSchema,
+  aiHistorySchema,
+  aiProviderTestSchema,
+  aiProviderSetApiKeySchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 
@@ -738,5 +744,37 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.RecycleBinClear, (_event, payload) => {
     parsePayload(recycleBinClearSchema, payload ?? {}, "清空回收站");
     return services.recycleBinClear();
+  });
+
+  // ─── AI Assistant ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPCChannel.AiChat, (event, payload) => {
+    const input = parsePayload(aiChatSchema, payload, "AI 对话");
+    return services.aiChat(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.AiApprove, (event, payload) => {
+    const input = parsePayload(aiApproveSchema, payload, "AI 批准执行");
+    return services.aiApprove(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.AiAbort, (event, payload) => {
+    const input = parsePayload(aiAbortSchema, payload, "AI 中止");
+    return services.aiAbort(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.AiHistory, (event, payload) => {
+    const input = parsePayload(aiHistorySchema, payload ?? {}, "AI 对话历史");
+    return services.aiHistory(event.sender, input);
+  });
+
+  ipcMain.handle(IPCChannel.AiProviderTest, (_event, payload) => {
+    const input = parsePayload(aiProviderTestSchema, payload, "AI 提供商测试");
+    return services.aiTestProvider(input);
+  });
+
+  ipcMain.handle(IPCChannel.AiProviderSetApiKey, (_event, payload) => {
+    const input = parsePayload(aiProviderSetApiKeySchema, payload, "AI 设置密钥");
+    return services.aiSetApiKey(input);
   });
 };
