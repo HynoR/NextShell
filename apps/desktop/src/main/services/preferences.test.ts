@@ -124,3 +124,22 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
     "mergePreferences should keep requested localShell mode when only path is invalid"
   );
 })();
+
+(() => {
+  const merged = mergePreferences(DEFAULT_APP_PREFERENCES, {
+    ai: {
+      persistHistory: false
+    }
+  });
+
+  assertEqual(
+    merged.ai.persistHistory,
+    false,
+    "mergePreferences should update ai persistHistory"
+  );
+  assertEqual(
+    merged.ai.executionTimeoutSec,
+    DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec,
+    "mergePreferences should preserve other ai settings when persistHistory changes"
+  );
+})();

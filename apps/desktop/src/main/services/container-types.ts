@@ -1,5 +1,6 @@
 import type { WebContents } from "electron";
 import type {
+  AiConversation,
   AppPreferences,
   BackupArchiveMeta,
   BackupConflictPolicy,
@@ -79,6 +80,13 @@ import type {
   ResourceCopySshKeyInput,
   RecycleBinRestoreInput,
   RecycleBinPurgeInput,
+  AiChatInput,
+  AiApproveInput,
+  AiAbortInput,
+  AiHistoryInput,
+  AiExportConversationInput,
+  AiProviderTestInput,
+  AiProviderSetApiKeyInput,
 } from "../../../../../packages/shared/src/index";
 import type { SystemMonitorController } from "./monitor/system-monitor-controller";
 import type { ProcessMonitorController } from "./monitor/process-monitor-controller";
@@ -321,6 +329,18 @@ export interface ServiceContainer {
   recycleBinRestore: (input: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
   recycleBinPurge: (input: RecycleBinPurgeInput) => void;
   recycleBinClear: () => void;
+
+  // AI Assistant
+  aiChat: (sender: WebContents, input: AiChatInput) => Promise<{ conversationId: string }>;
+  aiApprove: (sender: WebContents, input: AiApproveInput) => Promise<{ ok: true }>;
+  aiAbort: (sender: WebContents, input: AiAbortInput) => { ok: true };
+  aiHistory: (sender: WebContents, input: AiHistoryInput) => AiConversation[];
+  aiExportConversation: (
+    sender: WebContents,
+    input: AiExportConversationInput
+  ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+  aiTestProvider: (input: AiProviderTestInput) => Promise<{ ok: boolean; error?: string }>;
+  aiSetApiKey: (input: AiProviderSetApiKeyInput) => Promise<void>;
 
   dispose: () => Promise<void>;
 }

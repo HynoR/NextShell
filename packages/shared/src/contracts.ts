@@ -408,6 +408,8 @@ const localShellSchema = z.object({
   }
 });
 
+export const aiProviderTypeSchema = z.enum(["openai", "anthropic", "gemini"]);
+
 export const appPreferencesSchema = z.object({
   transfer: z.object({
     uploadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.uploadDefaultDir),
@@ -467,7 +469,25 @@ export const appPreferencesSchema = z.object({
   audit: z.object({
     enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.audit.enabled),
     retentionDays: z.coerce.number().int().min(0).max(365).default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
-  }).default(DEFAULT_APP_PREFERENCES.audit)
+  }).default(DEFAULT_APP_PREFERENCES.audit),
+  ai: z.object({
+    enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ai.enabled),
+    persistHistory: z.boolean().default(DEFAULT_APP_PREFERENCES.ai.persistHistory),
+    activeProviderId: z.string().optional(),
+    providers: z.array(z.object({
+      id: z.string(),
+      type: aiProviderTypeSchema,
+      name: z.string(),
+      baseUrl: z.string(),
+      model: z.string(),
+      apiKeyRef: z.string().optional(),
+      enabled: z.boolean()
+    })).default(DEFAULT_APP_PREFERENCES.ai.providers),
+    systemPromptOverride: z.string().optional(),
+    executionTimeoutSec: z.coerce.number().int().min(5).max(300).default(DEFAULT_APP_PREFERENCES.ai.executionTimeoutSec),
+    providerRequestTimeoutSec: z.coerce.number().int().min(5).max(120).default(DEFAULT_APP_PREFERENCES.ai.providerRequestTimeoutSec),
+    providerMaxRetries: z.coerce.number().int().min(0).max(3).default(DEFAULT_APP_PREFERENCES.ai.providerMaxRetries)
+  }).default(DEFAULT_APP_PREFERENCES.ai)
 }).default(DEFAULT_APP_PREFERENCES);
 
 export const appPreferencesPatchSchema = z.object({
@@ -541,6 +561,24 @@ export const appPreferencesPatchSchema = z.object({
   audit: z.object({
     enabled: z.boolean().optional(),
     retentionDays: z.coerce.number().int().min(0).max(365).optional()
+  }).optional(),
+  ai: z.object({
+    enabled: z.boolean().optional(),
+    persistHistory: z.boolean().optional(),
+    activeProviderId: z.string().optional(),
+    providers: z.array(z.object({
+      id: z.string(),
+      type: aiProviderTypeSchema,
+      name: z.string(),
+      baseUrl: z.string(),
+      model: z.string(),
+      apiKeyRef: z.string().optional(),
+      enabled: z.boolean()
+    })).optional(),
+    systemPromptOverride: z.string().optional(),
+    executionTimeoutSec: z.coerce.number().int().min(5).max(300).optional(),
+    providerRequestTimeoutSec: z.coerce.number().int().min(5).max(120).optional(),
+    providerMaxRetries: z.coerce.number().int().min(0).max(3).optional()
   }).optional()
 });
 
@@ -1038,3 +1076,85 @@ export type RecycleBinRestoreInput = z.infer<typeof recycleBinRestoreSchema>;
 export type RecycleBinPurgeInput = z.infer<typeof recycleBinPurgeSchema>;
 export type RecycleBinClearInput = z.infer<typeof recycleBinClearSchema>;
 export type ResourceCopySshKeyInput = z.infer<typeof resourceCopySshKeySchema>;
+
+// ─── AI Assistant ────────────────────────────────────────────────────────
+
+export const aiChatSchema = z.object({
+  conversationId: z.string().uuid().optional(),
+  message: z.string().trim().min(1),
+  sessionId: z.string().uuid().optional(),
+  connectionId: z.string().uuid().optional(),
+  clientId: z.string().trim().min(1).optional(),
+});
+
+export const aiApproveSchema = z.object({
+  conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
+  plan: z.object({
+    steps: z.array(z.object({
+      step: z.number(),
+      command: z.string(),
+      description: z.string(),
+      risky: z.boolean(),
+    })),
+    summary: z.string(),
+  }).optional(),
+});
+
+export const aiAbortSchema = z.object({
+  conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
+});
+
+export const aiHistorySchema = z.object({
+  connectionId: z.string().uuid().optional(),
+  clientId: z.string().trim().min(1).optional(),
+});
+
+export const aiExportConversationSchema = z.object({
+  conversationId: z.string().uuid(),
+  clientId: z.string().trim().min(1).optional(),
+});
+
+export const aiProviderTestSchema = z.object({
+  type: aiProviderTypeSchema,
+  baseUrl: z.string().trim().min(1),
+  model: z.string().trim().min(1),
+  apiKey: z.string().min(1),
+});
+
+export const aiProviderSetApiKeySchema = z.object({
+  providerId: z.string().trim().min(1),
+  apiKey: z.string().min(1),
+});
+
+export type AiChatInput = z.infer<typeof aiChatSchema>;
+export type AiApproveInput = z.infer<typeof aiApproveSchema>;
+export type AiAbortInput = z.infer<typeof aiAbortSchema>;
+export type AiHistoryInput = z.infer<typeof aiHistorySchema>;
+export type AiExportConversationInput = z.infer<typeof aiExportConversationSchema>;
+export type AiProviderTestInput = z.infer<typeof aiProviderTestSchema>;
+export type AiProviderSetApiKeyInput = z.infer<typeof aiProviderSetApiKeySchema>;
+
+export interface AiStreamEvent {
+  conversationId: string;
+  type: "token" | "plan" | "done" | "error";
+  token?: string;
+  fullContent?: string;
+  plan?: {
+    steps: Array<{ step: number; command: string; description: string; risky: boolean }>;
+    summary: string;
+  };
+  error?: string;
+}
+
+export interface AiProgressEvent {
+  conversationId: string;
+  type: "step_start" | "step_output" | "step_done" | "all_done" | "analysis_start" | "error";
+  step?: number;
+  command?: string;
+  output?: string;
+  status?: "running" | "success" | "failed";
+  error?: string;
+  summary?: string;
+}

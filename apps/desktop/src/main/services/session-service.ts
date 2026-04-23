@@ -4,6 +4,7 @@ import type { WebContents } from "electron";
 import { spawn as spawnPty } from "node-pty";
 import type {
   ConnectionProfile,
+  CommandExecutionResult,
   SessionDescriptor,
   SessionStatus,
 } from "@nextshell/core";
@@ -47,6 +48,20 @@ export interface SessionServiceOptions {
   persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
 }
 
+interface SessionExecOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+interface SessionVisibleFilter {
+  wrappedCommand: string | null;
+  startSentinel: string;
+  endPrefix: string;
+  endSuffix: string;
+  buffer: string;
+  suppressNextNewline: boolean;
+}
+
 export class SessionService {
   private readonly connections: CachedConnectionRepository;
   private readonly activeSessions: Map<string, ActiveSession>;
@@ -63,6 +78,10 @@ export class SessionService {
   private readonly clearMonitorSuspension: (connectionId: string) => void;
   private readonly warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
   private readonly persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
+  private readonly sessionOutputListeners = new Map<string, Set<(chunk: string) => void>>();
+  private readonly sessionCloseListeners = new Map<string, Set<(reason?: string) => void>>();
+  private readonly sessionVisibleFilters = new Map<string, SessionVisibleFilter>();
+  private readonly sessionExecLocks = new Set<string>();
 
   constructor(options: SessionServiceOptions) {
     this.connections = options.connections;
@@ -179,11 +198,17 @@ export class SessionService {
         if (!active) {
           return;
         }
+        const decodedChunk = decodeTerminalData(chunk, active.terminalEncoding);
+        this.emitSessionOutput(descriptor.id, decodedChunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, decodedChunk);
+        if (!visibleChunk) {
+          return;
+        }
 
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decodeTerminalData(chunk, active.terminalEncoding),
+          chunk: visibleChunk,
           onPause: () => shell.pause(),
           onResume: () => shell.resume(),
         });
@@ -194,10 +219,16 @@ export class SessionService {
         if (!active) {
           return;
         }
+        const decodedChunk = decodeTerminalData(chunk, active.terminalEncoding);
+        this.emitSessionOutput(descriptor.id, decodedChunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, decodedChunk);
+        if (!visibleChunk) {
+          return;
+        }
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk: decodeTerminalData(chunk, active.terminalEncoding),
+          chunk: visibleChunk,
           onPause: () => shell.pause(),
           onResume: () => shell.resume(),
         });
@@ -339,11 +370,16 @@ export class SessionService {
         if (!active || active.kind !== "local") {
           return;
         }
+        this.emitSessionOutput(descriptor.id, chunk);
+        const visibleChunk = this.transformVisibleSessionOutput(descriptor.id, chunk);
+        if (!visibleChunk) {
+          return;
+        }
 
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,
-          chunk,
+          chunk: visibleChunk,
           onPause: () => pty.pause(),
           onResume: () => pty.resume(),
         });
@@ -420,6 +456,144 @@ export class SessionService {
     return { ok: true };
   }
 
+  async execCommandInSession(
+    sessionId: string,
+    command: string,
+    options?: SessionExecOptions,
+  ): Promise<CommandExecutionResult> {
+    const active = this.activeSessions.get(sessionId);
+    if (!active) {
+      throw new Error("Session not found");
+    }
+    if (active.kind !== "remote") {
+      throw new Error("AI 仅支持在远端终端会话中执行命令");
+    }
+    if (this.sessionExecLocks.has(sessionId)) {
+      throw new Error("当前终端正在执行其他 AI 命令，请稍后再试");
+    }
+
+    this.sessionExecLocks.add(sessionId);
+
+    const markerId = randomUUID().replace(/-/g, "");
+    const startSentinel = this.buildSessionExecSentinel(`NEXTSHELL_AI_START_${markerId}`);
+    const endPrefix = this.buildSessionExecSentinel(`NEXTSHELL_AI_END_${markerId}:`);
+    const endSuffix = "\u001b\\";
+    const wrappedCommand = [
+      `printf '%b' '${this.encodeShellBytes(startSentinel)}'`,
+      `eval -- ${this.escapeShellArg(command)}`,
+      "__ns_ai_exit=$?",
+      `printf '%b%s%b' '${this.encodeShellBytes(endPrefix)}' "$__ns_ai_exit" '${this.encodeShellBytes(endSuffix)}'`,
+    ].join("; ");
+    const chunks: string[] = [];
+
+    return await new Promise<CommandExecutionResult>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = (): void => {
+        if (timeoutId) clearTimeout(timeoutId);
+        this.removeSessionOutputListener(sessionId, onChunk);
+        this.removeSessionCloseListener(sessionId, onSessionClose);
+        options?.signal?.removeEventListener("abort", onAbort);
+        this.flushSessionVisibleFilter(sessionId);
+        this.sessionVisibleFilters.delete(sessionId);
+        this.sessionExecLocks.delete(sessionId);
+      };
+
+      const finalize = (
+        callback: () => void
+      ): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        callback();
+      };
+
+      const extractCommandResult = (): CommandExecutionResult | undefined => {
+        const rawOutput = chunks.join("");
+        const startIndex = rawOutput.indexOf(startSentinel);
+        if (startIndex < 0) {
+          return undefined;
+        }
+        const payloadStart = startIndex + startSentinel.length;
+        const endIndex = rawOutput.indexOf(endPrefix, payloadStart);
+        if (endIndex < 0) {
+          return undefined;
+        }
+        const exitStart = endIndex + endPrefix.length;
+        const exitEnd = rawOutput.indexOf(endSuffix, exitStart);
+        if (exitEnd < 0) {
+          return undefined;
+        }
+
+        const payload = rawOutput.slice(payloadStart, endIndex);
+        const exitCodeRaw = rawOutput.slice(exitStart, exitEnd).trim();
+        const parsedExitCode = Number.parseInt(exitCodeRaw, 10);
+        const normalizedOutput = payload
+          .replace(/^\r?\n/, "")
+          .replace(/\r?\n$/, "");
+
+        return {
+          connectionId: active.connectionId,
+          command,
+          stdout: normalizedOutput,
+          stderr: "",
+          exitCode: Number.isFinite(parsedExitCode) ? parsedExitCode : 1,
+          executedAt: new Date().toISOString(),
+        };
+      };
+
+      const onChunk = (chunk: string): void => {
+        chunks.push(chunk);
+        const result = extractCommandResult();
+        if (result) {
+          finalize(() => resolve(result));
+        }
+      };
+
+      const onAbort = (): void => {
+        this.interruptSession(sessionId);
+        finalize(() => reject(options?.signal?.reason ?? new DOMException("Aborted", "AbortError")));
+      };
+
+      const onSessionClose = (reason?: string): void => {
+        finalize(() => reject(new Error(reason ?? "终端会话已关闭，无法继续执行 AI 命令")));
+      };
+
+      this.addSessionOutputListener(sessionId, onChunk);
+      this.addSessionCloseListener(sessionId, onSessionClose);
+      this.sessionVisibleFilters.set(sessionId, {
+        wrappedCommand,
+        startSentinel,
+        endPrefix,
+        endSuffix,
+        buffer: "",
+        suppressNextNewline: false,
+      });
+      this.emitVisibleSessionCommand(sessionId, command);
+
+      if (options?.signal?.aborted) {
+        onAbort();
+        return;
+      }
+
+      options?.signal?.addEventListener("abort", onAbort, { once: true });
+
+      if (Number.isFinite(options?.timeoutMs) && (options?.timeoutMs ?? 0) > 0) {
+        timeoutId = setTimeout(() => {
+          this.interruptSession(sessionId);
+          finalize(() => reject(new Error("远端命令执行超时")));
+        }, options?.timeoutMs);
+      }
+
+      try {
+        this.writeSession(sessionId, `${wrappedCommand}\r`);
+      } catch (error) {
+        finalize(() => reject(error));
+      }
+    });
+  }
+
   resizeSession(
     sessionId: string,
     cols: number,
@@ -454,7 +628,12 @@ export class SessionService {
     this.sessionDataDispatcher.clear(sessionId);
     if (active.kind === "local") {
       active.pty.kill();
+      this.emitSessionClosed(sessionId, "终端会话已关闭");
       this.activeSessions.delete(sessionId);
+      this.sessionExecLocks.delete(sessionId);
+      this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
+      this.sessionOutputListeners.delete(sessionId);
       this.sendSessionStatus(active.sender, {
         sessionId,
         status: "disconnected",
@@ -474,7 +653,12 @@ export class SessionService {
       active.channel.stderr.removeAllListeners();
     }
     active.channel.end();
+    this.emitSessionClosed(sessionId, "终端会话已关闭");
     this.activeSessions.delete(sessionId);
+    this.sessionExecLocks.delete(sessionId);
+    this.sessionCloseListeners.delete(sessionId);
+    this.sessionVisibleFilters.delete(sessionId);
+    this.sessionOutputListeners.delete(sessionId);
     this.sendSessionStatus(active.sender, {
       sessionId,
       status: "disconnected",
@@ -537,6 +721,7 @@ export class SessionService {
     }
 
     active.descriptor.status = status;
+    this.emitSessionClosed(sessionId, reason);
     this.sessionDataDispatcher.closeWhenDrained(sessionId, () => {
       const drained = this.activeSessions.get(sessionId);
       if (!drained || drained.kind !== "remote") {
@@ -544,6 +729,10 @@ export class SessionService {
       }
 
       this.activeSessions.delete(sessionId);
+      this.sessionExecLocks.delete(sessionId);
+      this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
+      this.sessionOutputListeners.delete(sessionId);
       drained.descriptor.status = status;
       this.sendSessionStatus(drained.sender, { sessionId, status, reason });
       void this.closeConnectionIfIdle(drained.connectionId);
@@ -561,6 +750,7 @@ export class SessionService {
     }
 
     active.descriptor.status = status;
+    this.emitSessionClosed(sessionId, reason);
     this.sessionDataDispatcher.closeWhenDrained(sessionId, () => {
       const drained = this.activeSessions.get(sessionId);
       if (!drained || drained.kind !== "local") {
@@ -568,6 +758,10 @@ export class SessionService {
       }
 
       this.activeSessions.delete(sessionId);
+      this.sessionExecLocks.delete(sessionId);
+      this.sessionCloseListeners.delete(sessionId);
+      this.sessionVisibleFilters.delete(sessionId);
+      this.sessionOutputListeners.delete(sessionId);
       drained.descriptor.status = status;
       this.sendSessionStatus(drained.sender, { sessionId, status, reason });
       this.appendAuditLogIfEnabled({
@@ -577,5 +771,182 @@ export class SessionService {
         metadata: { sessionId, reason },
       });
     });
+  }
+
+  private addSessionOutputListener(sessionId: string, listener: (chunk: string) => void): void {
+    const listeners = this.sessionOutputListeners.get(sessionId) ?? new Set<(chunk: string) => void>();
+    listeners.add(listener);
+    this.sessionOutputListeners.set(sessionId, listeners);
+  }
+
+  private removeSessionOutputListener(sessionId: string, listener: (chunk: string) => void): void {
+    const listeners = this.sessionOutputListeners.get(sessionId);
+    if (!listeners) return;
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      this.sessionOutputListeners.delete(sessionId);
+    }
+  }
+
+  private emitSessionOutput(sessionId: string, chunk: string): void {
+    const listeners = this.sessionOutputListeners.get(sessionId);
+    if (!listeners || listeners.size === 0) return;
+    for (const listener of listeners) {
+      listener(chunk);
+    }
+  }
+
+  private addSessionCloseListener(sessionId: string, listener: (reason?: string) => void): void {
+    const listeners = this.sessionCloseListeners.get(sessionId) ?? new Set<(reason?: string) => void>();
+    listeners.add(listener);
+    this.sessionCloseListeners.set(sessionId, listeners);
+  }
+
+  private removeSessionCloseListener(sessionId: string, listener: (reason?: string) => void): void {
+    const listeners = this.sessionCloseListeners.get(sessionId);
+    if (!listeners) return;
+    listeners.delete(listener);
+    if (listeners.size === 0) {
+      this.sessionCloseListeners.delete(sessionId);
+    }
+  }
+
+  private emitSessionClosed(sessionId: string, reason?: string): void {
+    const listeners = this.sessionCloseListeners.get(sessionId);
+    if (!listeners || listeners.size === 0) return;
+    for (const listener of listeners) {
+      listener(reason);
+    }
+  }
+
+  private emitVisibleSessionCommand(sessionId: string, command: string): void {
+    this.pushSessionVisibleChunk(sessionId, `${command}\r\n`);
+  }
+
+  private flushSessionVisibleFilter(sessionId: string): void {
+    const filter = this.sessionVisibleFilters.get(sessionId);
+    if (!filter) {
+      return;
+    }
+    const visibleChunk = this.transformVisibleSessionOutput(sessionId, "", { flushAll: true });
+    if (visibleChunk) {
+      this.pushSessionVisibleChunk(sessionId, visibleChunk);
+    }
+  }
+
+  private pushSessionVisibleChunk(sessionId: string, chunk: string): void {
+    if (!chunk) {
+      return;
+    }
+    const active = this.activeSessions.get(sessionId);
+    if (!active) {
+      return;
+    }
+    this.sessionDataDispatcher.push({
+      streamId: sessionId,
+      sender: active.sender,
+      chunk,
+      onPause: () => undefined,
+      onResume: () => undefined,
+    });
+  }
+
+  private transformVisibleSessionOutput(
+    sessionId: string,
+    chunk: string,
+    options?: { flushAll?: boolean },
+  ): string {
+    const filter = this.sessionVisibleFilters.get(sessionId);
+    if (!filter) {
+      return chunk;
+    }
+
+    filter.buffer += chunk;
+    let output = filter.buffer;
+
+    if (filter.wrappedCommand) {
+      const wrappedIndex = output.indexOf(filter.wrappedCommand);
+      if (wrappedIndex >= 0) {
+        output = output.slice(0, wrappedIndex) + output.slice(wrappedIndex + filter.wrappedCommand.length);
+        filter.wrappedCommand = null;
+        filter.suppressNextNewline = true;
+      }
+    }
+
+    if (filter.suppressNextNewline) {
+      if (output.startsWith("\r\n")) {
+        output = output.slice(2);
+        filter.suppressNextNewline = false;
+      } else if (output.startsWith("\n") || output.startsWith("\r")) {
+        output = output.slice(1);
+        filter.suppressNextNewline = false;
+      }
+    }
+
+    output = output.split(filter.startSentinel).join("");
+
+    while (true) {
+      const startIndex = output.indexOf(filter.endPrefix);
+      if (startIndex < 0) {
+        break;
+      }
+      const endIndex = output.indexOf(filter.endSuffix, startIndex + filter.endPrefix.length);
+      if (endIndex < 0) {
+        break;
+      }
+      output = output.slice(0, startIndex) + output.slice(endIndex + filter.endSuffix.length);
+    }
+
+    if (options?.flushAll) {
+      if (filter.wrappedCommand) {
+        output = "";
+        filter.wrappedCommand = null;
+      }
+      if (filter.suppressNextNewline) {
+        output = output.replace(/^(?:\r\n|\n|\r)/, "");
+        filter.suppressNextNewline = false;
+      }
+      filter.buffer = "";
+      return output;
+    }
+
+    const tailLength = this.getSessionVisibleFilterTailLength(filter);
+    if (output.length <= tailLength) {
+      filter.buffer = output;
+      return "";
+    }
+
+    const visibleChunk = output.slice(0, output.length - tailLength);
+    filter.buffer = output.slice(output.length - tailLength);
+    return visibleChunk;
+  }
+
+  private getSessionVisibleFilterTailLength(filter: SessionVisibleFilter): number {
+    const echoTail = filter.wrappedCommand ? filter.wrappedCommand.length : 0;
+    const startTail = filter.startSentinel.length;
+    const endTail = filter.endPrefix.length + filter.endSuffix.length + 8;
+    return Math.max(echoTail, startTail, endTail);
+  }
+
+  private buildSessionExecSentinel(marker: string): string {
+    return `\u001bP${marker}\u001b\\`;
+  }
+
+  private encodeShellBytes(value: string): string {
+    return Array.from(value)
+      .map((char) => `\\${char.charCodeAt(0).toString(8).padStart(3, "0")}`)
+      .join("");
+  }
+
+  private interruptSession(sessionId: string): void {
+    try {
+      this.writeSession(sessionId, "\u0003");
+    } catch {
+      // 会话已关闭时无需重复抛错，后续由关闭回调收敛 Promise。
+    }
+  }
+
+  private escapeShellArg(arg: string): string {
+    return `'${arg.replace(/'/g, "'\\''")}'`;
   }
 }
