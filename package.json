@@ -11,8 +11,11 @@
     "setup": "bun install && bun run --cwd apps/desktop rebuild:native",
     "rebuild:native": "bun run --cwd apps/desktop rebuild:native",
     "dev": "bun run --cwd apps/desktop dev",
-    "build": "bun run --cwd apps/desktop build",
-    "typecheck": "bun run --cwd apps/desktop typecheck"
+    "build": "bun run --cwd apps/desktop build && bun run --cwd apps/mcp-ssh-proxy build",
+    "build:mcp-ssh-proxy": "bun run --cwd apps/mcp-ssh-proxy build",
+    "typecheck": "bun run --cwd apps/desktop typecheck && bun run --cwd packages/runtime typecheck && bun run --cwd apps/mcp-ssh-proxy typecheck",
+    "test:mcp-ssh-proxy": "bun run --cwd apps/mcp-ssh-proxy test",
+    "test:runtime": "bun run --cwd packages/runtime test"
   },
   "engines": {
     "bun": ">=1.1.0"

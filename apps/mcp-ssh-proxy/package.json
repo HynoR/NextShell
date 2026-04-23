@@ -1,0 +1,32 @@
+{
+  "name": "@nextshell/mcp-ssh-proxy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone MCP SSH proxy that reuses NextShell credentials",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "nextshell-mcp-ssh-proxy": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "mkdir -p dist && bun build ./src/index.ts --outfile dist/index.js --target node --format esm --external @modelcontextprotocol/sdk --external zod --external better-sqlite3 --external keytar --external ssh2 --external socks && node ./scripts/write-release-package-json.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@nextshell/core": "workspace:*",
+    "@nextshell/runtime": "workspace:*",
+    "@nextshell/security": "workspace:*",
+    "@nextshell/ssh": "workspace:*",
+    "@nextshell/storage": "workspace:*",
+    "ssh2": "^1.17.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/ssh2": "^1.15.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

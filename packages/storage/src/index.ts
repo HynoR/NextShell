@@ -33,8 +33,13 @@ import type { SecretStoreDB } from "../../security/src/index";
 
 const require = createRequire(import.meta.url);
 
+interface BetterSqlite3OpenOptions {
+  readonly?: boolean;
+  fileMustExist?: boolean;
+}
+
 interface BetterSqlite3Module {
-  new (filename: string): Database.Database;
+  new (filename: string, options?: BetterSqlite3OpenOptions): Database.Database;
 }
 
 interface ConnectionRow {
@@ -1303,13 +1308,25 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   private readonly db: Database.Database;
   private readonly resolvedDbPath: string;
   private secretStoreInstance: SQLiteSecretStore | undefined;
+  private readonly readonly: boolean;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options?: { readonly?: boolean; fileMustExist?: boolean }) {
     const DatabaseCtor = loadDatabaseDriver();
     const resolved = path.resolve(dbPath);
     this.resolvedDbPath = resolved;
-    this.db = new DatabaseCtor(resolved);
-    this.bootstrap();
+    this.readonly = options?.readonly ?? false;
+    this.db = new DatabaseCtor(
+      resolved,
+      this.readonly
+        ? {
+            readonly: true,
+            fileMustExist: options?.fileMustExist ?? true
+          }
+        : undefined
+    );
+    if (!this.readonly) {
+      this.bootstrap();
+    }
   }
 
   private bootstrap(): void {
