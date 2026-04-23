@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import type {
+  CloudSyncWorkspaceProfile,
   AuditLogRecord,
   ConnectionListQuery,
   ConnectionProfile,
+  OriginKind,
   MigrationRecord,
   ProxyProfile,
   SshKeyProfile,
 } from "@nextshell/core";
-import { LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
+import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import type {
   ConnectionUpsertInput,
   SessionAuthOverrideInput,
@@ -26,6 +28,7 @@ import type {
 } from "@nextshell/storage";
 import type { RemoteEditManager } from "./remote-edit-manager";
 import type { ActiveSession, ActiveRemoteSession, MonitorState } from "./container-types";
+import type { CloudSyncManager } from "./cloud-sync-manager";
 import { enforceZonePrefix } from "../../../../../packages/shared/src/constants";
 import { normalizeError } from "./container-utils";
 import { logger } from "../logger";
@@ -40,6 +43,7 @@ export interface ConnectionServiceOptions {
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   remoteEditManager: RemoteEditManager;
   monitorStates: Map<string, MonitorState>;
+  getCloudSyncManager?: () => CloudSyncManager | undefined;
   appendAuditLogIfEnabled: (payload: {
     action: string;
     level: "info" | "warn" | "error";
@@ -61,6 +65,59 @@ export class ConnectionService {
       throw new Error("Connection not found");
     }
     return connection;
+  }
+
+  private getCloudWorkspace(workspaceId: string | undefined): CloudSyncWorkspaceProfile | undefined {
+    if (!workspaceId) {
+      return undefined;
+    }
+    return this.options.getCloudSyncManager?.()
+      ?.listWorkspaces()
+      .find((workspace) => workspace.id === workspaceId);
+  }
+
+  private resolveResourceOrigin(
+    current: { originKind?: OriginKind; originScopeKey?: string; originWorkspaceId?: string; uuidInScope?: string; resourceId?: string; copiedFromResourceId?: string } | undefined,
+    workspaceId: string | undefined,
+  ): {
+    originKind: OriginKind;
+    originScopeKey: string;
+    originWorkspaceId?: string;
+    uuidInScope?: string;
+    resourceId?: string;
+    copiedFromResourceId?: string;
+  } {
+    const targetWorkspaceId = workspaceId ?? (current?.originKind === "cloud" ? current.originWorkspaceId : undefined);
+    if (!targetWorkspaceId) {
+      return {
+        originKind: "local",
+        originScopeKey: current?.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+        originWorkspaceId: undefined,
+        uuidInScope: current?.uuidInScope,
+        resourceId: current?.resourceId,
+        copiedFromResourceId: current?.copiedFromResourceId,
+      };
+    }
+
+    const workspace = this.getCloudWorkspace(targetWorkspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${targetWorkspaceId}`);
+    }
+
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName,
+    });
+    const uuidInScope = current?.uuidInScope ?? randomUUID();
+    return {
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: targetWorkspaceId,
+      uuidInScope,
+      resourceId: buildResourceId(scopeKey, uuidInScope),
+      copiedFromResourceId: current?.copiedFromResourceId,
+    };
   }
 
   // ── Connection CRUD ───────────────────────────────────────────────
@@ -86,6 +143,8 @@ export class ConnectionService {
     const authTypeChanged = Boolean(current && current.authType !== input.authType);
     const needsPasswordCredential = input.authType === "password" || input.authType === "interactive";
     const shouldDropPreviousCredential = input.authType === "agent" || authTypeChanged;
+    const origin = this.resolveResourceOrigin(current, input.workspaceId);
+    const targetScopeKey = origin.originScopeKey;
 
     if (input.authType === "privateKey" && !input.sshKeyId) {
       throw new Error("Private key auth requires selecting an SSH key.");
@@ -95,19 +154,21 @@ export class ConnectionService {
       if (!keyProfile) {
         throw new Error("Referenced SSH key not found.");
       }
-      // Cross-origin validation: SSH key must belong to the same origin scope
       if (input.authType === "privateKey") {
-        const connScopeKey = current?.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
         const keyScopeKey = keyProfile.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
-        if (connScopeKey !== keyScopeKey) {
+        if (keyScopeKey !== targetScopeKey) {
           throw new Error("禁止跨来源引用 SSH 密钥");
         }
       }
     }
+    const selectedProxy = input.proxyId ? proxyRepo.getById(input.proxyId) : undefined;
     if (input.proxyId) {
-      const proxyProfile = proxyRepo.getById(input.proxyId);
-      if (!proxyProfile) {
+      if (!selectedProxy) {
         throw new Error("Referenced proxy not found.");
+      }
+      const proxyScopeKey = selectedProxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+      if (proxyScopeKey !== targetScopeKey) {
+        throw new Error("禁止跨来源引用代理配置");
       }
     }
 
@@ -163,9 +224,22 @@ export class ConnectionService {
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
       lastConnectedAt: current?.lastConnectedAt,
+      resourceId: origin.resourceId,
+      uuidInScope: origin.uuidInScope,
+      originKind: origin.originKind,
+      originScopeKey: origin.originScopeKey,
+      originWorkspaceId: origin.originWorkspaceId,
+      sshKeyResourceId:
+        input.authType === "privateKey"
+          ? sshKeyRepo.getById(input.sshKeyId ?? "")?.resourceId
+          : undefined,
+      copiedFromResourceId: origin.copiedFromResourceId,
     };
 
     connections.save(profile);
+    if (profile.originKind === "cloud" && profile.originWorkspaceId) {
+      this.options.getCloudSyncManager?.()?.pushConnectionUpsert(profile);
+    }
     if (!profile.monitorSession) {
       await disposeAllMonitorSessions(profile.id);
     }
@@ -254,6 +328,7 @@ export class ConnectionService {
     const now = new Date().toISOString();
     const id = input.id ?? randomUUID();
     const current = sshKeyRepo.getById(id);
+    const origin = this.resolveResourceOrigin(current, input.workspaceId);
 
     // Store key content in vault
     let keyContentRef = current?.keyContentRef;
@@ -286,9 +361,18 @@ export class ConnectionService {
       passphraseRef,
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
+      resourceId: origin.resourceId,
+      uuidInScope: origin.uuidInScope,
+      originKind: origin.originKind,
+      originScopeKey: origin.originScopeKey,
+      originWorkspaceId: origin.originWorkspaceId,
+      copiedFromResourceId: origin.copiedFromResourceId,
     };
 
     sshKeyRepo.save(profile);
+    if (profile.originKind === "cloud" && profile.originWorkspaceId) {
+      this.options.getCloudSyncManager?.()?.pushSshKeyUpsert(profile);
+    }
     return profile;
   }
 
@@ -332,6 +416,7 @@ export class ConnectionService {
     const now = new Date().toISOString();
     const id = input.id ?? randomUUID();
     const current = proxyRepo.getById(id);
+    const origin = this.resolveResourceOrigin(current, input.workspaceId);
 
     // Store proxy credential in vault (optional)
     let credentialRef = current?.credentialRef;
@@ -355,9 +440,18 @@ export class ConnectionService {
       credentialRef,
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
+      resourceId: origin.resourceId,
+      uuidInScope: origin.uuidInScope,
+      originKind: origin.originKind,
+      originScopeKey: origin.originScopeKey,
+      originWorkspaceId: origin.originWorkspaceId,
+      copiedFromResourceId: origin.copiedFromResourceId,
     };
 
     proxyRepo.save(profile);
+    if (profile.originKind === "cloud" && profile.originWorkspaceId) {
+      this.options.getCloudSyncManager?.()?.pushProxyUpsert(profile);
+    }
     return profile;
   }
 
@@ -379,6 +473,9 @@ export class ConnectionService {
     }
 
     proxyRepo.remove(input.id);
+    if (profile.originKind === "cloud" && profile.originWorkspaceId) {
+      this.options.getCloudSyncManager?.()?.pushProxyDelete(profile);
+    }
     return { ok: true };
   }
 

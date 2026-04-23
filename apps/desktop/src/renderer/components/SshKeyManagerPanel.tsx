@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from "react";
-import { Form, Input, Modal, Tooltip, message } from "antd";
-import type { SshKeyProfile } from "@nextshell/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Form, Input, Modal, Select, Tooltip, Typography, message } from "antd";
+import type { CloudSyncWorkspaceProfile, SshKeyProfile } from "@nextshell/core";
 import { formatErrorMessage } from "../utils/errorMessage";
 
 interface SshKeyManagerPanelProps {
   sshKeys: SshKeyProfile[];
+  workspaces: CloudSyncWorkspaceProfile[];
   onReload: () => Promise<void>;
 }
 
@@ -13,14 +14,17 @@ interface SshKeyFormValues {
   name: string;
   keyContent?: string;
   passphrase?: string;
+  scope: "local" | "workspace";
+  workspaceId?: string;
 }
 
-export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProps) => {
+export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyManagerPanelProps) => {
   const [mode, setMode] = useState<"idle" | "new" | "edit">("idle");
   const [selectedKeyId, setSelectedKeyId] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<SshKeyFormValues>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const scope = Form.useWatch("scope", form) ?? "local";
 
   const handleImportFromFile = useCallback(() => {
     fileInputRef.current?.click();
@@ -50,10 +54,35 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
   );
 
   const selectedKey = sshKeys.find((k) => k.id === selectedKeyId);
+  const scopeLocked = mode === "edit" && selectedKey?.originKind === "cloud";
+  const workspaceNameById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])),
+    [workspaces]
+  );
+
+  useEffect(() => {
+    if (scope !== "workspace") {
+      return;
+    }
+    if (form.getFieldValue("workspaceId")) {
+      return;
+    }
+    if (selectedKey?.originWorkspaceId) {
+      form.setFieldValue("workspaceId", selectedKey.originWorkspaceId);
+      return;
+    }
+    if (workspaces[0]) {
+      form.setFieldValue("workspaceId", workspaces[0].id);
+    }
+  }, [form, scope, selectedKey?.originWorkspaceId, workspaces]);
 
   const handleNew = useCallback(() => {
     setSelectedKeyId(undefined);
     form.resetFields();
+    form.setFieldsValue({
+      scope: "local",
+      workspaceId: undefined
+    });
     setMode("new");
   }, [form]);
 
@@ -66,7 +95,9 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
         id: key.id,
         name: key.name,
         keyContent: undefined,
-        passphrase: undefined
+        passphrase: undefined,
+        scope: key.originKind === "cloud" ? "workspace" : "local",
+        workspaceId: key.originWorkspaceId
       });
       setMode("edit");
     },
@@ -129,6 +160,11 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
                 >
                   <i className="ri-key-2-line" aria-hidden="true" />
                   <span className="mgr-flat-item-name">{k.name}</span>
+                  <span className="mgr-flat-item-meta">
+                    {k.originKind === "cloud"
+                      ? (workspaceNameById.get(k.originWorkspaceId ?? "") ?? "Workspace")
+                      : "本地"}
+                  </span>
                 </button>
               ))}
             </div>
@@ -227,6 +263,10 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
                 message.error("新建密钥必须提供私钥内容。");
                 return;
               }
+              if (values.scope === "workspace" && !values.workspaceId) {
+                message.error("请选择目标 workspace。");
+                return;
+              }
 
               setSaving(true);
               try {
@@ -234,7 +274,8 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
                   id: selectedKeyId,
                   name: name,
                   keyContent,
-                  passphrase
+                  passphrase,
+                  workspaceId: values.scope === "workspace" ? values.workspaceId : undefined
                 });
                 await onReload();
                 message.success(selectedKeyId ? "密钥已更新" : "密钥已创建");
@@ -251,6 +292,34 @@ export const SshKeyManagerPanel = ({ sshKeys, onReload }: SshKeyManagerPanelProp
             }}
           >
             <div className="mgr-section-label">密钥信息</div>
+
+            <div className="flex gap-3 items-start">
+              <Form.Item label="保存位置" name="scope" className="flex-1">
+                <Select
+                  disabled={scopeLocked}
+                  options={[
+                    { label: "本地", value: "local" },
+                    { label: "Workspace", value: "workspace", disabled: workspaces.length === 0 }
+                  ]}
+                />
+              </Form.Item>
+              {scope === "workspace" ? (
+                <Form.Item label="Workspace" name="workspaceId" className="flex-1">
+                  <Select
+                    disabled={scopeLocked}
+                    options={workspaces.map((workspace) => ({
+                      label: workspace.displayName || workspace.workspaceName,
+                      value: workspace.id
+                    }))}
+                    notFoundContent={
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        暂无可用 workspace
+                      </Typography.Text>
+                    }
+                  />
+                </Form.Item>
+              ) : null}
+            </div>
 
             <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入密钥名称" }]}>
               <Input placeholder="my-server-key" />

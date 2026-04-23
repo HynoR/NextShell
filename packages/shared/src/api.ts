@@ -19,10 +19,14 @@ import type {
   ProxyProfile,
   RecycleBinEntry,
   RemoteFileEntry,
+  ScopedCommandItem,
   SavedCommand,
   SessionDescriptor,
   SystemInfoSnapshot,
-  SshKeyProfile
+  SshKeyProfile,
+  WorkspaceRepoCommitMeta,
+  WorkspaceRepoConflict,
+  WorkspaceRepoStatus
 } from "../../core/src/index";
 import type {
   AppPreferences,
@@ -124,6 +128,8 @@ import type {
   CloudSyncWorkspaceTokenDraft,
   CloudSyncWorkspaceExportTokenInput,
   CloudSyncWorkspaceParseTokenInput,
+  CloudSyncHistoryInput,
+  CloudSyncRestoreCommitInput,
   CloudSyncSyncNowInput,
   CloudSyncResolveConflictInput,
   ResourceCopyConnectionInput,
@@ -137,17 +143,9 @@ import type {
 
 export type SessionEventUnsubscribe = () => void;
 
-export type CloudSyncRuntimeState = "idle" | "syncing" | "error" | "disabled";
+export type CloudSyncRuntimeState = WorkspaceRepoStatus["state"];
 
-export interface CloudSyncRuntimeStatusEvent {
-  workspaceId: string;
-  state: CloudSyncRuntimeState;
-  lastSyncAt: string | null;
-  lastError: string | null;
-  pendingCount: number;
-  conflictCount: number;
-  currentVersion: number | null;
-}
+export type CloudSyncRuntimeStatusEvent = WorkspaceRepoStatus;
 
 export interface CloudSyncManagerStatusEvent {
   workspaces: CloudSyncRuntimeStatusEvent[];
@@ -255,6 +253,7 @@ export interface NextShellApi {
   };
   savedCommand: {
     list: (payload?: SavedCommandListInput) => Promise<SavedCommand[]>;
+    listScoped: () => Promise<ScopedCommandItem[]>;
     upsert: (payload: SavedCommandUpsertInput) => Promise<SavedCommand>;
     remove: (payload: SavedCommandRemoveInput) => Promise<{ ok: true }>;
   };
@@ -278,9 +277,11 @@ export interface NextShellApi {
     workspaceRemove: (payload: CloudSyncWorkspaceRemoveInput) => Promise<{ ok: true }>;
     workspaceExportToken: (payload: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
     workspaceParseToken: (payload: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
-    status: () => Promise<CloudSyncManagerStatusEvent>;
+    status: () => Promise<{ workspaces: WorkspaceRepoStatus[] }>;
     syncNow: (payload?: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
-    listConflicts: () => Promise<Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>>;
+    listConflicts: () => Promise<Array<WorkspaceRepoConflict & { workspaceName: string }>>;
+    history: (payload: CloudSyncHistoryInput) => Promise<WorkspaceRepoCommitMeta[]>;
+    restoreCommit: (payload: CloudSyncRestoreCommitInput) => Promise<{ ok: true }>;
     resolveConflict: (payload: CloudSyncResolveConflictInput) => Promise<{ ok: true }>;
     onStatus: (listener: (event: CloudSyncManagerStatusEvent) => void) => SessionEventUnsubscribe;
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;

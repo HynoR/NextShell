@@ -216,6 +216,7 @@ const api: NextShellApi = {
   },
   savedCommand: {
     list: (payload) => ipcRenderer.invoke(IPCChannel.SavedCommandList, payload ?? {}),
+    listScoped: () => ipcRenderer.invoke(IPCChannel.SavedCommandListScoped, {}),
     upsert: (payload) => ipcRenderer.invoke(IPCChannel.SavedCommandUpsert, payload),
     remove: (payload) => ipcRenderer.invoke(IPCChannel.SavedCommandRemove, payload)
   },
@@ -238,6 +239,8 @@ const api: NextShellApi = {
     status: () => ipcRenderer.invoke(IPCChannel.CloudSyncStatus, {}),
     syncNow: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncSyncNow, payload ?? {}),
     listConflicts: () => ipcRenderer.invoke(IPCChannel.CloudSyncListConflicts, {}),
+    history: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncHistory, payload),
+    restoreCommit: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncRestoreCommit, payload),
     resolveConflict: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncResolveConflict, payload),
     onStatus: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: CloudSyncManagerStatusEvent) => {

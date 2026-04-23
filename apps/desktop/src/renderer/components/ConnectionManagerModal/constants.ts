@@ -38,6 +38,7 @@ export const FIELD_TAB_MAP: Record<string, FormTab> = {
   hostFingerprint: "basic",
   strictHostKeyChecking: "basic",
   groupPath: "property",
+  workspaceId: "property",
   tags: "property",
   notes: "property",
   favorite: "property",
@@ -60,6 +61,7 @@ export const DEFAULT_VALUES = {
   groupPath: "/server",
   groupZone: CONNECTION_ZONES.SERVER as string,
   groupSubPath: "",
+  workspaceId: undefined,
   tags: [],
   favorite: false,
   monitorSession: true

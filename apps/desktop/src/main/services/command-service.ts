@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import type {
   BatchCommandExecutionResult,
   BatchCommandResultItem,
   CommandExecutionResult,
   CommandHistoryEntry,
   CommandTemplateParam,
+  CloudSyncWorkspaceProfile,
   ConnectionProfile,
+  ScopedCommandItem,
   SavedCommand,
 } from "@nextshell/core";
 import type { SshConnection } from "@nextshell/ssh";
@@ -26,6 +29,8 @@ interface CommandServiceOptions {
   connections: CachedConnectionRepository;
   getConnectionOrThrow: (id: string) => ConnectionProfile;
   ensureConnection: (connectionId: string) => Promise<SshConnection>;
+  listWorkspaces: () => CloudSyncWorkspaceProfile[];
+  markWorkspaceCommandsDirty: (workspaceId: string) => void;
   appendAuditLogIfEnabled: (payload: {
     action: string;
     level: "info" | "warn" | "error";
@@ -39,12 +44,16 @@ export class CommandService {
   private readonly connections: CachedConnectionRepository;
   private readonly getConnectionOrThrow: (id: string) => ConnectionProfile;
   private readonly ensureConnection: (connectionId: string) => Promise<SshConnection>;
+  private readonly listWorkspaces: () => CloudSyncWorkspaceProfile[];
+  private readonly markWorkspaceCommandsDirty: (workspaceId: string) => void;
   private readonly appendAuditLogIfEnabled: CommandServiceOptions["appendAuditLogIfEnabled"];
 
   constructor(options: CommandServiceOptions) {
     this.connections = options.connections;
     this.getConnectionOrThrow = options.getConnectionOrThrow;
     this.ensureConnection = options.ensureConnection;
+    this.listWorkspaces = options.listWorkspaces;
+    this.markWorkspaceCommandsDirty = options.markWorkspaceCommandsDirty;
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
   }
 
@@ -206,10 +215,76 @@ export class CommandService {
   }
 
   listSavedCommands(query?: SavedCommandListInput): SavedCommand[] {
+    if (query?.workspaceId) {
+      return this.connections.listWorkspaceCommands(query.workspaceId).map((command) => ({
+        id: command.id,
+        name: command.name,
+        description: command.description,
+        group: command.group,
+        command: command.command,
+        isTemplate: command.isTemplate,
+        createdAt: command.createdAt,
+        updatedAt: command.updatedAt,
+      }));
+    }
     return this.connections.listSavedCommands(query ?? {});
   }
 
+  listScopedSavedCommands(): ScopedCommandItem[] {
+    const workspaceNameById = new Map(
+      this.listWorkspaces().map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])
+    );
+    const local = this.connections.listSavedCommands({}).map((command) => ({
+      ...command,
+      scope: "local" as const,
+    }));
+    const workspaceScoped = this.listWorkspaces().flatMap((workspace) =>
+      this.connections.listWorkspaceCommands(workspace.id).map((command) => ({
+        id: command.id,
+        name: command.name,
+        description: command.description,
+        group: command.group,
+        command: command.command,
+        isTemplate: command.isTemplate,
+        createdAt: command.createdAt,
+        updatedAt: command.updatedAt,
+        scope: "workspace" as const,
+        workspaceId: workspace.id,
+        workspaceName: workspaceNameById.get(workspace.id),
+      }))
+    );
+    return [...local, ...workspaceScoped];
+  }
+
   upsertSavedCommand(input: SavedCommandUpsertInput): SavedCommand {
+    if (input.workspaceId) {
+      const existing = input.id
+        ? this.connections.listWorkspaceCommands(input.workspaceId).find((item) => item.id === input.id)
+        : undefined;
+      const now = new Date().toISOString();
+      const saved = this.connections.upsertWorkspaceCommand({
+        id: input.id ?? randomUUID(),
+        workspaceId: input.workspaceId,
+        name: input.name,
+        description: input.description,
+        group: input.group,
+        command: input.command,
+        isTemplate: input.isTemplate,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      });
+      this.markWorkspaceCommandsDirty(input.workspaceId);
+      return {
+        id: saved.id,
+        name: saved.name,
+        description: saved.description,
+        group: saved.group,
+        command: saved.command,
+        isTemplate: saved.isTemplate,
+        createdAt: saved.createdAt,
+        updatedAt: saved.updatedAt,
+      };
+    }
     return this.connections.upsertSavedCommand({
       id: input.id,
       name: input.name,
@@ -221,6 +296,11 @@ export class CommandService {
   }
 
   removeSavedCommand(input: SavedCommandRemoveInput): { ok: true } {
+    if (input.workspaceId) {
+      this.connections.removeWorkspaceCommand(input.workspaceId, input.id);
+      this.markWorkspaceCommandsDirty(input.workspaceId);
+      return { ok: true };
+    }
     this.connections.clearTemplateParams(input.id);
     this.connections.removeSavedCommand(input.id);
     return { ok: true };

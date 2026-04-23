@@ -76,6 +76,8 @@ import {
   cloudSyncStatusSchema,
   cloudSyncSyncNowSchema,
   cloudSyncListConflictsSchema,
+  cloudSyncHistorySchema,
+  cloudSyncRestoreCommitSchema,
   cloudSyncResolveConflictSchema,
   masterPasswordSetSchema,
   masterPasswordUnlockSchema,
@@ -396,6 +398,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.listSavedCommands(input);
   });
 
+  ipcMain.handle(IPCChannel.SavedCommandListScoped, (_event, payload) => {
+    parsePayload(z.object({}), payload ?? {}, "命令库聚合列表");
+    return services.listScopedSavedCommands();
+  });
+
   ipcMain.handle(IPCChannel.SavedCommandUpsert, (_event, payload) => {
     const input = parsePayload(savedCommandUpsertSchema, payload, "命令库保存");
     return services.upsertSavedCommand(input);
@@ -583,6 +590,16 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.CloudSyncListConflicts, (_event, payload) => {
     parsePayload(cloudSyncListConflictsSchema, payload ?? {}, "云同步冲突列表");
     return services.cloudSyncListConflicts();
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncHistory, (_event, payload) => {
+    const input = parsePayload(cloudSyncHistorySchema, payload, "云同步历史");
+    return services.cloudSyncHistory(input);
+  });
+
+  ipcMain.handle(IPCChannel.CloudSyncRestoreCommit, (_event, payload) => {
+    const input = parsePayload(cloudSyncRestoreCommitSchema, payload, "云同步历史恢复");
+    return services.cloudSyncRestoreCommit(input);
   });
 
   ipcMain.handle(IPCChannel.CloudSyncResolveConflict, (_event, payload) => {

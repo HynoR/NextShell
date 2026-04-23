@@ -1,6 +1,6 @@
 import { Form, Tooltip } from "antd";
 import type { FormInstance } from "antd";
-import type { ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type { CloudSyncWorkspaceProfile, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { formatDateTime, formatRelativeTime } from "../../../utils/formatTime";
 import { FIELD_TAB_MAP } from "../constants";
@@ -23,6 +23,8 @@ interface ConnectionFormPanelProps {
   connectingFromForm: boolean;
   sshKeys: SshKeyProfile[];
   proxies: ProxyProfile[];
+  workspaces: CloudSyncWorkspaceProfile[];
+  scopeLocked: boolean;
   revealedLoginPassword?: string;
   revealingLoginPassword: boolean;
   onRevealConnectionPassword: () => void;
@@ -47,6 +49,8 @@ export const ConnectionFormPanel = ({
   connectingFromForm,
   sshKeys,
   proxies,
+  workspaces,
+  scopeLocked,
   revealedLoginPassword,
   revealingLoginPassword,
   onRevealConnectionPassword,
@@ -256,7 +260,10 @@ export const ConnectionFormPanel = ({
           </div>
 
           <div style={{ display: formTab === "property" ? "" : "none" }}>
-            <PropertyTab />
+            <PropertyTab
+              workspaces={workspaces}
+              scopeLocked={scopeLocked}
+            />
           </div>
 
           <div style={{ display: formTab === "network" ? "" : "none" }}>

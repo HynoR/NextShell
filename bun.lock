@@ -21,9 +21,9 @@
         "@codemirror/lang-php": "^6.0.1",
         "@codemirror/lang-python": "^6.1.6",
         "@codemirror/lang-yaml": "^6.1.2",
-        "@codemirror/language": "^6.10.8",
+        "@codemirror/language": "^6.12.3",
         "@codemirror/legacy-modes": "^6.4.2",
-        "@codemirror/state": "^6.5.4",
+        "@codemirror/state": "^6.6.0",
         "@codemirror/theme-one-dark": "^6.1.2",
         "@codemirror/view": "^6.39.15",
         "@nextshell/core": "workspace:*",
@@ -180,6 +180,10 @@
         "react": "^18.0.0 || ^19.0.0",
       },
     },
+  },
+  "overrides": {
+    "@codemirror/language": "6.12.3",
+    "@codemirror/state": "6.6.0",
   },
   "packages": {
     "7zip-bin": ["7zip-bin@5.2.0", "", {}, "sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A=="],

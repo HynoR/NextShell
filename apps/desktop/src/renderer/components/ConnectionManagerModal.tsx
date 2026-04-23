@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { App as AntdApp, Form, Modal } from "antd";
-import type { ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type { CloudSyncWorkspaceProfile, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import {
   CONNECTION_ZONES,
   ZONE_DISPLAY_NAMES,
-  ZONE_ORDER,
   extractZone,
   getSubPath,
   isValidZone
@@ -24,7 +23,6 @@ import { useConnectionExportActions } from "./ConnectionManagerModal/hooks/useCo
 import { useConnectionImportFlow } from "./ConnectionManagerModal/hooks/useConnectionImportFlow";
 import { useConnectionPasswordReveal } from "./ConnectionManagerModal/hooks/useConnectionPasswordReveal";
 import type {
-  ImportPreviewBatch,
   ManagerTab,
   FormTab,
   MgrClipboard,
@@ -70,6 +68,49 @@ interface ConnectionManagerModalProps {
   onOpenLocalTerminal: () => void;
 }
 
+const workspaceRootSlug = (workspaceName: string): string => {
+  const normalized = workspaceName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || "workspace";
+};
+
+const buildWorkspaceRootPath = (workspace: CloudSyncWorkspaceProfile): string =>
+  `/workspace/${workspaceRootSlug(workspace.workspaceName)}`;
+
+const getWorkspaceSubPath = (groupPath: string): string => {
+  const segments = groupPathToSegments(groupPath);
+  if (segments[0] !== CONNECTION_ZONES.WORKSPACE || segments.length <= 2) {
+    return "";
+  }
+  return `/${segments.slice(2).join("/")}`;
+};
+
+const findWorkspaceByGroupPath = (
+  groupPath: string,
+  workspaces: CloudSyncWorkspaceProfile[]
+): CloudSyncWorkspaceProfile | undefined => {
+  const segments = groupPathToSegments(groupPath);
+  if (segments[0] !== CONNECTION_ZONES.WORKSPACE) {
+    return undefined;
+  }
+  const slug = segments[1];
+  if (!slug) {
+    return undefined;
+  }
+  return workspaces.find((workspace) => workspaceRootSlug(workspace.workspaceName) === slug);
+};
+
+const buildExpandedRootKeys = (workspaces: CloudSyncWorkspaceProfile[]): string[] => [
+  "root",
+  `mgr-group:${CONNECTION_ZONES.SERVER}`,
+  `mgr-group:${CONNECTION_ZONES.IMPORT}`,
+  ...workspaces.map((workspace) => `mgr-group:${buildWorkspaceRootPath(workspace).slice(1)}`)
+];
+
 export const ConnectionManagerModal = ({
   open,
   focusConnectionId,
@@ -103,16 +144,19 @@ export const ConnectionManagerModal = ({
   const [connectingFromForm, setConnectingFromForm] = useState(false);
   const [draggingConnection, setDraggingConnection] = useState<ConnectionProfile | null>(null);
   const [dropTargetActive, setDropTargetActive] = useState(false);
-  const [hasCloudWorkspaces, setHasCloudWorkspaces] = useState(false);
+  const [workspaces, setWorkspaces] = useState<CloudSyncWorkspaceProfile[]>([]);
   const [form] = Form.useForm<ConnectionUpsertInput>();
   const authType = Form.useWatch("authType", form);
   const keepAliveSetting = Form.useWatch("keepAliveEnabled", form);
+  const groupZone = Form.useWatch("groupZone", form) as string | undefined;
+  const formWorkspaceId = Form.useWatch("workspaceId", form) as string | undefined;
   const appliedFocusConnectionIdRef = useRef<string | undefined>(undefined);
   const externalDropDepthRef = useRef(0);
+  const hasCloudWorkspaces = workspaces.length > 0;
 
   const tree = useMemo(
-    () => sortMgrChildren(buildManagerTree(connections, keyword, emptyFolders), sortMode),
-    [connections, emptyFolders, keyword, sortMode]
+    () => sortMgrChildren(buildManagerTree(connections, keyword, workspaces, emptyFolders), sortMode),
+    [connections, emptyFolders, keyword, sortMode, workspaces]
   );
   const hasVisibleConnections = useMemo(() => countMgrLeaves(tree) > 0, [tree]);
   const selectedConnection = useMemo(
@@ -123,6 +167,32 @@ export const ConnectionManagerModal = ({
     if (!clipboard || clipboard.mode !== "cut") return new Set<string>();
     return new Set(clipboard.connectionIds);
   }, [clipboard]);
+  const scopeLocked = mode === "edit" && selectedConnection?.originKind === "cloud";
+  const effectiveWorkspaceId = groupZone === CONNECTION_ZONES.WORKSPACE
+    ? formWorkspaceId
+    : undefined;
+  const filteredSshKeys = useMemo(() => {
+    if (groupZone === CONNECTION_ZONES.WORKSPACE) {
+      if (!effectiveWorkspaceId) {
+        return [];
+      }
+      return sshKeys.filter(
+        (key) => key.originKind === "cloud" && key.originWorkspaceId === effectiveWorkspaceId
+      );
+    }
+    return sshKeys.filter((key) => key.originKind !== "cloud");
+  }, [effectiveWorkspaceId, groupZone, sshKeys]);
+  const filteredProxies = useMemo(() => {
+    if (groupZone === CONNECTION_ZONES.WORKSPACE) {
+      if (!effectiveWorkspaceId) {
+        return [];
+      }
+      return proxies.filter(
+        (proxy) => proxy.originKind === "cloud" && proxy.originWorkspaceId === effectiveWorkspaceId
+      );
+    }
+    return proxies.filter((proxy) => proxy.originKind !== "cloud");
+  }, [effectiveWorkspaceId, groupZone, proxies]);
 
   const {
     currentImportBatch,
@@ -169,7 +239,7 @@ export const ConnectionManagerModal = ({
     setPrimarySelectedId(undefined);
     setSelectedIds(new Set());
     setSelectionAnchorId(undefined);
-    setExpanded(new Set(["root", ...ZONE_ORDER.map((zone) => `mgr-group:${zone}`)]));
+    setExpanded(new Set(buildExpandedRootKeys(workspaces)));
     setMode("idle");
     setFormTab("basic");
     setKeyword("");
@@ -186,11 +256,16 @@ export const ConnectionManagerModal = ({
   useEffect(() => {
     if (!open) return;
     window.nextshell.cloudSync.workspaceList().then((list) => {
-      setHasCloudWorkspaces(list.length > 0);
+      setWorkspaces(list);
     }).catch(() => {
-      setHasCloudWorkspaces(false);
+      setWorkspaces([]);
     });
   }, [open]);
+
+  useEffect(() => {
+    if (!open || keyword.trim()) return;
+    setExpanded((prev) => new Set([...prev, ...buildExpandedRootKeys(workspaces)]));
+  }, [keyword, open, workspaces]);
 
   useEffect(() => {
     if (open && activeTab === "connections") return;
@@ -211,6 +286,19 @@ export const ConnectionManagerModal = ({
       setExpanded(keys);
     }
   }, [keyword, tree]);
+
+  useEffect(() => {
+    if (!open || groupZone !== CONNECTION_ZONES.WORKSPACE) {
+      return;
+    }
+    if (formWorkspaceId && workspaces.some((workspace) => workspace.id === formWorkspaceId)) {
+      return;
+    }
+    const nextWorkspaceId = selectedConnection?.originWorkspaceId ?? workspaces[0]?.id;
+    if (nextWorkspaceId) {
+      form.setFieldValue("workspaceId", nextWorkspaceId);
+    }
+  }, [form, formWorkspaceId, groupZone, open, selectedConnection?.originWorkspaceId, workspaces]);
 
   useEffect(() => {
     if (!open || !authType) return;
@@ -242,7 +330,12 @@ export const ConnectionManagerModal = ({
 
   const applyConnectionToForm = useCallback((connection: ConnectionProfile) => {
     const connectionZone = extractZone(connection.groupPath);
-    const connectionSubPath = getSubPath(connection.groupPath);
+    const connectionWorkspace = connection.originKind === "cloud"
+      ? workspaces.find((workspace) => workspace.id === connection.originWorkspaceId)
+      : findWorkspaceByGroupPath(connection.groupPath, workspaces);
+    const connectionSubPath = connectionZone === CONNECTION_ZONES.WORKSPACE
+      ? getWorkspaceSubPath(connection.groupPath)
+      : getSubPath(connection.groupPath);
     (form as any).setFieldsValue({
       id: connection.id,
       name: connection.name,
@@ -262,13 +355,14 @@ export const ConnectionManagerModal = ({
       groupPath: connection.groupPath,
       groupZone: isValidZone(connectionZone) ? connectionZone : CONNECTION_ZONES.SERVER,
       groupSubPath: connectionSubPath,
+      workspaceId: connectionWorkspace?.id ?? connection.originWorkspaceId,
       tags: connection.tags,
       notes: connection.notes,
       favorite: connection.favorite,
       monitorSession: connection.monitorSession,
       password: undefined
     });
-  }, [form]);
+  }, [form, workspaces]);
 
   const handleNew = useCallback((prefillGroupPath?: string) => {
     setPrimarySelectedId(undefined);
@@ -276,16 +370,20 @@ export const ConnectionManagerModal = ({
     form.setFieldsValue(DEFAULT_VALUES);
     if (prefillGroupPath) {
       const zone = extractZone(prefillGroupPath);
-      const subPath = getSubPath(prefillGroupPath);
+      const targetWorkspace = findWorkspaceByGroupPath(prefillGroupPath, workspaces);
+      const subPath = zone === CONNECTION_ZONES.WORKSPACE
+        ? getWorkspaceSubPath(prefillGroupPath)
+        : getSubPath(prefillGroupPath);
       (form as any).setFieldsValue({
         groupPath: prefillGroupPath,
         groupZone: isValidZone(zone) ? zone : CONNECTION_ZONES.SERVER,
-        groupSubPath: subPath
+        groupSubPath: subPath,
+        workspaceId: targetWorkspace?.id
       });
     }
     setFormTab("basic");
     setMode("new");
-  }, [form]);
+  }, [form, workspaces]);
 
   const handleSelectSingle = useCallback((connectionId: string) => {
     const connection = connections.find((item) => item.id === connectionId);
@@ -408,11 +506,30 @@ export const ConnectionManagerModal = ({
 
   const saveConnection = useCallback(async (values: ConnectionFormValues): Promise<string | undefined> => {
     const payload = toConnectionPayload(values, {
-      selectedConnectionId: primarySelectedId
+      selectedConnectionId: primarySelectedId,
+      workspaces
     });
 
     if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
       message.warning("请先在连接管理器的云同步中配置云同步工作区");
+      return undefined;
+    }
+    if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !payload.workspaceId) {
+      message.warning("请选择目标 workspace。");
+      setFormTab("property");
+      return undefined;
+    }
+    if (payload.workspaceId && !workspaces.some((workspace) => workspace.id === payload.workspaceId)) {
+      message.warning("选择的 workspace 不存在或已被移除。");
+      setFormTab("property");
+      return undefined;
+    }
+    if (
+      selectedConnection?.originKind === "cloud" &&
+      payload.workspaceId !== selectedConnection.originWorkspaceId
+    ) {
+      message.warning("共享连接不能直接改到其他作用域；如需迁移请复制到目标 workspace。");
+      setFormTab("property");
       return undefined;
     }
 
@@ -465,7 +582,7 @@ export const ConnectionManagerModal = ({
     } finally {
       setSaving(false);
     }
-  }, [form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId]);
+  }, [form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId, selectedConnection?.originKind, selectedConnection?.originWorkspaceId, workspaces]);
 
   const handleSaveAndConnect = useCallback(async () => {
     if (saving || connectingFromForm) {
@@ -526,10 +643,18 @@ export const ConnectionManagerModal = ({
     const connection = (event.active.data.current as { connection: ConnectionProfile } | undefined)?.connection;
     if (!connection) return;
 
-    const safePath = groupKeyToPath(overId);
+    const safePath = overId === "root"
+      ? `/${CONNECTION_ZONES.SERVER}`
+      : groupKeyToPath(overId);
+    const targetZone = extractZone(safePath);
+    const targetWorkspace = findWorkspaceByGroupPath(safePath, workspaces);
 
-    if (extractZone(safePath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
+    if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
       message.warning("请先在连接管理器的云同步中配置云同步工作区");
+      return;
+    }
+    if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
+      message.warning("目标 workspace 不存在或已被移除。");
       return;
     }
 
@@ -539,26 +664,44 @@ export const ConnectionManagerModal = ({
 
     if (connectionsToMove.length === 0) return;
 
+    if (
+      connectionsToMove.some((item) =>
+        item.originKind === "cloud" && item.originWorkspaceId !== targetWorkspace?.id
+      )
+    ) {
+      message.warning("共享连接只能在当前 workspace 内调整子路径；如需迁移请使用复制。");
+      return;
+    }
+
     try {
       for (const item of connectionsToMove) {
-        await onConnectionSaved(toQuickUpsertInput(item, { groupPath: safePath }));
+        await onConnectionSaved(toQuickUpsertInput(item, {
+          groupPath: safePath,
+          workspaceId: item.originKind === "cloud" ? item.originWorkspaceId : targetWorkspace?.id
+        }));
       }
-      const targetZone = extractZone(safePath);
-      const displayName = isValidZone(targetZone) ? ZONE_DISPLAY_NAMES[targetZone] : targetZone;
+      const displayName = targetWorkspace
+        ? (targetWorkspace.displayName || targetWorkspace.workspaceName)
+        : (isValidZone(targetZone) ? ZONE_DISPLAY_NAMES[targetZone] : targetZone);
+      const displaySubPath = targetWorkspace ? getWorkspaceSubPath(safePath) : getSubPath(safePath);
       message.success(
         connectionsToMove.length === 1
-          ? `已移动到 ${displayName}${getSubPath(safePath) || ""}`
-          : `已移动 ${connectionsToMove.length} 个连接到 ${displayName}${getSubPath(safePath) || ""}`
+          ? `已移动到 ${displayName}${displaySubPath || ""}`
+          : `已移动 ${connectionsToMove.length} 个连接到 ${displayName}${displaySubPath || ""}`
       );
       if (primarySelectedId && connectionsToMove.some((item) => item.id === primarySelectedId)) {
         form.setFieldValue("groupPath", safePath);
         (form as any).setFieldValue("groupZone", isValidZone(targetZone) ? targetZone : CONNECTION_ZONES.SERVER);
-        (form as any).setFieldValue("groupSubPath", getSubPath(safePath));
+        (form as any).setFieldValue(
+          "groupSubPath",
+          targetZone === CONNECTION_ZONES.WORKSPACE ? getWorkspaceSubPath(safePath) : getSubPath(safePath)
+        );
+        (form as any).setFieldValue("workspaceId", targetWorkspace?.id);
       }
     } catch (error) {
       message.error(`移动连接失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
-  }, [connections, form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId, selectedIds]);
+  }, [connections, form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId, selectedIds, workspaces]);
 
   const handleConnectionContextMenu = useCallback((event: React.MouseEvent, connectionId: string) => {
     event.preventDefault();
@@ -604,10 +747,9 @@ export const ConnectionManagerModal = ({
   }, []);
 
   const handleCtxCopy = useCallback(() => {
-    const ids = Array.from(selectedIds).filter((id) => {
-      const connection = connections.find((item) => item.id === id);
-      return connection && connection.originKind !== "cloud";
-    });
+    const ids = Array.from(selectedIds).filter((id) =>
+      connections.some((item) => item.id === id)
+    );
     if (ids.length === 0) return;
     setClipboard({ mode: "copy", connectionIds: ids });
     message.success(`已复制 ${ids.length} 个连接`);
@@ -625,8 +767,14 @@ export const ConnectionManagerModal = ({
 
   const handleCtxPaste = useCallback(async (targetGroupPath: string) => {
     if (!clipboard) return;
-    if (extractZone(targetGroupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
+    const targetZone = extractZone(targetGroupPath);
+    const targetWorkspace = findWorkspaceByGroupPath(targetGroupPath, workspaces);
+    if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
       message.warning("请先在连接管理器的云同步中配置云同步工作区");
+      return;
+    }
+    if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
+      message.warning("目标 workspace 不存在或已被移除。");
       return;
     }
     try {
@@ -634,8 +782,11 @@ export const ConnectionManagerModal = ({
         for (const sourceId of clipboard.connectionIds) {
           await window.nextshell.resourceOps.copyConnection({
             sourceId,
-            targetOriginKind: "local",
-            targetGroupSubPath: getSubPath(targetGroupPath) || undefined
+            targetOriginKind: targetWorkspace ? "cloud" : "local",
+            targetWorkspaceId: targetWorkspace?.id,
+            targetGroupSubPath: (
+              targetWorkspace ? getWorkspaceSubPath(targetGroupPath) : getSubPath(targetGroupPath)
+            ) || undefined
           });
         }
         message.success(`已粘贴 ${clipboard.connectionIds.length} 个连接`);
@@ -644,7 +795,10 @@ export const ConnectionManagerModal = ({
         for (const connectionId of clipboard.connectionIds) {
           const connection = connections.find((item) => item.id === connectionId);
           if (connection) {
-            await onConnectionSaved(toQuickUpsertInput(connection, { groupPath: targetGroupPath }));
+            await onConnectionSaved(toQuickUpsertInput(connection, {
+              groupPath: targetGroupPath,
+              workspaceId: targetWorkspace?.id
+            }));
           }
         }
         message.success(`已移动 ${clipboard.connectionIds.length} 个连接`);
@@ -653,7 +807,7 @@ export const ConnectionManagerModal = ({
     } catch (error) {
       message.error(`粘贴失败：${formatErrorMessage(error, "请稍后重试")}`);
     }
-  }, [clipboard, connections, hasCloudWorkspaces, message, onConnectionSaved, onConnectionsImported]);
+  }, [clipboard, connections, hasCloudWorkspaces, message, onConnectionSaved, onConnectionsImported, workspaces]);
 
   const handleCtxCopyAddress = useCallback((connectionId: string) => {
     const connection = connections.find((item) => item.id === connectionId);
@@ -859,8 +1013,10 @@ export const ConnectionManagerModal = ({
                 keepAliveSetting={keepAliveSetting}
                 saving={saving}
                 connectingFromForm={connectingFromForm}
-                sshKeys={sshKeys}
-                proxies={proxies}
+                sshKeys={filteredSshKeys}
+                proxies={filteredProxies}
+                workspaces={workspaces}
+                scopeLocked={scopeLocked}
                 revealedLoginPassword={revealedLoginPassword}
                 revealingLoginPassword={revealingLoginPassword}
                 onRevealConnectionPassword={() => void handleRevealConnectionPassword()}
@@ -878,11 +1034,11 @@ export const ConnectionManagerModal = ({
           ) : null}
 
           {activeTab === "keys" ? (
-            <SshKeyManagerPanel sshKeys={sshKeys} onReload={onReloadSshKeys} />
+            <SshKeyManagerPanel sshKeys={sshKeys} workspaces={workspaces} onReload={onReloadSshKeys} />
           ) : null}
 
           {activeTab === "proxies" ? (
-            <ProxyManagerPanel proxies={proxies} onReload={onReloadProxies} />
+            <ProxyManagerPanel proxies={proxies} workspaces={workspaces} onReload={onReloadProxies} />
           ) : null}
 
           {activeTab === "cloudSync" ? (

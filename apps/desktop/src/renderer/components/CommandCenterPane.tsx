@@ -19,8 +19,9 @@ import {
 } from "antd";
 import type {
   BatchCommandExecutionResult,
+  CloudSyncWorkspaceProfile,
   ConnectionProfile,
-  SavedCommand,
+  ScopedCommandItem,
   SessionDescriptor
 } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
@@ -32,6 +33,7 @@ const CMD_PARAMS_STORAGE_PREFIX = "nextshell:cmdParams:";
 const TEMPLATE_PLACEHOLDER_REGEX = /\[#(\w+)\]/g;
 
 type TemplateExecutionMode = "single" | "batch";
+type CommandScopeId = "local" | string;
 
 function extractPlaceholderKeys(command: string): string[] {
   const keys: string[] = [];
@@ -49,9 +51,9 @@ function substituteTemplate(command: string, params: Record<string, string>): st
   );
 }
 
-function loadParamsFromStorage(commandId: string): Record<string, string> {
+function loadParamsFromStorage(storageKey: string): Record<string, string> {
   try {
-    const raw = localStorage.getItem(CMD_PARAMS_STORAGE_PREFIX + commandId);
+    const raw = localStorage.getItem(CMD_PARAMS_STORAGE_PREFIX + storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -68,21 +70,26 @@ function loadParamsFromStorage(commandId: string): Record<string, string> {
   return {};
 }
 
-function saveParamsToStorage(commandId: string, params: Record<string, string>): void {
+function saveParamsToStorage(storageKey: string, params: Record<string, string>): void {
   try {
-    localStorage.setItem(CMD_PARAMS_STORAGE_PREFIX + commandId, JSON.stringify(params));
+    localStorage.setItem(CMD_PARAMS_STORAGE_PREFIX + storageKey, JSON.stringify(params));
   } catch {
     // ignore
   }
 }
 
-function clearParamsFromStorage(commandId: string): void {
+function clearParamsFromStorage(storageKey: string): void {
   try {
-    localStorage.removeItem(CMD_PARAMS_STORAGE_PREFIX + commandId);
+    localStorage.removeItem(CMD_PARAMS_STORAGE_PREFIX + storageKey);
   } catch {
     // ignore
   }
 }
+
+const getCommandScopeStorageKey = (command: ScopedCommandItem): string =>
+  command.scope === "workspace"
+    ? `workspace:${command.workspaceId ?? "unknown"}:${command.id}`
+    : `local:${command.id}`;
 
 interface CommandCenterPaneProps {
   connection?: ConnectionProfile;
@@ -109,19 +116,21 @@ export const CommandCenterPane = ({
     (state) => state.preferences.commandCenter.batchRetryCount
   );
 
-  const [allCommands, setAllCommands] = useState<SavedCommand[]>([]);
+  const [allCommands, setAllCommands] = useState<ScopedCommandItem[]>([]);
+  const [workspaces, setWorkspaces] = useState<CloudSyncWorkspaceProfile[]>([]);
+  const [activeScope, setActiveScope] = useState<CommandScopeId>("local");
   const [keyword, setKeyword] = useState("");
   const [groupFilter, setGroupFilter] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editingCommand, setEditingCommand] = useState<SavedCommand | null>(null);
+  const [editingCommand, setEditingCommand] = useState<ScopedCommandItem | null>(null);
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formGroup, setFormGroup] = useState("默认");
   const [formCommand, setFormCommand] = useState("");
   const [formIsTemplate, setFormIsTemplate] = useState(false);
   const [templateDrawerOpen, setTemplateDrawerOpen] = useState(false);
-  const [templateCommand, setTemplateCommand] = useState<SavedCommand | null>(null);
+  const [templateCommand, setTemplateCommand] = useState<ScopedCommandItem | null>(null);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({});
   const [templateExecutionMode, setTemplateExecutionMode] = useState<TemplateExecutionMode>("single");
   const [batchResult, setBatchResult] = useState<BatchCommandExecutionResult | undefined>(
@@ -131,10 +140,23 @@ export const CommandCenterPane = ({
   const [batchRunning, setBatchRunning] = useState(false);
 
   const targetConnectionIds = useMemo(() => getBatchTargetConnectionIds(sessions), [sessions]);
+  const activeWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === activeScope),
+    [activeScope, workspaces]
+  );
+  const activeScopeLabel = activeWorkspace
+    ? (activeWorkspace.displayName || activeWorkspace.workspaceName)
+    : "本地";
+  const scopedCommands = useMemo(
+    () => allCommands.filter((command) => activeScope === "local"
+      ? command.scope === "local"
+      : command.scope === "workspace" && command.workspaceId === activeScope),
+    [activeScope, allCommands]
+  );
 
   // Client-side filtering — avoids IPC on every keystroke
   const savedCommands = useMemo(() => {
-    let filtered = allCommands;
+    let filtered = scopedCommands;
     const kw = keyword.trim().toLowerCase();
     if (kw) {
       filtered = filtered.filter(
@@ -148,10 +170,10 @@ export const CommandCenterPane = ({
       filtered = filtered.filter((cmd) => (cmd.group || "默认") === groupFilter);
     }
     return filtered;
-  }, [allCommands, keyword, groupFilter]);
+  }, [groupFilter, keyword, scopedCommands]);
 
   const savedCommandGroups = useMemo(() => {
-    const groups = new Map<string, SavedCommand[]>();
+    const groups = new Map<string, ScopedCommandItem[]>();
     for (const cmd of savedCommands) {
       const g = cmd.group || "默认";
       if (!groups.has(g)) groups.set(g, []);
@@ -163,8 +185,12 @@ export const CommandCenterPane = ({
   const loadSavedCommands = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await window.nextshell.savedCommand.list({});
+      const [list, workspaceList] = await Promise.all([
+        window.nextshell.savedCommand.listScoped(),
+        window.nextshell.cloudSync.workspaceList()
+      ]);
       setAllCommands(list);
+      setWorkspaces(workspaceList);
     } catch (error) {
       message.error(`加载命令库失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
@@ -176,6 +202,29 @@ export const CommandCenterPane = ({
     void loadSavedCommands();
   }, [loadSavedCommands]);
 
+  useEffect(() => {
+    const unsubscribe = window.nextshell.cloudSync.onApplied(() => {
+      void loadSavedCommands();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [loadSavedCommands]);
+
+  useEffect(() => {
+    if (activeScope === "local") {
+      return;
+    }
+    if (!workspaces.some((workspace) => workspace.id === activeScope)) {
+      setActiveScope("local");
+    }
+  }, [activeScope, workspaces]);
+
+  useEffect(() => {
+    setGroupFilter(undefined);
+    setKeyword("");
+  }, [activeScope]);
+
   const openCreateModal = () => {
     setEditingCommand(null);
     setFormName("");
@@ -186,7 +235,7 @@ export const CommandCenterPane = ({
     setEditModalOpen(true);
   };
 
-  const openEditModal = (cmd: SavedCommand) => {
+  const openEditModal = (cmd: ScopedCommandItem) => {
     setEditingCommand(cmd);
     setFormName(cmd.name);
     setFormDescription(cmd.description ?? "");
@@ -210,7 +259,12 @@ export const CommandCenterPane = ({
         description: formDescription.trim() || undefined,
         group: formGroup.trim() || "默认",
         command,
-        isTemplate: formIsTemplate
+        isTemplate: formIsTemplate,
+        workspaceId: editingCommand?.scope === "workspace"
+          ? editingCommand.workspaceId
+          : activeScope === "local"
+            ? undefined
+            : activeScope
       });
       message.success(editingCommand ? "命令已更新" : "命令已添加");
       setEditModalOpen(false);
@@ -220,11 +274,17 @@ export const CommandCenterPane = ({
     }
   };
 
-  const removeSavedCommand = async (cmd: SavedCommand) => {
+  const removeSavedCommand = async (cmd: ScopedCommandItem) => {
     const prev = [...allCommands];
-    setAllCommands((commands) => commands.filter((c) => c.id !== cmd.id));
+    setAllCommands((commands) => commands.filter((item) =>
+      !(item.id === cmd.id && item.scope === cmd.scope && item.workspaceId === cmd.workspaceId)
+    ));
+    clearParamsFromStorage(getCommandScopeStorageKey(cmd));
     try {
-      await window.nextshell.savedCommand.remove({ id: cmd.id });
+      await window.nextshell.savedCommand.remove({
+        id: cmd.id,
+        workspaceId: cmd.scope === "workspace" ? cmd.workspaceId : undefined
+      });
       message.success("已删除");
     } catch (error) {
       message.error(`删除命令失败：${formatErrorMessage(error, "请稍后重试")}`);
@@ -275,9 +335,10 @@ export const CommandCenterPane = ({
     [batchMaxConcurrency, batchRetryCount, targetConnectionIds]
   );
 
-  const openTemplateDrawer = (cmd: SavedCommand, mode: TemplateExecutionMode) => {
+  const openTemplateDrawer = (cmd: ScopedCommandItem, mode: TemplateExecutionMode) => {
     const keys = extractPlaceholderKeys(cmd.command);
-    const initial = rememberTemplateParams ? loadParamsFromStorage(cmd.id) : {};
+    const storageKey = getCommandScopeStorageKey(cmd);
+    const initial = rememberTemplateParams ? loadParamsFromStorage(storageKey) : {};
     const params: Record<string, string> = {};
     for (const key of keys) {
       params[key] = initial[key] ?? "";
@@ -291,10 +352,11 @@ export const CommandCenterPane = ({
   const runTemplateFromDrawer = () => {
     if (!templateCommand) return;
     const resolved = substituteTemplate(templateCommand.command, templateParams);
+    const storageKey = getCommandScopeStorageKey(templateCommand);
     if (rememberTemplateParams) {
-      saveParamsToStorage(templateCommand.id, templateParams);
+      saveParamsToStorage(storageKey, templateParams);
     } else {
-      clearParamsFromStorage(templateCommand.id);
+      clearParamsFromStorage(storageKey);
     }
     setTemplateDrawerOpen(false);
     setTemplateCommand(null);
@@ -305,7 +367,7 @@ export const CommandCenterPane = ({
     runCommand(resolved);
   };
 
-  const runSavedCommand = (cmd: SavedCommand) => {
+  const runSavedCommand = (cmd: ScopedCommandItem) => {
     if (cmd.isTemplate) {
       openTemplateDrawer(cmd, "single");
       return;
@@ -313,7 +375,7 @@ export const CommandCenterPane = ({
     runCommand(cmd.command);
   };
 
-  const runBatchForSavedCommand = async (cmd: SavedCommand): Promise<void> => {
+  const runBatchForSavedCommand = async (cmd: ScopedCommandItem): Promise<void> => {
     if (cmd.isTemplate) {
       openTemplateDrawer(cmd, "batch");
       return;
@@ -353,6 +415,27 @@ export const CommandCenterPane = ({
   return (
     <div className="cc-pane">
       <div className="cc-section">
+        <div className="cc-section-body" style={{ paddingBottom: 0 }}>
+          <Space wrap size={[8, 8]}>
+            <Button
+              size="small"
+              type={activeScope === "local" ? "primary" : "default"}
+              onClick={() => setActiveScope("local")}
+            >
+              本地
+            </Button>
+            {workspaces.map((workspace) => (
+              <Button
+                key={workspace.id}
+                size="small"
+                type={activeScope === workspace.id ? "primary" : "default"}
+                onClick={() => setActiveScope(workspace.id)}
+              >
+                {workspace.displayName || workspace.workspaceName}
+              </Button>
+            ))}
+          </Space>
+        </div>
         <div
           role="button"
           tabIndex={0}
@@ -366,7 +449,7 @@ export const CommandCenterPane = ({
             aria-hidden="true"
           />
           <i className="ri-code-box-line cc-section-icon" aria-hidden="true" />
-          <span className="cc-section-title">命令库</span>
+          <span className="cc-section-title">命令库 · {activeScopeLabel}</span>
           <span className="cc-section-count">{savedCommands.length}</span>
           <span className="cc-section-actions" onClick={(e) => e.stopPropagation()}>
             <Select
@@ -409,7 +492,7 @@ export const CommandCenterPane = ({
             ) : savedCommandGroups.length === 0 ? (
               <div className="cc-empty-hint">
                 <i className="ri-inbox-2-line" aria-hidden="true" />
-                <span>暂无命令，点击 + 添加</span>
+                <span>{activeScopeLabel} 下暂无命令，点击 + 添加</span>
               </div>
             ) : (
               <div className="cc-library-list">
@@ -481,6 +564,9 @@ export const CommandCenterPane = ({
         width={520}
       >
         <Space direction="vertical" style={{ width: "100%" }} size="middle">
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            当前作用域: {activeScopeLabel}
+          </Typography.Text>
           <div>
             <Typography.Text type="secondary">名称</Typography.Text>
             <Input

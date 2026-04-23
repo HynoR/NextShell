@@ -127,16 +127,18 @@ export const ManagerContextMenu = ({
 
       {(isConnection || target.type === "group" || target.type === "empty") && (
         <>
-          {isConnection && isLocalConnection ? (
+          {isConnection ? (
             <>
               <button className="mgr-ctx-item" onClick={() => run(onCopy)} disabled={multiCount === 0}>
                 <span className="mgr-ctx-icon"><i className="ri-file-copy-line" aria-hidden="true" /></span> 复制
                 {multiCount > 1 ? <span className="mgr-ctx-badge">{multiCount}</span> : null}
               </button>
-              <button className="mgr-ctx-item" onClick={() => run(onCut)} disabled={multiCount === 0}>
-                <span className="mgr-ctx-icon"><i className="ri-scissors-cut-line" aria-hidden="true" /></span> 剪切
-                {multiCount > 1 ? <span className="mgr-ctx-badge">{multiCount}</span> : null}
-              </button>
+              {isLocalConnection ? (
+                <button className="mgr-ctx-item" onClick={() => run(onCut)} disabled={multiCount === 0}>
+                  <span className="mgr-ctx-icon"><i className="ri-scissors-cut-line" aria-hidden="true" /></span> 剪切
+                  {multiCount > 1 ? <span className="mgr-ctx-badge">{multiCount}</span> : null}
+                </button>
+              ) : null}
             </>
           ) : null}
           <button className="mgr-ctx-item" onClick={() => run(() => onPaste(targetGroupPath))} disabled={!hasPaste}>

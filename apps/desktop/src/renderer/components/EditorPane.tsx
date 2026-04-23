@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { message } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import { EditorView, basicSetup } from "codemirror";
-import { Compartment, EditorState } from "@codemirror/state";
+import { basicSetup } from "codemirror";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { getLanguageSupport, type EditorSyntaxMode } from "../utils/detectLanguage";
 import { formatErrorMessage } from "../utils/errorMessage";
@@ -65,11 +66,11 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
     if (!containerRef.current || !tab) return;
 
     const langSupport = getLanguageSupport(tab.remotePath, tab.syntaxMode);
-    const extensions = [
-      basicSetup,
-      oneDark,
+    const extensions: Extension[] = [
+      basicSetup as unknown as Extension,
+      oneDark as unknown as Extension,
       EditorView.lineWrapping,
-      languageCompartmentRef.current.of(langSupport ?? []),
+      languageCompartmentRef.current.of(langSupport ? [langSupport] : []),
       EditorView.theme({ "&": { fontSize: "14px" } }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
@@ -106,7 +107,7 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
     if (!tab || !viewRef.current) return;
     const langSupport = getLanguageSupport(tab.remotePath, tab.syntaxMode);
     viewRef.current.dispatch({
-      effects: languageCompartmentRef.current.reconfigure(langSupport ?? [])
+      effects: languageCompartmentRef.current.reconfigure(langSupport ? [langSupport] : [])
     });
   }, [tab?.remotePath, tab?.syntaxMode]);
 

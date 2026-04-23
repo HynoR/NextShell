@@ -20,7 +20,12 @@ import type {
   OriginKind,
   ProxyProfile,
   SavedCommand,
-  SshKeyProfile
+  SshKeyProfile,
+  WorkspaceCommandItem,
+  WorkspaceRepoCommitMeta,
+  WorkspaceRepoConflict,
+  WorkspaceRepoLocalState,
+  WorkspaceRepoSnapshot
 } from "../../core/src/index";
 import {
   DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE,
@@ -154,6 +159,69 @@ interface ProxyRow {
   credential_ref: string | null;
   created_at: string;
   updated_at: string;
+  resource_id: string | null;
+  uuid_in_scope: string | null;
+  origin_kind: string | null;
+  origin_scope_key: string | null;
+  origin_workspace_id: string | null;
+  copied_from_resource_id: string | null;
+}
+
+interface WorkspaceRepoCommitRow {
+  workspace_id: string;
+  commit_id: string;
+  parent_commit_id: string | null;
+  snapshot_id: string;
+  author_name: string;
+  author_kind: "system" | "user" | "reconcile";
+  message: string;
+  created_at: string;
+}
+
+interface WorkspaceRepoSnapshotRow {
+  workspace_id: string;
+  snapshot_id: string;
+  snapshot_json: string;
+  created_at: string;
+}
+
+interface WorkspaceRepoLocalStateRow {
+  workspace_id: string;
+  local_head_commit_id: string | null;
+  remote_head_commit_id: string | null;
+  remote_commands_version: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+  sync_state: string;
+}
+
+interface WorkspaceRepoConflictRow {
+  workspace_id: string;
+  resource_type: "connection" | "sshKey" | "proxy";
+  resource_id: string;
+  display_name: string;
+  local_snapshot_json: string | null;
+  remote_snapshot_json: string | null;
+  remote_deleted: number;
+  detected_at: string;
+}
+
+interface WorkspaceCommandRow {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  group_name: string;
+  command: string;
+  is_template: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WorkspaceCommandSyncStateRow {
+  workspace_id: string;
+  commands_version: string | null;
+  updated_at: string | null;
 }
 
 interface MigrationRow {
@@ -420,7 +488,69 @@ const rowToProxy = (row: ProxyRow): ProxyProfile => ({
   username: row.username ?? undefined,
   credentialRef: row.credential_ref ?? undefined,
   createdAt: row.created_at,
-  updatedAt: row.updated_at
+  updatedAt: row.updated_at,
+  resourceId: row.resource_id ?? undefined,
+  uuidInScope: row.uuid_in_scope ?? undefined,
+  originKind: row.origin_kind === "cloud" ? "cloud" : "local",
+  originScopeKey: row.origin_scope_key ?? LOCAL_DEFAULT_SCOPE_KEY,
+  originWorkspaceId: row.origin_workspace_id ?? undefined,
+  copiedFromResourceId: row.copied_from_resource_id ?? undefined,
+});
+
+const rowToWorkspaceRepoCommit = (row: WorkspaceRepoCommitRow): WorkspaceRepoCommitMeta => ({
+  workspaceId: row.workspace_id,
+  commitId: row.commit_id,
+  parentCommitId: row.parent_commit_id ?? undefined,
+  snapshotId: row.snapshot_id,
+  authorName: row.author_name,
+  authorKind: row.author_kind,
+  message: row.message,
+  createdAt: row.created_at,
+});
+
+const rowToWorkspaceRepoSnapshot = (row: WorkspaceRepoSnapshotRow): WorkspaceRepoSnapshot => {
+  const parsed = JSON.parse(row.snapshot_json) as Omit<WorkspaceRepoSnapshot, "workspaceId" | "snapshotId" | "createdAt">;
+  return {
+    workspaceId: row.workspace_id,
+    snapshotId: row.snapshot_id,
+    createdAt: row.created_at,
+    connections: parsed.connections ?? [],
+    sshKeys: parsed.sshKeys ?? [],
+    proxies: parsed.proxies ?? [],
+  };
+};
+
+const rowToWorkspaceRepoLocalState = (row: WorkspaceRepoLocalStateRow): WorkspaceRepoLocalState => ({
+  workspaceId: row.workspace_id,
+  localHeadCommitId: row.local_head_commit_id ?? undefined,
+  remoteHeadCommitId: row.remote_head_commit_id ?? undefined,
+  remoteCommandsVersion: row.remote_commands_version ?? undefined,
+  lastSyncAt: row.last_sync_at ?? undefined,
+  lastError: row.last_error ?? undefined,
+  syncState: row.sync_state as WorkspaceRepoLocalState["syncState"],
+});
+
+const rowToWorkspaceRepoConflict = (row: WorkspaceRepoConflictRow): WorkspaceRepoConflict => ({
+  workspaceId: row.workspace_id,
+  resourceType: row.resource_type,
+  resourceId: row.resource_id,
+  displayName: row.display_name,
+  localSnapshotJson: row.local_snapshot_json ?? undefined,
+  remoteSnapshotJson: row.remote_snapshot_json ?? undefined,
+  remoteDeleted: row.remote_deleted === 1,
+  detectedAt: row.detected_at,
+});
+
+const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem => ({
+  id: row.id,
+  workspaceId: row.workspace_id,
+  name: row.name,
+  description: row.description ?? undefined,
+  group: row.group_name,
+  command: row.command,
+  isTemplate: row.is_template === 1,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
 });
 
 const rowToMigration = (row: MigrationRow): MigrationRecord => {
@@ -1214,6 +1344,90 @@ const migrations: MigrationDefinition[] = [
           ON cloud_sync_pending_ops(workspace_id, resource_type, resource_id);
       `);
     }
+  },
+  {
+    version: 22,
+    name: "workspace_repo_and_commands",
+    apply: (db) => {
+      ensureColumn(db, "proxies", "resource_id", "resource_id TEXT");
+      ensureColumn(db, "proxies", "uuid_in_scope", "uuid_in_scope TEXT");
+      ensureColumn(db, "proxies", "origin_kind", "origin_kind TEXT");
+      ensureColumn(db, "proxies", "origin_scope_key", "origin_scope_key TEXT");
+      ensureColumn(db, "proxies", "origin_workspace_id", "origin_workspace_id TEXT");
+      ensureColumn(db, "proxies", "copied_from_resource_id", "copied_from_resource_id TEXT");
+
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_proxy_resource_id
+          ON proxies(resource_id) WHERE resource_id IS NOT NULL;
+
+        CREATE TABLE IF NOT EXISTS workspace_repo_commits (
+          workspace_id TEXT NOT NULL,
+          commit_id TEXT NOT NULL,
+          parent_commit_id TEXT,
+          snapshot_id TEXT NOT NULL,
+          author_name TEXT NOT NULL,
+          author_kind TEXT NOT NULL,
+          message TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, commit_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_repo_commits_created_at
+          ON workspace_repo_commits(workspace_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS workspace_repo_snapshots (
+          workspace_id TEXT NOT NULL,
+          snapshot_id TEXT NOT NULL,
+          snapshot_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, snapshot_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS workspace_repo_local_state (
+          workspace_id TEXT PRIMARY KEY,
+          local_head_commit_id TEXT,
+          remote_head_commit_id TEXT,
+          remote_commands_version TEXT,
+          last_sync_at TEXT,
+          last_error TEXT,
+          sync_state TEXT NOT NULL DEFAULT 'idle'
+        );
+
+        CREATE TABLE IF NOT EXISTS workspace_repo_conflicts (
+          workspace_id TEXT NOT NULL,
+          resource_type TEXT NOT NULL,
+          resource_id TEXT NOT NULL,
+          display_name TEXT NOT NULL,
+          local_snapshot_json TEXT,
+          remote_snapshot_json TEXT,
+          remote_deleted INTEGER NOT NULL DEFAULT 0,
+          detected_at TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, resource_type, resource_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_repo_conflicts_detected_at
+          ON workspace_repo_conflicts(workspace_id, detected_at DESC);
+
+        CREATE TABLE IF NOT EXISTS workspace_commands (
+          id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          group_name TEXT NOT NULL DEFAULT '默认',
+          command TEXT NOT NULL,
+          is_template INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (workspace_id, id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_workspace_commands_group
+          ON workspace_commands(workspace_id, group_name, updated_at DESC);
+
+        CREATE TABLE IF NOT EXISTS workspace_command_sync_state (
+          workspace_id TEXT PRIMARY KEY,
+          commands_version TEXT,
+          updated_at TEXT
+        );
+      `);
+    }
   }
 ];
 
@@ -1285,6 +1499,25 @@ export interface ConnectionRepository {
   getRuntimeCurrentVersion: (workspaceId: string) => number | null;
   saveRuntimeCurrentVersion: (workspaceId: string, currentVersion: number) => void;
   removeRuntimeCurrentVersion: (workspaceId: string) => void;
+  // ── Workspace repo ──
+  listWorkspaceRepoCommits: (workspaceId: string, limit?: number, cursorCreatedAt?: string) => WorkspaceRepoCommitMeta[];
+  getWorkspaceRepoCommit: (workspaceId: string, commitId: string) => WorkspaceRepoCommitMeta | undefined;
+  saveWorkspaceRepoCommit: (commit: WorkspaceRepoCommitMeta) => void;
+  getWorkspaceRepoSnapshot: (workspaceId: string, snapshotId: string) => WorkspaceRepoSnapshot | undefined;
+  saveWorkspaceRepoSnapshot: (snapshot: WorkspaceRepoSnapshot) => void;
+  getWorkspaceRepoLocalState: (workspaceId: string) => WorkspaceRepoLocalState | undefined;
+  saveWorkspaceRepoLocalState: (state: WorkspaceRepoLocalState) => void;
+  listWorkspaceRepoConflicts: (workspaceId: string) => WorkspaceRepoConflict[];
+  saveWorkspaceRepoConflict: (conflict: WorkspaceRepoConflict) => void;
+  removeWorkspaceRepoConflict: (workspaceId: string, resourceType: string, resourceId: string) => void;
+  clearWorkspaceRepoConflicts: (workspaceId: string) => void;
+  // ── Workspace commands ──
+  listWorkspaceCommands: (workspaceId: string) => WorkspaceCommandItem[];
+  replaceWorkspaceCommands: (workspaceId: string, commands: WorkspaceCommandItem[]) => void;
+  upsertWorkspaceCommand: (command: WorkspaceCommandItem) => WorkspaceCommandItem;
+  removeWorkspaceCommand: (workspaceId: string, id: string) => void;
+  getWorkspaceCommandsVersion: (workspaceId: string) => string | undefined;
+  saveWorkspaceCommandsVersion: (workspaceId: string, version: string) => void;
   // ── Recycle bin ──
   listRecycleBinEntries: () => RecycleBinEntry[];
   getRecycleBinEntry: (id: string) => RecycleBinEntry | undefined;
@@ -2132,6 +2365,12 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_repo_commits WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_repo_snapshots WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_repo_local_state WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_repo_conflicts WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ?").run(id);
+      this.db.prepare("DELETE FROM workspace_command_sync_state WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM cloud_sync_workspaces WHERE id = ?").run(id);
     })();
   }
@@ -2232,6 +2471,419 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   removeRuntimeCurrentVersion(workspaceId: string): void {
     this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(workspaceId);
+  }
+
+  // ── Workspace repo ──
+  listWorkspaceRepoCommits(
+    workspaceId: string,
+    limit = 50,
+    cursorCreatedAt?: string,
+  ): WorkspaceRepoCommitMeta[] {
+    const safeLimit = Math.max(1, Math.min(limit, 500));
+    const rows = this.db.prepare(
+      `
+        SELECT workspace_id, commit_id, parent_commit_id, snapshot_id, author_name, author_kind, message, created_at
+        FROM workspace_repo_commits
+        WHERE workspace_id = @workspace_id
+          AND (@cursor_created_at IS NULL OR created_at < @cursor_created_at)
+        ORDER BY created_at DESC
+        LIMIT @limit
+      `
+    ).all({
+      workspace_id: workspaceId,
+      cursor_created_at: cursorCreatedAt ?? null,
+      limit: safeLimit
+    }) as WorkspaceRepoCommitRow[];
+    return rows.map(rowToWorkspaceRepoCommit);
+  }
+
+  getWorkspaceRepoCommit(workspaceId: string, commitId: string): WorkspaceRepoCommitMeta | undefined {
+    const row = this.db.prepare(
+      `
+        SELECT workspace_id, commit_id, parent_commit_id, snapshot_id, author_name, author_kind, message, created_at
+        FROM workspace_repo_commits
+        WHERE workspace_id = ? AND commit_id = ?
+      `
+    ).get(workspaceId, commitId) as WorkspaceRepoCommitRow | undefined;
+    return row ? rowToWorkspaceRepoCommit(row) : undefined;
+  }
+
+  saveWorkspaceRepoCommit(commit: WorkspaceRepoCommitMeta): void {
+    this.db.prepare(
+      `
+        INSERT INTO workspace_repo_commits (
+          workspace_id,
+          commit_id,
+          parent_commit_id,
+          snapshot_id,
+          author_name,
+          author_kind,
+          message,
+          created_at
+        ) VALUES (
+          @workspace_id,
+          @commit_id,
+          @parent_commit_id,
+          @snapshot_id,
+          @author_name,
+          @author_kind,
+          @message,
+          @created_at
+        )
+        ON CONFLICT(workspace_id, commit_id) DO UPDATE SET
+          parent_commit_id = excluded.parent_commit_id,
+          snapshot_id = excluded.snapshot_id,
+          author_name = excluded.author_name,
+          author_kind = excluded.author_kind,
+          message = excluded.message,
+          created_at = excluded.created_at
+      `
+    ).run({
+      workspace_id: commit.workspaceId,
+      commit_id: commit.commitId,
+      parent_commit_id: commit.parentCommitId ?? null,
+      snapshot_id: commit.snapshotId,
+      author_name: commit.authorName,
+      author_kind: commit.authorKind,
+      message: commit.message,
+      created_at: commit.createdAt
+    });
+  }
+
+  getWorkspaceRepoSnapshot(workspaceId: string, snapshotId: string): WorkspaceRepoSnapshot | undefined {
+    const row = this.db.prepare(
+      `
+        SELECT workspace_id, snapshot_id, snapshot_json, created_at
+        FROM workspace_repo_snapshots
+        WHERE workspace_id = ? AND snapshot_id = ?
+      `
+    ).get(workspaceId, snapshotId) as WorkspaceRepoSnapshotRow | undefined;
+    return row ? rowToWorkspaceRepoSnapshot(row) : undefined;
+  }
+
+  saveWorkspaceRepoSnapshot(snapshot: WorkspaceRepoSnapshot): void {
+    this.db.prepare(
+      `
+        INSERT INTO workspace_repo_snapshots (
+          workspace_id,
+          snapshot_id,
+          snapshot_json,
+          created_at
+        ) VALUES (
+          @workspace_id,
+          @snapshot_id,
+          @snapshot_json,
+          @created_at
+        )
+        ON CONFLICT(workspace_id, snapshot_id) DO UPDATE SET
+          snapshot_json = excluded.snapshot_json,
+          created_at = excluded.created_at
+      `
+    ).run({
+      workspace_id: snapshot.workspaceId,
+      snapshot_id: snapshot.snapshotId,
+      snapshot_json: JSON.stringify({
+        connections: snapshot.connections,
+        sshKeys: snapshot.sshKeys,
+        proxies: snapshot.proxies
+      }),
+      created_at: snapshot.createdAt
+    });
+  }
+
+  getWorkspaceRepoLocalState(workspaceId: string): WorkspaceRepoLocalState | undefined {
+    const row = this.db.prepare(
+      `
+        SELECT workspace_id, local_head_commit_id, remote_head_commit_id, remote_commands_version, last_sync_at, last_error, sync_state
+        FROM workspace_repo_local_state
+        WHERE workspace_id = ?
+      `
+    ).get(workspaceId) as WorkspaceRepoLocalStateRow | undefined;
+    return row ? rowToWorkspaceRepoLocalState(row) : undefined;
+  }
+
+  saveWorkspaceRepoLocalState(state: WorkspaceRepoLocalState): void {
+    this.db.prepare(
+      `
+        INSERT INTO workspace_repo_local_state (
+          workspace_id,
+          local_head_commit_id,
+          remote_head_commit_id,
+          remote_commands_version,
+          last_sync_at,
+          last_error,
+          sync_state
+        ) VALUES (
+          @workspace_id,
+          @local_head_commit_id,
+          @remote_head_commit_id,
+          @remote_commands_version,
+          @last_sync_at,
+          @last_error,
+          @sync_state
+        )
+        ON CONFLICT(workspace_id) DO UPDATE SET
+          local_head_commit_id = excluded.local_head_commit_id,
+          remote_head_commit_id = excluded.remote_head_commit_id,
+          remote_commands_version = excluded.remote_commands_version,
+          last_sync_at = excluded.last_sync_at,
+          last_error = excluded.last_error,
+          sync_state = excluded.sync_state
+      `
+    ).run({
+      workspace_id: state.workspaceId,
+      local_head_commit_id: state.localHeadCommitId ?? null,
+      remote_head_commit_id: state.remoteHeadCommitId ?? null,
+      remote_commands_version: state.remoteCommandsVersion ?? null,
+      last_sync_at: state.lastSyncAt ?? null,
+      last_error: state.lastError ?? null,
+      sync_state: state.syncState
+    });
+  }
+
+  listWorkspaceRepoConflicts(workspaceId: string): WorkspaceRepoConflict[] {
+    const rows = this.db.prepare(
+      `
+        SELECT workspace_id, resource_type, resource_id, display_name, local_snapshot_json, remote_snapshot_json, remote_deleted, detected_at
+        FROM workspace_repo_conflicts
+        WHERE workspace_id = ?
+        ORDER BY detected_at DESC, resource_type ASC, resource_id ASC
+      `
+    ).all(workspaceId) as WorkspaceRepoConflictRow[];
+    return rows.map(rowToWorkspaceRepoConflict);
+  }
+
+  saveWorkspaceRepoConflict(conflict: WorkspaceRepoConflict): void {
+    this.db.prepare(
+      `
+        INSERT INTO workspace_repo_conflicts (
+          workspace_id,
+          resource_type,
+          resource_id,
+          display_name,
+          local_snapshot_json,
+          remote_snapshot_json,
+          remote_deleted,
+          detected_at
+        ) VALUES (
+          @workspace_id,
+          @resource_type,
+          @resource_id,
+          @display_name,
+          @local_snapshot_json,
+          @remote_snapshot_json,
+          @remote_deleted,
+          @detected_at
+        )
+        ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
+          display_name = excluded.display_name,
+          local_snapshot_json = excluded.local_snapshot_json,
+          remote_snapshot_json = excluded.remote_snapshot_json,
+          remote_deleted = excluded.remote_deleted,
+          detected_at = excluded.detected_at
+      `
+    ).run({
+      workspace_id: conflict.workspaceId,
+      resource_type: conflict.resourceType,
+      resource_id: conflict.resourceId,
+      display_name: conflict.displayName,
+      local_snapshot_json: conflict.localSnapshotJson ?? null,
+      remote_snapshot_json: conflict.remoteSnapshotJson ?? null,
+      remote_deleted: conflict.remoteDeleted ? 1 : 0,
+      detected_at: conflict.detectedAt
+    });
+  }
+
+  removeWorkspaceRepoConflict(workspaceId: string, resourceType: string, resourceId: string): void {
+    this.db.prepare(
+      "DELETE FROM workspace_repo_conflicts WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
+    ).run(workspaceId, resourceType, resourceId);
+  }
+
+  clearWorkspaceRepoConflicts(workspaceId: string): void {
+    this.db.prepare("DELETE FROM workspace_repo_conflicts WHERE workspace_id = ?").run(workspaceId);
+  }
+
+  // ── Workspace commands ──
+  listWorkspaceCommands(workspaceId: string): WorkspaceCommandItem[] {
+    const rows = this.db.prepare(
+      `
+        SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
+        FROM workspace_commands
+        WHERE workspace_id = ?
+        ORDER BY group_name ASC, updated_at DESC, id ASC
+      `
+    ).all(workspaceId) as WorkspaceCommandRow[];
+    return rows.map(rowToWorkspaceCommand);
+  }
+
+  replaceWorkspaceCommands(workspaceId: string, commands: WorkspaceCommandItem[]): void {
+    const now = new Date().toISOString();
+    const deleteStmt = this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ?");
+    const insertStmt = this.db.prepare(
+      `
+        INSERT INTO workspace_commands (
+          id,
+          workspace_id,
+          name,
+          description,
+          group_name,
+          command,
+          is_template,
+          created_at,
+          updated_at
+        ) VALUES (
+          @id,
+          @workspace_id,
+          @name,
+          @description,
+          @group_name,
+          @command,
+          @is_template,
+          @created_at,
+          @updated_at
+        )
+      `
+    );
+    this.db.transaction((items: WorkspaceCommandItem[]) => {
+      deleteStmt.run(workspaceId);
+      for (const item of items) {
+        insertStmt.run({
+          id: item.id,
+          workspace_id: workspaceId,
+          name: item.name,
+          description: item.description ?? null,
+          group_name: item.group.trim() || "默认",
+          command: item.command,
+          is_template: item.isTemplate ? 1 : 0,
+          created_at: item.createdAt,
+          updated_at: item.updatedAt
+        });
+      }
+      this.db.prepare(
+        `
+          INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
+          VALUES (@workspace_id, @commands_version, @updated_at)
+          ON CONFLICT(workspace_id) DO UPDATE SET
+            commands_version = excluded.commands_version,
+            updated_at = excluded.updated_at
+        `
+      ).run({
+        workspace_id: workspaceId,
+        commands_version: null,
+        updated_at: now
+      });
+    })(commands);
+  }
+
+  upsertWorkspaceCommand(command: WorkspaceCommandItem): WorkspaceCommandItem {
+    const now = new Date().toISOString();
+    const id = command.id || randomUUID();
+    this.db.prepare(
+      `
+        INSERT INTO workspace_commands (
+          id,
+          workspace_id,
+          name,
+          description,
+          group_name,
+          command,
+          is_template,
+          created_at,
+          updated_at
+        ) VALUES (
+          @id,
+          @workspace_id,
+          @name,
+          @description,
+          @group_name,
+          @command,
+          @is_template,
+          @created_at,
+          @updated_at
+        )
+        ON CONFLICT(workspace_id, id) DO UPDATE SET
+          name = excluded.name,
+          description = excluded.description,
+          group_name = excluded.group_name,
+          command = excluded.command,
+          is_template = excluded.is_template,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      id,
+      workspace_id: command.workspaceId,
+      name: command.name.trim(),
+      description: command.description?.trim() || null,
+      group_name: command.group.trim() || "默认",
+      command: command.command.trim(),
+      is_template: command.isTemplate ? 1 : 0,
+      created_at: command.createdAt,
+      updated_at: command.updatedAt || now
+    });
+
+    this.db.prepare(
+      `
+        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
+        VALUES (@workspace_id, @commands_version, @updated_at)
+        ON CONFLICT(workspace_id) DO UPDATE SET
+          commands_version = excluded.commands_version,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      workspace_id: command.workspaceId,
+      commands_version: null,
+      updated_at: now
+    });
+
+    const row = this.db.prepare(
+      `
+        SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
+        FROM workspace_commands
+        WHERE workspace_id = ? AND id = ?
+      `
+    ).get(command.workspaceId, id) as WorkspaceCommandRow;
+    return rowToWorkspaceCommand(row);
+  }
+
+  removeWorkspaceCommand(workspaceId: string, id: string): void {
+    this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ? AND id = ?").run(workspaceId, id);
+    this.db.prepare(
+      `
+        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
+        VALUES (@workspace_id, @commands_version, @updated_at)
+        ON CONFLICT(workspace_id) DO UPDATE SET
+          commands_version = excluded.commands_version,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      workspace_id: workspaceId,
+      commands_version: null,
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  getWorkspaceCommandsVersion(workspaceId: string): string | undefined {
+    const row = this.db.prepare(
+      "SELECT commands_version FROM workspace_command_sync_state WHERE workspace_id = ?"
+    ).get(workspaceId) as { commands_version: string | null } | undefined;
+    return row?.commands_version ?? undefined;
+  }
+
+  saveWorkspaceCommandsVersion(workspaceId: string, version: string): void {
+    this.db.prepare(
+      `
+        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
+        VALUES (@workspace_id, @commands_version, @updated_at)
+        ON CONFLICT(workspace_id) DO UPDATE SET
+          commands_version = excluded.commands_version,
+          updated_at = excluded.updated_at
+      `
+    ).run({
+      workspace_id: workspaceId,
+      commands_version: version,
+      updated_at: new Date().toISOString()
+    });
   }
 
   // ── Recycle bin ──
@@ -2503,14 +3155,52 @@ export class SQLiteProxyRepository implements ProxyRepository {
 
   list(): ProxyProfile[] {
     const rows = this.db.prepare(
-      "SELECT id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at FROM proxies ORDER BY name ASC"
+      `
+        SELECT
+          id,
+          name,
+          proxy_type,
+          host,
+          port,
+          username,
+          credential_ref,
+          created_at,
+          updated_at,
+          resource_id,
+          uuid_in_scope,
+          origin_kind,
+          origin_scope_key,
+          origin_workspace_id,
+          copied_from_resource_id
+        FROM proxies
+        ORDER BY name ASC
+      `
     ).all() as ProxyRow[];
     return rows.map(rowToProxy);
   }
 
   getById(id: string): ProxyProfile | undefined {
     const row = this.db.prepare(
-      "SELECT id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at FROM proxies WHERE id = ?"
+      `
+        SELECT
+          id,
+          name,
+          proxy_type,
+          host,
+          port,
+          username,
+          credential_ref,
+          created_at,
+          updated_at,
+          resource_id,
+          uuid_in_scope,
+          origin_kind,
+          origin_scope_key,
+          origin_workspace_id,
+          copied_from_resource_id
+        FROM proxies
+        WHERE id = ?
+      `
     ).get(id) as ProxyRow | undefined;
     return row ? rowToProxy(row) : undefined;
   }
@@ -2518,8 +3208,40 @@ export class SQLiteProxyRepository implements ProxyRepository {
   save(proxy: ProxyProfile): void {
     this.db.prepare(
       `
-        INSERT INTO proxies (id, name, proxy_type, host, port, username, credential_ref, created_at, updated_at)
-        VALUES (@id, @name, @proxy_type, @host, @port, @username, @credential_ref, @created_at, @updated_at)
+        INSERT INTO proxies (
+          id,
+          name,
+          proxy_type,
+          host,
+          port,
+          username,
+          credential_ref,
+          created_at,
+          updated_at,
+          resource_id,
+          uuid_in_scope,
+          origin_kind,
+          origin_scope_key,
+          origin_workspace_id,
+          copied_from_resource_id
+        )
+        VALUES (
+          @id,
+          @name,
+          @proxy_type,
+          @host,
+          @port,
+          @username,
+          @credential_ref,
+          @created_at,
+          @updated_at,
+          @resource_id,
+          @uuid_in_scope,
+          @origin_kind,
+          @origin_scope_key,
+          @origin_workspace_id,
+          @copied_from_resource_id
+        )
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           proxy_type = excluded.proxy_type,
@@ -2527,7 +3249,13 @@ export class SQLiteProxyRepository implements ProxyRepository {
           port = excluded.port,
           username = excluded.username,
           credential_ref = excluded.credential_ref,
-          updated_at = excluded.updated_at
+          updated_at = excluded.updated_at,
+          resource_id = excluded.resource_id,
+          uuid_in_scope = excluded.uuid_in_scope,
+          origin_kind = excluded.origin_kind,
+          origin_scope_key = excluded.origin_scope_key,
+          origin_workspace_id = excluded.origin_workspace_id,
+          copied_from_resource_id = excluded.copied_from_resource_id
       `
     ).run({
       id: proxy.id,
@@ -2538,7 +3266,13 @@ export class SQLiteProxyRepository implements ProxyRepository {
       username: proxy.username ?? null,
       credential_ref: proxy.credentialRef ?? null,
       created_at: proxy.createdAt,
-      updated_at: proxy.updatedAt
+      updated_at: proxy.updatedAt,
+      resource_id: proxy.resourceId ?? null,
+      uuid_in_scope: proxy.uuidInScope ?? null,
+      origin_kind: proxy.originKind ?? "local",
+      origin_scope_key: proxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+      origin_workspace_id: proxy.originWorkspaceId ?? null,
+      copied_from_resource_id: proxy.copiedFromResourceId ?? null
     });
   }
 

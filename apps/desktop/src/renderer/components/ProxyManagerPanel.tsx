@@ -1,10 +1,11 @@
-import { useCallback, useState } from "react";
-import { Form, Input, InputNumber, Modal, Select, message } from "antd";
-import type { ProxyProfile } from "@nextshell/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Form, Input, InputNumber, Modal, Select, Typography, message } from "antd";
+import type { CloudSyncWorkspaceProfile, ProxyProfile } from "@nextshell/core";
 import { formatErrorMessage } from "../utils/errorMessage";
 
 interface ProxyManagerPanelProps {
   proxies: ProxyProfile[];
+  workspaces: CloudSyncWorkspaceProfile[];
   onReload: () => Promise<void>;
 }
 
@@ -16,21 +17,45 @@ interface ProxyFormValues {
   port: number;
   username?: string;
   password?: string;
+  scope: "local" | "workspace";
+  workspaceId?: string;
 }
 
-export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps) => {
+export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManagerPanelProps) => {
   const [mode, setMode] = useState<"idle" | "new" | "edit">("idle");
   const [selectedProxyId, setSelectedProxyId] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<ProxyFormValues>();
   const proxyType = Form.useWatch("proxyType", form);
+  const scope = Form.useWatch("scope", form) ?? "local";
 
   const selectedProxy = proxies.find((p) => p.id === selectedProxyId);
+  const scopeLocked = mode === "edit" && selectedProxy?.originKind === "cloud";
+  const workspaceNameById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])),
+    [workspaces]
+  );
+
+  useEffect(() => {
+    if (scope !== "workspace") {
+      return;
+    }
+    if (form.getFieldValue("workspaceId")) {
+      return;
+    }
+    if (selectedProxy?.originWorkspaceId) {
+      form.setFieldValue("workspaceId", selectedProxy.originWorkspaceId);
+      return;
+    }
+    if (workspaces[0]) {
+      form.setFieldValue("workspaceId", workspaces[0].id);
+    }
+  }, [form, scope, selectedProxy?.originWorkspaceId, workspaces]);
 
   const handleNew = useCallback(() => {
     setSelectedProxyId(undefined);
     form.resetFields();
-    form.setFieldsValue({ proxyType: "socks5", port: 1080 });
+    form.setFieldsValue({ proxyType: "socks5", port: 1080, scope: "local", workspaceId: undefined });
     setMode("new");
   }, [form]);
 
@@ -46,7 +71,9 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
         host: proxy.host,
         port: proxy.port,
         username: proxy.username,
-        password: undefined
+        password: undefined,
+        scope: proxy.originKind === "cloud" ? "workspace" : "local",
+        workspaceId: proxy.originWorkspaceId
       });
       setMode("edit");
     },
@@ -109,7 +136,11 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                 >
                   <i className="ri-shield-line" aria-hidden="true" />
                   <span className="mgr-flat-item-name">{p.name}</span>
-                  <span className="mgr-flat-item-meta">{p.proxyType.toUpperCase()}</span>
+                  <span className="mgr-flat-item-meta">
+                    {p.originKind === "cloud"
+                      ? (workspaceNameById.get(p.originWorkspaceId ?? "") ?? "Workspace")
+                      : p.proxyType.toUpperCase()}
+                  </span>
                 </button>
               ))}
             </div>
@@ -188,7 +219,7 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
             layout="vertical"
             requiredMark={false}
             className="mgr-form"
-            initialValues={{ proxyType: "socks5", port: 1080 }}
+            initialValues={{ proxyType: "socks5", port: 1080, scope: "local" }}
             onFinish={async (values) => {
               const name = values.name?.trim();
               if (!name) {
@@ -217,6 +248,10 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                 message.error("设置 SOCKS5 代理密码时必须填写代理用户名。");
                 return;
               }
+              if (values.scope === "workspace" && !values.workspaceId) {
+                message.error("请选择目标 workspace。");
+                return;
+              }
 
               setSaving(true);
               try {
@@ -227,7 +262,8 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
                   host,
                   port,
                   username,
-                  password
+                  password,
+                  workspaceId: values.scope === "workspace" ? values.workspaceId : undefined
                 });
                 await onReload();
                 message.success(selectedProxyId ? "代理已更新" : "代理已创建");
@@ -243,6 +279,34 @@ export const ProxyManagerPanel = ({ proxies, onReload }: ProxyManagerPanelProps)
             }}
           >
             <div className="mgr-section-label">代理信息</div>
+
+            <div className="flex gap-3 items-start">
+              <Form.Item label="保存位置" name="scope" className="flex-1">
+                <Select
+                  disabled={scopeLocked}
+                  options={[
+                    { label: "本地", value: "local" },
+                    { label: "Workspace", value: "workspace", disabled: workspaces.length === 0 }
+                  ]}
+                />
+              </Form.Item>
+              {scope === "workspace" ? (
+                <Form.Item label="Workspace" name="workspaceId" className="flex-1">
+                  <Select
+                    disabled={scopeLocked}
+                    options={workspaces.map((workspace) => ({
+                      label: workspace.displayName || workspace.workspaceName,
+                      value: workspace.id
+                    }))}
+                    notFoundContent={
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        暂无可用 workspace
+                      </Typography.Text>
+                    }
+                  />
+                </Form.Item>
+              ) : null}
+            </div>
 
             <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入代理名称" }]}>
               <Input placeholder="办公室代理" />

@@ -19,6 +19,7 @@ import type {
   RecycleBinEntry,
   RemoteFileEntry,
   RestoreConflictPolicy,
+  ScopedCommandItem,
   SavedCommand,
   SessionDescriptor,
   SessionStatus,
@@ -26,6 +27,9 @@ import type {
   SystemInfoSnapshot,
   CommandExecutionResult,
   TerminalEncoding,
+  WorkspaceRepoCommitMeta,
+  WorkspaceRepoConflict,
+  WorkspaceRepoStatus,
 } from "../../../../../packages/core/src/index";
 import type { SshShellChannel } from "../../../../../packages/ssh/src/index";
 import type { IPty } from "node-pty";
@@ -64,6 +68,8 @@ import type {
   CloudSyncWorkspaceTokenDraft,
   CloudSyncWorkspaceExportTokenInput,
   CloudSyncWorkspaceParseTokenInput,
+  CloudSyncHistoryInput,
+  CloudSyncRestoreCommitInput,
   CloudSyncSyncNowInput,
   CloudSyncResolveConflictInput,
   ResourceCopyConnectionInput,
@@ -174,9 +180,11 @@ export interface ServiceContainer {
   cloudSyncWorkspaceRemove: (input: CloudSyncWorkspaceRemoveInput) => Promise<void>;
   cloudSyncWorkspaceExportToken: (input: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
   cloudSyncWorkspaceParseToken: (input: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
-  cloudSyncStatus: () => { workspaces: Array<{ workspaceId: string; state: string; lastSyncAt: string | null; lastError: string | null; pendingCount: number; conflictCount: number; currentVersion: number | null }> };
+  cloudSyncStatus: () => { workspaces: WorkspaceRepoStatus[] };
   cloudSyncSyncNow: (input: CloudSyncSyncNowInput) => Promise<void>;
-  cloudSyncListConflicts: () => Array<{ workspaceId: string; workspaceName: string; resourceType: string; resourceId: string; displayName: string; serverRevision: number; conflictRemoteRevision: number; conflictRemoteDeleted: boolean; conflictDetectedAt: string }>;
+  cloudSyncListConflicts: () => Array<WorkspaceRepoConflict & { workspaceName: string }>;
+  cloudSyncHistory: (input: CloudSyncHistoryInput) => WorkspaceRepoCommitMeta[];
+  cloudSyncRestoreCommit: (input: CloudSyncRestoreCommitInput) => Promise<void>;
   cloudSyncResolveConflict: (input: CloudSyncResolveConflictInput) => Promise<void>;
   openFilesDialog: (
     sender: WebContents,
@@ -263,6 +271,7 @@ export interface ServiceContainer {
   removeCommandHistory: (command: string) => { ok: true };
   clearCommandHistory: () => { ok: true };
   listSavedCommands: (query?: SavedCommandListInput) => SavedCommand[];
+  listScopedSavedCommands: () => ScopedCommandItem[];
   upsertSavedCommand: (input: SavedCommandUpsertInput) => SavedCommand;
   removeSavedCommand: (input: SavedCommandRemoveInput) => { ok: true };
   openRemoteEdit: (

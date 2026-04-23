@@ -381,6 +381,7 @@ export const createServiceContainer = (
     closeConnectionIfIdle,
     remoteEditManager,
     monitorStates: monitorSvc.monitorStates,
+    getCloudSyncManager: () => cloudSyncManager,
     appendAuditLogIfEnabled,
     sendSessionStatus,
   });
@@ -393,10 +394,16 @@ export const createServiceContainer = (
     appendAuditLogIfEnabled,
   });
 
+  let cloudSyncManager: CloudSyncManager | undefined;
+
   const commandSvc = new CommandService({
     connections,
     getConnectionOrThrow,
     ensureConnection,
+    listWorkspaces: () => connections.listCloudSyncWorkspaces(),
+    markWorkspaceCommandsDirty: (workspaceId) => {
+      cloudSyncManager?.markWorkspaceCommandsDirty(workspaceId);
+    },
     appendAuditLogIfEnabled,
   });
 
@@ -424,30 +431,40 @@ export const createServiceContainer = (
   });
 
   // Cloud Sync Manager
-  const cloudSyncManager = new CloudSyncManager({
+  cloudSyncManager = new CloudSyncManager({
     listConnections: () => connections.list({}),
     saveConnection: (conn) => connections.save(conn),
     removeConnection: (id) => connections.remove(id),
     listSshKeys: () => sshKeyRepo.list(),
     saveSshKey: (key) => sshKeyRepo.save(key),
     removeSshKey: (id) => sshKeyRepo.remove(id),
+    listProxies: () => proxyRepo.list(),
+    saveProxy: (proxy) => proxyRepo.save(proxy),
+    removeProxy: (id) => proxyRepo.remove(id),
     readCredential: async (ref) => {
       try { return await vault.readCredential(ref); } catch { return undefined; }
     },
+    storeCredential: (name, secret) => vault.storeCredential(name, secret),
+    deleteCredential: (ref) => vault.deleteCredential(ref),
     listWorkspaces: () => connections.listCloudSyncWorkspaces(),
     saveWorkspace: (ws) => connections.saveCloudSyncWorkspace(ws),
     removeWorkspace: (id) => connections.removeCloudSyncWorkspace(id),
-    listPendingOps: (wId) => connections.listPendingOps(wId),
-    savePendingOp: (op) => connections.savePendingOp(op),
-    upsertPendingOp: (op) => connections.upsertPendingOp(op),
-    updatePendingOp: (op) => connections.updatePendingOp(op),
-    removePendingOp: (id) => connections.removePendingOp(id),
-    clearPendingOps: (wId) => connections.clearPendingOps(wId),
-    listResourceStates: (wId) => connections.listResourceStatesV2(wId),
-    getResourceState: (wId, rType, rId) => connections.getResourceStateV2(wId, rType, rId),
-    saveResourceState: (s) => connections.saveResourceStateV2(s),
-    removeResourceState: (wId, rType, rId) => connections.removeResourceStateV2(wId, rType, rId),
-    clearResourceStates: (wId) => connections.clearResourceStatesV2(wId),
+    listWorkspaceRepoCommits: (wId, limit, cursor) => connections.listWorkspaceRepoCommits(wId, limit, cursor),
+    getWorkspaceRepoCommit: (wId, commitId) => connections.getWorkspaceRepoCommit(wId, commitId),
+    saveWorkspaceRepoCommit: (commit) => connections.saveWorkspaceRepoCommit(commit),
+    getWorkspaceRepoSnapshot: (wId, snapshotId) => connections.getWorkspaceRepoSnapshot(wId, snapshotId),
+    saveWorkspaceRepoSnapshot: (snapshot) => connections.saveWorkspaceRepoSnapshot(snapshot),
+    getWorkspaceRepoLocalState: (wId) => connections.getWorkspaceRepoLocalState(wId),
+    saveWorkspaceRepoLocalState: (state) => connections.saveWorkspaceRepoLocalState(state),
+    listWorkspaceRepoConflicts: (wId) => connections.listWorkspaceRepoConflicts(wId),
+    saveWorkspaceRepoConflict: (conflict) => connections.saveWorkspaceRepoConflict(conflict),
+    removeWorkspaceRepoConflict: (wId, resourceType, resourceId) =>
+      connections.removeWorkspaceRepoConflict(wId, resourceType, resourceId),
+    clearWorkspaceRepoConflicts: (wId) => connections.clearWorkspaceRepoConflicts(wId),
+    listWorkspaceCommands: (wId) => connections.listWorkspaceCommands(wId),
+    replaceWorkspaceCommands: (wId, commands) => connections.replaceWorkspaceCommands(wId, commands),
+    getWorkspaceCommandsVersion: (wId) => connections.getWorkspaceCommandsVersion(wId),
+    saveWorkspaceCommandsVersion: (wId, version) => connections.saveWorkspaceCommandsVersion(wId, version),
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
     listRecycleBinEntries: () => connections.listRecycleBinEntries(),
     removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
@@ -460,8 +477,8 @@ export const createServiceContainer = (
     deleteWorkspacePassword: async (wId) => {
       await vault.deleteCredential(`cloud-sync-ws-${wId}`).catch(() => {});
     },
-    getRuntimeCurrentVersion: (wId) => connections.getRuntimeCurrentVersion(wId),
-    saveRuntimeCurrentVersion: (wId, v) => connections.saveRuntimeCurrentVersion(wId, v),
+    getJsonSetting: (key) => connections.getJsonSetting(key),
+    saveJsonSetting: (key, value) => connections.saveJsonSetting(key, value),
     broadcastStatus: (status) => broadcastToAllWindows(IPCChannel.CloudSyncStatusEvent, status),
     broadcastApplied: (wId) => broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId }),
   });
@@ -471,6 +488,7 @@ export const createServiceContainer = (
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
     sshKeyRepo,
+    proxyRepo,
     vault,
     cloudSyncManager,
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
@@ -564,6 +582,7 @@ export const createServiceContainer = (
     removeCommandHistory: (cmd) => commandSvc.removeCommandHistory(cmd),
     clearCommandHistory: () => commandSvc.clearCommandHistory(),
     listSavedCommands: (q) => commandSvc.listSavedCommands(q),
+    listScopedSavedCommands: () => commandSvc.listScopedSavedCommands(),
     upsertSavedCommand: (i) => commandSvc.upsertSavedCommand(i),
     removeSavedCommand: (i) => commandSvc.removeSavedCommand(i),
     listTemplateParams: (i) => commandSvc.listTemplateParams(i),
@@ -628,7 +647,9 @@ export const createServiceContainer = (
     cloudSyncStatus: () => cloudSyncManager.getStatus(),
     cloudSyncSyncNow: (i) => cloudSyncManager.syncNow(i.workspaceId),
     cloudSyncListConflicts: () => cloudSyncManager.listConflicts(),
-    cloudSyncResolveConflict: (i) => cloudSyncManager.resolveConflict(i.workspaceId, i.resourceType as "server" | "sshKey", i.resourceId, i.strategy),
+    cloudSyncHistory: (i) => cloudSyncManager.history(i.workspaceId, i.limit),
+    cloudSyncRestoreCommit: (i) => cloudSyncManager.restoreCommit(i.workspaceId, i.commitId),
+    cloudSyncResolveConflict: (i) => cloudSyncManager.resolveConflict(i.workspaceId, i.resourceType, i.resourceId, i.strategy),
 
     // Resource Operations
     resourceCopyConnection: (i) => resourceOpsSvc.copyConnection(i),

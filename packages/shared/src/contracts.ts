@@ -52,6 +52,7 @@ export const connectionListQuerySchema = z.object({
 
 export const connectionUpsertSchema = z.object({
   id: z.string().uuid().optional(),
+  workspaceId: z.string().trim().min(1).optional(),
   name: z.string().min(1),
   host: z.string().min(1),
   port: z.coerce.number().int().min(1).max(65535).default(22),
@@ -334,12 +335,14 @@ export const commandHistoryRemoveSchema = z.object({
 export const commandHistoryClearSchema = z.object({});
 
 export const savedCommandListSchema = z.object({
+  workspaceId: z.string().trim().min(1).optional(),
   keyword: z.string().trim().optional(),
   group: z.string().trim().optional()
 });
 
 export const savedCommandUpsertSchema = z.object({
   id: z.string().uuid().optional(),
+  workspaceId: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1),
   description: z.preprocess(trimToOptionalString, z.string().optional()),
   group: z.string().trim().min(1).default("默认"),
@@ -348,7 +351,8 @@ export const savedCommandUpsertSchema = z.object({
 });
 
 export const savedCommandRemoveSchema = z.object({
-  id: z.string().uuid()
+  id: z.string().uuid(),
+  workspaceId: z.string().trim().min(1).optional()
 });
 
 export const sftpEditOpenSchema = z.object({
@@ -640,6 +644,7 @@ export const sshKeyListSchema = z.object({});
 
 export const sshKeyUpsertSchema = z.object({
   id: z.string().uuid().optional(),
+  workspaceId: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1),
   keyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
   passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
@@ -656,6 +661,7 @@ export const proxyListSchema = z.object({});
 
 export const proxyUpsertSchema = z.object({
   id: z.string().uuid().optional(),
+  workspaceId: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1),
   proxyType: proxyTypeSchema,
   host: z.string().trim().min(1),
@@ -944,9 +950,19 @@ export const cloudSyncSyncNowSchema = z.object({
 
 export const cloudSyncListConflictsSchema = z.object({});
 
+export const cloudSyncHistorySchema = z.object({
+  workspaceId: z.string().trim().min(1),
+  limit: z.coerce.number().int().min(1).max(200).optional()
+});
+
+export const cloudSyncRestoreCommitSchema = z.object({
+  workspaceId: z.string().trim().min(1),
+  commitId: z.string().trim().min(1)
+});
+
 export const cloudSyncResolveConflictSchema = z.object({
   workspaceId: z.string().trim().min(1),
-  resourceType: z.enum(["server", "sshKey"]),
+  resourceType: z.enum(["connection", "sshKey", "proxy"]),
   resourceId: z.string().trim().min(1),
   strategy: z.enum(["keep_local", "accept_remote"]),
 });
@@ -961,6 +977,8 @@ export type CloudSyncWorkspaceParseTokenInput = z.infer<typeof cloudSyncWorkspac
 export type CloudSyncStatusInput = z.infer<typeof cloudSyncStatusSchema>;
 export type CloudSyncSyncNowInput = z.infer<typeof cloudSyncSyncNowSchema>;
 export type CloudSyncListConflictsInput = z.infer<typeof cloudSyncListConflictsSchema>;
+export type CloudSyncHistoryInput = z.infer<typeof cloudSyncHistorySchema>;
+export type CloudSyncRestoreCommitInput = z.infer<typeof cloudSyncRestoreCommitSchema>;
 export type CloudSyncResolveConflictInput = z.infer<typeof cloudSyncResolveConflictSchema>;
 
 // ─── Resource Operations ─────────────────────────────────────────────────

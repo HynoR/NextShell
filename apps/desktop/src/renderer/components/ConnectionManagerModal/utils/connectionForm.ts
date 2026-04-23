@@ -1,4 +1,4 @@
-import type { ConnectionProfile } from "@nextshell/core";
+import type { CloudSyncWorkspaceProfile, ConnectionProfile } from "@nextshell/core";
 import {
   CONNECTION_ZONES,
   buildGroupPath,
@@ -11,12 +11,34 @@ import { normalizeGroupPath } from "./tree";
 export interface ConnectionFormValues extends ConnectionUpsertInput {
   groupZone?: string;
   groupSubPath?: string;
+  workspaceId?: string;
 }
 
 export interface ToConnectionPayloadOptions {
   selectedConnectionId?: string;
   generateId?: () => string;
+  workspaces?: CloudSyncWorkspaceProfile[];
 }
+
+const workspaceRootSlug = (workspaceName: string): string => {
+  const normalized = workspaceName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return normalized || "workspace";
+};
+
+const buildWorkspaceGroupPath = (workspace: CloudSyncWorkspaceProfile, subPath: string): string => {
+  const slug = workspaceRootSlug(workspace.workspaceName);
+  const normalizedSubPath = subPath.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (!normalizedSubPath || normalizedSubPath === "/") {
+    return `/workspace/${slug}`;
+  }
+  const suffix = normalizedSubPath.startsWith("/") ? normalizedSubPath : `/${normalizedSubPath}`;
+  return `/workspace/${slug}${suffix}`;
+};
 
 export const sanitizeOptionalText = (value: string | undefined): string | undefined => {
   if (typeof value !== "string") {
@@ -70,7 +92,15 @@ export const toConnectionPayload = (
     values.groupZone && isValidZone(values.groupZone) ? values.groupZone : CONNECTION_ZONES.SERVER
   ) as ConnectionZone;
   const subPath = values.groupSubPath ?? "";
-  const groupPath = normalizeGroupPath(buildGroupPath(zone, subPath));
+  const workspaceId = zone === CONNECTION_ZONES.WORKSPACE ? sanitizeOptionalText(values.workspaceId) : undefined;
+  const workspace = workspaceId
+    ? options.workspaces?.find((item) => item.id === workspaceId)
+    : undefined;
+  const groupPath = normalizeGroupPath(
+    zone === CONNECTION_ZONES.WORKSPACE && workspace
+      ? buildWorkspaceGroupPath(workspace, subPath)
+      : buildGroupPath(zone, subPath)
+  );
   const tags = sanitizeTextArray(values.tags);
   const notes = sanitizeOptionalText(values.notes);
   const rawPort = values.port as unknown as number | null | undefined;
@@ -106,6 +136,7 @@ export const toConnectionPayload = (
     groupPath,
     notes,
     favorite: values.favorite ?? false,
-    monitorSession: values.monitorSession ?? false
+    monitorSession: values.monitorSession ?? false,
+    workspaceId
   };
 };

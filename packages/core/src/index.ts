@@ -32,6 +32,131 @@ export interface CloudSyncWorkspaceProfile {
   lastError: string | null;
 }
 
+export interface WorkspaceSecretEnvelopeShape {
+  v: 1;
+  alg: string;
+  kdf: "scrypt";
+  salt: string;
+  iv: string;
+  aad?: string;
+  ciphertext: string;
+  tag: string;
+}
+
+export interface WorkspaceRepoConnectionSnapshotItem {
+  uuid: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  authType: AuthType;
+  password?: WorkspaceSecretEnvelopeShape;
+  sshKeyUuid?: string;
+  hostFingerprint?: string;
+  strictHostKeyChecking: boolean;
+  proxyUuid?: string;
+  keepAliveEnabled?: boolean;
+  keepAliveIntervalSec?: number;
+  terminalEncoding: TerminalEncoding;
+  backspaceMode: BackspaceMode;
+  deleteMode: DeleteMode;
+  groupPath: string;
+  tags: string[];
+  notes?: string;
+  favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceRepoSshKeySnapshotItem {
+  uuid: string;
+  name: string;
+  privateKey: WorkspaceSecretEnvelopeShape;
+  passphrase?: WorkspaceSecretEnvelopeShape;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceRepoProxySnapshotItem {
+  uuid: string;
+  name: string;
+  proxyType: ProxyType;
+  host: string;
+  port: number;
+  username?: string;
+  password?: WorkspaceSecretEnvelopeShape;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceRepoSnapshot {
+  workspaceId: string;
+  snapshotId: string;
+  createdAt: string;
+  connections: WorkspaceRepoConnectionSnapshotItem[];
+  sshKeys: WorkspaceRepoSshKeySnapshotItem[];
+  proxies: WorkspaceRepoProxySnapshotItem[];
+}
+
+export interface WorkspaceRepoCommitMeta {
+  workspaceId: string;
+  commitId: string;
+  parentCommitId?: string;
+  snapshotId: string;
+  authorName: string;
+  authorKind: "system" | "user" | "reconcile";
+  message: string;
+  createdAt: string;
+}
+
+export interface WorkspaceRepoLocalState {
+  workspaceId: string;
+  localHeadCommitId?: string;
+  remoteHeadCommitId?: string;
+  remoteCommandsVersion?: string;
+  lastSyncAt?: string;
+  lastError?: string;
+  syncState:
+    | "idle"
+    | "syncing"
+    | "ahead"
+    | "behind"
+    | "diverged"
+    | "error"
+    | "disabled"
+    | "synced";
+}
+
+export interface WorkspaceRepoConflict {
+  workspaceId: string;
+  resourceType: "connection" | "sshKey" | "proxy";
+  resourceId: string;
+  displayName: string;
+  localSnapshotJson?: string;
+  remoteSnapshotJson?: string;
+  remoteDeleted: boolean;
+  detectedAt: string;
+}
+
+export interface WorkspaceRepoStatus {
+  workspaceId: string;
+  state: "idle" | "syncing" | "error" | "disabled" | "diverged";
+  syncState:
+    | "synced"
+    | "ahead"
+    | "behind"
+    | "diverged"
+    | "syncing"
+    | "error"
+    | "disabled";
+  localHeadCommitId?: string;
+  remoteHeadCommitId?: string;
+  lastSyncAt?: string;
+  lastError?: string;
+  conflictCount: number;
+  commandsVersion?: string;
+}
+
 export type RecycleBinReason = "delete" | "conflict_accept_remote" | "conflict_keep_local" | "danger_move";
 
 /** 回收站条目 — 物理隔离存储，恢复时总是创建新副本 */
@@ -123,6 +248,18 @@ export interface ProxyProfile {
   credentialRef?: string;
   createdAt: string;
   updatedAt: string;
+  /** 全局唯一资源 ID = "<scopeKey>-<uuidInScope>" */
+  resourceId?: string;
+  /** 等于 id，scope 内的 UUID */
+  uuidInScope?: string;
+  /** 来源类型 */
+  originKind?: OriginKind;
+  /** 来源 scope key */
+  originScopeKey?: string;
+  /** 云来源时指向 cloud_sync_workspaces.id */
+  originWorkspaceId?: string;
+  /** 副本溯源 */
+  copiedFromResourceId?: string;
 }
 
 export interface ConnectionProfile {
@@ -393,6 +530,24 @@ export interface SavedCommand {
   isTemplate: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WorkspaceCommandItem {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+  group: string;
+  command: string;
+  isTemplate: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScopedCommandItem extends SavedCommand {
+  scope: "local" | "workspace";
+  workspaceId?: string;
+  workspaceName?: string;
 }
 
 export type BackupConflictPolicy = "skip" | "force";

@@ -18,6 +18,7 @@ export interface MgrGroupNode {
   children: MgrTreeNode[];
   zone?: ConnectionZone;
   icon?: string;
+  workspaceId?: string;
 }
 
 export interface MgrLeafNode {

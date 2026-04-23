@@ -13,6 +13,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   ConnectionProfile,
+  ProxyProfile,
   SshKeyProfile,
   RecycleBinEntry,
   OriginKind,
@@ -22,6 +23,7 @@ import type { CloudSyncManager } from "./cloud-sync-manager";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
+  CachedProxyRepository,
   CachedSshKeyRepository,
 } from "@nextshell/storage";
 
@@ -65,6 +67,7 @@ export interface RestoreFromRecycleBinInput {
 export interface ResourceOperationsDeps {
   connections: CachedConnectionRepository;
   sshKeyRepo: CachedSshKeyRepository;
+  proxyRepo: CachedProxyRepository;
   vault: EncryptedSecretVault;
   cloudSyncManager: CloudSyncManager | undefined;
   saveRecycleBinEntry: (entry: RecycleBinEntry) => void;
@@ -91,7 +94,7 @@ export class ResourceOperationsService {
    * if they don't already exist in the target scope.
    */
   async copyConnection(input: CopyConnectionInput): Promise<ConnectionProfile> {
-    const { connections, sshKeyRepo, vault } = this.deps;
+    const { connections, vault } = this.deps;
 
     const source = connections.getById(input.sourceId);
     if (!source) throw new Error(`Source connection not found: ${input.sourceId}`);
@@ -107,6 +110,11 @@ export class ResourceOperationsService {
         source.sshKeyId,
         targetScope,
       );
+    }
+
+    let newProxyId = source.proxyId;
+    if (source.proxyId) {
+      newProxyId = await this.ensureProxyInScope(source.proxyId, targetScope);
     }
 
     // Copy credential (password) if applicable  
@@ -134,6 +142,7 @@ export class ResourceOperationsService {
       credentialRef,
       strictHostKeyChecking: source.strictHostKeyChecking,
       sshKeyId: newSshKeyId,
+      proxyId: newProxyId,
       groupPath,
       tags: [...(source.tags ?? [])],
       notes: source.notes,
@@ -382,6 +391,14 @@ export class ResourceOperationsService {
         // If key doesn't exist, leave sshKeyId undefined (user must re-attach)
       }
 
+      let proxyId: string | undefined;
+      if (typeof snapshot.proxyId === "string" && snapshot.proxyId) {
+        const proxyExists = this.deps.proxyRepo.getById(snapshot.proxyId);
+        if (proxyExists) {
+          proxyId = snapshot.proxyId;
+        }
+      }
+
       const restored: ConnectionProfile = {
         id: newUuid,
         name: String(snapshot.name ?? ""),
@@ -391,6 +408,7 @@ export class ResourceOperationsService {
         authType: (snapshot.authType as ConnectionProfile["authType"]) ?? "password",
         credentialRef,
         sshKeyId,
+        proxyId,
         strictHostKeyChecking: Boolean(snapshot.strictHostKeyChecking),
         groupPath: `/${zone}`,
         tags: Array.isArray(snapshot.tags) ? snapshot.tags.filter((t): t is string => typeof t === "string") : [],
@@ -579,6 +597,69 @@ export class ResourceOperationsService {
     }
 
     return newUuid;
+  }
+
+  private async ensureProxyInScope(
+    sourceProxyId: string,
+    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string },
+  ): Promise<string> {
+    const { proxyRepo, vault } = this.deps;
+    const sourceProxy = proxyRepo.getById(sourceProxyId);
+    if (!sourceProxy) {
+      throw new Error(`Source proxy not found: ${sourceProxyId}`);
+    }
+
+    const sourceScopeKey = sourceProxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+    if (sourceScopeKey === targetScope.scopeKey) {
+      return sourceProxyId;
+    }
+
+    const existingCopy = proxyRepo.list().find(
+      (proxy) =>
+        proxy.originScopeKey === targetScope.scopeKey &&
+        proxy.copiedFromResourceId ===
+          (sourceProxy.resourceId ?? buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id)),
+    );
+    if (existingCopy) {
+      return existingCopy.id;
+    }
+
+    const newUuid = randomUUID();
+    const newResourceId = buildResourceId(targetScope.scopeKey, newUuid);
+    let credentialRef = sourceProxy.credentialRef;
+    if (sourceProxy.credentialRef) {
+      const password = await vault.readCredential(sourceProxy.credentialRef);
+      if (password) {
+        credentialRef = await vault.storeCredential(`proxy-${newUuid}`, password);
+      }
+    }
+
+    const now = new Date().toISOString();
+    const copiedProxy: ProxyProfile = {
+      id: newUuid,
+      name: sourceProxy.name,
+      proxyType: sourceProxy.proxyType,
+      host: sourceProxy.host,
+      port: sourceProxy.port,
+      username: sourceProxy.username,
+      credentialRef,
+      createdAt: now,
+      updatedAt: now,
+      resourceId: newResourceId,
+      uuidInScope: newUuid,
+      originKind: targetScope.originKind,
+      originScopeKey: targetScope.scopeKey,
+      originWorkspaceId: targetScope.workspaceId,
+      copiedFromResourceId:
+        sourceProxy.resourceId ?? buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id),
+    };
+
+    proxyRepo.save(copiedProxy);
+    if (targetScope.originKind === "cloud" && this.deps.cloudSyncManager) {
+      this.deps.cloudSyncManager.pushProxyUpsert(copiedProxy);
+    }
+
+    return copiedProxy.id;
   }
 
   private resolveScope(

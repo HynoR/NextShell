@@ -1,4 +1,4 @@
-import type { LanguageSupport } from "@codemirror/language";
+import type { Extension } from "@codemirror/state";
 import { StreamLanguage } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { html } from "@codemirror/lang-html";
@@ -11,7 +11,7 @@ import { php } from "@codemirror/lang-php";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { shell } from "@codemirror/legacy-modes/mode/shell";
 
-type LangFactory = () => LanguageSupport;
+type LangFactory = () => Extension;
 
 export type EditorSyntaxMode =
   | "auto"
@@ -41,12 +41,12 @@ const EXTENSION_MAP: Record<string, LangFactory> = {
   markdown: () => markdown(),
   yaml: () => yaml(),
   yml: () => yaml(),
-  toml: () => StreamLanguage.define(toml) as unknown as LanguageSupport,
+  toml: () => StreamLanguage.define(toml as any) as unknown as Extension,
   py: () => python(),
   pyw: () => python(),
-  sh: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
-  bash: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
-  zsh: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  sh: () => StreamLanguage.define(shell as any) as unknown as Extension,
+  bash: () => StreamLanguage.define(shell as any) as unknown as Extension,
+  zsh: () => StreamLanguage.define(shell as any) as unknown as Extension,
   php: () => php(),
 };
 
@@ -57,18 +57,18 @@ const SYNTAX_MODE_MAP: Record<Exclude<EditorSyntaxMode, "auto" | "plain">, LangF
   json: () => json(),
   markdown: () => markdown(),
   yaml: () => yaml(),
-  toml: () => StreamLanguage.define(toml) as unknown as LanguageSupport,
+  toml: () => StreamLanguage.define(toml as any) as unknown as Extension,
   python: () => python(),
-  shell: () => StreamLanguage.define(shell) as unknown as LanguageSupport,
+  shell: () => StreamLanguage.define(shell as any) as unknown as Extension,
   php: () => php(),
 };
 
-const resolveByExtension = (filePath: string): LanguageSupport | undefined => {
+const resolveByExtension = (filePath: string): Extension | undefined => {
   const fileName = filePath.split("/").pop() ?? "";
   const lower = fileName.toLowerCase();
 
   if (lower === "makefile" || lower === "gnumakefile") {
-    return StreamLanguage.define(shell) as unknown as LanguageSupport;
+    return StreamLanguage.define(shell as any) as unknown as Extension;
   }
 
   const dotIndex = lower.lastIndexOf(".");
@@ -82,7 +82,7 @@ const resolveByExtension = (filePath: string): LanguageSupport | undefined => {
 export const getLanguageSupport = (
   filePath: string,
   mode: EditorSyntaxMode = "auto"
-): LanguageSupport | undefined => {
+): Extension | undefined => {
   if (mode === "plain") {
     return undefined;
   }

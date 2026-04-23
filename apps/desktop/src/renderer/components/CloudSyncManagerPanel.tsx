@@ -14,7 +14,7 @@ import {
   message,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
-import type { CloudSyncWorkspaceProfile } from "@nextshell/core";
+import type { CloudSyncWorkspaceProfile, WorkspaceRepoCommitMeta, WorkspaceRepoConflict, WorkspaceRepoStatus } from "@nextshell/core";
 import { SettingsCard } from "./SettingsCard";
 
 const api = () => (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
@@ -40,33 +40,15 @@ const emptyForm: WorkspaceFormState = {
   enabled: true,
 };
 
-interface WorkspaceStatus {
-  workspaceId: string;
-  state: string;
-  lastSyncAt: string | null;
-  lastError: string | null;
-  pendingCount: number;
-  conflictCount: number;
-  currentVersion: number | null;
-}
-
-interface ConflictItem {
-  workspaceId: string;
-  workspaceName: string;
-  resourceType: string;
-  resourceId: string;
-  displayName: string;
-  serverRevision: number;
-  conflictRemoteRevision: number;
-  conflictRemoteDeleted: boolean;
-  conflictDetectedAt: string;
-}
+type WorkspaceStatus = WorkspaceRepoStatus;
+type ConflictItem = WorkspaceRepoConflict & { workspaceName: string };
 
 const STATE_COLORS: Record<string, string> = {
   idle: "green",
   syncing: "blue",
   error: "red",
   disabled: "default",
+  diverged: "orange",
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -74,11 +56,13 @@ const STATE_LABELS: Record<string, string> = {
   syncing: "同步中",
   error: "出错",
   disabled: "已停用",
+  diverged: "已分叉",
 };
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  server: "连接",
+  connection: "连接",
   sshKey: "SSH 密钥",
+  proxy: "代理",
 };
 
 export const CloudSyncManagerPanel = () => {
@@ -93,9 +77,11 @@ export const CloudSyncManagerPanel = () => {
   const [pastingToken, setPastingToken] = useState(false);
 
   const [statusMap, setStatusMap] = useState<Map<string, WorkspaceStatus>>(new Map());
+  const [historyMap, setHistoryMap] = useState<Map<string, WorkspaceRepoCommitMeta[]>>(new Map());
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [conflictsLoading, setConflictsLoading] = useState(false);
   const [conflictBusyKey, setConflictBusyKey] = useState<string | null>(null);
+  const [restoreBusyKey, setRestoreBusyKey] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -110,6 +96,17 @@ export const CloudSyncManagerPanel = () => {
         map.set(s.workspaceId, s);
       }
       setStatusMap(map);
+      const histories = await Promise.all(
+        list.map(async (workspace) => {
+          try {
+            const history = await api().cloudSync.history({ workspaceId: workspace.id, limit: 5 });
+            return [workspace.id, history] as const;
+          } catch {
+            return [workspace.id, [] as WorkspaceRepoCommitMeta[]] as const;
+          }
+        })
+      );
+      setHistoryMap(new Map(histories));
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -281,7 +278,7 @@ export const CloudSyncManagerPanel = () => {
     try {
       await api().cloudSync.resolveConflict({
         workspaceId,
-        resourceType: resourceType as "server" | "sshKey",
+        resourceType: resourceType as "connection" | "sshKey" | "proxy",
         resourceId,
         strategy,
       });
@@ -291,6 +288,21 @@ export const CloudSyncManagerPanel = () => {
       message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setConflictBusyKey(null);
+    }
+  };
+
+  const handleRestoreCommit = async (workspaceId: string, commitId: string) => {
+    const key = `${workspaceId}:${commitId}`;
+    setRestoreBusyKey(key);
+    try {
+      await api().cloudSync.restoreCommit({ workspaceId, commitId });
+      await refresh();
+      await refreshConflicts();
+      message.success("已基于历史版本创建恢复提交");
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRestoreBusyKey(null);
     }
   };
 
@@ -306,7 +318,7 @@ export const CloudSyncManagerPanel = () => {
 
   return (
     <>
-      <SettingsCard title="云同步 v2 — 多工作区" description="管理多个云同步工作区，每个工作区独立同步。">
+      <SettingsCard title="Workspace Repos" description="管理每个 workspace 的服务器资产仓库和共享命令集。">
         <div style={{ marginBottom: 12 }}>
           <Space size={8} wrap>
             <Button type="primary" size="small" onClick={() => openAddModal()}>
@@ -382,15 +394,56 @@ export const CloudSyncManagerPanel = () => {
                       {st && st.conflictCount > 0 && (
                         <Tag color="orange">{st.conflictCount} 冲突</Tag>
                       )}
+                      {st?.syncState && (
+                        <Tag>{st.syncState}</Tag>
+                      )}
                     </Space>
                   }
                   description={
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {ws.apiBaseUrl} / {ws.workspaceName}
-                      {(st?.lastSyncAt || ws.lastSyncAt) &&
-                        ` · 上次同步: ${st?.lastSyncAt ?? ws.lastSyncAt}`}
-                      {st && st.pendingCount > 0 && ` · 待推送: ${st.pendingCount}`}
-                    </Typography.Text>
+                    <div>
+                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+                        {ws.apiBaseUrl} / {ws.workspaceName}
+                        {(st?.lastSyncAt || ws.lastSyncAt) &&
+                          ` · 上次同步: ${st?.lastSyncAt ?? ws.lastSyncAt}`}
+                      </Typography.Text>
+                      {st?.localHeadCommitId || st?.remoteHeadCommitId ? (
+                        <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+                          local {st.localHeadCommitId?.slice(0, 8) ?? "none"} · remote {st.remoteHeadCommitId?.slice(0, 8) ?? "none"}
+                        </Typography.Text>
+                      ) : null}
+                      {(historyMap.get(ws.id)?.length ?? 0) > 0 ? (
+                        <div style={{ marginTop: 8 }}>
+                          {(historyMap.get(ws.id) ?? []).map((commit) => {
+                            const busy = restoreBusyKey === `${ws.id}:${commit.commitId}`;
+                            return (
+                              <div
+                                key={commit.commitId}
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  gap: 8,
+                                  alignItems: "center",
+                                  fontSize: 12,
+                                  marginTop: 4,
+                                }}
+                              >
+                                <Typography.Text type="secondary">
+                                  {commit.commitId.slice(0, 8)} · {commit.message}
+                                </Typography.Text>
+                                <Button
+                                  size="small"
+                                  type="link"
+                                  loading={busy}
+                                  onClick={() => void handleRestoreCommit(ws.id, commit.commitId)}
+                                >
+                                  恢复
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   }
                 />
               </List.Item>
@@ -434,11 +487,11 @@ export const CloudSyncManagerPanel = () => {
                       <Space size={8}>
                         <span>{item.displayName}</span>
                         <Tag>{RESOURCE_TYPE_LABELS[item.resourceType] ?? item.resourceType}</Tag>
-                        {item.conflictRemoteDeleted && <Tag color="red">云端已删除</Tag>}
+                        {item.remoteDeleted && <Tag color="red">云端已删除</Tag>}
                       </Space>
                       <div>
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          检测时间: {item.conflictDetectedAt}
+                          检测时间: {item.detectedAt}
                         </Typography.Text>
                       </div>
                     </div>
