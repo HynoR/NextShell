@@ -17,6 +17,7 @@ import {
   NetworkSection,
   BackupSection,
   SecuritySection,
+  AiSection,
   AboutSection,
 } from "./settings-center";
 
@@ -466,6 +467,19 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
           onRunBackup={() => void handleRunBackup()}
           onListArchives={() => void handleListArchives()}
           onRestore={(id) => void handleRestore(id)}
+          save={save}
+          message={message}
+        />;
+
+      case "ai":
+        return <AiSection
+          loading={loading}
+          enabled={preferences.ai.enabled}
+          providers={preferences.ai.providers}
+          activeProviderId={preferences.ai.activeProviderId}
+          executionTimeoutSec={preferences.ai.executionTimeoutSec}
+          providerRequestTimeoutSec={preferences.ai.providerRequestTimeoutSec}
+          providerMaxRetries={preferences.ai.providerMaxRetries}
           save={save}
           message={message}
         />;

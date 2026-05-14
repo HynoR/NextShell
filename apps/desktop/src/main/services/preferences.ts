@@ -251,6 +251,39 @@ export const mergePreferences = (
         patch.audit.retentionDays <= 365
           ? patch.audit.retentionDays
           : current.audit.retentionDays
+    },
+    ai: {
+      enabled: patch.ai?.enabled ?? current.ai.enabled,
+      activeProviderId:
+        patch.ai?.activeProviderId !== undefined
+          ? patch.ai.activeProviderId
+          : current.ai.activeProviderId,
+      providers: patch.ai?.providers ?? current.ai.providers,
+      systemPromptOverride:
+        patch.ai?.systemPromptOverride !== undefined
+          ? patch.ai.systemPromptOverride
+          : current.ai.systemPromptOverride,
+      executionTimeoutSec:
+        patch.ai?.executionTimeoutSec !== undefined &&
+        Number.isInteger(patch.ai.executionTimeoutSec) &&
+        patch.ai.executionTimeoutSec >= 5 &&
+        patch.ai.executionTimeoutSec <= 300
+          ? patch.ai.executionTimeoutSec
+          : current.ai.executionTimeoutSec,
+      providerRequestTimeoutSec:
+        patch.ai?.providerRequestTimeoutSec !== undefined &&
+        Number.isInteger(patch.ai.providerRequestTimeoutSec) &&
+        patch.ai.providerRequestTimeoutSec >= 5 &&
+        patch.ai.providerRequestTimeoutSec <= 120
+          ? patch.ai.providerRequestTimeoutSec
+          : current.ai.providerRequestTimeoutSec,
+      providerMaxRetries:
+        patch.ai?.providerMaxRetries !== undefined &&
+        Number.isInteger(patch.ai.providerMaxRetries) &&
+        patch.ai.providerMaxRetries >= 0 &&
+        patch.ai.providerMaxRetries <= 3
+          ? patch.ai.providerMaxRetries
+          : current.ai.providerMaxRetries
     }
   };
 };
