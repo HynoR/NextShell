@@ -15,6 +15,8 @@ const assert = (condition: boolean, message: string): void => {
 
   const parsed = appPreferencesSchema.parse({});
   assert(parsed.audit.enabled === false, "audit should default to disabled in schema parsing");
+  assert(parsed.ai.providerRequestTimeoutSec === 30, "ai provider timeout should default to 30 seconds");
+  assert(parsed.ai.providerMaxRetries === 1, "ai provider retries should default to 1");
 })();
 
 (() => {
@@ -52,6 +54,17 @@ const assert = (condition: boolean, message: string): void => {
   });
 
   assert(parsed.success, "appPreferencesPatchSchema should accept workspace layout booleans");
+})();
+
+(() => {
+  const parsed = appPreferencesPatchSchema.safeParse({
+    ai: {
+      providerRequestTimeoutSec: 45,
+      providerMaxRetries: 2
+    }
+  });
+
+  assert(parsed.success, "appPreferencesPatchSchema should accept ai provider runtime settings");
 })();
 
 (() => {

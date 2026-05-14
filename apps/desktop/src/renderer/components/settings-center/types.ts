@@ -7,6 +7,7 @@ export type SettingsSection =
   | "network"
   | "backup"
   | "security"
+  | "ai"
   | "about";
 
 export type LocalShellMode = "preset" | "custom";
