@@ -14,6 +14,7 @@ export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string
   { key: "network", label: "网络工具", icon: "ri-route-line" },
   { key: "backup", label: "云存档", icon: "ri-cloud-line" },
   { key: "security", label: "安全与审计", icon: "ri-shield-keyhole-line" },
+  { key: "ai", label: "AI 助手", icon: "ri-robot-2-line" },
   { key: "about", label: "关于", icon: "ri-information-line" },
 ];
 

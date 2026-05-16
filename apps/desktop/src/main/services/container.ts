@@ -61,6 +61,7 @@ import { ResourceOperationsService } from "./resource-operations-service";
 import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
+import { AiService } from "./ai/ai-service";
 
 const cloudSyncWorkspacePasswordRef = (workspaceId: string): string =>
   `secret://cloud-sync-ws-${workspaceId}`;
@@ -487,6 +488,16 @@ export const createServiceContainer = (
   });
   cloudSyncManager.initialize();
 
+  // AI Service
+  const aiSvc = new AiService({
+    execCommand: (connectionId, cmd, execOptions) => commandSvc.execCommand(connectionId, cmd, execOptions),
+    execInSession: (sessionId, cmd, execOptions) => sessionSvc.execCommandInSession(sessionId, cmd, execOptions),
+    vault,
+    getPreferences: () => connections.getAppPreferences(),
+    dataDir: options.dataDir,
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
+  });
+
   // Resource Operations Service
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
@@ -505,6 +516,7 @@ export const createServiceContainer = (
     connections.flush();
     if (auditPurgeTimer) clearInterval(auditPurgeTimer);
     prefsSvc.dispose();
+    aiSvc.dispose();
 
     const allMonitorIds = monitorSvc.getAllConnectionIds();
     await Promise.all(allMonitorIds.map((id) => monitorSvc.disposeAllMonitorSessions(id)));
@@ -681,6 +693,14 @@ export const createServiceContainer = (
       return { ok: true as const };
     },
     recycleBinClear: () => ({ ok: true as const, deleted: connections.clearRecycleBin() }),
+
+    // AI Assistant
+    aiChat: (sender, i) => aiSvc.chat(sender, i),
+    aiApprove: (sender, i) => aiSvc.approve(sender, i),
+    aiAbort: (sender, i) => aiSvc.abort(sender, i),
+    aiHistory: (sender, i) => aiSvc.history(sender, i),
+    aiTestProvider: (i) => aiSvc.testProvider(i),
+    aiSetApiKey: (i) => aiSvc.setApiKey(i.providerId, i.apiKey),
 
     dispose,
   };

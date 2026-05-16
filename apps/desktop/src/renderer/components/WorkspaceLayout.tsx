@@ -8,6 +8,8 @@ import type {
     SshKeyProfile,
 } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
+import { AiChatPane } from "./AiChatPane/AiChatPane";
+import { useAiChatStore } from "../store/useAiChatStore";
 import { CommandCenterPane } from "./CommandCenterPane";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
@@ -280,6 +282,8 @@ export const WorkspaceLayout = ({
 }: WorkspaceLayoutProps) => {
     const { modal } = AntdApp.useApp();
     const windowPreferences = usePreferencesStore((state) => state.preferences.window);
+    const aiPanelOpen = useAiChatStore((s) => s.panelOpen);
+    const toggleAiPanel = useAiChatStore((s) => s.togglePanel);
     const showTracerouteTab = usePreferencesStore(
         (state) => state.preferences.traceroute.showTracerouteTab ?? true,
     );
@@ -656,6 +660,15 @@ export const WorkspaceLayout = ({
                     <button className="hdr-btn" onClick={onOpenSettings} title="打开设置中心">
                         <i className="ri-settings-3-line" aria-hidden="true" />
                         设置
+                    </button>
+                    <span className="hdr-sep" />
+                    <button
+                        className={`hdr-btn${aiPanelOpen ? " hdr-btn--active" : ""}`}
+                        onClick={toggleAiPanel}
+                        title={aiPanelOpen ? "关闭 AI 助手" : "打开 AI 助手"}
+                    >
+                        <i className="ri-robot-2-line" aria-hidden="true" />
+                        AI
                     </button>
                 </div>
             </header>
@@ -1038,6 +1051,22 @@ export const WorkspaceLayout = ({
                                 </Panel>
                             </Group>
                         </section>
+                {aiPanelOpen && (
+                    <aside
+                        className="workspace-right-sidebar flex-shrink-0 h-full overflow-hidden"
+                        style={{ width: 360 }}
+                    >
+                        <AiChatPane
+                            sessionId={activeTerminalSession?.id}
+                            connectionId={activeConnectionId}
+                            connectionLabel={
+                                activeTerminalConnection
+                                    ? `${activeTerminalConnection.username}@${activeTerminalConnection.host}`
+                                    : undefined
+                            }
+                        />
+                    </aside>
+                )}
             </main>
         </div>
     );
