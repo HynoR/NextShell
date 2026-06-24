@@ -110,6 +110,7 @@ import type {
   SftpListLocalInput,
   SftpMkdirInput,
   SftpRenameInput,
+  SftpTransferCancelInput,
   SftpTransferPackedInput,
   SftpTransferStatusEvent,
   SftpUploadInput,
@@ -237,6 +238,7 @@ export interface NextShellApi {
     uploadPacked: (payload: SftpUploadPackedInput) => Promise<{ ok: true }>;
     downloadPacked: (payload: SftpDownloadPackedInput) => Promise<{ ok: true; localArchivePath: string }>;
     transferPacked: (payload: SftpTransferPackedInput) => Promise<{ ok: true }>;
+    cancelTransfer: (payload: SftpTransferCancelInput) => Promise<{ ok: true; cancelled: boolean }>;
     mkdir: (payload: SftpMkdirInput) => Promise<{ ok: true }>;
     rename: (payload: SftpRenameInput) => Promise<{ ok: true }>;
     remove: (payload: SftpDeleteInput) => Promise<{ ok: true }>;

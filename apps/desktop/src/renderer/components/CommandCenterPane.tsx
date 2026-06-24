@@ -14,6 +14,7 @@ import {
   Space,
   Switch,
   Tag,
+  TreeSelect,
   Typography,
   message
 } from "antd";
@@ -26,7 +27,7 @@ import type {
 } from "@nextshell/core";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { formatErrorMessage } from "../utils/errorMessage";
-import { getBatchTargetConnectionIds } from "../utils/batchTargets";
+import { buildBatchTargetTree, getBatchTargetConnectionIds } from "../utils/batchTargets";
 
 const CMD_PARAMS_STORAGE_PREFIX = "nextshell:cmdParams:";
 
@@ -139,7 +140,15 @@ export const CommandCenterPane = ({
   const [batchResultDrawerOpen, setBatchResultDrawerOpen] = useState(false);
   const [batchRunning, setBatchRunning] = useState(false);
 
-  const targetConnectionIds = useMemo(() => getBatchTargetConnectionIds(sessions), [sessions]);
+  // Batch targets default to the currently open tabs, but can be overridden to
+  // any connection(s) via the target selector (auto-connected on demand).
+  const openTabTargetIds = useMemo(() => getBatchTargetConnectionIds(sessions), [sessions]);
+  const [targetSelection, setTargetSelection] = useState<string[] | null>(null);
+  const targetConnectionIds = useMemo(
+    () => targetSelection ?? openTabTargetIds,
+    [targetSelection, openTabTargetIds]
+  );
+  const targetTree = useMemo(() => buildBatchTargetTree(connections), [connections]);
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === activeScope),
     [activeScope, workspaces]
@@ -317,7 +326,7 @@ export const CommandCenterPane = ({
         return;
       }
       if (targetConnectionIds.length === 0) {
-        message.warning("当前没有打开标签页，无法批量执行。");
+        message.warning("请先选择批量执行的目标连接。");
         return;
       }
       try {
@@ -439,6 +448,34 @@ export const CommandCenterPane = ({
               </Button>
             ))}
           </Space>
+          <div className="cc-batch-targets">
+            <span className="cc-batch-targets-label">
+              <i className="ri-stack-line" aria-hidden="true" />
+              批量目标
+              <Tag style={{ margin: 0 }}>{targetConnectionIds.length}</Tag>
+            </span>
+            <TreeSelect
+              treeData={targetTree}
+              value={targetConnectionIds}
+              onChange={(value) => setTargetSelection(value as string[])}
+              treeCheckable
+              showCheckedStrategy={TreeSelect.SHOW_CHILD}
+              treeNodeFilterProp="title"
+              showSearch
+              allowClear
+              maxTagCount="responsive"
+              size="small"
+              style={{ flex: 1, minWidth: 200 }}
+              placeholder="选择批量执行的目标连接（可按分组勾选，未连接的会自动连接）"
+            />
+            <Button
+              size="small"
+              onClick={() => setTargetSelection(null)}
+              title="重置为当前打开的标签页"
+            >
+              打开的标签页
+            </Button>
+          </div>
         </div>
         <div
           role="button"
@@ -633,7 +670,7 @@ export const CommandCenterPane = ({
             {templateKeys.length > 0 ? (
               <>
                 <Typography.Text type="secondary">
-                  填写参数后{templateExecutionMode === "batch" ? "将对当前打开标签页服务器批量执行，" : "执行，"}
+                  填写参数后{templateExecutionMode === "batch" ? `将对选定的 ${targetConnectionIds.length} 个目标服务器批量执行，` : "执行，"}
                   {rememberTemplateParams ? "将自动记住本次输入。" : "本次输入不会被记住。"}
                 </Typography.Text>
                 {templateKeys.map((key) => (

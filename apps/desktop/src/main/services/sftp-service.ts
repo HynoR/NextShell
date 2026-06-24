@@ -9,7 +9,9 @@ import type {
 } from "../../../../../packages/core/src/index";
 import {
   SshConnection,
+  isTransferCancelledError,
   type RemotePathType,
+  type SftpProgressListener,
   type SshDirectoryEntry
 } from "../../../../../packages/ssh/src/index";
 import type {
@@ -37,6 +39,9 @@ import {
 } from "./container-utils";
 import { logger } from "../logger";
 
+/** Minimum interval between byte-level transfer progress events (ms). */
+const SFTP_PROGRESS_THROTTLE_MS = 150;
+
 export interface SftpServiceOptions {
   getConnectionOrThrow: (id: string) => ConnectionProfile;
   ensureConnection: (connectionId: string) => Promise<SshConnection>;
@@ -60,6 +65,8 @@ export class SftpService {
   private readonly remoteEditManager: RemoteEditManager;
   private readonly appendAuditLogIfEnabled: SftpServiceOptions["appendAuditLogIfEnabled"];
   private readonly sendTransferStatus: SftpServiceOptions["sendTransferStatus"];
+  /** In-flight cancellable transfers, keyed by task id. */
+  private readonly activeTransfers = new Map<string, AbortController>();
 
   constructor(options: SftpServiceOptions) {
     this.getConnectionOrThrow = options.getConnectionOrThrow;
@@ -67,6 +74,61 @@ export class SftpService {
     this.remoteEditManager = options.remoteEditManager;
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.sendTransferStatus = options.sendTransferStatus;
+  }
+
+  /**
+   * Build a throttled byte-level progress listener that emits real transfer
+   * status (percentage, transferred/total bytes, instantaneous speed) instead
+   * of the old fixed 5→100 jumps. Emits at most every SFTP_PROGRESS_THROTTLE_MS
+   * (plus the final tick) to avoid flooding the IPC stream on fast links.
+   */
+  private createProgressEmitter(
+    sender: WebContents | undefined,
+    base: {
+      taskId?: string;
+      direction: "upload" | "download";
+      connectionId: string;
+      localPath: string;
+      remotePath: string;
+    }
+  ): SftpProgressListener {
+    const startedAt = Date.now();
+    let lastEmit = 0;
+    let lastBytes = 0;
+    let lastTime = startedAt;
+    return ({ transferred, total }) => {
+      const now = Date.now();
+      const isComplete = total > 0 && transferred >= total;
+      if (!isComplete && now - lastEmit < SFTP_PROGRESS_THROTTLE_MS) {
+        return;
+      }
+      const windowSec = (now - lastTime) / 1000;
+      const speedBytesPerSec = windowSec > 0 ? Math.max(0, Math.round((transferred - lastBytes) / windowSec)) : 0;
+      lastEmit = now;
+      lastBytes = transferred;
+      lastTime = now;
+      this.sendTransferStatus(sender, {
+        ...base,
+        status: "running",
+        progress: total > 0 ? Math.min(99, Math.floor((transferred / total) * 100)) : 0,
+        transferredBytes: transferred,
+        totalBytes: total,
+        speedBytesPerSec
+      });
+    };
+  }
+
+  /**
+   * Abort an in-flight transfer by task id. Returns whether a matching active
+   * transfer was found and signalled.
+   */
+  cancelTransfer(taskId: string): { ok: true; cancelled: boolean } {
+    const controller = this.activeTransfers.get(taskId);
+    if (!controller) {
+      return { ok: true, cancelled: false };
+    }
+    controller.abort();
+    return { ok: true, cancelled: true };
   }
 
   // ─── Public Methods ───────────────────────────────────────────────────────
@@ -197,11 +259,20 @@ export class SftpService {
       localPath,
       remotePath,
       status: "running",
-      progress: 5
+      progress: 0
     });
     const connection = await this.ensureConnection(connectionId);
+    const controller = taskId ? new AbortController() : undefined;
+    if (taskId && controller) {
+      this.activeTransfers.set(taskId, controller);
+    }
     try {
-      await connection.upload(localPath, remotePath);
+      await connection.upload(
+        localPath,
+        remotePath,
+        this.createProgressEmitter(sender, { taskId, direction: "upload", connectionId, localPath, remotePath }),
+        controller?.signal
+      );
       this.sendTransferStatus(sender, {
         taskId,
         direction: "upload",
@@ -220,17 +291,23 @@ export class SftpService {
       });
       return { ok: true };
     } catch (error) {
+      const cancelled = isTransferCancelledError(error);
       this.sendTransferStatus(sender, {
         taskId,
         direction: "upload",
         connectionId,
         localPath,
         remotePath,
-        status: "failed",
+        status: cancelled ? "cancelled" : "failed",
         progress: 100,
-        error: normalizeError(error)
+        message: cancelled ? "已取消" : undefined,
+        error: cancelled ? undefined : normalizeError(error)
       });
       throw error;
+    } finally {
+      if (taskId) {
+        this.activeTransfers.delete(taskId);
+      }
     }
   }
 
@@ -249,11 +326,20 @@ export class SftpService {
       localPath,
       remotePath,
       status: "running",
-      progress: 5
+      progress: 0
     });
     const connection = await this.ensureConnection(connectionId);
+    const controller = taskId ? new AbortController() : undefined;
+    if (taskId && controller) {
+      this.activeTransfers.set(taskId, controller);
+    }
     try {
-      await connection.download(remotePath, localPath);
+      await connection.download(
+        remotePath,
+        localPath,
+        this.createProgressEmitter(sender, { taskId, direction: "download", connectionId, localPath, remotePath }),
+        controller?.signal
+      );
       this.sendTransferStatus(sender, {
         taskId,
         direction: "download",
@@ -272,17 +358,23 @@ export class SftpService {
       });
       return { ok: true };
     } catch (error) {
+      const cancelled = isTransferCancelledError(error);
       this.sendTransferStatus(sender, {
         taskId,
         direction: "download",
         connectionId,
         localPath,
         remotePath,
-        status: "failed",
+        status: cancelled ? "cancelled" : "failed",
         progress: 100,
-        error: normalizeError(error)
+        message: cancelled ? "已取消" : undefined,
+        error: cancelled ? undefined : normalizeError(error)
       });
       throw error;
+    } finally {
+      if (taskId) {
+        this.activeTransfers.delete(taskId);
+      }
     }
   }
 

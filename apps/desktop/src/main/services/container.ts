@@ -636,6 +636,7 @@ export const createServiceContainer = async (
     listLocalFiles: (p) => sftpSvc.listLocalFiles(p),
     uploadRemoteFile: (id, lp, rp, s, t) => sftpSvc.uploadRemoteFile(id, lp, rp, s, t),
     downloadRemoteFile: (id, rp, lp, s, t) => sftpSvc.downloadRemoteFile(id, rp, lp, s, t),
+    cancelTransfer: (taskId) => sftpSvc.cancelTransfer(taskId),
     uploadRemotePacked: (id, lp, rd, an, s, t) => sftpSvc.uploadRemotePacked(id, lp, rd, an, s, t),
     downloadRemotePacked: (id, rd, en, ld, an, s, t) => sftpSvc.downloadRemotePacked(id, rd, en, ld, an, s, t),
     transferRemotePacked: (sid, sd, en, tid, td, an, s, t) => sftpSvc.transferRemotePacked(sid, sd, en, tid, td, an, s, t),

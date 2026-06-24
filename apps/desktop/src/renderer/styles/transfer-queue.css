@@ -142,6 +142,13 @@
   transition: width 0.2s ease;
 }
 
+.transfer-progress-detail {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--t3);
+  margin-top: 2px;
+}
+
 .transfer-task-error {
   font-size: 11px;
   color: var(--err);

@@ -235,6 +235,7 @@ export interface ServiceContainer {
     sender?: WebContents,
     taskId?: string
   ) => Promise<{ ok: true }>;
+  cancelTransfer: (taskId: string) => { ok: true; cancelled: boolean };
   uploadRemotePacked: (
     connectionId: string,
     localPaths: string[],

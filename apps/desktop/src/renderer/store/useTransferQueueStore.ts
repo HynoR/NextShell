@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { SftpTransferStatusEvent } from "@nextshell/shared";
 
 export type TransferDirection = "upload" | "download";
-export type TransferTaskStatus = "queued" | "running" | "success" | "failed";
+export type TransferTaskStatus = "queued" | "running" | "success" | "failed" | "cancelled";
 
 export interface TransferTask {
   id: string;
@@ -12,6 +12,9 @@ export interface TransferTask {
   remotePath: string;
   status: TransferTaskStatus;
   progress: number;
+  transferredBytes?: number;
+  totalBytes?: number;
+  speedBytesPerSec?: number;
   createdAt: string;
   updatedAt: string;
   error?: string;
@@ -114,6 +117,9 @@ export const useTransferQueueStore = create<TransferQueueState>((set, get) => ({
         ...fallback,
         status: event.status,
         progress: event.progress,
+        transferredBytes: event.transferredBytes ?? fallback.transferredBytes,
+        totalBytes: event.totalBytes ?? fallback.totalBytes,
+        speedBytesPerSec: event.status === "running" ? event.speedBytesPerSec : undefined,
         error: event.error,
         message: event.message,
         updatedAt: nowIso()
@@ -128,6 +134,11 @@ export const useTransferQueueStore = create<TransferQueueState>((set, get) => ({
     set((state) => {
       const current = state.tasks.find((item) => item.id === taskId);
       if (!current) {
+        return {};
+      }
+      // A user-initiated cancel is authoritative — don't downgrade it to failed
+      // when the rejected transfer promise also reports an error.
+      if (current.status === "cancelled") {
         return {};
       }
 

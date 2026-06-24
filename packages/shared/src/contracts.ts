@@ -612,10 +612,17 @@ export const sftpTransferStatusEventSchema = z.object({
   connectionId: z.string().uuid(),
   remotePath: z.string().min(1),
   localPath: z.string().min(1),
-  status: z.enum(["queued", "running", "success", "failed"]),
+  status: z.enum(["queued", "running", "success", "failed", "cancelled"]),
   progress: z.coerce.number().min(0).max(100).default(0),
+  transferredBytes: z.coerce.number().min(0).optional(),
+  totalBytes: z.coerce.number().min(0).optional(),
+  speedBytesPerSec: z.coerce.number().min(0).optional(),
   message: z.string().optional(),
   error: z.string().optional()
+});
+
+export const sftpTransferCancelSchema = z.object({
+  taskId: z.string().uuid()
 });
 
 export const backupListSchema = z.object({});
@@ -835,6 +842,7 @@ export type DialogOpenFilesInput = z.infer<typeof dialogOpenFilesSchema>;
 export type DialogOpenDirectoryInput = z.infer<typeof dialogOpenDirectorySchema>;
 export type DialogOpenPathInput = z.infer<typeof dialogOpenPathSchema>;
 export type SftpTransferStatusEvent = z.infer<typeof sftpTransferStatusEventSchema>;
+export type SftpTransferCancelInput = z.infer<typeof sftpTransferCancelSchema>;
 export type BackupListInput = z.infer<typeof backupListSchema>;
 export type BackupRunInput = z.infer<typeof backupRunSchema>;
 export type BackupRestoreInput = z.infer<typeof backupRestoreSchema>;

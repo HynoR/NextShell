@@ -53,6 +53,7 @@ import {
   storageMigrationsSchema,
   sftpRenameSchema,
   sftpTransferPackedSchema,
+  sftpTransferCancelSchema,
   sftpUploadSchema,
   sftpUploadPackedSchema,
   savedCommandListSchema,
@@ -340,6 +341,11 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
       event.sender,
       input.taskId
     );
+  });
+
+  ipcMain.handle(IPCChannel.SftpTransferCancel, (_event, payload) => {
+    const input = parsePayload(sftpTransferCancelSchema, payload, "取消传输");
+    return services.cancelTransfer(input.taskId);
   });
 
   ipcMain.handle(IPCChannel.SftpDownloadPacked, (event, payload) => {

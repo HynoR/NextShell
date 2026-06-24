@@ -180,6 +180,7 @@ const api: NextShellApi = {
     uploadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpUploadPacked, payload),
     downloadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpDownloadPacked, payload),
     transferPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpTransferPacked, payload),
+    cancelTransfer: (payload) => ipcRenderer.invoke(IPCChannel.SftpTransferCancel, payload),
     mkdir: (payload) => ipcRenderer.invoke(IPCChannel.SftpMkdir, payload),
     rename: (payload) => ipcRenderer.invoke(IPCChannel.SftpRename, payload),
     remove: (payload) => ipcRenderer.invoke(IPCChannel.SftpDelete, payload),

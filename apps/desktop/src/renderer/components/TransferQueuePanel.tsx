@@ -1,11 +1,13 @@
 import { Button, Tag } from "antd";
 import type { TransferTask } from "../store/useTransferQueueStore";
+import { formatBytes, formatSpeed } from "../utils/formatBytes";
 
 interface TransferQueuePanelProps {
   tasks: TransferTask[];
   collapsed: boolean;
   onToggle: () => void;
   onRetry: (taskId: string) => void;
+  onCancel: (taskId: string) => void;
   onClearFinished: () => void;
   onOpenLocalFile?: (task: TransferTask) => void;
 }
@@ -13,6 +15,19 @@ interface TransferQueuePanelProps {
 const taskLabel = (task: TransferTask): string => {
   const remoteName = task.remotePath.split("/").pop() || task.remotePath;
   return `${task.direction === "upload" ? "上传" : "下载"} · ${remoteName}`;
+};
+
+const transferDetail = (task: TransferTask): string | null => {
+  const parts: string[] = [];
+  if (task.totalBytes && task.totalBytes > 0) {
+    parts.push(`${formatBytes(task.transferredBytes ?? 0)} / ${formatBytes(task.totalBytes)}`);
+  } else if (task.transferredBytes && task.transferredBytes > 0) {
+    parts.push(formatBytes(task.transferredBytes));
+  }
+  if (task.status === "running" && task.speedBytesPerSec && task.speedBytesPerSec > 0) {
+    parts.push(formatSpeed(task.speedBytesPerSec));
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
 };
 
 const statusTag = (task: TransferTask): { color: string; text: string } => {
@@ -23,6 +38,8 @@ const statusTag = (task: TransferTask): { color: string; text: string } => {
       return { color: "success", text: "完成" };
     case "failed":
       return { color: "error", text: "失败" };
+    case "cancelled":
+      return { color: "default", text: "已取消" };
     default:
       return { color: "default", text: "排队中" };
   }
@@ -33,6 +50,7 @@ export const TransferQueuePanel = ({
   collapsed,
   onToggle,
   onRetry,
+  onCancel,
   onClearFinished,
   onOpenLocalFile
 }: TransferQueuePanelProps) => {
@@ -96,6 +114,9 @@ export const TransferQueuePanel = ({
                     </div>
                     <span>{Math.round(task.progress)}%</span>
                   </div>
+                  {transferDetail(task) ? (
+                    <div className="transfer-progress-detail">{transferDetail(task)}</div>
+                  ) : null}
                   {task.error ? <div className="transfer-task-error">{task.error}</div> : null}
                   <div className="transfer-task-paths">
                     <div className="path-row">
@@ -107,7 +128,13 @@ export const TransferQueuePanel = ({
                       <span className="path-value" title={task.remotePath}>{task.remotePath}</span>
                     </div>
                   </div>
-                  {task.status === "failed" && task.retryable !== false ? (
+                  {task.status === "running" ? (
+                    <div className="transfer-task-actions">
+                      <Button size="small" danger onClick={() => onCancel(task.id)}>
+                        取消
+                      </Button>
+                    </div>
+                  ) : task.status === "failed" && task.retryable !== false ? (
                     <div className="transfer-task-actions">
                       <Button size="small" type="primary" onClick={() => onRetry(task.id)}>
                         重试

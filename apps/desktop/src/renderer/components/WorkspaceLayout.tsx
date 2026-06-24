@@ -769,6 +769,7 @@ export const WorkspaceLayout = ({
                                     collapsed={transferPanelCollapsed}
                                     onToggle={onTransferPanelToggle}
                                     onRetry={(taskId) => void onRetryTransfer(taskId)}
+                                    onCancel={(taskId) => void window.nextshell.sftp.cancelTransfer({ taskId })}
                                     onClearFinished={onClearFinishedTransfers}
                                     onOpenLocalFile={(task) => {
                                         if (

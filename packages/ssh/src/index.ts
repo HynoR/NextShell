@@ -139,6 +139,70 @@ export interface ExecResult {
   exitCode: number;
 }
 
+export interface SftpTransferProgress {
+  /** Bytes transferred so far. */
+  transferred: number;
+  /** Total bytes to transfer. */
+  total: number;
+}
+
+export type SftpProgressListener = (progress: SftpTransferProgress) => void;
+
+const buildTransferOptions = (onProgress?: SftpProgressListener) =>
+  onProgress
+    ? { step: (transferred: number, _chunk: number, total: number) => onProgress({ transferred, total }) }
+    : {};
+
+/** Thrown when a transfer is aborted via its AbortSignal. */
+export class TransferCancelledError extends Error {
+  readonly cancelled = true;
+  constructor(message = "Transfer cancelled") {
+    super(message);
+    this.name = "TransferCancelledError";
+  }
+}
+
+export const isTransferCancelledError = (error: unknown): boolean =>
+  error instanceof TransferCancelledError ||
+  (typeof error === "object" && error !== null && (error as { cancelled?: boolean }).cancelled === true);
+
+/**
+ * Run `op`, but reject with TransferCancelledError if `signal` aborts first,
+ * invoking `onAbort` (e.g. to destroy the underlying channel) to interrupt the
+ * in-flight operation. Without a signal it simply runs `op`.
+ */
+export const runWithAbort = async <T>(
+  signal: AbortSignal | undefined,
+  op: () => Promise<T>,
+  onAbort: () => void
+): Promise<T> => {
+  if (!signal) {
+    return op();
+  }
+  if (signal.aborted) {
+    onAbort();
+    throw new TransferCancelledError();
+  }
+  let handler: (() => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    handler = () => {
+      onAbort();
+      reject(new TransferCancelledError());
+    };
+    signal.addEventListener("abort", handler, { once: true });
+  });
+  const opPromise = op();
+  // Prevent a post-abort rejection from surfacing as an unhandled rejection.
+  opPromise.catch(() => undefined);
+  try {
+    return await Promise.race([opPromise, abortPromise]);
+  } finally {
+    if (handler) {
+      signal.removeEventListener("abort", handler);
+    }
+  }
+};
+
 export interface SshDirectoryEntry {
   name: string;
   longname: string;
@@ -580,9 +644,33 @@ export class SshConnection {
     });
   }
 
-  private async fastGet(sftp: SFTPWrapper, remotePath: string, localPath: string): Promise<void> {
+  /**
+   * Run a transfer operation that can be aborted via `signal`. On abort the
+   * SFTP channel is ended, which interrupts the in-flight fastGet/fastPut, and
+   * the call rejects with TransferCancelledError.
+   */
+  private async runCancellable<T>(
+    sftp: SFTPWrapper,
+    signal: AbortSignal | undefined,
+    op: () => Promise<T>
+  ): Promise<T> {
+    return runWithAbort(signal, op, () => {
+      try {
+        sftp.end();
+      } catch {
+        // channel may already be closing — ignore
+      }
+    });
+  }
+
+  private async fastGet(
+    sftp: SFTPWrapper,
+    remotePath: string,
+    localPath: string,
+    onProgress?: SftpProgressListener
+  ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      sftp.fastGet(remotePath, localPath, (error) => {
+      sftp.fastGet(remotePath, localPath, buildTransferOptions(onProgress), (error) => {
         if (error) {
           reject(error);
           return;
@@ -713,24 +801,38 @@ export class SshConnection {
     });
   }
 
-  async upload(localPath: string, remotePath: string): Promise<void> {
+  async upload(
+    localPath: string,
+    remotePath: string,
+    onProgress?: SftpProgressListener,
+    signal?: AbortSignal
+  ): Promise<void> {
     const resolvedLocalPath = expandHomePath(localPath);
 
-    await this.withSftp(
-      (sftp) =>
-        new Promise<void>((resolve, reject) => {
-          sftp.fastPut(resolvedLocalPath, remotePath, (error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve();
-          });
-        })
+    await this.withSftp((sftp) =>
+      this.runCancellable(
+        sftp,
+        signal,
+        () =>
+          new Promise<void>((resolve, reject) => {
+            sftp.fastPut(resolvedLocalPath, remotePath, buildTransferOptions(onProgress), (error) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+              resolve();
+            });
+          })
+      )
     );
   }
 
-  async download(remotePath: string, localPath: string): Promise<void> {
+  async download(
+    remotePath: string,
+    localPath: string,
+    onProgress?: SftpProgressListener,
+    signal?: AbortSignal
+  ): Promise<void> {
     const resolvedLocalPath = expandHomePath(localPath);
 
     await this.withSftp(async (sftp) => {
@@ -741,7 +843,9 @@ export class SshConnection {
       }
 
       await fs.mkdir(path.dirname(resolvedLocalPath), { recursive: true });
-      await this.fastGet(sftp, remotePath, resolvedLocalPath);
+      await this.runCancellable(sftp, signal, () =>
+        this.fastGet(sftp, remotePath, resolvedLocalPath, onProgress)
+      );
     });
   }
 
