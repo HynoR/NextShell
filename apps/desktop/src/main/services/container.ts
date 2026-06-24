@@ -27,7 +27,7 @@ import type {
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
-  generateDeviceKey,
+  resolveDeviceKey,
   verifyMasterPassword,
 } from "../../../../../packages/security/src/index";
 import {
@@ -68,9 +68,9 @@ const cloudSyncWorkspacePasswordRef = (workspaceId: string): string =>
 // Re-export for consumers (index.ts, register.ts)
 export type { ServiceContainer, CreateServiceContainerOptions } from "./container-types";
 
-export const createServiceContainer = (
+export const createServiceContainer = async (
   options: import("./container-types").CreateServiceContainerOptions
-): import("./container-types").ServiceContainer => {
+): Promise<import("./container-types").ServiceContainer> => {
   fs.mkdirSync(options.dataDir, { recursive: true });
   const dbPath = path.join(options.dataDir, "nextshell.db");
 
@@ -84,13 +84,27 @@ export const createServiceContainer = (
   const proxyRepo = new CachedProxyRepository(new SQLiteProxyRepository(rawRepo.getDb()));
 
   // ─── Device Key ──────────────────────────────────────────────────────────
-  let deviceKeyHex = connections.getDeviceKey();
-  if (!deviceKeyHex) {
-    deviceKeyHex = generateDeviceKey();
-    connections.saveDeviceKey(deviceKeyHex);
-    logger.info("[Security] generated new device key");
+  // The device key encrypts every stored credential. Keep it OUT of the SQLite
+  // database (where the ciphertext also lives) by storing it in the OS keychain
+  // via keytar — otherwise copying nextshell.db yields both key and ciphertext.
+  // Fall back to DB storage only when the keychain is unavailable.
+  const deviceKeyStore = new KeytarPasswordCache(options.keytarServiceName ?? "NextShell", "device-key");
+  const deviceKey = await resolveDeviceKey(deviceKeyStore, {
+    getLegacy: () => connections.getDeviceKey(),
+    saveLegacy: (key) => connections.saveDeviceKey(key),
+    clearLegacy: () => connections.clearDeviceKey(),
+  });
+  if (deviceKey.storedIn === "keychain") {
+    logger.info(
+      deviceKey.migratedFromDatabase
+        ? "[Security] migrated device key from database to system keychain"
+        : "[Security] device key resolved from system keychain",
+    );
+  } else {
+    logger.warn("[Security] system keychain unavailable; device key stored in local database (degraded)");
   }
-  const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKeyHex, "hex"));
+
+  const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKey.deviceKeyHex, "hex"));
 
   // ─── Master Password ────────────────────────────────────────────────────
   const keytarServiceName = options.keytarServiceName ?? "NextShell";
@@ -281,11 +295,39 @@ export const createServiceContainer = (
     return { ...base, authType: "agent" };
   };
 
+  // TOFU: pin the server host-key fingerprint on the first successful connect so
+  // any later key change is detected and rejected (see ssh hostVerifier).
+  const pinHostFingerprint = (connectionId: string, fingerprint: string): void => {
+    try {
+      const latest = connections.getById(connectionId);
+      if (!latest || latest.hostFingerprint?.trim()) return;
+      connections.save({ ...latest, hostFingerprint: fingerprint, updatedAt: new Date().toISOString() });
+      appendAuditLogIfEnabled({
+        action: "connection.host_fingerprint_pinned",
+        level: "info",
+        connectionId,
+        message: "Pinned host key fingerprint on first connect (TOFU)",
+        metadata: { fingerprint },
+      });
+      logger.info("[Security] pinned host fingerprint (TOFU)", { connectionId, fingerprint });
+    } catch (error) {
+      logger.warn("[Security] failed to pin host fingerprint", { connectionId, error: normalizeError(error) });
+    }
+  };
+
   const establishConnection = async (
     connectionId: string, profile: ConnectionProfile, authOverride?: SessionAuthOverrideInput,
   ): Promise<SshConnection> => {
     logger.info("[SSH] connecting", { connectionId, host: profile.host, port: profile.port });
-    const ssh = await SshConnection.connect(await resolveConnectOptions(profile, authOverride));
+    const connectOptions = await resolveConnectOptions(profile, authOverride);
+    let observedFingerprint: string | undefined;
+    const ssh = await SshConnection.connect({
+      ...connectOptions,
+      onHostFingerprint: (fingerprint) => { observedFingerprint = fingerprint; },
+    });
+    if (observedFingerprint && !profile.hostFingerprint?.trim()) {
+      pinHostFingerprint(connectionId, observedFingerprint);
+    }
     ssh.onClose(() => {
       activeConnections.delete(connectionId);
       void remoteEditManager.cleanupByConnectionId(connectionId);

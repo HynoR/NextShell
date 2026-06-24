@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests (Bun)
+        run: bun run test
+
+      # Note: the mcp-ssh-proxy and runtime suites use the node:test runner
+      # (`bun run test:node`) and load native modules (better-sqlite3). They are
+      # not wired into CI here because those *.test.ts files are not tracked in
+      # the repo and a dev `rebuild:native` builds better-sqlite3 for Electron's
+      # ABI. Add a step once they are committed and a node-ABI rebuild is set up.

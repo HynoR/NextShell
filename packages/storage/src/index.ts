@@ -299,6 +299,65 @@ const toMetadataJSON = (value: Record<string, unknown> | undefined): string | nu
   return JSON.stringify(value);
 };
 
+// ─── Audit Metadata Redaction ────────────────────────────────────────────────
+// Audit metadata frequently carries raw command strings (e.g. `mysql -pSECRET`,
+// `curl -H 'Authorization: Bearer TOKEN'`). Mask inline secrets before they are
+// persisted so a leaked database does not become a second exposure surface.
+
+const AUDIT_REDACTED = "«redacted»";
+
+const SENSITIVE_VALUE_RULES: Array<{ re: RegExp; replace: string }> = [
+  // PEM private key blocks
+  { re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, replace: AUDIT_REDACTED },
+  // Authorization: Bearer <token> (or a bare "Bearer <token>")
+  { re: /(bearer\s+)[A-Za-z0-9._\-+/=]+/gi, replace: `$1${AUDIT_REDACTED}` },
+  // key=value / key: value for sensitive identifiers
+  {
+    re: /\b(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth)\b(\s*[=:]\s*)("?)([^\s"']+)\3/gi,
+    replace: `$1$2${AUDIT_REDACTED}`,
+  },
+  // --password=<secret> / --token <secret>
+  { re: /(--(?:password|token)[=\s])[^\s'"]+/gi, replace: `$1${AUDIT_REDACTED}` },
+  // mysql/redis style inline -p<secret> / -a<secret> (flag immediately followed by value)
+  { re: /(^|\s)(-[pa])[^\s'"]+/g, replace: `$1$2${AUDIT_REDACTED}` },
+];
+
+const SENSITIVE_KEY = /^(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth(?:orization)?)$/i;
+
+const redactAuditString = (input: string): string => {
+  let out = input;
+  for (const rule of SENSITIVE_VALUE_RULES) {
+    out = out.replace(rule.re, rule.replace);
+  }
+  return out;
+};
+
+const redactAuditValue = (value: unknown): unknown => {
+  if (typeof value === "string") {
+    return redactAuditString(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(redactAuditValue);
+  }
+  if (value && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = typeof child === "string" && SENSITIVE_KEY.test(key) ? AUDIT_REDACTED : redactAuditValue(child);
+    }
+    return result;
+  }
+  return value;
+};
+
+export const redactAuditMetadata = (
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined => {
+  if (!metadata) {
+    return undefined;
+  }
+  return redactAuditValue(metadata) as Record<string, unknown>;
+};
+
 const parseGroupPath = (raw: string | null | undefined): string => {
   if (!raw) return "/server";
   const trimmed = raw.trim();
@@ -1504,6 +1563,7 @@ export interface ConnectionRepository {
   saveMasterKeyMeta: (meta: MasterKeyMeta) => void;
   getDeviceKey: () => string | undefined;
   saveDeviceKey: (key: string) => void;
+  clearDeviceKey: () => void;
   getSecretStore: () => SecretStoreDB;
   listTemplateParams: (commandId?: string) => CommandTemplateParam[];
   upsertTemplateParams: (commandId: string, params: Record<string, string>) => void;
@@ -1862,7 +1922,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       level: payload.level,
       connectionId: payload.connectionId,
       message: payload.message,
-      metadata: payload.metadata,
+      metadata: redactAuditMetadata(payload.metadata),
       createdAt: new Date().toISOString()
     };
 
@@ -1934,7 +1994,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           level: payload.level,
           connection_id: payload.connectionId ?? null,
           message: payload.message,
-          metadata_json: toMetadataJSON(payload.metadata),
+          metadata_json: toMetadataJSON(redactAuditMetadata(payload.metadata)),
           created_at: new Date().toISOString()
         });
       }
@@ -2855,6 +2915,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          value_json = excluded.value_json,
          updated_at = excluded.updated_at`
     ).run({ key: "device_key", value_json: JSON.stringify(key), updated_at: now });
+  }
+
+  clearDeviceKey(): void {
+    this.db.prepare("DELETE FROM app_settings WHERE key = ?").run("device_key");
   }
 
   getSecretStore(): SecretStoreDB {

@@ -745,11 +745,19 @@ export interface ConnectionExportFile {
   version: 1;
   exportedAt: string;
   /**
-   * When true, each connection's `password` field has been XOR-obfuscated
-   * with SHA256(name+host+port) and encoded as base64 instead of stored
-   * as plaintext. Only set on unencrypted exports.
+   * Legacy flag (read-only for backward-compatible import): each connection's
+   * `password` was XOR-obfuscated with SHA256(name+host+port). The obfuscation
+   * key is derived purely from fields present in the file, so it provided no
+   * real confidentiality — newer exports no longer produce it (see
+   * `passwordsOmitted`). Still honoured on import so old files keep working.
    */
   passwordsObfuscated?: boolean;
+  /**
+   * When true, this unencrypted export intentionally omits credential secrets
+   * (`password`). To export connections together with their secrets, use an
+   * encrypted export (AES-256-GCM) instead.
+   */
+  passwordsOmitted?: boolean;
   connections: ExportedConnection[];
 }
 

@@ -329,6 +329,70 @@ export const generateDeviceKey = (): string => {
   return randomBytes(32).toString("hex");
 };
 
+// ─── Device Key Resolution ──────────────────────────────────────────────────
+
+/** System keychain backing for the device key (satisfied by KeytarPasswordCache). */
+export interface DeviceKeyStore {
+  isAvailable: () => boolean;
+  recall: () => Promise<string | undefined>;
+  remember: (key: string) => Promise<void>;
+}
+
+/** Legacy plaintext device-key storage in the local database. */
+export interface DeviceKeyDbAccess {
+  getLegacy: () => string | undefined;
+  saveLegacy: (key: string) => void;
+  clearLegacy: () => void;
+}
+
+export interface ResolveDeviceKeyResult {
+  deviceKeyHex: string;
+  storedIn: "keychain" | "database";
+  migratedFromDatabase: boolean;
+}
+
+/**
+ * Resolve the device key that encrypts all stored credentials, preferring the OS
+ * keychain over the database so the key never sits in plaintext next to the
+ * ciphertext. On first run after upgrade it migrates the legacy plaintext key
+ * into the keychain and purges it from the DB; if the keychain is unavailable or
+ * fails at runtime it degrades to DB storage, always reusing the existing key so
+ * previously-encrypted credentials still decrypt.
+ */
+export const resolveDeviceKey = async (
+  store: DeviceKeyStore,
+  db: DeviceKeyDbAccess,
+  generate: () => string = generateDeviceKey,
+): Promise<ResolveDeviceKeyResult> => {
+  const legacy = db.getLegacy();
+
+  if (store.isAvailable()) {
+    try {
+      let deviceKeyHex = await store.recall();
+      let migratedFromDatabase = false;
+      if (!deviceKeyHex) {
+        // No key in the keychain yet: migrate the legacy plaintext key or mint one.
+        deviceKeyHex = legacy ?? generate();
+        await store.remember(deviceKeyHex);
+        migratedFromDatabase = Boolean(legacy);
+      }
+      // The keychain is authoritative — drop any plaintext copy from the DB.
+      if (legacy) {
+        db.clearLegacy();
+      }
+      return { deviceKeyHex, storedIn: "keychain", migratedFromDatabase };
+    } catch {
+      // Fall through to DB storage on any runtime keychain failure.
+    }
+  }
+
+  const deviceKeyHex = legacy ?? generate();
+  if (!legacy) {
+    db.saveLegacy(deviceKeyHex);
+  }
+  return { deviceKeyHex, storedIn: "database", migratedFromDatabase: false };
+};
+
 export class EncryptedSecretVault implements CredentialVault {
   constructor(
     private readonly store: SecretStoreDB,

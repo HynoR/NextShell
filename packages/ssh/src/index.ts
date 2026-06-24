@@ -109,6 +109,12 @@ export interface SshConnectOptions {
   agentSock?: string;
   hostFingerprint?: string;
   strictHostKeyChecking?: boolean;
+  /**
+   * Invoked with the observed server host-key fingerprint (canonical
+   * `SHA256:<base64-no-pad>` form) during the handshake. Used to pin the
+   * fingerprint on first connect (trust-on-first-use).
+   */
+  onHostFingerprint?: (fingerprint: string) => void;
   proxy?: SshProxyOptions;
   /** SSH keepalive interval in milliseconds. 0 disables keepalive. */
   keepaliveInterval?: number;
@@ -160,10 +166,53 @@ const expandHomePath = (rawPath: string): string => {
   return rawPath;
 };
 
+/**
+ * Compute the canonical OpenSSH host-key fingerprint (`SHA256:<base64-no-pad>`,
+ * matching `ssh-keygen -l`) from a raw host key.
+ */
+export const computeHostKeyFingerprint = (key: Buffer | string): string => {
+  const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "binary");
+  const sha256Base64 = createHash("sha256").update(keyBuffer).digest("base64");
+  return `SHA256:${sha256Base64.replace(/=+$/, "")}`;
+};
+
+/**
+ * Whether a pinned/expected fingerprint matches the observed server key. Accepts
+ * the canonical `SHA256:<base64-no-pad>` form (case-sensitive) plus the legacy
+ * flexible forms: `sha256:<base64>`, colon-separated MD5, and bare sha256/md5 hex.
+ */
+export const matchHostFingerprint = (expected: string, key: Buffer | string): boolean => {
+  const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "binary");
+  const trimmed = expected.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (trimmed === computeHostKeyFingerprint(keyBuffer)) {
+    return true;
+  }
+
+  const sha256Base64 = createHash("sha256").update(keyBuffer).digest("base64");
+  const normalizedExpected = trimmed.toLowerCase();
+  if (normalizedExpected.startsWith("sha256:")) {
+    return normalizedExpected.slice("sha256:".length) === sha256Base64.toLowerCase();
+  }
+
+  const sha256Hex = createHash("sha256").update(keyBuffer).digest("hex");
+  const md5Hex = createHash("md5").update(keyBuffer).digest("hex");
+  const md5Colon = md5Hex.match(/.{2}/g)?.join(":") ?? md5Hex;
+
+  if (normalizedExpected.includes(":")) {
+    return normalizedExpected === md5Colon.toLowerCase();
+  }
+
+  return normalizedExpected === sha256Hex.toLowerCase() || normalizedExpected === md5Hex.toLowerCase();
+};
+
 export class SshConnection {
   private readonly client: Client;
   private readonly readyPromise: Promise<void>;
   private closed = false;
+  private hostKeyError: Error | undefined;
 
   private constructor(private readonly options: SshConnectOptions) {
     const ssh2 = loadSsh2();
@@ -188,7 +237,9 @@ export class SshConnection {
 
       const onError = (error: Error) => {
         cleanup();
-        reject(error);
+        // A failed host-key verification surfaces as a generic handshake error;
+        // prefer the specific mismatch error captured by the verifier.
+        reject(this.hostKeyError ?? error);
       };
 
       const onEnd = () => {
@@ -227,31 +278,43 @@ export class SshConnection {
       config.sock = proxySocket;
     }
 
-    if (this.options.strictHostKeyChecking) {
-      const expected = this.options.hostFingerprint?.trim();
-      if (!expected) {
-        throw new Error("Strict host key checking requires host fingerprint");
+    // Host key verification (trust-on-first-use).
+    //
+    // The verifier is ALWAYS registered: without it ssh2 silently accepts any
+    // host key, leaving every connection open to a man-in-the-middle. Behaviour:
+    //   - A fingerprint is pinned  → verify; reject (and surface a clear error)
+    //                                 on mismatch, regardless of the strict flag.
+    //   - No fingerprint pinned    → report the observed fingerprint for pinning
+    //                                 and trust on first use (accept-new).
+    //   - strict + no fingerprint  → refuse to connect (must pin explicitly).
+    const expected = this.options.hostFingerprint?.trim();
+    if (this.options.strictHostKeyChecking && !expected) {
+      throw new Error("Strict host key checking requires host fingerprint");
+    }
+
+    config.hostVerifier = (key: Buffer | string) => {
+      const observed = computeHostKeyFingerprint(key);
+
+      try {
+        this.options.onHostFingerprint?.(observed);
+      } catch {
+        // Reporting is best-effort; never let it abort the handshake.
       }
 
-      config.hostVerifier = (key: Buffer | string) => {
-        const keyBuffer = Buffer.isBuffer(key) ? key : Buffer.from(key, "binary");
-        const sha256Base64 = createHash("sha256").update(keyBuffer).digest("base64");
-        const sha256Hex = createHash("sha256").update(keyBuffer).digest("hex");
-        const md5Hex = createHash("md5").update(keyBuffer).digest("hex");
-        const md5Colon = md5Hex.match(/.{2}/g)?.join(":") ?? md5Hex;
+      if (!expected) {
+        // Trust on first use — the observed fingerprint is reported for pinning.
+        return true;
+      }
 
-        const normalizedExpected = expected.toLowerCase();
-        if (normalizedExpected.startsWith("sha256:")) {
-          return normalizedExpected.slice("sha256:".length) === sha256Base64.toLowerCase();
-        }
-
-        if (normalizedExpected.includes(":")) {
-          return normalizedExpected === md5Colon.toLowerCase();
-        }
-
-        return normalizedExpected === sha256Hex.toLowerCase() || normalizedExpected === md5Hex.toLowerCase();
-      };
-    }
+      const matches = matchHostFingerprint(expected, key);
+      if (!matches) {
+        this.hostKeyError = new Error(
+          `HOST_KEY_MISMATCH: 远端主机密钥与已固定的指纹不一致（可能是中间人攻击，或服务器密钥已更换）。` +
+            `当前指纹为 ${observed}。若确属合法变更，请在连接管理器中清除或更新该连接的主机指纹后重试。`,
+        );
+      }
+      return matches;
+    };
 
     if (this.options.authType === "password") {
       if (!this.options.password) {

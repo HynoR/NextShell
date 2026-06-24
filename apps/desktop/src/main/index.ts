@@ -166,7 +166,7 @@ app.whenReady().then(async () => {
     logger.error("[App] unhandledRejection", reason);
   });
 
-  services = createServiceContainer({
+  services = await createServiceContainer({
     dataDir: path.join(app.getPath("userData"), "storage"),
     keytarServiceName: "NextShell"
   });

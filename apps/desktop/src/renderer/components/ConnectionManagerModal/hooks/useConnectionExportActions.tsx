@@ -40,15 +40,20 @@ export const useConnectionExportActions = ({
         okText: "继续",
         cancelText: "取消",
         content: (
-          <Radio.Group
-            defaultValue="plain"
-            onChange={(event) => {
-              mode = event.target.value;
-            }}
-          >
-            <Radio value="plain">普通导出（JSON）</Radio>
-            <Radio value="encrypted">加密导出（AES + b64##）</Radio>
-          </Radio.Group>
+          <div style={{ display: "grid", gap: 8 }}>
+            <Radio.Group
+              defaultValue="plain"
+              onChange={(event) => {
+                mode = event.target.value;
+              }}
+            >
+              <Radio value="plain">普通导出（JSON，不含密码）</Radio>
+              <Radio value="encrypted">加密导出（含密码，AES 加密）</Radio>
+            </Radio.Group>
+            <div style={{ fontSize: 12, color: "var(--t3)" }}>
+              普通导出不包含任何密码/密钥口令；如需连同密码一起导出，请选择加密导出。
+            </div>
+          </div>
         ),
         onOk: () => settle(mode),
         onCancel: () => settle(null)

@@ -31,7 +31,6 @@ import {
 import {
   decryptConnectionExportPayload,
   encryptConnectionExportPayload,
-  obfuscatePassword,
 } from "./connection-export-crypto";
 import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
 import { scanConnectionImportDirectory } from "./connection-import-directory";
@@ -99,21 +98,18 @@ export class ImportExportService {
     const encryptionPassword = input.encryptionPassword;
     const encrypted = typeof encryptionPassword === "string";
 
+    // Unencrypted exports omit secrets entirely: the previous XOR "obfuscation"
+    // was reversible from fields present in the file, so it was plaintext in
+    // disguise. Use an encrypted export to include passwords.
     const exportedConnectionsFinal = encrypted
       ? exportedConnections
-      : exportedConnections.map((c) => ({
-          ...c,
-          password:
-            c.password !== undefined
-              ? obfuscatePassword(c.password, c.name, c.host, c.port)
-              : undefined,
-        }));
+      : exportedConnections.map((c) => ({ ...c, password: undefined }));
 
     const exportFile: ConnectionExportFile = {
       format: "nextshell-connections",
       version: 1,
       exportedAt: new Date().toISOString(),
-      ...(encrypted ? {} : { passwordsObfuscated: true }),
+      ...(encrypted ? {} : { passwordsOmitted: true }),
       connections: exportedConnectionsFinal,
     };
 

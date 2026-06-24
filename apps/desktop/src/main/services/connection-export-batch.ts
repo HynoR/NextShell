@@ -5,7 +5,7 @@ import type {
   ExportedConnection
 } from "../../../../../packages/core/src/index";
 import type { ConnectionExportBatchResult } from "../../../../../packages/shared/src/index";
-import { encryptConnectionExportPayload, obfuscatePassword } from "./connection-export-crypto";
+import { encryptConnectionExportPayload } from "./connection-export-crypto";
 import {
   buildBaseFileName,
   resolveUniqueFileName,
@@ -85,27 +85,18 @@ export const exportConnectionsBatchToDirectory = async <
     try {
       const exportedConnection = await options.buildExportedConnection(connection);
 
-      // When not encrypted, XOR-obfuscate the password so it isn't stored as plaintext.
+      // Unencrypted exports omit secrets entirely: the previous XOR "obfuscation"
+      // was reversible from fields present in the file, so it offered no real
+      // confidentiality. Use an encrypted export to include passwords.
       const exportedConnectionFinal = encrypted
         ? exportedConnection
-        : {
-            ...exportedConnection,
-            password:
-              exportedConnection.password !== undefined
-                ? obfuscatePassword(
-                    exportedConnection.password,
-                    exportedConnection.name,
-                    exportedConnection.host,
-                    exportedConnection.port
-                  )
-                : undefined
-          };
+        : { ...exportedConnection, password: undefined };
 
       const exportFile: ConnectionExportFile = {
         format: "nextshell-connections",
         version: 1,
         exportedAt: new Date().toISOString(),
-        ...(encrypted ? {} : { passwordsObfuscated: true }),
+        ...(encrypted ? {} : { passwordsOmitted: true }),
         connections: [exportedConnectionFinal]
       };
       const plainJson = JSON.stringify(exportFile, null, 2);

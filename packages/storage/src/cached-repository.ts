@@ -715,6 +715,11 @@ export class CachedConnectionRepository implements ConnectionRepository {
     this.deviceKeyCache = { loaded: true, value: key };
   }
 
+  clearDeviceKey(): void {
+    this.inner.clearDeviceKey();
+    this.deviceKeyCache = { loaded: true, value: undefined };
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Pass-through / Lifecycle
   // ═══════════════════════════════════════════════════════════════════════════
