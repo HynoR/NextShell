@@ -40,6 +40,7 @@ const SESSION_TYPE_ICON: Record<SessionType, string> = {
     processManager: "ri-cpu-line",
     networkMonitor: "ri-global-line",
     editor: "ri-file-code-line",
+    quickTransfer: "ri-folder-transfer-line",
 };
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
@@ -215,6 +216,7 @@ interface WorkspaceLayoutProps {
     onRenameSession: (sessionId: string, title: string) => void;
     onOpenProcessManager: (connectionId: string) => void;
     onOpenNetworkMonitor: (connectionId: string) => void;
+    onOpenQuickTransfer: () => void;
     onCloseMonitorTab: (sessionId: string) => void;
     onOpenEditorTab: (connectionId: string, remotePath: string) => Promise<void>;
     onRetrySessionAuth: (
@@ -265,6 +267,7 @@ export const WorkspaceLayout = ({
     onRenameSession,
     onOpenProcessManager,
     onOpenNetworkMonitor,
+    onOpenQuickTransfer,
     onCloseMonitorTab,
     onOpenEditorTab,
     onRetrySessionAuth,
@@ -553,19 +556,6 @@ export const WorkspaceLayout = ({
                 ),
             },
             {
-                key: "quick-transfer",
-                label: "文件快传",
-                children: bottomTab === "quick-transfer" ? (
-                    <QuickTransferPane
-                        sourceConnection={activeConnection}
-                        connected={isActiveConnectionTerminalConnected}
-                        active
-                        connections={connections}
-                        sessions={sessions}
-                    />
-                ) : null,
-            },
-            {
                 key: "commands",
                 label: "命令库",
                 children: (
@@ -655,6 +645,10 @@ export const WorkspaceLayout = ({
                     <button className="hdr-btn" onClick={onOpenManager} title="管理连接">
                         <i className="ri-links-line" aria-hidden="true" />
                         服务器
+                    </button>
+                    <button className="hdr-btn" onClick={onOpenQuickTransfer} title="文件快传">
+                        <i className="ri-folder-transfer-line" aria-hidden="true" />
+                        快传
                     </button>
                     <button className="hdr-btn" onClick={onOpenSettings} title="打开设置中心">
                         <i className="ri-settings-3-line" aria-hidden="true" />
@@ -938,7 +932,8 @@ export const WorkspaceLayout = ({
                                             className={
                                                 activeSession?.type === "processManager" ||
                                                 activeSession?.type === "networkMonitor" ||
-                                                activeSession?.type === "editor"
+                                                activeSession?.type === "editor" ||
+                                                activeSession?.type === "quickTransfer"
                                                     ? "hidden"
                                                     : "flex-1 min-h-0 flex flex-col"
                                             }
@@ -977,6 +972,12 @@ export const WorkspaceLayout = ({
                                         ) : null}
                                         {activeSession?.type === "editor" ? (
                                             <EditorPane session={activeSession} />
+                                        ) : null}
+                                        {activeSession?.type === "quickTransfer" ? (
+                                            <QuickTransferPane
+                                                connections={connections}
+                                                sessions={sessions}
+                                            />
                                         ) : null}
                                     </div>
                                 </Panel>

@@ -271,7 +271,7 @@ const resetStore = (): void => {
 
 (() => {
   resetStore();
-  useWorkspaceStore.getState().setBottomTab("quick-transfer");
+  useWorkspaceStore.getState().setBottomTab("files");
   const state = useWorkspaceStore.getState();
-  assertEqual(state.bottomTab, "quick-transfer", "setBottomTab should accept quick-transfer");
+  assertEqual(state.bottomTab, "files", "setBottomTab should accept files");
 })();
