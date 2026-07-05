@@ -2,11 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import type {
   CloudSyncWorkspaceProfile,
-  AuditLogRecord,
   ConnectionListQuery,
   ConnectionProfile,
   OriginKind,
-  MigrationRecord,
   ProxyProfile,
   SshKeyProfile,
 } from "@nextshell/core";
@@ -689,17 +687,9 @@ export class ConnectionService {
     }
   }
 
-  // ── Audit Logs & Migrations ───────────────────────────────────────
-
-  listAuditLogs(limit: number): AuditLogRecord[] {
-    return this.options.connections.listAuditLogs(limit);
-  }
+  // ── Audit Logs ────────────────────────────────────────────────────
 
   clearAuditLogs(): { ok: true; deleted: number } {
     return { ok: true, deleted: this.options.connections.clearAuditLogs() };
-  }
-
-  listMigrations(): MigrationRecord[] {
-    return this.options.connections.listMigrations();
   }
 }

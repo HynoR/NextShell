@@ -104,6 +104,26 @@ const DEFAULT_TERMINAL_OPTIONS: FrozenTerminalOptions = {
 };
 const MAX_BUFFERED_SESSION_COUNT = 32;
 
+/**
+ * Delivery acks are batched per session: instead of one IPC invoke per frame
+ * (~60/s at the dispatcher's flush cadence), consumed bytes accumulate and a
+ * single cumulative ack is flushed when either the byte threshold is crossed
+ * (synchronously, from the xterm write callback — hidden windows throttle
+ * timers, so bulk throughput must never depend on one) or the short timer
+ * fires. The threshold must stay well below the dispatcher's send window
+ * (512KB) or a bulk stream would stall waiting for a throttled timer.
+ */
+const ACK_FLUSH_THRESHOLD_BYTES = 128 * 1024;
+const ACK_FLUSH_INTERVAL_MS = 50;
+
+interface SessionAckAccumulator {
+  /** Delta of consumed bytes since the last flushed ack. */
+  bytes: number;
+  /** Highest deliveryId processed so far. */
+  lastDeliveryId: number;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
 const sequenceByBackspaceMode = (
   mode: ConnectionProfile["backspaceMode"]
 ): string => {
@@ -139,16 +159,16 @@ const runSessionAction = (action: Promise<unknown>): void => {
   action.catch(swallowSessionActionError);
 };
 
-const ackSessionDelivery = (
+const sendSessionAck = (
   sessionId: string,
   deliveryId: number,
-  byteLength: number
+  consumedBytes: number
 ): void => {
   runSessionAction(window.nextshell.session.ackData({
     streamKind: "session",
     streamId: sessionId,
     deliveryId,
-    consumedBytes: byteLength
+    consumedBytes
   }));
 };
 
@@ -259,8 +279,70 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   const authStateBySessionRef = useRef<Map<string, TerminalAuthState>>(new Map());
   const sessionStatusBySessionRef = useRef<Map<string, SessionDescriptor["status"]>>(new Map());
   const reconnectPendingSessionIdsRef = useRef<Set<string>>(new Set());
+  const ackAccumulatorBySessionRef = useRef<Map<string, SessionAckAccumulator>>(new Map());
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const flushSessionAck = useCallback((targetSessionId: string) => {
+    const accumulator = ackAccumulatorBySessionRef.current.get(targetSessionId);
+    if (!accumulator) {
+      return;
+    }
+
+    if (accumulator.timer !== undefined) {
+      clearTimeout(accumulator.timer);
+    }
+    // Deleting the entry doubles as the accumulator reset: disconnect,
+    // session removal, and unmount all flush here, so a reconnected stream
+    // always starts from a clean delta.
+    ackAccumulatorBySessionRef.current.delete(targetSessionId);
+    if (accumulator.bytes <= 0 || accumulator.lastDeliveryId <= 0) {
+      return;
+    }
+
+    sendSessionAck(targetSessionId, accumulator.lastDeliveryId, accumulator.bytes);
+  }, []);
+
+  const flushAllSessionAcks = useCallback(() => {
+    for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
+      flushSessionAck(targetSessionId);
+    }
+  }, [flushSessionAck]);
+
+  const accumulateSessionAck = useCallback((
+    targetSessionId: string,
+    deliveryId: number,
+    byteLength: number
+  ) => {
+    const accumulators = ackAccumulatorBySessionRef.current;
+    let accumulator = accumulators.get(targetSessionId);
+    if (!accumulator) {
+      accumulator = { bytes: 0, lastDeliveryId: 0, timer: undefined };
+      accumulators.set(targetSessionId, accumulator);
+    }
+
+    accumulator.bytes += byteLength;
+    if (deliveryId > accumulator.lastDeliveryId) {
+      accumulator.lastDeliveryId = deliveryId;
+    }
+
+    if (accumulator.bytes >= ACK_FLUSH_THRESHOLD_BYTES) {
+      // Synchronous flush: bulk throughput must never wait on a (possibly
+      // throttled) timer to reopen the dispatcher's send window.
+      flushSessionAck(targetSessionId);
+      return;
+    }
+
+    if (accumulator.timer === undefined) {
+      accumulator.timer = setTimeout(() => {
+        const current = ackAccumulatorBySessionRef.current.get(targetSessionId);
+        if (current) {
+          current.timer = undefined;
+        }
+        flushSessionAck(targetSessionId);
+      }, ACK_FLUSH_INTERVAL_MS);
+    }
+  }, [flushSessionAck]);
 
   useEffect(() => {
     onRequestSearchModeRef.current = onRequestSearchMode;
@@ -633,6 +715,15 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     const knownSessionIds = new Set(sessionIds);
     knownSessionIdsRef.current = knownSessionIds;
 
+    // Sessions that just left the workspace get their final cumulative ack
+    // now (flushing also clears the entry and its timer), mirroring the
+    // immediate acks the unknown-session data path performs.
+    for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
+      if (!knownSessionIds.has(targetSessionId)) {
+        flushSessionAck(targetSessionId);
+      }
+    }
+
     retainSessionsInCollections(knownSessionIds, [
       bufferBySessionRef.current,
       lastStatusKeyBySessionRef.current,
@@ -643,7 +734,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       terminalQuerySuppressionCountBySessionRef.current,
       reconnectPendingSessionIdsRef.current
     ]);
-  }, [sessionIds]);
+  }, [flushSessionAck, sessionIds]);
 
   useEffect(() => {
     if (!containerRef.current || terminalRef.current) {
@@ -928,7 +1019,11 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   useEffect(() => {
     const offData = window.nextshell.session.onData((event) => {
       if (!knownSessionIdsRef.current.has(event.sessionId)) {
-        ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
+        // Unknown session: flush immediately (merging any leftover delta) so
+        // the dispatcher can drain the dying stream without waiting on the
+        // batching timer.
+        accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
+        flushSessionAck(event.sessionId);
         return;
       }
 
@@ -937,15 +1032,22 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       const terminal = terminalRef.current;
       if (event.sessionId === sessionIdRef.current && terminal) {
         terminal.write(sanitized, () => {
-          ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
+          accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
         });
         return;
       }
 
-      ackSessionDelivery(event.sessionId, event.deliveryId, event.byteLength);
+      accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
     });
 
     const offStatus = window.nextshell.session.onStatus((event) => {
+      if (event.status === "disconnected" || event.status === "failed") {
+        // Push the final delta out right away so the main-process dispatcher
+        // can drain and finalize the stream without waiting on the batching
+        // timer; this also resets the accumulator before any reconnect.
+        flushSessionAck(event.sessionId);
+      }
+
       if (!knownSessionIdsRef.current.has(event.sessionId)) {
         return;
       }
@@ -992,8 +1094,20 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     return () => {
       offData();
       offStatus();
+      // Final acks for everything already processed: without this, teardown
+      // (or an effect re-run) could strand a delta until the main-process
+      // stall timeout fires.
+      flushAllSessionAcks();
     };
-  }, [appendSessionOutput, beginLocalAuthPrompt, message, sanitizeSessionOutput]);
+  }, [
+    accumulateSessionAck,
+    appendSessionOutput,
+    beginLocalAuthPrompt,
+    flushAllSessionAcks,
+    flushSessionAck,
+    message,
+    sanitizeSessionOutput
+  ]);
 
   useEffect(() => {
     const previousSessionId = sessionIdRef.current;
@@ -1005,6 +1119,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }
 
     if (previousSessionId !== currentSessionId) {
+      if (previousSessionId) {
+        // Don't leave the outgoing session's delta to the batching timer:
+        // its stream keeps flowing in the background and the dispatcher's
+        // window should reopen promptly.
+        flushSessionAck(previousSessionId);
+      }
+
       if (!currentSessionId) {
         terminalRef.current?.reset();
       } else {
@@ -1058,7 +1179,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
         rows: terminalRef.current.rows
       }));
     }
-  }, [appendSessionOutput, beginLocalAuthPrompt, connection, replaySessionOutput, session]);
+  }, [appendSessionOutput, beginLocalAuthPrompt, connection, flushSessionAck, replaySessionOutput, session]);
 
   const prevSessionStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {

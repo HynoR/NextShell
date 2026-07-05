@@ -216,24 +216,4 @@ export class BackupPasswordService {
     });
     return { password };
   }
-
-  async backupSetPassword(password: string): Promise<{ ok: true }> {
-    return this.masterPasswordSet(password);
-  }
-
-  async backupUnlockPassword(password: string): Promise<{ ok: true }> {
-    return this.masterPasswordUnlock(password);
-  }
-
-  async backupClearRemembered(): Promise<{ ok: true }> {
-    return this.masterPasswordClearRemembered();
-  }
-
-  async backupPasswordStatus(): Promise<{
-    isSet: boolean;
-    isUnlocked: boolean;
-    keytarAvailable: boolean;
-  }> {
-    return this.masterPasswordStatus();
-  }
 }

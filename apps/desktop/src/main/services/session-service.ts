@@ -485,7 +485,9 @@ export class SessionService {
 
   ackStreamDelivery(input: StreamDeliveryAckInput): { ok: true } {
     // Only the ordered terminal byte stream uses the ack protocol; monitor
-    // snapshots are sent directly without delivery tracking.
+    // snapshots are sent directly without delivery tracking. Acks are batched
+    // by the renderer: deliveryId is the highest id processed so far and
+    // consumedBytes is the byte delta since its previous ack.
     this.sessionDataDispatcher.ack({
       streamId: input.streamId,
       deliveryId: input.deliveryId,

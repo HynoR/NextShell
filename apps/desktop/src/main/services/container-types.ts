@@ -1,91 +1,28 @@
 import type { WebContents } from "electron";
 import type {
   AppPreferences,
-  BackupArchiveMeta,
-  BackupConflictPolicy,
-  BatchCommandExecutionResult,
-  CommandHistoryEntry,
-  CommandTemplateParam,
-  ConnectionImportEntry,
-  ConnectionImportResult,
-  ConnectionListQuery,
-  ConnectionProfile,
-  CloudSyncWorkspaceProfile,
-  DeleteMode,
   BackspaceMode,
-  NetworkConnection,
-  ProcessDetailSnapshot,
-  ProxyProfile,
+  DeleteMode,
   RecycleBinEntry,
-  RemoteFileEntry,
-  RestoreConflictPolicy,
-  ScopedCommandItem,
-  SavedCommand,
   SessionDescriptor,
-  SessionStatus,
-  SshKeyProfile,
-  SystemInfoSnapshot,
-  CommandExecutionResult,
   TerminalEncoding,
-  WorkspaceRepoConflict,
-  WorkspaceRepoStatus,
 } from "../../../../../packages/core/src/index";
-import type { SshShellChannel } from "../../../../../packages/ssh/src/index";
+import type { SshShellChannel, SshConnection } from "../../../../../packages/ssh/src/index";
 import type { IPty } from "node-pty";
-import type {
-  CommandBatchExecInput,
-  ConnectionBatchAuthUpdateInput,
-  ConnectionBatchAuthUpdateResult,
-  ConnectionExportInput,
-  ConnectionExportBatchInput,
-  ConnectionExportBatchResult,
-  ConnectionImportDirectoryPreviewInput,
-  ConnectionImportDirectoryPreviewResult,
-  ConnectionImportFinalShellPreviewInput,
-  ConnectionImportPreviewInput,
-  ConnectionImportExecuteInput,
-  ConnectionUpsertInput,
-  DialogOpenDirectoryInput,
-  DialogOpenFilesInput,
-  DialogOpenPathInput,
-  PingResult,
-  SavedCommandListInput,
-  SavedCommandRemoveInput,
-  SavedCommandUpsertInput,
-  SessionOpenInput,
-  SettingsUpdateInput,
-  SftpEditSessionInfo,
-  SshKeyUpsertInput,
-  SshKeyRemoveInput,
-  StreamDeliveryAckInput,
-  TemplateParamsListInput,
-  TemplateParamsClearInput,
-  TemplateParamsUpsertInput,
-  TracerouteEvent,
-  UpdateCheckResult,
-  ProxyUpsertInput,
-  ProxyRemoveInput,
-  CloudSyncWorkspaceAddInput,
-  CloudSyncWorkspaceUpdateInput,
-  CloudSyncWorkspaceRemoveInput,
-  CloudSyncWorkspaceTokenDraft,
-  CloudSyncWorkspaceExportTokenInput,
-  CloudSyncWorkspaceParseTokenInput,
-  CloudSyncTestConnectionInput,
-  CloudSyncSyncNowInput,
-  CloudSyncResolveConflictInput,
-  ResourceCopyConnectionInput,
-  ResourceDangerMoveConnectionInput,
-  ResourceDeleteConnectionInput,
-  ResourceDeleteSshKeyInput,
-  ResourceCopySshKeyInput,
-  RecycleBinRestoreInput,
-  RecycleBinPurgeInput,
-} from "../../../../../packages/shared/src/index";
 import type { SystemMonitorController } from "./monitor/system-monitor-controller";
 import type { ProcessMonitorController } from "./monitor/process-monitor-controller";
 import type { NetworkMonitorController } from "./monitor/network-monitor-controller";
-import type { SshConnection } from "../../../../../packages/ssh/src/index";
+import type { ConnectionService } from "./connection-service";
+import type { ImportExportService } from "./import-export-service";
+import type { SessionService } from "./session-service";
+import type { MonitorService } from "./monitor-service";
+import type { CommandService } from "./command-service";
+import type { SftpService } from "./sftp-service";
+import type { BackupPasswordService } from "./backup-password-service";
+import type { NetworkToolService } from "./network-tool-service";
+import type { PreferencesDialogService } from "./preferences-dialog-service";
+import type { CloudSyncManager } from "./cloud-sync-manager";
+import type { ResourceOperationsService } from "./resource-operations-service";
 
 // ─── Active session types ──────────────────────────────────────────────────
 export interface ActiveRemoteSession {
@@ -147,186 +84,38 @@ export interface AdhocSessionRuntime {
 }
 
 // ─── Public ServiceContainer interface ─────────────────────────────────────
+/**
+ * Facade over the main-process services.
+ *
+ * Single-service operations are reached through the exposed sub-services
+ * (e.g. `services.sftp.listRemoteFiles(...)`). Only genuinely composed
+ * orchestration — logic that spans multiple services or container-internal
+ * state (repositories, timers, connection pool) — lives as methods here.
+ */
 export interface ServiceContainer {
-  listConnections: (query: ConnectionListQuery) => ConnectionProfile[];
-  upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
-  batchUpdateConnectionAuth: (input: ConnectionBatchAuthUpdateInput) => Promise<ConnectionBatchAuthUpdateResult>;
-  removeConnection: (id: string) => Promise<{ ok: true }>;
-  exportConnections: (
-    sender: WebContents,
-    input: ConnectionExportInput
-  ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
-  exportConnectionsBatch: (input: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
-  revealConnectionPassword: (connectionId: string, masterPassword?: string) => Promise<{ password: string }>;
-  importConnectionsPreview: (input: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
-  importFinalShellConnectionsPreview: (input: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
-  importConnectionsDirectoryPreview: (input: ConnectionImportDirectoryPreviewInput) => Promise<ConnectionImportDirectoryPreviewResult>;
-  importConnectionsExecute: (input: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
-  listSshKeys: () => SshKeyProfile[];
-  upsertSshKey: (input: SshKeyUpsertInput) => Promise<SshKeyProfile>;
-  removeSshKey: (input: SshKeyRemoveInput) => Promise<{ ok: true }>;
-  listProxies: () => ProxyProfile[];
-  upsertProxy: (input: ProxyUpsertInput) => Promise<ProxyProfile>;
-  removeProxy: (input: ProxyRemoveInput) => Promise<{ ok: true }>;
-  checkForUpdate: () => Promise<UpdateCheckResult>;
-  pingHost: (host: string) => Promise<PingResult>;
-  tracerouteRun: (host: string, sender: WebContents) => Promise<{ ok: true }>;
-  tracerouteStop: () => { ok: true };
-  getAppPreferences: () => AppPreferences;
-  updateAppPreferences: (patch: SettingsUpdateInput) => AppPreferences;
-  enableDebugLog: (sender: WebContents) => { ok: true };
-  disableDebugLog: (sender: WebContents) => { ok: true };
+  // Sub-services
+  readonly connections: ConnectionService;
+  readonly importExport: ImportExportService;
+  readonly sessions: SessionService;
+  readonly monitors: MonitorService;
+  readonly commands: CommandService;
+  readonly sftp: SftpService;
+  readonly backupPassword: BackupPasswordService;
+  readonly networkTools: NetworkToolService;
+  readonly preferences: PreferencesDialogService;
+  readonly cloudSync: CloudSyncManager;
+  readonly resourceOps: ResourceOperationsService;
 
-  // Cloud Sync
-  cloudSyncWorkspaceList: () => CloudSyncWorkspaceProfile[];
-  cloudSyncWorkspaceAdd: (input: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
-  cloudSyncWorkspaceUpdate: (input: CloudSyncWorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
-  cloudSyncWorkspaceRemove: (input: CloudSyncWorkspaceRemoveInput) => Promise<{ ok: true }>;
-  cloudSyncWorkspaceExportToken: (input: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
-  cloudSyncWorkspaceParseToken: (input: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
-  cloudSyncStatus: () => { workspaces: WorkspaceRepoStatus[] };
-  cloudSyncSyncNow: (input: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
-  cloudSyncListConflicts: () => Array<WorkspaceRepoConflict & { workspaceName: string }>;
-  cloudSyncTestConnection: (input: CloudSyncTestConnectionInput) => Promise<{ ok: true; displayName?: string }>;
-  cloudSyncResolveConflict: (input: CloudSyncResolveConflictInput) => Promise<{ ok: true }>;
-  openFilesDialog: (
-    sender: WebContents,
-    input: DialogOpenFilesInput
-  ) => Promise<{ canceled: boolean; filePaths: string[] }>;
-  openDirectoryDialog: (
-    sender: WebContents,
-    input: DialogOpenDirectoryInput
-  ) => Promise<{ canceled: boolean; filePath?: string }>;
-  openLocalPath: (
-    sender: WebContents,
-    input: DialogOpenPathInput
-  ) => Promise<{ ok: boolean; error?: string }>;
-  openSession: (
-    input: SessionOpenInput,
-    sender: WebContents
-  ) => Promise<SessionDescriptor>;
-  ackStreamDelivery: (input: StreamDeliveryAckInput) => { ok: true };
-  writeSession: (sessionId: string, data: string) => { ok: true };
-  resizeSession: (sessionId: string, cols: number, rows: number) => { ok: true };
-  closeSession: (sessionId: string) => Promise<{ ok: true }>;
-  getSystemInfoSnapshot: (connectionId: string) => Promise<SystemInfoSnapshot>;
-  startSystemMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
-  stopSystemMonitor: (connectionId: string) => { ok: true };
-  selectSystemNetworkInterface: (connectionId: string, networkInterface: string) => Promise<{ ok: true }>;
-  execCommand: (connectionId: string, command: string) => Promise<CommandExecutionResult>;
-  getSessionHomeDir: (connectionId: string) => Promise<{ path: string } | null>;
-  execBatchCommand: (input: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
-  listAuditLogs: (limit: number) => import("../../../../../packages/core/src/index").AuditLogRecord[];
-  clearAuditLogs: () => { ok: true; deleted: number };
-  listMigrations: () => import("../../../../../packages/core/src/index").MigrationRecord[];
-  listRemoteFiles: (connectionId: string, path: string) => Promise<RemoteFileEntry[]>;
-  listLocalFiles: (path: string) => Promise<RemoteFileEntry[]>;
-  uploadRemoteFile: (
-    connectionId: string,
-    localPath: string,
-    remotePath: string,
-    sender?: WebContents,
-    taskId?: string
-  ) => Promise<{ ok: true }>;
-  downloadRemoteFile: (
-    connectionId: string,
-    remotePath: string,
-    localPath: string,
-    sender?: WebContents,
-    taskId?: string
-  ) => Promise<{ ok: true }>;
-  cancelTransfer: (taskId: string) => { ok: true; cancelled: boolean };
-  uploadRemotePacked: (
-    connectionId: string,
-    localPaths: string[],
-    remoteDir: string,
-    archiveName?: string,
-    sender?: WebContents,
-    taskId?: string
-  ) => Promise<{ ok: true }>;
-  downloadRemotePacked: (
-    connectionId: string,
-    remoteDir: string,
-    entryNames: string[],
-    localDir: string,
-    archiveName?: string,
-    sender?: WebContents,
-    taskId?: string
-  ) => Promise<{ ok: true; localArchivePath: string }>;
-  transferRemotePacked: (
-    sourceConnectionId: string,
-    sourceDir: string,
-    entryNames: string[],
-    targetConnectionId: string,
-    targetDir: string,
-    archiveName?: string,
-    sender?: WebContents,
-    taskId?: string
-  ) => Promise<{ ok: true }>;
-  createRemoteDirectory: (connectionId: string, pathName: string) => Promise<{ ok: true }>;
-  renameRemoteFile: (connectionId: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
-  deleteRemoteFile: (
-    connectionId: string,
-    targetPath: string,
-    type: RemoteFileEntry["type"]
-  ) => Promise<{ ok: true }>;
-  listCommandHistory: () => CommandHistoryEntry[];
-  pushCommandHistory: (command: string) => CommandHistoryEntry;
-  removeCommandHistory: (command: string) => { ok: true };
-  clearCommandHistory: () => { ok: true };
-  listSavedCommands: (query?: SavedCommandListInput) => SavedCommand[];
-  listScopedSavedCommands: () => ScopedCommandItem[];
-  upsertSavedCommand: (input: SavedCommandUpsertInput) => SavedCommand;
-  removeSavedCommand: (input: SavedCommandRemoveInput) => { ok: true };
-  openRemoteEdit: (
-    connectionId: string,
-    remotePath: string,
-    editorCommand: string,
-    sender: WebContents
-  ) => Promise<{ editId: string; localPath: string }>;
-  stopRemoteEdit: (editId: string) => Promise<{ ok: true }>;
-  stopAllRemoteEdits: () => Promise<{ ok: true }>;
-  listRemoteEdits: () => SftpEditSessionInfo[];
-  openBuiltinEdit: (connectionId: string, remotePath: string, sender: WebContents) => Promise<{ editId: string; content: string }>;
-  saveBuiltinEdit: (editId: string, connectionId: string, remotePath: string, content: string) => Promise<{ ok: true }>;
-  startProcessMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
-  stopProcessMonitor: (connectionId: string) => { ok: true };
-  getProcessDetail: (connectionId: string, pid: number) => Promise<ProcessDetailSnapshot>;
-  killRemoteProcess: (connectionId: string, pid: number, signal: "SIGTERM" | "SIGKILL") => Promise<{ ok: true }>;
-  startNetworkMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
-  stopNetworkMonitor: (connectionId: string) => { ok: true };
-  getNetworkConnections: (connectionId: string, port: number) => Promise<NetworkConnection[]>;
+  // Orchestration
+  /** Recycle-bin snapshot + tombstone (ResourceOperationsService) followed by
+   *  record/runtime cleanup (ConnectionService). */
+  removeConnection: (id: string) => Promise<{ ok: true }>;
+  /** Recycle bin listing/clearing is backed by the connection repository,
+   *  which is container-internal. */
+  recycleBinList: () => RecycleBinEntry[];
+  recycleBinClear: () => { ok: true; deleted: number };
   pauseMonitors: () => void;
   resumeMonitors: () => void;
-  backupList: () => Promise<BackupArchiveMeta[]>;
-  backupRun: (conflictPolicy: BackupConflictPolicy) => Promise<{ ok: true; fileName?: string }>;
-  backupRestore: (archiveId: string, conflictPolicy: RestoreConflictPolicy) => Promise<{ ok: true }>;
-  masterPasswordSet: (password: string) => Promise<{ ok: true }>;
-  masterPasswordUnlock: (password: string) => Promise<{ ok: true }>;
-  masterPasswordChange: (oldPassword: string, newPassword: string) => Promise<{ ok: true }>;
-  masterPasswordClearRemembered: () => Promise<{ ok: true }>;
-  masterPasswordStatus: () => Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }>;
-  masterPasswordGetCached: () => Promise<{ password?: string }>;
-  backupSetPassword: (password: string) => Promise<{ ok: true }>;
-  backupUnlockPassword: (password: string) => Promise<{ ok: true }>;
-  backupClearRemembered: () => Promise<{ ok: true }>;
-  backupPasswordStatus: () => Promise<{ isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean }>;
-  listTemplateParams: (input?: TemplateParamsListInput) => CommandTemplateParam[];
-  upsertTemplateParams: (input: TemplateParamsUpsertInput) => { ok: true };
-  clearTemplateParams: (input: TemplateParamsClearInput) => { ok: true };
-
-  // Resource Operations
-  resourceCopyConnection: (input: ResourceCopyConnectionInput) => Promise<ConnectionProfile>;
-  resourceDangerMoveConnection: (input: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
-  resourceDeleteConnection: (input: ResourceDeleteConnectionInput) => Promise<void>;
-  resourceDeleteSshKey: (input: ResourceDeleteSshKeyInput) => Promise<void>;
-  resourceCopySshKey: (input: ResourceCopySshKeyInput) => Promise<SshKeyProfile>;
-
-  // Recycle Bin
-  recycleBinList: () => RecycleBinEntry[];
-  recycleBinRestore: (input: RecycleBinRestoreInput) => Promise<ConnectionProfile | SshKeyProfile>;
-  recycleBinPurge: (input: RecycleBinPurgeInput) => { ok: true };
-  recycleBinClear: () => { ok: true; deleted: number };
-
+  getAppPreferences: () => AppPreferences;
   dispose: () => Promise<void>;
 }

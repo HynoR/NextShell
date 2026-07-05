@@ -4,7 +4,6 @@ import type {
   BatchCommandResultItem,
   CommandExecutionResult,
   CommandHistoryEntry,
-  CommandTemplateParam,
   CloudSyncWorkspaceProfile,
   ConnectionProfile,
   ScopedCommandItem,
@@ -13,12 +12,8 @@ import type {
 import type { SshConnection } from "@nextshell/ssh";
 import type {
   CommandBatchExecInput,
-  SavedCommandListInput,
   SavedCommandRemoveInput,
   SavedCommandUpsertInput,
-  TemplateParamsClearInput,
-  TemplateParamsListInput,
-  TemplateParamsUpsertInput,
 } from "@nextshell/shared";
 import type { CachedConnectionRepository } from "@nextshell/storage";
 
@@ -214,22 +209,6 @@ export class CommandService {
     return { ok: true };
   }
 
-  listSavedCommands(query?: SavedCommandListInput): SavedCommand[] {
-    if (query?.workspaceId) {
-      return this.connections.listWorkspaceCommands(query.workspaceId).map((command) => ({
-        id: command.id,
-        name: command.name,
-        description: command.description,
-        group: command.group,
-        command: command.command,
-        isTemplate: command.isTemplate,
-        createdAt: command.createdAt,
-        updatedAt: command.updatedAt,
-      }));
-    }
-    return this.connections.listSavedCommands(query ?? {});
-  }
-
   listScopedSavedCommands(): ScopedCommandItem[] {
     const workspaceNameById = new Map(
       this.listWorkspaces().map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])
@@ -303,20 +282,6 @@ export class CommandService {
     }
     this.connections.clearTemplateParams(input.id);
     this.connections.removeSavedCommand(input.id);
-    return { ok: true };
-  }
-
-  listTemplateParams(input?: TemplateParamsListInput): CommandTemplateParam[] {
-    return this.connections.listTemplateParams(input?.commandId);
-  }
-
-  upsertTemplateParams(input: TemplateParamsUpsertInput): { ok: true } {
-    this.connections.upsertTemplateParams(input.commandId, input.params);
-    return { ok: true };
-  }
-
-  clearTemplateParams(input: TemplateParamsClearInput): { ok: true } {
-    this.connections.clearTemplateParams(input.commandId);
     return { ok: true };
   }
 }

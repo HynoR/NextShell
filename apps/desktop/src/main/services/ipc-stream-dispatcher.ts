@@ -4,10 +4,12 @@ import { Buffer } from "node:buffer";
 type SenderLike = Pick<WebContents, "isDestroyed" | "send">;
 
 /**
- * If a delivered frame is not acked within this window the receiver is treated
- * as dead for that stream (e.g. a hung/white-screened renderer whose
- * WebContents is still alive): buffered data is dropped, backpressure is
- * released, and any pending drain callback fires.
+ * If the receiver makes no ack progress for this long while frames are in
+ * flight it is treated as dead for that stream (e.g. a hung/white-screened
+ * renderer whose WebContents is still alive): buffered data is dropped,
+ * backpressure is released, and any pending drain callback fires. The timer
+ * is armed when un-acked data first appears and reset on every ack — not on
+ * every send — so a trickle of sends cannot mask a dead receiver.
  */
 const DEFAULT_STALL_TIMEOUT_MS = 30_000;
 
@@ -28,7 +30,8 @@ interface OrderedPayloadBuilder {
   /**
    * UTF-8 byte length of `chunk`, measured exactly once by the dispatcher.
    * This is the same value used for in-flight/backpressure accounting, so
-   * receivers can ack it verbatim and the stream is guaranteed to drain.
+   * receivers that accumulate it verbatim into their batched delta acks are
+   * guaranteed to drain the stream.
    */
   byteLength: number;
 }
@@ -48,11 +51,27 @@ interface OrderedStreamState<TPayload> {
   pendingChunkBytes: number;
   queuedChunks: QueuedChunk[];
   queuedBytes: number;
-  inFlight?: {
-    deliveryId: number;
-    byteLength: number;
-  };
+  /**
+   * Sum of the carve-time byte lengths of all sent-but-unacked frames.
+   * Multiple frames may be in flight at once (sliding window): sends continue
+   * back-to-back while this stays below the window (highWaterBytes).
+   */
+  inFlightBytes: number;
+  /** Highest deliveryId handed to the sender for this stream. */
+  lastSentDeliveryId: number;
+  /**
+   * Highest deliveryId any accepted ack has carried. Tracking only — byte
+   * crediting is deliberately order-independent (see ack()), so this never
+   * gates whether a delta is applied.
+   */
   lastAckedDeliveryId: number;
+  /**
+   * deliveryIds are dispatcher-global while stream states can be dropped and
+   * recreated under the same streamId (stall drop + continued source output):
+   * this floor pins the state to its own incarnation, so a late ack for a
+   * previous incarnation's frame can never be credited against this window.
+   */
+  ackFloorDeliveryId: number;
   paused: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -66,6 +85,11 @@ export interface OrderedBytesDispatcherOptions<TPayload> {
   channel: string;
   flushIntervalMs: number;
   targetChunkBytes: number;
+  /**
+   * Backpressure high-water mark AND the send window: frames are sent
+   * back-to-back without waiting for acks while the sum of un-acked frame
+   * bytes stays below this value.
+   */
   highWaterBytes: number;
   lowWaterBytes: number;
   buildPayload: (input: OrderedPayloadBuilder) => TPayload;
@@ -85,8 +109,19 @@ export interface OrderedBytesPushInput {
 
 export interface OrderedBytesAckInput {
   streamId: string;
+  /**
+   * Highest deliveryId covered by THIS batched ack. Successive acks may carry
+   * regressing ids (the receiver's deferred write-callback path and immediate
+   * background path can flush out of order after a focus/tab switch); the id
+   * is only used to reject acks the current stream incarnation never sent,
+   * never to order or gate byte crediting.
+   */
   deliveryId: number;
-  consumedBytes?: number;
+  /**
+   * DELTA of bytes consumed since the receiver's previous ack (the sum of the
+   * reported byteLength of every frame covered by this ack).
+   */
+  consumedBytes: number;
 }
 
 export interface OrderedBytesDispatcher<TPayload> {
@@ -96,14 +131,20 @@ export interface OrderedBytesDispatcher<TPayload> {
   clear: (streamId: string) => void;
 }
 
-function createOrderedState<TPayload>(input: OrderedBytesPushInput): OrderedStreamState<TPayload> {
+function createOrderedState<TPayload>(
+  input: OrderedBytesPushInput,
+  baselineDeliveryId: number
+): OrderedStreamState<TPayload> {
   return {
     sender: input.sender,
     pendingChunk: "",
     pendingChunkBytes: 0,
     queuedChunks: [],
     queuedBytes: 0,
-    lastAckedDeliveryId: 0,
+    inFlightBytes: 0,
+    lastSentDeliveryId: baselineDeliveryId,
+    lastAckedDeliveryId: baselineDeliveryId,
+    ackFloorDeliveryId: baselineDeliveryId,
     paused: false,
     onPause: input.onPause,
     onResume: input.onResume,
@@ -218,8 +259,9 @@ function splitRemainderByteLength(
  * Split semantics are intentionally identical to the original per-code-unit
  * walk: the boundary may land between the halves of a surrogate pair, in
  * which case each frame carries a lone surrogate measured on its own —
- * receivers ack the reported per-frame byteLength verbatim, so accounting
- * stays consistent as long as frames are measured after the split.
+ * receivers accumulate the reported per-frame byteLength verbatim into their
+ * delta acks, so accounting stays consistent as long as frames are measured
+ * after the split.
  * `valueBytes` must be the exact byte length of `value` so the caller's
  * incremental accounting can skip re-measuring it.
  */
@@ -264,7 +306,7 @@ export function createOrderedBytesDispatcher<TPayload>(
   function totalBufferedBytes(state: OrderedStreamState<TPayload>): number {
     return state.pendingChunkBytes
       + state.queuedBytes
-      + (state.inFlight?.byteLength ?? 0);
+      + state.inFlightBytes;
   }
 
   function maybeResume(streamId: string, state: OrderedStreamState<TPayload>): void {
@@ -305,7 +347,7 @@ export function createOrderedBytesDispatcher<TPayload>(
       return;
     }
 
-    if (state.pendingChunk.length > 0 || state.queuedBytes > 0 || state.inFlight) {
+    if (state.pendingChunk.length > 0 || state.queuedBytes > 0 || state.inFlightBytes > 0) {
       return;
     }
 
@@ -329,7 +371,7 @@ export function createOrderedBytesDispatcher<TPayload>(
     state.pendingChunkBytes = 0;
     state.queuedChunks = [];
     state.queuedBytes = 0;
-    state.inFlight = undefined;
+    state.inFlightBytes = 0;
     clearState(streamId, true);
   }
 
@@ -341,7 +383,7 @@ export function createOrderedBytesDispatcher<TPayload>(
     unrefTimer(state.stallTimer);
   }
 
-  function sendNext(streamId: string): void {
+  function sendQueued(streamId: string): void {
     const state = streams.get(streamId);
     if (!state) {
       return;
@@ -352,37 +394,45 @@ export function createOrderedBytesDispatcher<TPayload>(
       return;
     }
 
-    if (state.inFlight || state.queuedChunks.length === 0) {
-      maybeNotifyDrain(streamId, state);
-      return;
+    // Sliding window: send queued frames back-to-back without waiting for
+    // acks while the un-acked bytes stay below the window (highWaterBytes).
+    // A frame may overshoot the boundary; sends then stop until batched acks
+    // free window space again.
+    let sentAny = false;
+    while (state.queuedChunks.length > 0 && state.inFlightBytes < options.highWaterBytes) {
+      const next = state.queuedChunks.shift();
+      if (!next) {
+        break;
+      }
+
+      // Reuse the byte length measured when the frame was carved: the same
+      // value drives queued/in-flight accounting AND the payload's
+      // byteLength, so a receiver that accumulates the reported values into
+      // its delta acks always balances the books.
+      state.queuedBytes -= next.byteLength;
+      const deliveryId = nextDeliveryId;
+      nextDeliveryId += 1;
+      state.inFlightBytes += next.byteLength;
+      state.lastSentDeliveryId = deliveryId;
+      state.sender.send(
+        options.channel,
+        options.buildPayload({
+          streamId,
+          deliveryId,
+          chunk: next.chunk,
+          byteLength: next.byteLength,
+        })
+      );
+      sentAny = true;
     }
 
-    const next = state.queuedChunks.shift();
-    if (!next) {
-      maybeNotifyDrain(streamId, state);
-      return;
+    // Arm — do not reset — the stall timer when un-acked data exists: the
+    // window measures time since the last ack progress, not the last send.
+    if (sentAny && !state.stallTimer) {
+      armStallTimer(streamId, state);
     }
 
-    // Reuse the byte length measured when the frame was carved: the same
-    // value drives queued/in-flight accounting AND the payload's byteLength,
-    // so a verbatim ack from the receiver always balances the books.
-    state.queuedBytes -= next.byteLength;
-    const deliveryId = nextDeliveryId;
-    nextDeliveryId += 1;
-    state.inFlight = {
-      deliveryId,
-      byteLength: next.byteLength
-    };
-    state.sender.send(
-      options.channel,
-      options.buildPayload({
-        streamId,
-        deliveryId,
-        chunk: next.chunk,
-        byteLength: next.byteLength,
-      })
-    );
-    armStallTimer(streamId, state);
+    maybeNotifyDrain(streamId, state);
   }
 
   function flushPending(streamId: string): void {
@@ -393,7 +443,7 @@ export function createOrderedBytesDispatcher<TPayload>(
 
     clearDrainTimer(state);
     if (state.pendingChunk.length === 0) {
-      sendNext(streamId);
+      sendQueued(streamId);
       return;
     }
 
@@ -425,7 +475,16 @@ export function createOrderedBytesDispatcher<TPayload>(
       state.pendingChunkBytes = 0;
     }
 
-    if (state.pendingChunk.length > 0 && state.queuedChunks.length === 0 && !state.inFlight) {
+    // A sub-target remainder is sent immediately when nothing is queued ahead
+    // of it and the window has room (the sliding-window analogue of the old
+    // "pipe fully idle" check): frames never wait on acks for latency, while
+    // bulk streams — which always leave carved frames in the queue here —
+    // still coalesce remainders into target-sized frames.
+    if (
+      state.pendingChunk.length > 0 &&
+      state.queuedChunks.length === 0 &&
+      state.inFlightBytes < options.highWaterBytes
+    ) {
       state.queuedChunks.push({ chunk: state.pendingChunk, byteLength: state.pendingChunkBytes });
       state.queuedBytes += state.pendingChunkBytes;
       state.pendingChunk = "";
@@ -440,7 +499,7 @@ export function createOrderedBytesDispatcher<TPayload>(
       state.pendingChunkBytes = 0;
     }
 
-    sendNext(streamId);
+    sendQueued(streamId);
   }
 
   function ensureFlushTimer(streamId: string, state: OrderedStreamState<TPayload>): void {
@@ -461,7 +520,10 @@ export function createOrderedBytesDispatcher<TPayload>(
 
       let state = streams.get(input.streamId);
       if (!state) {
-        state = createOrderedState<TPayload>(input);
+        // Baseline the new incarnation to the global counter so acks carrying
+        // deliveryIds of frames sent by a previous (dropped) incarnation of
+        // this streamId fall below the floor and are rejected.
+        state = createOrderedState<TPayload>(input, nextDeliveryId - 1);
         streams.set(input.streamId, state);
       } else {
         state.sender = input.sender;
@@ -497,26 +559,43 @@ export function createOrderedBytesDispatcher<TPayload>(
     },
     ack(input) {
       const state = streams.get(input.streamId);
-      if (!state?.inFlight) {
+      if (!state) {
+        // Unknown stream (already dropped or drained): nothing to account.
         return;
       }
 
-      if (input.deliveryId <= state.lastAckedDeliveryId || input.deliveryId !== state.inFlight.deliveryId) {
+      if (
+        input.deliveryId <= state.ackFloorDeliveryId ||
+        input.deliveryId > state.lastSentDeliveryId
+      ) {
+        // Bogus (never sent) or sent by a previous incarnation of this
+        // streamId whose buffers were already dropped — ignore it entirely so
+        // the byte delta can never be mis-credited against this window.
         return;
       }
 
-      const consumedBytes = input.consumedBytes ?? state.inFlight.byteLength;
-      if (consumedBytes < state.inFlight.byteLength) {
-        state.inFlight.byteLength -= consumedBytes;
-        // Partial ack proves the receiver is alive: reset the stall window.
+      if (input.deliveryId > state.lastAckedDeliveryId) {
+        state.lastAckedDeliveryId = input.deliveryId;
+      }
+      // consumedBytes is a delta that may cover several frames, and deltas
+      // are credited regardless of deliveryId ordering within the current
+      // incarnation: the receiver's two ack paths (deferred xterm write
+      // callbacks vs immediate background accumulation) can flush out of
+      // order after a session switch, but each flush covers a disjoint set of
+      // frames exactly once (the accumulator is deleted before sending and
+      // the ack travels over exactly-once invoke), so crediting is
+      // order-independent. Rejecting regressed ids here would leak their
+      // bytes into inFlightBytes forever. Clamp so a misbehaving receiver can
+      // never drive the window negative.
+      state.inFlightBytes = Math.max(0, state.inFlightBytes - input.consumedBytes);
+
+      if (state.inFlightBytes > 0) {
+        // Ack progress proves the receiver is alive: reset the stall window.
         armStallTimer(input.streamId, state);
-        maybeResume(input.streamId, state);
-        return;
+      } else {
+        clearStallTimer(state);
       }
 
-      state.lastAckedDeliveryId = input.deliveryId;
-      state.inFlight = undefined;
-      clearStallTimer(state);
       maybeResume(input.streamId, state);
       flushPending(input.streamId);
       maybeNotifyDrain(input.streamId, state);

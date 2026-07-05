@@ -561,12 +561,24 @@ export const createServiceContainer = async (
     connections.close();
   };
 
-  // ─── Public API (delegation) ─────────────────────────────────────────────
+  // ─── Public API ──────────────────────────────────────────────────────────
+  // Sub-services are exposed directly; only genuinely composed orchestration
+  // (multi-service flows or container-internal state) stays as methods.
   return {
-    // Connection CRUD
-    listConnections: (q) => connectionSvc.listConnections(q),
-    upsertConnection: (i) => connectionSvc.upsertConnection(i),
-    batchUpdateConnectionAuth: (i) => connectionSvc.batchUpdateConnectionAuth(i),
+    // Sub-services
+    connections: connectionSvc,
+    importExport: importExportSvc,
+    sessions: sessionSvc,
+    monitors: monitorSvc,
+    commands: commandSvc,
+    sftp: sftpSvc,
+    backupPassword: backupPasswordSvc,
+    networkTools: networkToolSvc,
+    preferences: prefsSvc,
+    cloudSync: cloudSyncManager,
+    resourceOps: resourceOpsSvc,
+
+    // Orchestration
     removeConnection: async (id) => {
       // 1. Snapshot to recycle bin + DB remove + push tombstone + delete credentials
       await resourceOpsSvc.deleteConnection({ id });
@@ -574,152 +586,15 @@ export const createServiceContainer = async (
       await connectionSvc.removeConnectionRecord(id, { skipAudit: true });
       return { ok: true as const };
     },
-    listSshKeys: () => connectionSvc.listSshKeys(),
-    upsertSshKey: (i) => connectionSvc.upsertSshKey(i),
-    removeSshKey: async (i) => {
-      await resourceOpsSvc.deleteSshKey({ id: i.id, force: i.force });
-      return { ok: true as const };
-    },
-    listProxies: () => connectionSvc.listProxies(),
-    upsertProxy: (i) => connectionSvc.upsertProxy(i),
-    removeProxy: (i) => connectionSvc.removeProxy(i),
-    revealConnectionPassword: (id, mp) => backupPasswordSvc.revealConnectionPassword(id, mp),
-    listAuditLogs: (limit) => connectionSvc.listAuditLogs(limit),
-    clearAuditLogs: () => connectionSvc.clearAuditLogs(),
-    listMigrations: () => connectionSvc.listMigrations(),
 
-    // Import / Export
-    exportConnections: (s, i) => importExportSvc.exportConnections(s, i),
-    exportConnectionsBatch: (i) => importExportSvc.exportConnectionsBatch(i),
-    importConnectionsPreview: (i) => importExportSvc.importConnectionsPreview(i),
-    importFinalShellConnectionsPreview: (i) => importExportSvc.importFinalShellConnectionsPreview(i),
-    importConnectionsDirectoryPreview: (i) => importExportSvc.importConnectionsDirectoryPreview(i),
-    importConnectionsExecute: (i) => importExportSvc.importConnectionsExecute(i),
+    // Recycle bin listing/clearing sits on the container because it is backed
+    // by the connection repository, which is container-internal.
+    recycleBinList: () => connections.listRecycleBinEntries(),
+    recycleBinClear: () => ({ ok: true as const, deleted: connections.clearRecycleBin() }),
 
-    // Session
-    openSession: (i, s) => sessionSvc.openSession(i, s),
-    ackStreamDelivery: (i) => sessionSvc.ackStreamDelivery(i),
-    writeSession: (id, d) => sessionSvc.writeSession(id, d),
-    resizeSession: (id, c, r) => sessionSvc.resizeSession(id, c, r),
-    closeSession: (id) => sessionSvc.closeSession(id),
-
-    // Monitor
-    getSystemInfoSnapshot: (id) => monitorSvc.getSystemInfoSnapshot(id),
-    startSystemMonitor: (id, s) => monitorSvc.startSystemMonitor(id, s),
-    stopSystemMonitor: (id) => monitorSvc.stopSystemMonitor(id),
-    selectSystemNetworkInterface: (id, ni) => monitorSvc.selectSystemNetworkInterface(id, ni),
-    startProcessMonitor: (id, s) => monitorSvc.startProcessMonitor(id, s),
-    stopProcessMonitor: (id) => monitorSvc.stopProcessMonitor(id),
-    getProcessDetail: (id, pid) => monitorSvc.getProcessDetail(id, pid),
-    killRemoteProcess: (id, pid, sig) => monitorSvc.killRemoteProcess(id, pid, sig),
-    startNetworkMonitor: (id, s) => monitorSvc.startNetworkMonitor(id, s),
-    stopNetworkMonitor: (id) => monitorSvc.stopNetworkMonitor(id),
-    getNetworkConnections: (id, p) => monitorSvc.getNetworkConnections(id, p),
     pauseMonitors: () => monitorSvc.pauseAll(),
     resumeMonitors: () => monitorSvc.resumeAll(),
-
-    // Command
-    execCommand: (id, cmd) => commandSvc.execCommand(id, cmd),
-    getSessionHomeDir: (id) => commandSvc.getSessionHomeDir(id),
-    execBatchCommand: (i) => commandSvc.execBatchCommand(i),
-    listCommandHistory: () => commandSvc.listCommandHistory(),
-    pushCommandHistory: (cmd) => commandSvc.pushCommandHistory(cmd),
-    removeCommandHistory: (cmd) => commandSvc.removeCommandHistory(cmd),
-    clearCommandHistory: () => commandSvc.clearCommandHistory(),
-    listSavedCommands: (q) => commandSvc.listSavedCommands(q),
-    listScopedSavedCommands: () => commandSvc.listScopedSavedCommands(),
-    upsertSavedCommand: (i) => commandSvc.upsertSavedCommand(i),
-    removeSavedCommand: (i) => commandSvc.removeSavedCommand(i),
-    listTemplateParams: (i) => commandSvc.listTemplateParams(i),
-    upsertTemplateParams: (i) => commandSvc.upsertTemplateParams(i),
-    clearTemplateParams: (i) => commandSvc.clearTemplateParams(i),
-
-    // SFTP
-    listRemoteFiles: (id, p) => sftpSvc.listRemoteFiles(id, p),
-    listLocalFiles: (p) => sftpSvc.listLocalFiles(p),
-    uploadRemoteFile: (id, lp, rp, s, t) => sftpSvc.uploadRemoteFile(id, lp, rp, s, t),
-    downloadRemoteFile: (id, rp, lp, s, t) => sftpSvc.downloadRemoteFile(id, rp, lp, s, t),
-    cancelTransfer: (taskId) => sftpSvc.cancelTransfer(taskId),
-    uploadRemotePacked: (id, lp, rd, an, s, t) => sftpSvc.uploadRemotePacked(id, lp, rd, an, s, t),
-    downloadRemotePacked: (id, rd, en, ld, an, s, t) => sftpSvc.downloadRemotePacked(id, rd, en, ld, an, s, t),
-    transferRemotePacked: (sid, sd, en, tid, td, an, s, t) => sftpSvc.transferRemotePacked(sid, sd, en, tid, td, an, s, t),
-    createRemoteDirectory: (id, p) => sftpSvc.createRemoteDirectory(id, p),
-    renameRemoteFile: (id, f, t) => sftpSvc.renameRemoteFile(id, f, t),
-    deleteRemoteFile: (id, tp, ty) => sftpSvc.deleteRemoteFile(id, tp, ty),
-    openRemoteEdit: (id, rp, ec, s) => sftpSvc.openRemoteEdit(id, rp, ec, s),
-    stopRemoteEdit: (id) => sftpSvc.stopRemoteEdit(id),
-    stopAllRemoteEdits: () => sftpSvc.stopAllRemoteEdits(),
-    listRemoteEdits: () => sftpSvc.listRemoteEdits(),
-    openBuiltinEdit: (id, rp, s) => sftpSvc.openBuiltinEdit(id, rp, s),
-    saveBuiltinEdit: (eid, cid, rp, c) => sftpSvc.saveBuiltinEdit(eid, cid, rp, c),
-
-    // Backup / Password
-    backupList: () => backupPasswordSvc.backupList(),
-    backupRun: (cp) => backupPasswordSvc.backupRun(cp),
-    backupRestore: (id, cp) => backupPasswordSvc.backupRestore(id, cp),
-    masterPasswordSet: (p) => backupPasswordSvc.masterPasswordSet(p),
-    masterPasswordUnlock: (p) => backupPasswordSvc.masterPasswordUnlock(p),
-    masterPasswordChange: (o, n) => backupPasswordSvc.masterPasswordChange(o, n),
-    masterPasswordClearRemembered: () => backupPasswordSvc.masterPasswordClearRemembered(),
-    masterPasswordStatus: () => backupPasswordSvc.masterPasswordStatus(),
-    masterPasswordGetCached: () => backupPasswordSvc.masterPasswordGetCached(),
-    backupSetPassword: (p) => backupPasswordSvc.backupSetPassword(p),
-    backupUnlockPassword: (p) => backupPasswordSvc.backupUnlockPassword(p),
-    backupClearRemembered: () => backupPasswordSvc.backupClearRemembered(),
-    backupPasswordStatus: () => backupPasswordSvc.backupPasswordStatus(),
-
-    // Network Tools
-    checkForUpdate: () => networkToolSvc.checkForUpdate(),
-    pingHost: (h) => networkToolSvc.pingHost(h),
-    tracerouteRun: (h, s) => networkToolSvc.tracerouteRun(h, s),
-    tracerouteStop: () => networkToolSvc.tracerouteStop(),
-
-    // Preferences / Dialog
     getAppPreferences: () => prefsSvc.getAppPreferences(),
-    updateAppPreferences: (p) => prefsSvc.updateAppPreferences(p),
-    openFilesDialog: (s, i) => prefsSvc.openFilesDialog(s, i),
-    openDirectoryDialog: (s, i) => prefsSvc.openDirectoryDialog(s, i),
-    openLocalPath: (s, i) => prefsSvc.openLocalPath(s, i),
-    enableDebugLog: (s) => prefsSvc.enableDebugLog(s),
-    disableDebugLog: (s) => prefsSvc.disableDebugLog(s),
-
-    // Cloud Sync
-    cloudSyncWorkspaceList: () => cloudSyncManager.listWorkspaces(),
-    cloudSyncWorkspaceAdd: (i) => cloudSyncManager.addWorkspace(i),
-    cloudSyncWorkspaceUpdate: (i) => cloudSyncManager.updateWorkspace({ ...i, id: i.id }),
-    cloudSyncWorkspaceRemove: async (i) => {
-      await cloudSyncManager.removeWorkspace(i.id);
-      return { ok: true as const };
-    },
-    cloudSyncWorkspaceExportToken: (i) => cloudSyncManager.exportWorkspaceToken(i.id),
-    cloudSyncWorkspaceParseToken: (i) => cloudSyncManager.parseWorkspaceToken(i.token),
-    cloudSyncStatus: () => cloudSyncManager.getStatus(),
-    cloudSyncSyncNow: async (i) => {
-      await cloudSyncManager.syncNow(i.workspaceId);
-      return { ok: true as const };
-    },
-    cloudSyncListConflicts: () => cloudSyncManager.listConflicts(),
-    cloudSyncTestConnection: (i) => cloudSyncManager.testConnection(i),
-    cloudSyncResolveConflict: async (i) => {
-      await cloudSyncManager.resolveConflict(i.workspaceId, i.resourceType, i.resourceId, i.strategy);
-      return { ok: true as const };
-    },
-
-    // Resource Operations
-    resourceCopyConnection: (i) => resourceOpsSvc.copyConnection(i),
-    resourceDangerMoveConnection: (i) => resourceOpsSvc.dangerMoveConnection(i),
-    resourceDeleteConnection: (i) => resourceOpsSvc.deleteConnection(i),
-    resourceDeleteSshKey: (i) => resourceOpsSvc.deleteSshKey(i),
-    resourceCopySshKey: (i) => resourceOpsSvc.copySshKey(i),
-
-    // Recycle Bin
-    recycleBinList: () => connections.listRecycleBinEntries(),
-    recycleBinRestore: (i) => resourceOpsSvc.restoreFromRecycleBin(i),
-    recycleBinPurge: (i) => {
-      resourceOpsSvc.purgeRecycleBinEntry(i.id);
-      return { ok: true as const };
-    },
-    recycleBinClear: () => ({ ok: true as const, deleted: connections.clearRecycleBin() }),
 
     dispose,
   };

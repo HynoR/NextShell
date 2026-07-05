@@ -40,10 +40,6 @@ export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
 export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
 export const localShellModeSchema = z.enum(["preset", "custom"]);
 export const localShellPresetSchema = z.enum(["system", "powershell", "cmd", "zsh", "sh", "bash"]);
-const httpsUrlSchema = z.string().trim().url().refine((value) => value.startsWith("https://"), {
-  message: "apiBaseUrl must use https://"
-});
-
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
   group: z.string().trim().optional(),
@@ -182,6 +178,11 @@ export const sessionGetHomeDirSchema = z.object({
 // monitor snapshots are pushed directly without acks.
 export const streamKindSchema = z.enum(["session"]);
 
+// Sliding-window ack: the renderer batches acknowledgements, so a single ack
+// may cover several delivered frames. `deliveryId` is the HIGHEST delivery id
+// processed so far and `consumedBytes` is the DELTA of bytes consumed since
+// the previous ack (the sum of the reported byteLength of every frame the
+// batch covers) — not the byte length of the frame named by `deliveryId`.
 export const streamDeliveryAckSchema = z.object({
   streamKind: streamKindSchema,
   streamId: z.string().min(1),
@@ -350,12 +351,6 @@ export const commandHistoryRemoveSchema = z.object({
 });
 
 export const commandHistoryClearSchema = z.object({});
-
-export const savedCommandListSchema = z.object({
-  workspaceId: z.string().trim().min(1).optional(),
-  keyword: z.string().trim().optional(),
-  group: z.string().trim().optional()
-});
 
 export const savedCommandUpsertSchema = z.object({
   id: z.string().uuid().optional(),
@@ -619,7 +614,7 @@ export const backupRestoreSchema = z.object({
   conflictPolicy: restoreConflictPolicySchema.default("skip_older")
 });
 
-export const backupPasswordSetSchema = z.object({
+export const masterPasswordSetSchema = z.object({
   password: z.string().min(6, "数据备份密码至少6个字符"),
   confirmPassword: z.string().min(1)
 }).refine((data) => data.password === data.confirmPassword, {
@@ -627,18 +622,14 @@ export const backupPasswordSetSchema = z.object({
   path: ["confirmPassword"]
 });
 
-export const backupPasswordUnlockSchema = z.object({
+export const masterPasswordUnlockSchema = z.object({
   password: z.string().min(1)
 });
 
-export const backupPasswordClearRememberedSchema = z.object({});
+export const masterPasswordClearRememberedSchema = z.object({});
 
-export const backupPasswordStatusSchema = z.object({});
+export const masterPasswordStatusSchema = z.object({});
 
-export const masterPasswordSetSchema = backupPasswordSetSchema;
-export const masterPasswordUnlockSchema = backupPasswordUnlockSchema;
-export const masterPasswordClearRememberedSchema = backupPasswordClearRememberedSchema;
-export const masterPasswordStatusSchema = backupPasswordStatusSchema;
 export const masterPasswordGetCachedSchema = z.object({});
 export const masterPasswordChangeSchema = z.object({
   oldPassword: z.string().min(1, "原密码不能为空"),
@@ -647,19 +638,6 @@ export const masterPasswordChangeSchema = z.object({
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: "两次输入的新密码不一致",
   path: ["confirmPassword"]
-});
-
-export const templateParamsListSchema = z.object({
-  commandId: z.string().uuid().optional()
-});
-
-export const templateParamsUpsertSchema = z.object({
-  commandId: z.string().uuid(),
-  params: z.record(z.string(), z.string())
-});
-
-export const templateParamsClearSchema = z.object({
-  commandId: z.string().uuid()
 });
 
 // ─── SSH Key Management ─────────────────────────────────────────────────────
@@ -806,7 +784,6 @@ export type CommandHistoryListInput = z.infer<typeof commandHistoryListSchema>;
 export type CommandHistoryPushInput = z.infer<typeof commandHistoryPushSchema>;
 export type CommandHistoryRemoveInput = z.infer<typeof commandHistoryRemoveSchema>;
 export type CommandHistoryClearInput = z.infer<typeof commandHistoryClearSchema>;
-export type SavedCommandListInput = z.infer<typeof savedCommandListSchema>;
 export type SavedCommandUpsertInput = z.infer<typeof savedCommandUpsertSchema>;
 export type SavedCommandRemoveInput = z.infer<typeof savedCommandRemoveSchema>;
 export type SftpEditOpenInput = z.infer<typeof sftpEditOpenSchema>;
@@ -833,9 +810,6 @@ export type MasterPasswordClearRememberedInput = z.infer<typeof masterPasswordCl
 export type MasterPasswordStatusInput = z.infer<typeof masterPasswordStatusSchema>;
 export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
 export type MasterPasswordChangeInput = z.infer<typeof masterPasswordChangeSchema>;
-export type TemplateParamsListInput = z.infer<typeof templateParamsListSchema>;
-export type TemplateParamsUpsertInput = z.infer<typeof templateParamsUpsertSchema>;
-export type TemplateParamsClearInput = z.infer<typeof templateParamsClearSchema>;
 export type SshKeyListInput = z.infer<typeof sshKeyListSchema>;
 export type SshKeyUpsertInput = z.infer<typeof sshKeyUpsertSchema>;
 export type SshKeyRemoveInput = z.infer<typeof sshKeyRemoveSchema>;
@@ -1042,26 +1016,7 @@ export const resourceCopyConnectionSchema = z.object({
   targetGroupSubPath: z.string().trim().max(500).optional(),
 });
 
-export const resourceDangerMoveConnectionSchema = z.object({
-  sourceId: z.string().trim().min(1),
-  targetOriginKind: z.enum(["local", "cloud"]),
-  targetWorkspaceId: z.string().trim().min(1).optional(),
-  targetGroupSubPath: z.string().trim().max(500).optional(),
-});
-
-export const resourceDeleteConnectionSchema = z.object({
-  id: z.string().trim().min(1),
-});
-
-export const resourceDeleteSshKeySchema = z.object({
-  id: z.string().trim().min(1),
-  force: z.boolean().optional(),
-});
-
 export type ResourceCopyConnectionInput = z.infer<typeof resourceCopyConnectionSchema>;
-export type ResourceDangerMoveConnectionInput = z.infer<typeof resourceDangerMoveConnectionSchema>;
-export type ResourceDeleteConnectionInput = z.infer<typeof resourceDeleteConnectionSchema>;
-export type ResourceDeleteSshKeyInput = z.infer<typeof resourceDeleteSshKeySchema>;
 
 // ─── Recycle Bin ─────────────────────────────────────────────────────────
 
@@ -1079,14 +1034,7 @@ export const recycleBinPurgeSchema = z.object({
 
 export const recycleBinClearSchema = z.object({});
 
-export const resourceCopySshKeySchema = z.object({
-  sourceId: z.string().trim().min(1),
-  targetOriginKind: z.enum(["local", "cloud"]),
-  targetWorkspaceId: z.string().trim().min(1).optional(),
-});
-
 export type RecycleBinListInput = z.infer<typeof recycleBinListSchema>;
 export type RecycleBinRestoreInput = z.infer<typeof recycleBinRestoreSchema>;
 export type RecycleBinPurgeInput = z.infer<typeof recycleBinPurgeSchema>;
 export type RecycleBinClearInput = z.infer<typeof recycleBinClearSchema>;
-export type ResourceCopySshKeyInput = z.infer<typeof resourceCopySshKeySchema>;
