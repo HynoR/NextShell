@@ -1,7 +1,5 @@
-import {
-  createLatestOnlyDispatcher,
-  createOrderedBytesDispatcher,
-} from "./ipc-stream-dispatcher";
+import { Buffer } from "node:buffer";
+import { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 
 interface SentRecord {
   channel: string;
@@ -450,41 +448,191 @@ await (async () => {
 })();
 
 await (async () => {
+  // Multibyte end-to-end: CJK + emoji must reassemble to exactly the input,
+  // every frame's reported byteLength must equal the UTF-8 length of its
+  // data, and acking each frame verbatim (as the renderer does) must fully
+  // drain the byte accounting.
   const sent: SentRecord[] = [];
   const sender = createSender(sent);
+  const input = "开始😀你好世界🚀漢字テスト🎉终点end";
 
-  const dispatcher = createLatestOnlyDispatcher({
-    channel: "monitor:data",
-    buildPayload: ({ deliveryId, payload }) => ({
+  const dispatcher = createOrderedBytesDispatcher({
+    channel: "session:data",
+    flushIntervalMs: 2,
+    targetChunkBytes: 5,
+    highWaterBytes: 1024,
+    lowWaterBytes: 512,
+    buildPayload: ({ streamId, deliveryId, chunk, byteLength }) => ({
+      sessionId: streamId,
+      data: chunk,
       deliveryId,
-      payload,
+      byteLength,
     }),
   });
 
-  dispatcher.publish({
-    streamId: "connection-1",
+  dispatcher.push({
+    streamId: "session-multibyte",
     sender,
-    payload: { sample: 1 },
-  });
-  dispatcher.publish({
-    streamId: "connection-1",
-    sender,
-    payload: { sample: 2 },
-  });
-  dispatcher.publish({
-    streamId: "connection-1",
-    sender,
-    payload: { sample: 3 },
+    chunk: input,
+    onPause: () => undefined,
+    onResume: () => undefined,
   });
 
-  assertEqual(sent.length, 1, "latest-only dispatcher should keep a single in-flight frame");
-  const firstPayload = sent[0]?.payload as { deliveryId: number };
+  let drained = false;
+  dispatcher.closeWhenDrained("session-multibyte", () => {
+    drained = true;
+  });
+
+  let ackedCount = 0;
+  const deadline = Date.now() + 2_000;
+  while (!drained && Date.now() < deadline) {
+    if (sent.length > ackedCount) {
+      const payload = sent[ackedCount]?.payload as {
+        data: string;
+        deliveryId: number;
+        byteLength: number;
+      };
+      assertEqual(
+        payload.byteLength,
+        Buffer.byteLength(payload.data, "utf8"),
+        "frame byteLength must equal the UTF-8 byte length of its data"
+      );
+      ackedCount += 1;
+      dispatcher.ack({
+        streamId: "session-multibyte",
+        deliveryId: payload.deliveryId,
+        consumedBytes: payload.byteLength,
+      });
+    } else {
+      await wait(2);
+    }
+  }
+
+  assert(drained, "multibyte stream must fully drain when frames are acked with their reported byteLength");
+  assert(sent.length >= 2, "multibyte input should be carved into multiple frames");
+  const reassembled = sent
+    .map((record) => (record.payload as { data: string }).data)
+    .join("");
+  assertEqual(reassembled, input, "reassembled multibyte frames must equal the original input");
+})();
+
+await (async () => {
+  // A surrogate pair may be split across two frames (per-code-unit carving);
+  // each lone half must be reported as 3 UTF-8 bytes — the same value used
+  // for in-flight accounting — so verbatim acks still drain, and joining the
+  // frames must restore the original pair.
+  const sent: SentRecord[] = [];
+  const sender = createSender(sent);
+
+  const dispatcher = createOrderedBytesDispatcher({
+    channel: "session:data",
+    flushIntervalMs: 2,
+    targetChunkBytes: 3,
+    highWaterBytes: 1024,
+    lowWaterBytes: 512,
+    buildPayload: ({ streamId, deliveryId, chunk, byteLength }) => ({
+      sessionId: streamId,
+      data: chunk,
+      deliveryId,
+      byteLength,
+    }),
+  });
+
+  dispatcher.push({
+    streamId: "session-surrogate",
+    sender,
+    chunk: "😀",
+    onPause: () => undefined,
+    onResume: () => undefined,
+  });
+
+  let drained = false;
+  dispatcher.closeWhenDrained("session-surrogate", () => {
+    drained = true;
+  });
+
+  await waitUntil(() => sent.length >= 1, 100);
+  const first = sent[0]?.payload as { data: string; deliveryId: number; byteLength: number };
+  assertEqual(first.data, "\ud83d", "first frame should carry the lone high surrogate");
+  assertEqual(
+    first.byteLength,
+    Buffer.byteLength("\ud83d", "utf8"),
+    "a lone high surrogate must be reported with the runtime's own measurement"
+  );
   dispatcher.ack({
-    streamId: "connection-1",
-    deliveryId: firstPayload.deliveryId,
+    streamId: "session-surrogate",
+    deliveryId: first.deliveryId,
+    consumedBytes: first.byteLength,
   });
 
-  assertEqual(sent.length, 2, "latest-only dispatcher should send the latest pending frame after ack");
-  const secondPayload = sent[1]?.payload as { payload: { sample: number } };
-  assertEqual(secondPayload.payload.sample, 3, "latest-only dispatcher should overwrite older pending snapshots");
+  await waitUntil(() => sent.length >= 2, 100);
+  const second = sent[1]?.payload as { data: string; deliveryId: number; byteLength: number };
+  assertEqual(second.data, "\ude00", "second frame should carry the lone low surrogate");
+  assertEqual(
+    second.byteLength,
+    Buffer.byteLength("\ude00", "utf8"),
+    "a lone low surrogate must be reported with the runtime's own measurement"
+  );
+  dispatcher.ack({
+    streamId: "session-surrogate",
+    deliveryId: second.deliveryId,
+    consumedBytes: second.byteLength,
+  });
+
+  await waitUntil(() => drained, 100);
+  assert(drained, "surrogate-split stream must drain after both halves are acked");
+  assertEqual(first.data + second.data, "😀", "joining the split frames must restore the surrogate pair");
+})();
+
+await (async () => {
+  // Surrogate halves arriving in separate pushes join into one pair inside
+  // the pending buffer; the incremental byte accounting must measure the
+  // joined pair as 4 bytes, not 3 + 3.
+  const sent: SentRecord[] = [];
+  const sender = createSender(sent);
+
+  const dispatcher = createOrderedBytesDispatcher({
+    channel: "session:data",
+    flushIntervalMs: 2,
+    targetChunkBytes: 64,
+    highWaterBytes: 1024,
+    lowWaterBytes: 512,
+    buildPayload: ({ streamId, deliveryId, chunk, byteLength }) => ({
+      sessionId: streamId,
+      data: chunk,
+      deliveryId,
+      byteLength,
+    }),
+  });
+
+  const pushChunk = (chunk: string) => {
+    dispatcher.push({
+      streamId: "session-joined",
+      sender,
+      chunk,
+      onPause: () => undefined,
+      onResume: () => undefined,
+    });
+  };
+
+  pushChunk("\ud83d");
+  pushChunk("\ude00");
+
+  await waitUntil(() => sent.length >= 1, 100);
+  const payload = sent[0]?.payload as { data: string; deliveryId: number; byteLength: number };
+  assertEqual(payload.data, "😀", "halves pushed separately should be flushed as the joined pair");
+  assertEqual(payload.byteLength, 4, "a joined surrogate pair must be measured as 4 UTF-8 bytes");
+
+  let drained = false;
+  dispatcher.closeWhenDrained("session-joined", () => {
+    drained = true;
+  });
+  dispatcher.ack({
+    streamId: "session-joined",
+    deliveryId: payload.deliveryId,
+    consumedBytes: payload.byteLength,
+  });
+
+  await waitUntil(() => drained, 100);
+  assert(drained, "joined-pair stream must drain after a verbatim ack");
 })();

@@ -178,26 +178,15 @@ export const sessionGetHomeDirSchema = z.object({
   connectionId: z.string().uuid()
 });
 
-export const streamKindSchema = z.enum([
-  "session",
-  "monitor-system",
-  "monitor-process",
-  "monitor-network"
-]);
+// The delivery-ack protocol only exists for the ordered terminal byte stream;
+// monitor snapshots are pushed directly without acks.
+export const streamKindSchema = z.enum(["session"]);
 
 export const streamDeliveryAckSchema = z.object({
   streamKind: streamKindSchema,
   streamId: z.string().min(1),
   deliveryId: z.number().int().min(1),
-  consumedBytes: z.number().int().min(0).optional()
-}).superRefine((value, ctx) => {
-  if (value.streamKind === "session" && typeof value.consumedBytes !== "number") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "consumedBytes is required when streamKind is session",
-      path: ["consumedBytes"]
-    });
-  }
+  consumedBytes: z.number().int().min(0)
 });
 
 export const sessionDataEventSchema = z.object({
@@ -274,13 +263,7 @@ export const commandBatchExecSchema = z.object({
   retryCount: z.coerce.number().int().min(0).max(5).default(1)
 });
 
-export const auditListSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(500).default(100)
-});
-
 export const auditClearSchema = z.object({});
-
-export const storageMigrationsSchema = z.object({});
 
 export const sftpListSchema = z.object({
   connectionId: z.string().uuid(),
@@ -808,9 +791,7 @@ export type MonitorNetworkStopInput = z.infer<typeof monitorNetworkStopSchema>;
 export type MonitorNetworkConnectionsInput = z.infer<typeof monitorNetworkConnectionsSchema>;
 export type CommandExecInput = z.infer<typeof commandExecSchema>;
 export type CommandBatchExecInput = z.infer<typeof commandBatchExecSchema>;
-export type AuditListInput = z.infer<typeof auditListSchema>;
 export type AuditClearInput = z.infer<typeof auditClearSchema>;
-export type StorageMigrationsInput = z.infer<typeof storageMigrationsSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;
@@ -846,10 +827,6 @@ export type SftpTransferCancelInput = z.infer<typeof sftpTransferCancelSchema>;
 export type BackupListInput = z.infer<typeof backupListSchema>;
 export type BackupRunInput = z.infer<typeof backupRunSchema>;
 export type BackupRestoreInput = z.infer<typeof backupRestoreSchema>;
-export type BackupPasswordSetInput = z.infer<typeof backupPasswordSetSchema>;
-export type BackupPasswordUnlockInput = z.infer<typeof backupPasswordUnlockSchema>;
-export type BackupPasswordClearRememberedInput = z.infer<typeof backupPasswordClearRememberedSchema>;
-export type BackupPasswordStatusInput = z.infer<typeof backupPasswordStatusSchema>;
 export type MasterPasswordSetInput = z.infer<typeof masterPasswordSetSchema>;
 export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchema>;
 export type MasterPasswordClearRememberedInput = z.infer<typeof masterPasswordClearRememberedSchema>;

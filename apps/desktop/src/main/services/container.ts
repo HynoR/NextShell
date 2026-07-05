@@ -22,7 +22,6 @@ import type {
   SessionAuthOverrideInput,
   SessionStatusEvent,
   SftpTransferStatusEvent,
-  StreamDeliveryEnvelope,
 } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
@@ -42,10 +41,7 @@ import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
 import { resolveAuditRuntime } from "./audit-runtime";
 import { logger } from "../logger";
-import {
-  createLatestOnlyDispatcher,
-  createOrderedBytesDispatcher,
-} from "./ipc-stream-dispatcher";
+import { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import { normalizeError } from "./container-utils";
 import type { ActiveSession } from "./container-types";
 
@@ -197,21 +193,29 @@ export const createServiceContainer = async (
     targetChunkBytes: 64 * 1024,
     highWaterBytes: 512 * 1024,
     lowWaterBytes: 256 * 1024,
-    buildPayload: ({ streamId, deliveryId, chunk }) => ({
-      sessionId: streamId, data: chunk, deliveryId,
-      byteLength: Buffer.byteLength(chunk, "utf8"),
+    buildPayload: ({ streamId, deliveryId, chunk, byteLength }) => ({
+      // byteLength comes from the dispatcher's single measurement of the
+      // frame — the same value used for in-flight accounting, so the
+      // renderer's verbatim ack always drains the stream.
+      sessionId: streamId, data: chunk, deliveryId, byteLength,
     }),
   });
 
-  const createMonitorDispatcher = <TSnapshot>(channel: string) =>
-    createLatestOnlyDispatcher<StreamDeliveryEnvelope<TSnapshot>, TSnapshot>({
-      channel,
-      buildPayload: ({ deliveryId, payload }) => ({ deliveryId, payload }),
-    });
+  // Monitor snapshots are low-rate (≤1Hz) and sent directly — no delivery-id/ack
+  // handshake (that protocol remains exclusively for the high-throughput ordered
+  // terminal byte stream above). A blocked-but-alive renderer can therefore queue
+  // snapshots in the IPC channel at poll rate; that window is bounded by the
+  // main process's "unresponsive" auto-reload and the hide/suspend poll pausing.
+  const createMonitorSnapshotEmitter = <TSnapshot>(channel: string) =>
+    (sender: WebContents | undefined, snapshot: TSnapshot): void => {
+      if (sender && !sender.isDestroyed() && !sender.isCrashed()) {
+        sender.send(channel, snapshot);
+      }
+    };
 
-  const systemMonitorDispatcher = createMonitorDispatcher<MonitorSnapshot>(IPCChannel.MonitorSystemData);
-  const processMonitorDispatcher = createMonitorDispatcher<ProcessSnapshot>(IPCChannel.MonitorProcessData);
-  const networkMonitorDispatcher = createMonitorDispatcher<NetworkSnapshot>(IPCChannel.MonitorNetworkData);
+  const emitSystemMonitorSnapshot = createMonitorSnapshotEmitter<MonitorSnapshot>(IPCChannel.MonitorSystemData);
+  const emitProcessMonitorSnapshot = createMonitorSnapshotEmitter<ProcessSnapshot>(IPCChannel.MonitorProcessData);
+  const emitNetworkMonitorSnapshot = createMonitorSnapshotEmitter<NetworkSnapshot>(IPCChannel.MonitorNetworkData);
 
   // ─── Connection Pool ─────────────────────────────────────────────────────
   const remoteEditManager = new RemoteEditManager({ getConnection: ensureConnection });
@@ -406,9 +410,9 @@ export const createServiceContainer = async (
     appendAuditLogIfEnabled,
     debugSenders: prefsSvc.debugSenders,
     emitDebugLog: (entry) => prefsSvc.emitDebugLog(entry),
-    systemMonitorDispatcher,
-    processMonitorDispatcher,
-    networkMonitorDispatcher,
+    emitSystemSnapshot: emitSystemMonitorSnapshot,
+    emitProcessSnapshot: emitProcessMonitorSnapshot,
+    emitNetworkSnapshot: emitNetworkMonitorSnapshot,
   });
 
   const sftpSvc = new SftpService({
@@ -466,9 +470,6 @@ export const createServiceContainer = async (
     appendAuditLogIfEnabled,
     sendSessionStatus,
     sessionDataDispatcher,
-    systemMonitorDispatcher,
-    processMonitorDispatcher,
-    networkMonitorDispatcher,
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
     clearMonitorSuspension: (id) => monitorSvc.clearMonitorSuspension(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),

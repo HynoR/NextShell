@@ -57,6 +57,23 @@ const isLocalSession = (session?: SessionDescriptor): boolean =>
 const isRemoteSession = (session?: SessionDescriptor): boolean =>
   !isLocalSession(session);
 
+interface SessionLookupEntry {
+  session: SessionDescriptor | undefined;
+  connection: ConnectionProfile | undefined;
+}
+
+/**
+ * Per-session cache of store lookups used on the terminal data hot path
+ * (~60 frames/s). The workspace store replaces its sessions/connections
+ * arrays immutably on every change, so comparing array identities is a
+ * complete and O(1) invalidation check.
+ */
+interface SessionLookupCache {
+  sessions: SessionDescriptor[] | null;
+  connections: ConnectionProfile[] | null;
+  entries: Map<string, SessionLookupEntry>;
+}
+
 interface TerminalPaneProps {
   connection?: ConnectionProfile;
   session?: SessionDescriptor;
@@ -258,12 +275,40 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
   }, [onRetrySessionAuth]);
 
   const setSessionCwd = useWorkspaceStore((state) => state.setSessionCwd);
+  const sessionLookupCacheRef = useRef<SessionLookupCache>({
+    sessions: null,
+    connections: null,
+    entries: new Map()
+  });
 
   const sanitizeSessionOutput = useCallback(
     (targetSessionId: string, text: string): string => {
-      const targetSession = useWorkspaceStore
-        .getState()
-        .sessions.find((item: SessionDescriptor) => item.id === targetSessionId);
+      const storeState = useWorkspaceStore.getState();
+      const cache = sessionLookupCacheRef.current;
+      if (cache.sessions !== storeState.sessions || cache.connections !== storeState.connections) {
+        cache.sessions = storeState.sessions;
+        cache.connections = storeState.connections;
+        cache.entries.clear();
+      }
+
+      let resolved = cache.entries.get(targetSessionId);
+      if (!resolved) {
+        const session = storeState.sessions.find(
+          (item: SessionDescriptor) => item.id === targetSessionId
+        );
+        // The connection is only ever consulted for remote sessions with a
+        // connectionId; skip the scan otherwise, exactly like the uncached path.
+        const connection =
+          session && session.target === "remote" && session.connectionId
+            ? storeState.connections.find(
+                (item: ConnectionProfile) => item.id === session.connectionId
+              )
+            : undefined;
+        resolved = { session, connection };
+        cache.entries.set(targetSessionId, resolved);
+      }
+
+      const targetSession = resolved.session;
       if (!targetSession || targetSession.target !== "remote" || !targetSession.connectionId) {
         return text;
       }
@@ -273,11 +318,8 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       const parsed = consumeOsc7Chunk(currentState, text);
       osc7StateBySessionRef.current.set(targetSessionId, parsed.state);
 
-      const targetConnection = useWorkspaceStore
-        .getState()
-        .connections.find((item: ConnectionProfile) => item.id === targetSession.connectionId);
       if (
-        shouldTrackTerminalSessionMetadata(targetSession, targetConnection) &&
+        shouldTrackTerminalSessionMetadata(targetSession, resolved.connection) &&
         parsed.cwdPath
       ) {
         setSessionCwd(targetSessionId, parsed.cwdPath);

@@ -20,7 +20,7 @@ import type { ActiveSession, ActiveRemoteSession, SystemMonitorRuntime } from ".
 import { normalizeError, toAuthRequiredReason, decodeTerminalData, encodeTerminalData } from "./container-utils";
 import { createRemoteOsc7BootstrapPlan, resolveOsc7ShellFamily } from "./terminal-osc7-bootstrap";
 import { resolveLocalShellLaunch } from "./local-shell";
-import type { createOrderedBytesDispatcher, LatestOnlyDispatcher, LatestOnlyAckInput } from "./ipc-stream-dispatcher";
+import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import { logger } from "../logger";
 
 export interface SessionServiceOptions {
@@ -38,9 +38,6 @@ export interface SessionServiceOptions {
   }) => void;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  systemMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
-  processMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
-  networkMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
   clearMonitorSuspension: (connectionId: string) => void;
   warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
@@ -56,9 +53,6 @@ export class SessionService {
   private readonly appendAuditLogIfEnabled: SessionServiceOptions["appendAuditLogIfEnabled"];
   private readonly sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   private readonly sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  private readonly systemMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
-  private readonly processMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
-  private readonly networkMonitorDispatcher: Pick<LatestOnlyDispatcher<unknown>, "ack" | "clear">;
   private readonly ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
   private readonly clearMonitorSuspension: (connectionId: string) => void;
   private readonly warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
@@ -73,9 +67,6 @@ export class SessionService {
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.sendSessionStatus = options.sendSessionStatus;
     this.sessionDataDispatcher = options.sessionDataDispatcher;
-    this.systemMonitorDispatcher = options.systemMonitorDispatcher;
-    this.processMonitorDispatcher = options.processMonitorDispatcher;
-    this.networkMonitorDispatcher = options.networkMonitorDispatcher;
     this.ensureSystemMonitorRuntime = options.ensureSystemMonitorRuntime;
     this.clearMonitorSuspension = options.clearMonitorSuspension;
     this.warmupSftp = options.warmupSftp;
@@ -493,33 +484,13 @@ export class SessionService {
   }
 
   ackStreamDelivery(input: StreamDeliveryAckInput): { ok: true } {
-    switch (input.streamKind) {
-      case "session":
-        this.sessionDataDispatcher.ack({
-          streamId: input.streamId,
-          deliveryId: input.deliveryId,
-          consumedBytes: input.consumedBytes,
-        });
-        break;
-      case "monitor-system":
-        this.systemMonitorDispatcher.ack({
-          streamId: input.streamId,
-          deliveryId: input.deliveryId,
-        });
-        break;
-      case "monitor-process":
-        this.processMonitorDispatcher.ack({
-          streamId: input.streamId,
-          deliveryId: input.deliveryId,
-        });
-        break;
-      case "monitor-network":
-        this.networkMonitorDispatcher.ack({
-          streamId: input.streamId,
-          deliveryId: input.deliveryId,
-        });
-        break;
-    }
+    // Only the ordered terminal byte stream uses the ack protocol; monitor
+    // snapshots are sent directly without delivery tracking.
+    this.sessionDataDispatcher.ack({
+      streamId: input.streamId,
+      deliveryId: input.deliveryId,
+      consumedBytes: input.consumedBytes,
+    });
 
     return { ok: true };
   }

@@ -3,7 +3,6 @@ import { ZodError, z } from "zod";
 import { logger } from "../logger";
 import {
   IPCChannel,
-  auditListSchema,
   auditClearSchema,
   commandBatchExecSchema,
   commandExecSchema,
@@ -50,13 +49,11 @@ import {
   sessionResizeSchema,
   sessionWriteSchema,
   sftpListSchema,
-  storageMigrationsSchema,
   sftpRenameSchema,
   sftpTransferPackedSchema,
   sftpTransferCancelSchema,
   sftpUploadSchema,
   sftpUploadPackedSchema,
-  savedCommandListSchema,
   savedCommandRemoveSchema,
   savedCommandUpsertSchema,
   sftpEditOpenSchema,
@@ -66,10 +63,6 @@ import {
   backupListSchema,
   backupRunSchema,
   backupRestoreSchema,
-  backupPasswordSetSchema,
-  backupPasswordUnlockSchema,
-  backupPasswordClearRememberedSchema,
-  backupPasswordStatusSchema,
   cloudSyncWorkspaceListSchema,
   cloudSyncWorkspaceAddSchema,
   cloudSyncWorkspaceUpdateSchema,
@@ -87,9 +80,6 @@ import {
   masterPasswordClearRememberedSchema,
   masterPasswordStatusSchema,
   masterPasswordGetCachedSchema,
-  templateParamsListSchema,
-  templateParamsUpsertSchema,
-  templateParamsClearSchema,
   sshKeyListSchema,
   sshKeyUpsertSchema,
   sshKeyRemoveSchema,
@@ -100,10 +90,6 @@ import {
   pingRequestSchema,
   tracerouteRunSchema,
   resourceCopyConnectionSchema,
-  resourceDangerMoveConnectionSchema,
-  resourceDeleteConnectionSchema,
-  resourceDeleteSshKeySchema,
-  resourceCopySshKeySchema,
   recycleBinListSchema,
   recycleBinRestoreSchema,
   recycleBinPurgeSchema,
@@ -284,19 +270,9 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.execBatchCommand(input);
   });
 
-  ipcMain.handle(IPCChannel.AuditList, (_event, payload) => {
-    const input = parsePayload(auditListSchema, payload ?? {}, "审计日志查询");
-    return services.listAuditLogs(input.limit);
-  });
-
   ipcMain.handle(IPCChannel.AuditClear, (_event, payload) => {
     parsePayload(auditClearSchema, payload ?? {}, "审计日志清空");
     return services.clearAuditLogs();
-  });
-
-  ipcMain.handle(IPCChannel.StorageMigrations, (_event, payload) => {
-    parsePayload(storageMigrationsSchema, payload ?? {}, "迁移记录查询");
-    return services.listMigrations();
   });
 
   ipcMain.handle(IPCChannel.SftpList, (_event, payload) => {
@@ -408,11 +384,6 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.CommandHistoryClear, (_event, payload) => {
     parsePayload(commandHistoryClearSchema, payload ?? {}, "命令历史清空");
     return services.clearCommandHistory();
-  });
-
-  ipcMain.handle(IPCChannel.SavedCommandList, (_event, payload) => {
-    const input = parsePayload(savedCommandListSchema, payload ?? {}, "命令库列表");
-    return services.listSavedCommands(input);
   });
 
   ipcMain.handle(IPCChannel.SavedCommandListScoped, (_event, payload) => {
@@ -542,26 +513,6 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
     return services.masterPasswordGetCached();
   });
 
-  ipcMain.handle(IPCChannel.BackupPasswordSet, (_event, payload) => {
-    const input = parsePayload(backupPasswordSetSchema, payload, "设置云存档密码");
-    return services.masterPasswordSet(input.password);
-  });
-
-  ipcMain.handle(IPCChannel.BackupPasswordUnlock, (_event, payload) => {
-    const input = parsePayload(backupPasswordUnlockSchema, payload, "解锁云存档密码");
-    return services.masterPasswordUnlock(input.password);
-  });
-
-  ipcMain.handle(IPCChannel.BackupPasswordClearRemembered, (_event, payload) => {
-    parsePayload(backupPasswordClearRememberedSchema, payload ?? {}, "清除记住的密码");
-    return services.masterPasswordClearRemembered();
-  });
-
-  ipcMain.handle(IPCChannel.BackupPasswordStatus, (_event, payload) => {
-    parsePayload(backupPasswordStatusSchema, payload ?? {}, "密码状态查询");
-    return services.masterPasswordStatus();
-  });
-
   // ─── Cloud Sync ──────────────────────────────────────────────────────────
 
   ipcMain.handle(IPCChannel.CloudSyncWorkspaceList, (_event, payload) => {
@@ -617,23 +568,6 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.CloudSyncResolveConflict, (_event, payload) => {
     const input = parsePayload(cloudSyncResolveConflictSchema, payload, "云同步冲突处理");
     return services.cloudSyncResolveConflict(input);
-  });
-
-  // ─── Template Params ──────────────────────────────────────────────────────
-
-  ipcMain.handle(IPCChannel.TemplateParamsList, (_event, payload) => {
-    const input = parsePayload(templateParamsListSchema, payload ?? {}, "模板参数列表");
-    return services.listTemplateParams(input);
-  });
-
-  ipcMain.handle(IPCChannel.TemplateParamsUpsert, (_event, payload) => {
-    const input = parsePayload(templateParamsUpsertSchema, payload, "模板参数保存");
-    return services.upsertTemplateParams(input);
-  });
-
-  ipcMain.handle(IPCChannel.TemplateParamsClear, (_event, payload) => {
-    const input = parsePayload(templateParamsClearSchema, payload, "模板参数清除");
-    return services.clearTemplateParams(input);
   });
 
   // ─── SSH Keys ─────────────────────────────────────────────────────────────
@@ -708,26 +642,6 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   ipcMain.handle(IPCChannel.ResourceCopyConnection, (_event, payload) => {
     const input = parsePayload(resourceCopyConnectionSchema, payload, "复制连接");
     return services.resourceCopyConnection(input);
-  });
-
-  ipcMain.handle(IPCChannel.ResourceDangerMoveConnection, (_event, payload) => {
-    const input = parsePayload(resourceDangerMoveConnectionSchema, payload, "危险移动连接");
-    return services.resourceDangerMoveConnection(input);
-  });
-
-  ipcMain.handle(IPCChannel.ResourceDeleteConnection, (_event, payload) => {
-    const input = parsePayload(resourceDeleteConnectionSchema, payload, "删除连接");
-    return services.resourceDeleteConnection(input);
-  });
-
-  ipcMain.handle(IPCChannel.ResourceDeleteSshKey, (_event, payload) => {
-    const input = parsePayload(resourceDeleteSshKeySchema, payload, "删除密钥");
-    return services.resourceDeleteSshKey(input);
-  });
-
-  ipcMain.handle(IPCChannel.ResourceCopySshKey, (_event, payload) => {
-    const input = parsePayload(resourceCopySshKeySchema, payload, "复制密钥");
-    return services.resourceCopySshKey(input);
   });
 
   // ─── Recycle Bin ──────────────────────────────────────────────────────────

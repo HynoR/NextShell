@@ -135,6 +135,12 @@ export const decodeTerminalData = (chunk: Buffer | string, encoding: TerminalEnc
   }
 
   const codec = resolveIconvEncoding(encoding);
+  // Fast path: UTF-8 is the overwhelmingly common case and Buffer.toString
+  // decodes it natively, skipping iconv's per-chunk codec dispatch overhead.
+  if (codec === "utf8") {
+    return chunk.toString("utf8");
+  }
+
   try {
     return iconv.decode(chunk, codec);
   } catch (error) {

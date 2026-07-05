@@ -1,16 +1,13 @@
 import type {
-  AuditLogRecord,
   BackupArchiveMeta,
   BatchCommandExecutionResult,
   CommandExecutionResult,
   CommandHistoryEntry,
-  CommandTemplateParam,
   ConnectionImportEntry,
   ConnectionImportResult,
   ConnectionListQuery,
   ConnectionProfile,
   CloudSyncWorkspaceProfile,
-  MigrationRecord,
   MonitorSnapshot,
   NetworkConnection,
   NetworkSnapshot,
@@ -31,13 +28,8 @@ import type {
   AppPreferences,
   AppPreferencesPatchInput,
   AuditClearInput,
-  AuditListInput,
   DebugLogEntry,
   BackupListInput,
-  BackupPasswordClearRememberedInput,
-  BackupPasswordSetInput,
-  BackupPasswordStatusInput,
-  BackupPasswordUnlockInput,
   BackupRestoreInput,
   BackupRunInput,
   CommandBatchExecInput,
@@ -85,7 +77,6 @@ import type {
   ProxyListInput,
   ProxyRemoveInput,
   ProxyUpsertInput,
-  SavedCommandListInput,
   SavedCommandRemoveInput,
   SavedCommandUpsertInput,
   SessionCloseInput,
@@ -95,7 +86,6 @@ import type {
   SessionResizeInput,
   SessionStatusEvent,
   StreamDeliveryAckInput,
-  StorageMigrationsInput,
   SessionWriteInput,
   SftpDeleteInput,
   SftpDownloadInput,
@@ -118,9 +108,6 @@ import type {
   SshKeyListInput,
   SshKeyRemoveInput,
   SshKeyUpsertInput,
-  TemplateParamsListInput,
-  TemplateParamsUpsertInput,
-  TemplateParamsClearInput,
   TracerouteRunInput,
   TracerouteEvent,
   UpdateCheckResult,
@@ -136,10 +123,6 @@ import type {
   CloudSyncSyncNowInput,
   CloudSyncResolveConflictInput,
   ResourceCopyConnectionInput,
-  ResourceDangerMoveConnectionInput,
-  ResourceDeleteConnectionInput,
-  ResourceDeleteSshKeyInput,
-  ResourceCopySshKeyInput,
   RecycleBinRestoreInput,
   RecycleBinPurgeInput
 } from "./contracts";
@@ -152,11 +135,6 @@ export type CloudSyncRuntimeStatusEvent = WorkspaceRepoStatus;
 
 export interface CloudSyncManagerStatusEvent {
   workspaces: CloudSyncRuntimeStatusEvent[];
-}
-
-export interface StreamDeliveryEnvelope<T> {
-  deliveryId: number;
-  payload: T;
 }
 
 export interface NextShellApi {
@@ -215,11 +193,7 @@ export interface NextShellApi {
     execBatch: (payload: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   };
   audit: {
-    list: (payload: AuditListInput) => Promise<AuditLogRecord[]>;
     clear: (payload?: AuditClearInput) => Promise<{ ok: true; deleted: number }>;
-  };
-  storage: {
-    migrations: (payload?: StorageMigrationsInput) => Promise<MigrationRecord[]>;
   };
   settings: {
     get: () => Promise<AppPreferences>;
@@ -258,7 +232,6 @@ export interface NextShellApi {
     clear: (payload?: CommandHistoryClearInput) => Promise<{ ok: true }>;
   };
   savedCommand: {
-    list: (payload?: SavedCommandListInput) => Promise<SavedCommand[]>;
     listScoped: () => Promise<ScopedCommandItem[]>;
     upsert: (payload: SavedCommandUpsertInput) => Promise<SavedCommand>;
     remove: (payload: SavedCommandRemoveInput) => Promise<{ ok: true }>;
@@ -267,14 +240,6 @@ export interface NextShellApi {
     list: (payload?: BackupListInput) => Promise<BackupArchiveMeta[]>;
     run: (payload: BackupRunInput) => Promise<{ ok: true; fileName?: string }>;
     restore: (payload: BackupRestoreInput) => Promise<{ ok: true }>;
-    setPassword: (payload: BackupPasswordSetInput) => Promise<{ ok: true }>;
-    unlockPassword: (payload: BackupPasswordUnlockInput) => Promise<{ ok: true }>;
-    clearRemembered: (payload?: BackupPasswordClearRememberedInput) => Promise<{ ok: true }>;
-    passwordStatus: (payload?: BackupPasswordStatusInput) => Promise<{
-      isSet: boolean;
-      isUnlocked: boolean;
-      keytarAvailable: boolean;
-    }>;
   };
   cloudSync: {
     workspaceList: () => Promise<CloudSyncWorkspaceProfile[]>;
@@ -298,11 +263,6 @@ export interface NextShellApi {
     clearRemembered: (payload?: MasterPasswordClearRememberedInput) => Promise<{ ok: true }>;
     passwordStatus: (payload?: MasterPasswordStatusInput) => Promise<MasterPasswordStatusResult>;
     getCached: (payload?: MasterPasswordGetCachedInput) => Promise<MasterPasswordCachedResult>;
-  };
-  templateParams: {
-    list: (payload?: TemplateParamsListInput) => Promise<CommandTemplateParam[]>;
-    upsert: (payload: TemplateParamsUpsertInput) => Promise<{ ok: true }>;
-    clear: (payload: TemplateParamsClearInput) => Promise<{ ok: true }>;
   };
   sshKey: {
     list: (payload?: SshKeyListInput) => Promise<SshKeyProfile[]>;
@@ -332,10 +292,6 @@ export interface NextShellApi {
   };
   resourceOps: {
     copyConnection: (payload: ResourceCopyConnectionInput) => Promise<ConnectionProfile>;
-    dangerMoveConnection: (payload: ResourceDangerMoveConnectionInput) => Promise<ConnectionProfile>;
-    deleteConnection: (payload: ResourceDeleteConnectionInput) => Promise<{ ok: true }>;
-    deleteSshKey: (payload: ResourceDeleteSshKeyInput) => Promise<{ ok: true }>;
-    copySshKey: (payload: ResourceCopySshKeyInput) => Promise<SshKeyProfile>;
   };
   recycleBin: {
     list: () => Promise<RecycleBinEntry[]>;

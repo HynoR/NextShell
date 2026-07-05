@@ -36,3 +36,4 @@ AGENTS.md
 !apps/desktop/src/main/services/terminal-osc7-bootstrap.test.ts
 !apps/desktop/src/main/services/cloud-sync-manager.test.ts
 !apps/desktop/src/renderer/utils/quickConnectShortcut.test.ts
+!apps/desktop/src/renderer/utils/sessionOutputBuffer.test.ts

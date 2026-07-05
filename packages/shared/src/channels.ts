@@ -27,9 +27,7 @@ export const IPCChannel = {
   MonitorNetworkConnections: "nextshell:monitor:network:connections",
   CommandExec: "nextshell:command:exec",
   CommandBatchExec: "nextshell:command:batch:exec",
-  AuditList: "nextshell:audit:list",
   AuditClear: "nextshell:audit:clear",
-  StorageMigrations: "nextshell:storage:migrations",
   SftpList: "nextshell:sftp:list",
   SftpUpload: "nextshell:sftp:upload",
   SftpDownload: "nextshell:sftp:download",
@@ -44,7 +42,6 @@ export const IPCChannel = {
   CommandHistoryPush: "nextshell:command-history:push",
   CommandHistoryRemove: "nextshell:command-history:remove",
   CommandHistoryClear: "nextshell:command-history:clear",
-  SavedCommandList: "nextshell:saved-command:list",
   SavedCommandListScoped: "nextshell:saved-command:list-scoped",
   SavedCommandUpsert: "nextshell:saved-command:upsert",
   SavedCommandRemove: "nextshell:saved-command:remove",
@@ -85,14 +82,7 @@ export const IPCChannel = {
   MasterPasswordStatus: "nextshell:master-password:status",
   MasterPasswordGetCached: "nextshell:master-password:get-cached",
   MasterPasswordChange: "nextshell:master-password:change",
-  BackupPasswordSet: "nextshell:backup:password:set",
-  BackupPasswordUnlock: "nextshell:backup:password:unlock",
-  BackupPasswordClearRemembered: "nextshell:backup:password:clear-remembered",
-  BackupPasswordStatus: "nextshell:backup:password:status",
   ConnectionRevealPassword: "nextshell:connection:reveal-password",
-  TemplateParamsList: "nextshell:template-params:list",
-  TemplateParamsUpsert: "nextshell:template-params:upsert",
-  TemplateParamsClear: "nextshell:template-params:clear",
   SshKeyList: "nextshell:ssh-key:list",
   SshKeyUpsert: "nextshell:ssh-key:upsert",
   SshKeyRemove: "nextshell:ssh-key:remove",
@@ -116,16 +106,10 @@ export const IPCChannel = {
 
   // ── Resource Operations ──
   ResourceCopyConnection: "nextshell:resource:copy-connection",
-  ResourceDangerMoveConnection: "nextshell:resource:danger-move-connection",
-  ResourceDeleteConnection: "nextshell:resource:delete-connection",
-  ResourceDeleteSshKey: "nextshell:resource:delete-ssh-key",
 
   // ── Recycle Bin ──
   RecycleBinList: "nextshell:recycle-bin:list",
   RecycleBinRestore: "nextshell:recycle-bin:restore",
   RecycleBinPurge: "nextshell:recycle-bin:purge",
-  RecycleBinClear: "nextshell:recycle-bin:clear",
-
-  // ── Resource Operations (SSH Key) ──
-  ResourceCopySshKey: "nextshell:resource:copy-ssh-key"
+  RecycleBinClear: "nextshell:recycle-bin:clear"
 } as const;

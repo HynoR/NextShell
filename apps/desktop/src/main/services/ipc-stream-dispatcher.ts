@@ -25,18 +25,28 @@ interface OrderedPayloadBuilder {
   streamId: string;
   deliveryId: number;
   chunk: string;
+  /**
+   * UTF-8 byte length of `chunk`, measured exactly once by the dispatcher.
+   * This is the same value used for in-flight/backpressure accounting, so
+   * receivers can ack it verbatim and the stream is guaranteed to drain.
+   */
+  byteLength: number;
 }
 
-interface LatestPayloadBuilder<TValue> {
-  streamId: string;
-  deliveryId: number;
-  payload: TValue;
+interface QueuedChunk {
+  chunk: string;
+  byteLength: number;
 }
 
 interface OrderedStreamState<TPayload> {
   sender: SenderLike;
   pendingChunk: string;
-  queuedChunks: string[];
+  /**
+   * Exact UTF-8 byte length of `pendingChunk`, maintained incrementally so
+   * pushes/acks never re-scan the pending buffer (Buffer.byteLength is O(n)).
+   */
+  pendingChunkBytes: number;
+  queuedChunks: QueuedChunk[];
   queuedBytes: number;
   inFlight?: {
     deliveryId: number;
@@ -52,15 +62,6 @@ interface OrderedStreamState<TPayload> {
   drainDeadlineTimer?: ReturnType<typeof setTimeout>;
 }
 
-interface LatestStreamState<TPayload, TValue> {
-  sender: SenderLike;
-  inFlight?: {
-    deliveryId: number;
-  };
-  pendingPayload?: TValue;
-  lastAckedDeliveryId: number;
-}
-
 export interface OrderedBytesDispatcherOptions<TPayload> {
   channel: string;
   flushIntervalMs: number;
@@ -72,11 +73,6 @@ export interface OrderedBytesDispatcherOptions<TPayload> {
   stallTimeoutMs?: number;
   /** Overrides DEFAULT_MAX_DRAIN_WAIT_MS (mainly for tests). */
   maxDrainWaitMs?: number;
-}
-
-export interface LatestOnlyDispatcherOptions<TPayload, TValue> {
-  channel: string;
-  buildPayload: (input: LatestPayloadBuilder<TValue>) => TPayload;
 }
 
 export interface OrderedBytesPushInput {
@@ -93,17 +89,6 @@ export interface OrderedBytesAckInput {
   consumedBytes?: number;
 }
 
-export interface LatestOnlyPublishInput<TValue> {
-  streamId: string;
-  sender: SenderLike;
-  payload: TValue;
-}
-
-export interface LatestOnlyAckInput {
-  streamId: string;
-  deliveryId: number;
-}
-
 export interface OrderedBytesDispatcher<TPayload> {
   push: (input: OrderedBytesPushInput) => void;
   ack: (input: OrderedBytesAckInput) => void;
@@ -111,16 +96,11 @@ export interface OrderedBytesDispatcher<TPayload> {
   clear: (streamId: string) => void;
 }
 
-export interface LatestOnlyDispatcher<TValue> {
-  publish: (input: LatestOnlyPublishInput<TValue>) => void;
-  ack: (input: LatestOnlyAckInput) => void;
-  clear: (streamId: string) => void;
-}
-
 function createOrderedState<TPayload>(input: OrderedBytesPushInput): OrderedStreamState<TPayload> {
   return {
     sender: input.sender,
     pendingChunk: "",
+    pendingChunkBytes: 0,
     queuedChunks: [],
     queuedBytes: 0,
     lastAckedDeliveryId: 0,
@@ -155,20 +135,107 @@ function chunkByteLength(chunk: string): number {
   return Buffer.byteLength(chunk, "utf8");
 }
 
-function splitChunkAtByteLimit(value: string, byteLimit: number): { chunk: string; rest: string } {
-  if (chunkByteLength(value) <= byteLimit) {
+/**
+ * UTF-8 byte size of a single UTF-16 code unit measured in isolation, as
+ * Node/Electron's per-char Buffer.byteLength reports it (a lone surrogate
+ * encodes as the 3-byte replacement character). Used ONLY to pick split
+ * points — matching the previous per-char Buffer.byteLength walk in
+ * production — never for byte accounting, which is always measured.
+ */
+function utf8SizeOfCodeUnit(code: number): number {
+  if (code < 0x80) {
+    return 1;
+  }
+  if (code < 0x800) {
+    return 2;
+  }
+  return 3;
+}
+
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/**
+ * Buffer.byteLength delta introduced at the boundary when `left + right` are
+ * concatenated: a trailing high surrogate joining a leading low surrogate
+ * becomes one 4-byte code point instead of two individually measured lone
+ * halves. The delta is measured on just the two boundary code units with the
+ * same Buffer.byteLength used everywhere else, so the incremental accounting
+ * matches the runtime's own lone-surrogate measurement exactly (Node reports
+ * a lone half as 3 bytes, Bun as 2 — hardcoding either would drift).
+ */
+function surrogateBoundaryDelta(left: string, right: string): number {
+  if (left.length === 0 || right.length === 0) {
+    return 0;
+  }
+
+  if (
+    !isHighSurrogate(left.charCodeAt(left.length - 1)) ||
+    !isLowSurrogate(right.charCodeAt(0))
+  ) {
+    return 0;
+  }
+
+  const high = left.charAt(left.length - 1);
+  const low = right.charAt(0);
+  return chunkByteLength(high + low) - chunkByteLength(high) - chunkByteLength(low);
+}
+
+/**
+ * Exact byte length of `left + right` given each part's own measured byte
+ * length, correcting for a surrogate pair joined at the boundary.
+ */
+function concatenatedByteLength(
+  left: string,
+  leftBytes: number,
+  right: string,
+  rightBytes: number
+): number {
+  return leftBytes + rightBytes + surrogateBoundaryDelta(left, right);
+}
+
+/**
+ * Exact byte length of `rest` after `chunk` was split off the front of a
+ * string measuring `totalBytes` (the inverse of concatenatedByteLength):
+ * splitting a surrogate pair leaves two lone halves whose individual
+ * measurements no longer sum to the pair's 4 bytes.
+ */
+function splitRemainderByteLength(
+  totalBytes: number,
+  chunk: string,
+  chunkBytes: number,
+  rest: string
+): number {
+  return totalBytes - chunkBytes - surrogateBoundaryDelta(chunk, rest);
+}
+
+/**
+ * Split semantics are intentionally identical to the original per-code-unit
+ * walk: the boundary may land between the halves of a surrogate pair, in
+ * which case each frame carries a lone surrogate measured on its own —
+ * receivers ack the reported per-frame byteLength verbatim, so accounting
+ * stays consistent as long as frames are measured after the split.
+ * `valueBytes` must be the exact byte length of `value` so the caller's
+ * incremental accounting can skip re-measuring it.
+ */
+function splitChunkAtByteLimit(
+  value: string,
+  valueBytes: number,
+  byteLimit: number
+): { chunk: string; rest: string } {
+  if (valueBytes <= byteLimit) {
     return { chunk: value, rest: "" };
   }
 
   let index = 0;
   let size = 0;
   while (index < value.length) {
-    const nextChar = value[index];
-    if (typeof nextChar !== "string") {
-      break;
-    }
-
-    const nextSize = chunkByteLength(nextChar);
+    const nextSize = utf8SizeOfCodeUnit(value.charCodeAt(index));
     if (size > 0 && size + nextSize > byteLimit) {
       break;
     }
@@ -195,7 +262,7 @@ export function createOrderedBytesDispatcher<TPayload>(
   let nextDeliveryId = 1;
 
   function totalBufferedBytes(state: OrderedStreamState<TPayload>): number {
-    return chunkByteLength(state.pendingChunk)
+    return state.pendingChunkBytes
       + state.queuedBytes
       + (state.inFlight?.byteLength ?? 0);
   }
@@ -259,6 +326,7 @@ export function createOrderedBytesDispatcher<TPayload>(
     // closeWhenDrained callback still fires; clearState resumes a paused
     // source and clears all timers.
     state.pendingChunk = "";
+    state.pendingChunkBytes = 0;
     state.queuedChunks = [];
     state.queuedBytes = 0;
     state.inFlight = undefined;
@@ -289,25 +357,29 @@ export function createOrderedBytesDispatcher<TPayload>(
       return;
     }
 
-    const chunk = state.queuedChunks.shift();
-    if (!chunk) {
+    const next = state.queuedChunks.shift();
+    if (!next) {
       maybeNotifyDrain(streamId, state);
       return;
     }
 
-    state.queuedBytes -= chunkByteLength(chunk);
+    // Reuse the byte length measured when the frame was carved: the same
+    // value drives queued/in-flight accounting AND the payload's byteLength,
+    // so a verbatim ack from the receiver always balances the books.
+    state.queuedBytes -= next.byteLength;
     const deliveryId = nextDeliveryId;
     nextDeliveryId += 1;
     state.inFlight = {
       deliveryId,
-      byteLength: chunkByteLength(chunk)
+      byteLength: next.byteLength
     };
     state.sender.send(
       options.channel,
       options.buildPayload({
         streamId,
         deliveryId,
-        chunk,
+        chunk: next.chunk,
+        byteLength: next.byteLength,
       })
     );
     armStallTimer(streamId, state);
@@ -325,24 +397,47 @@ export function createOrderedBytesDispatcher<TPayload>(
       return;
     }
 
-    while (chunkByteLength(state.pendingChunk) > options.targetChunkBytes) {
-      const { chunk, rest } = splitChunkAtByteLimit(state.pendingChunk, options.targetChunkBytes);
+    // The explicit length check makes the carve loop structurally unable to
+    // spin even if the incremental byte counter ever disagreed with the
+    // actual pending string.
+    while (state.pendingChunk.length > 0 && state.pendingChunkBytes > options.targetChunkBytes) {
+      const { chunk, rest } = splitChunkAtByteLimit(
+        state.pendingChunk,
+        state.pendingChunkBytes,
+        options.targetChunkBytes
+      );
+      // Measure the carved frame exactly once; splitRemainderByteLength keeps
+      // the pending counter exact even when the split lands inside a
+      // surrogate pair (lone halves measure differently than the joined pair).
+      const chunkBytes = chunkByteLength(chunk);
+      state.pendingChunkBytes = splitRemainderByteLength(
+        state.pendingChunkBytes,
+        chunk,
+        chunkBytes,
+        rest
+      );
       state.pendingChunk = rest;
-      state.queuedChunks.push(chunk);
-      state.queuedBytes += chunkByteLength(chunk);
+      state.queuedChunks.push({ chunk, byteLength: chunkBytes });
+      state.queuedBytes += chunkBytes;
+    }
+
+    if (state.pendingChunk.length === 0) {
+      state.pendingChunkBytes = 0;
     }
 
     if (state.pendingChunk.length > 0 && state.queuedChunks.length === 0 && !state.inFlight) {
-      state.queuedChunks.push(state.pendingChunk);
-      state.queuedBytes += chunkByteLength(state.pendingChunk);
+      state.queuedChunks.push({ chunk: state.pendingChunk, byteLength: state.pendingChunkBytes });
+      state.queuedBytes += state.pendingChunkBytes;
       state.pendingChunk = "";
+      state.pendingChunkBytes = 0;
     } else if (
       state.pendingChunk.length > 0 &&
-      chunkByteLength(state.pendingChunk) >= options.targetChunkBytes
+      state.pendingChunkBytes >= options.targetChunkBytes
     ) {
-      state.queuedChunks.push(state.pendingChunk);
-      state.queuedBytes += chunkByteLength(state.pendingChunk);
+      state.queuedChunks.push({ chunk: state.pendingChunk, byteLength: state.pendingChunkBytes });
+      state.queuedBytes += state.pendingChunkBytes;
       state.pendingChunk = "";
+      state.pendingChunkBytes = 0;
     }
 
     sendNext(streamId);
@@ -379,8 +474,17 @@ export function createOrderedBytesDispatcher<TPayload>(
         return;
       }
 
+      // Measure the incoming chunk exactly once; the pending counter is then
+      // maintained incrementally (with a boundary correction in case the
+      // append joins two surrogate halves into one pair).
+      state.pendingChunkBytes = concatenatedByteLength(
+        state.pendingChunk,
+        state.pendingChunkBytes,
+        input.chunk,
+        chunkByteLength(input.chunk)
+      );
       state.pendingChunk += input.chunk;
-      if (chunkByteLength(state.pendingChunk) >= options.targetChunkBytes) {
+      if (state.pendingChunkBytes >= options.targetChunkBytes) {
         flushPending(input.streamId);
       } else {
         ensureFlushTimer(input.streamId, state);
@@ -441,82 +545,5 @@ export function createOrderedBytesDispatcher<TPayload>(
     clear(streamId) {
       clearState(streamId);
     },
-  };
-}
-
-export function createLatestOnlyDispatcher<TPayload, TValue>(
-  options: LatestOnlyDispatcherOptions<TPayload, TValue>
-): LatestOnlyDispatcher<TValue> {
-  const streams = new Map<string, LatestStreamState<TPayload, TValue>>();
-  let nextDeliveryId = 1;
-
-  function clear(streamId: string): void {
-    streams.delete(streamId);
-  }
-
-  function send(streamId: string, state: LatestStreamState<TPayload, TValue>, payload: TValue): void {
-    if (state.sender.isDestroyed()) {
-      clear(streamId);
-      return;
-    }
-
-    const deliveryId = nextDeliveryId;
-    nextDeliveryId += 1;
-    state.inFlight = { deliveryId };
-    state.sender.send(
-      options.channel,
-      options.buildPayload({
-        streamId,
-        deliveryId,
-        payload,
-      })
-    );
-  }
-
-  return {
-    publish(input) {
-      const current = streams.get(input.streamId);
-      const state: LatestStreamState<TPayload, TValue> = current ?? {
-        sender: input.sender,
-        lastAckedDeliveryId: 0,
-      };
-
-      state.sender = input.sender;
-      streams.set(input.streamId, state);
-
-      if (state.sender.isDestroyed()) {
-        clear(input.streamId);
-        return;
-      }
-
-      if (state.inFlight) {
-        state.pendingPayload = input.payload;
-        return;
-      }
-
-      send(input.streamId, state, input.payload);
-    },
-    ack(input) {
-      const state = streams.get(input.streamId);
-      if (!state?.inFlight) {
-        return;
-      }
-
-      if (input.deliveryId <= state.lastAckedDeliveryId || input.deliveryId !== state.inFlight.deliveryId) {
-        return;
-      }
-
-      state.lastAckedDeliveryId = input.deliveryId;
-      state.inFlight = undefined;
-
-      if (state.pendingPayload === undefined) {
-        return;
-      }
-
-      const nextPayload = state.pendingPayload;
-      state.pendingPayload = undefined;
-      send(input.streamId, state, nextPayload);
-    },
-    clear,
   };
 }

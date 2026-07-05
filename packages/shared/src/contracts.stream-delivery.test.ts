@@ -46,7 +46,11 @@ function assert(condition: boolean, message: string): void {
     streamKind: "monitor-system",
     streamId: "connection-1",
     deliveryId: 9,
+    consumedBytes: 0,
   });
 
-  assert(parsed.success, "monitor ack should not require consumedBytes");
+  assert(
+    parsed.success === false,
+    "monitor stream kinds were removed from the ack protocol and must be rejected"
+  );
 })();

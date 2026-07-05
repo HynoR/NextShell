@@ -64,7 +64,6 @@ import type {
 } from "./container-types";
 import { MonitorBackoff } from "./monitor/monitor-runner";
 import { logger } from "../logger";
-import type { LatestOnlyDispatcher } from "./ipc-stream-dispatcher";
 
 // Hidden monitor SSH re-establishment backs off from the FIRST failure so a
 // dead network (e.g. right after OS sleep) doesn't trigger a reconnect storm.
@@ -88,9 +87,10 @@ export interface MonitorServiceOptions {
   }) => void;
   debugSenders: Set<WebContents>;
   emitDebugLog: (entry: DebugLogEntry) => void;
-  systemMonitorDispatcher: LatestOnlyDispatcher<MonitorSnapshot>;
-  processMonitorDispatcher: LatestOnlyDispatcher<ProcessSnapshot>;
-  networkMonitorDispatcher: LatestOnlyDispatcher<NetworkSnapshot>;
+  /** Direct guarded webContents.send of a snapshot payload (no ack protocol). */
+  emitSystemSnapshot: (sender: WebContents, snapshot: MonitorSnapshot) => void;
+  emitProcessSnapshot: (sender: WebContents, snapshot: ProcessSnapshot) => void;
+  emitNetworkSnapshot: (sender: WebContents, snapshot: NetworkSnapshot) => void;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
@@ -133,9 +133,9 @@ export class MonitorService {
   private readonly appendAuditLogIfEnabled: MonitorServiceOptions["appendAuditLogIfEnabled"];
   private readonly debugSenders: Set<WebContents>;
   private readonly emitDebugLog: (entry: DebugLogEntry) => void;
-  private readonly systemMonitorDispatcher: LatestOnlyDispatcher<MonitorSnapshot>;
-  private readonly processMonitorDispatcher: LatestOnlyDispatcher<ProcessSnapshot>;
-  private readonly networkMonitorDispatcher: LatestOnlyDispatcher<NetworkSnapshot>;
+  private readonly emitSystemSnapshot: (sender: WebContents, snapshot: MonitorSnapshot) => void;
+  private readonly emitProcessSnapshot: (sender: WebContents, snapshot: ProcessSnapshot) => void;
+  private readonly emitNetworkSnapshot: (sender: WebContents, snapshot: NetworkSnapshot) => void;
 
   constructor(options: MonitorServiceOptions) {
     this.connections = options.connections;
@@ -145,9 +145,9 @@ export class MonitorService {
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.debugSenders = options.debugSenders;
     this.emitDebugLog = options.emitDebugLog;
-    this.systemMonitorDispatcher = options.systemMonitorDispatcher;
-    this.processMonitorDispatcher = options.processMonitorDispatcher;
-    this.networkMonitorDispatcher = options.networkMonitorDispatcher;
+    this.emitSystemSnapshot = options.emitSystemSnapshot;
+    this.emitProcessSnapshot = options.emitProcessSnapshot;
+    this.emitNetworkSnapshot = options.emitNetworkSnapshot;
   }
 
   // ─── Guard helpers ────────────────────────────────────────────────────────
@@ -187,7 +187,6 @@ export class MonitorService {
     const runtime = this.systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      this.systemMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       this.systemMonitorRuntimes.delete(connectionId);
     }
@@ -200,7 +199,6 @@ export class MonitorService {
     const runtime = this.processMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      this.processMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       this.processMonitorRuntimes.delete(connectionId);
     }
@@ -214,7 +212,6 @@ export class MonitorService {
     const runtime = this.networkMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.disposed = true;
-      this.networkMonitorDispatcher.clear(connectionId);
       await runtime.controller.stop();
       this.networkMonitorRuntimes.delete(connectionId);
     }
@@ -586,11 +583,7 @@ export class MonitorService {
       isReceiverAlive: () => this.isSenderAlive(runtime.sender),
       emitSnapshot: (snapshot) => {
         if (this.isSenderAlive(runtime.sender) && runtime.sender) {
-          this.systemMonitorDispatcher.publish({
-            streamId: connectionId,
-            sender: runtime.sender,
-            payload: snapshot
-          });
+          this.emitSystemSnapshot(runtime.sender, snapshot);
         }
       },
       readSelection: () => this.monitorStates.get(connectionId),
@@ -652,11 +645,7 @@ export class MonitorService {
         isReceiverAlive: () => this.isSenderAlive(runtime.sender),
         emitSnapshot: (snapshot) => {
           if (this.isSenderAlive(runtime.sender) && runtime.sender) {
-            this.processMonitorDispatcher.publish({
-              streamId: connectionId,
-              sender: runtime.sender,
-              payload: snapshot
-            });
+            this.emitProcessSnapshot(runtime.sender, snapshot);
           }
         },
         logger,
@@ -735,11 +724,7 @@ export class MonitorService {
         isReceiverAlive: () => this.isSenderAlive(runtime.sender),
         emitSnapshot: (snapshot) => {
           if (this.isSenderAlive(runtime.sender) && runtime.sender) {
-            this.networkMonitorDispatcher.publish({
-              streamId: connectionId,
-              sender: runtime.sender,
-              payload: snapshot
-            });
+            this.emitNetworkSnapshot(runtime.sender, snapshot);
           }
         },
         readToolCache: () => this.networkToolCache.get(connectionId),
@@ -858,7 +843,6 @@ export class MonitorService {
     this.assertVisibleTerminalAlive(connectionId);
     const runtime = await this.ensureSystemMonitorRuntime(connectionId);
     runtime.sender = sender;
-    this.systemMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   }
 
@@ -866,7 +850,6 @@ export class MonitorService {
     const runtime = this.systemMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
-      this.systemMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };
@@ -935,7 +918,6 @@ export class MonitorService {
 
     const runtime = await this.ensureProcessMonitorRuntime(connectionId);
     runtime.sender = sender;
-    this.processMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   }
 
@@ -943,7 +925,6 @@ export class MonitorService {
     const runtime = this.processMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
-      this.processMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };
@@ -1028,7 +1009,6 @@ export class MonitorService {
 
     const runtime = await this.ensureNetworkMonitorRuntime(connectionId);
     runtime.sender = sender;
-    this.networkMonitorDispatcher.clear(connectionId);
     return runtime.controller.start();
   }
 
@@ -1036,7 +1016,6 @@ export class MonitorService {
     const runtime = this.networkMonitorRuntimes.get(connectionId);
     if (runtime) {
       runtime.sender = undefined;
-      this.networkMonitorDispatcher.clear(connectionId);
       void runtime.controller.stop();
     }
     return { ok: true };

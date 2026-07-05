@@ -31,7 +31,7 @@ import type {
   ProcessMonitorRuntime,
   NetworkMonitorRuntime,
 } from "./container-types";
-import type { createLatestOnlyDispatcher, createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
+import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import type { NetworkTool } from "./monitor/network-monitor-controller";
 
 /**
@@ -123,10 +123,9 @@ export interface ServiceContext {
   ) => void;
 
   // ─── Stream Dispatchers ─────────────────────────────────────────────────
+  // Only the ordered terminal byte stream is dispatched with the ack
+  // protocol; monitor snapshots are sent directly via webContents.send.
   sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  systemMonitorDispatcher: ReturnType<typeof createLatestOnlyDispatcher>;
-  processMonitorDispatcher: ReturnType<typeof createLatestOnlyDispatcher>;
-  networkMonitorDispatcher: ReturnType<typeof createLatestOnlyDispatcher>;
 
   // ─── Debug Logging ──────────────────────────────────────────────────────
   debugSenders: Set<WebContents>;
