@@ -1,73 +1,119 @@
-/* Command Center — .cc-* */
-/* ── Command Center ──────────────────────────────────────── */
+/* ── Command Center v2 ─────────────────────────────────────── */
 
 .cc-pane {
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
 
-.cc-pane::-webkit-scrollbar { width: 4px; }
-.cc-pane::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
-.cc-pane::-webkit-scrollbar-track { background: transparent; }
+/* ── Header (scope + batch + toolbar) ─────────────────────── */
 
-/* Section */
-.cc-section {
-  border-bottom: 1px solid var(--border-dim);
+.cc-header {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-surface);
 }
 
-.cc-section-header {
+/* Scope tabs */
+.cc-scope-bar {
   display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.cc-scope-tab {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 12px;
-  border: none;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--t2);
   font-size: 12px;
-  font-family: var(--sans);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
-  user-select: none;
-  text-align: left;
+  transition: all 0.12s;
+  line-height: 20px;
 }
 
-.cc-section-header:hover {
+.cc-scope-tab:hover {
   background: var(--bg-hover);
   color: var(--t1);
 }
 
-.cc-section-header:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+.cc-scope-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
 
-.cc-section-header > i:first-child {
-  font-size: 14px;
+/* Batch target bar */
+.cc-batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-batch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 12px;
   color: var(--t3);
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-  line-height: 1;
-}
-
-.cc-section-icon {
-  font-size: 13px;
-  color: var(--t3);
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-.cc-section-title {
-  font-weight: 500;
   white-space: nowrap;
 }
 
-.cc-section-count {
+.cc-batch-label > i {
+  font-size: 13px;
+}
+
+.cc-batch-reset {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t3);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+
+.cc-batch-reset:hover {
+  background: var(--bg-hover);
+  color: var(--t2);
+}
+
+/* Toolbar */
+.cc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-toolbar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t2);
+  white-space: nowrap;
+}
+
+.cc-toolbar-title > i {
+  font-size: 13px;
+  color: var(--t3);
+}
+
+.cc-toolbar-count {
   font-size: 10px;
   color: var(--t3);
   background: var(--bg-elevated);
@@ -75,14 +121,10 @@
   border-radius: 8px;
   padding: 0 6px;
   line-height: 16px;
-  flex-shrink: 0;
 }
 
-.cc-section-actions {
+.cc-toolbar-actions {
   margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -107,184 +149,215 @@
   color: var(--accent);
 }
 
-.cc-section-body {
-  padding: 0 12px 10px;
-  animation: cc-expand 0.15s ease-out;
+/* ── Body (scrollable command list) ───────────────────────── */
+
+.cc-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
 }
 
-.cc-batch-targets {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
+.cc-body::-webkit-scrollbar { width: 4px; }
+.cc-body::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
+.cc-body::-webkit-scrollbar-track { background: transparent; }
 
-.cc-batch-targets-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  font-size: 12px;
-  color: var(--t3);
-  white-space: nowrap;
-}
-
-@keyframes cc-expand {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.cc-empty-hint {
+/* Empty state */
+.cc-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 16px 8px;
+  padding: 24px 12px;
   color: var(--t3);
   font-size: 12px;
 }
 
-.cc-empty-hint i {
-  font-size: 16px;
+.cc-empty i {
+  font-size: 18px;
   opacity: 0.5;
 }
 
-/* Command library */
-.cc-library-list {
+/* ── Command list ─────────────────────────────────────────── */
+
+.cc-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-.cc-cmd-group {
+/* Group */
+.cc-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
-.cc-cmd-group-label {
+.cc-group-header {
   display: flex;
   align-items: center;
   gap: 5px;
+  width: 100%;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--t3);
   font-size: 11px;
   font-weight: 500;
-  color: var(--t3);
-  padding: 2px 0;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+  text-align: left;
 }
 
-.cc-cmd-group-label i {
-  font-size: 12px;
+.cc-group-header:hover {
+  background: var(--bg-hover);
+  color: var(--t2);
+}
+
+.cc-group-header > i {
+  font-size: 13px;
   line-height: 1;
+  flex-shrink: 0;
 }
 
-.cc-cmd-items {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.cc-group-header > i:first-child {
+  font-size: 12px;
+  width: 14px;
+  text-align: center;
 }
 
-.cc-cmd-card {
+.cc-group-name {
+  white-space: nowrap;
+}
+
+.cc-group-count {
+  font-size: 10px;
+  opacity: 0.65;
+  margin-left: 2px;
+}
+
+.cc-group-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
-  border: 1px solid var(--border-dim);
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  min-width: 180px;
-  max-width: 280px;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  animation: cc-expand 0.12s ease-out;
 }
 
-.cc-cmd-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 20%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 6%, transparent);
+@keyframes cc-expand {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.cc-cmd-card-head {
+/* ── Command item (row) ───────────────────────────────────── */
+
+.cc-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 34px;
+  transition: background 0.1s;
+  min-height: 30px;
+}
+
+.cc-item:hover {
+  background: var(--bg-hover);
+}
+
+.cc-item-body {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex: 1;
 }
 
-.cc-cmd-name {
+.cc-item-name {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--t1);
   white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.cc-cmd-preview {
+.cc-item-tag {
+  margin: 0 !important;
+  line-height: 16px !important;
+  font-size: 10px !important;
+  flex-shrink: 0;
+}
+
+.cc-item-cmd {
   font-size: 11px;
   font-family: var(--mono);
   color: var(--t3);
-  background: var(--bg-base);
-  border: 1px solid var(--border-dim);
-  border-radius: 3px;
-  padding: 3px 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block;
+  min-width: 0;
 }
 
-.cc-cmd-card-actions {
+/* Actions: visible on hover */
+.cc-item-actions {
   display: flex;
-  gap: 4px;
-  margin-top: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s;
 }
 
-.cc-action-btn {
+.cc-item:hover .cc-item-actions {
+  opacity: 1;
+}
+
+.cc-act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--border);
+  width: 22px;
+  height: 22px;
+  border: none;
   border-radius: var(--r-sm);
   background: transparent;
-  color: var(--t2);
+  color: var(--t3);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: all 0.1s;
   padding: 0;
 }
 
-.cc-action-btn:hover {
-  background: var(--bg-hover);
+.cc-act:hover {
+  background: var(--bg-elevated);
   color: var(--t1);
 }
 
-.cc-action-btn.primary {
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+.cc-act.run {
   color: var(--accent);
 }
 
-.cc-action-btn.primary:hover {
+.cc-act.run:hover {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-.cc-action-btn.secondary {
-  border-color: rgba(34, 197, 94, 0.35);
+.cc-act.batch {
   color: #4ade80;
 }
 
-.cc-action-btn.secondary:hover {
+.cc-act.batch:hover {
   background: rgba(34, 197, 94, 0.12);
 }
 
-.cc-action-btn:disabled {
+.cc-act.del:hover {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+
+.cc-act:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
-.cc-action-btn.danger:hover {
-  color: var(--err);
-  border-color: color-mix(in srgb, var(--err) 30%, transparent);
-  background: color-mix(in srgb, var(--err) 8%, transparent);
-}
+/* ── Batch result (drawer) ────────────────────────────────── */
 
 .cc-batch-result {
   border: 1px solid var(--border-dim);
@@ -324,7 +397,7 @@
   max-height: calc(100vh - 240px);
 }
 
-/* Result item (shared for batch + history) */
+/* Result item */
 .cc-result-item {
   border: 1px solid var(--border-dim);
   border-radius: var(--r-sm);
@@ -342,16 +415,6 @@
   gap: 8px;
   font-size: 12px;
   color: var(--t1);
-}
-
-.cc-result-cmd {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--accent);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
 }
 
 .cc-output {
@@ -378,16 +441,3 @@
 .cc-output::-webkit-scrollbar { width: 3px; }
 .cc-output::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
 .cc-output::-webkit-scrollbar-track { background: transparent; }
-
-.cc-history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 200px;
-  overflow: auto;
-}
-
-.cc-history-list::-webkit-scrollbar { width: 4px; }
-.cc-history-list::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
-.cc-history-list::-webkit-scrollbar-track { background: transparent; }
-

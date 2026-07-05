@@ -9,7 +9,7 @@ import type {
     SshKeyProfile,
 } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
-import { CommandCenterPane } from "./CommandCenterPane";
+import { CommandCenterPane } from "./command-center";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { EditorPane } from "./EditorPane";
