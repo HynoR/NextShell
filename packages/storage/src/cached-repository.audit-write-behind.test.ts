@@ -13,17 +13,14 @@ const AUDIT_BUFFER_CAPACITY = 1000;
 const createRepositoryStub = (): ConnectionRepository & {
   appendCalls: Array<{ action: string }>;
   batchCalls: Array<Array<{ action: string }>>;
-  listCalls: number[];
   appendAuditLogs: (payloads: Array<{ action: string }>) => void;
 } => {
   const appendCalls: Array<{ action: string }> = [];
   const batchCalls: Array<Array<{ action: string }>> = [];
-  const listCalls: number[] = [];
 
   return {
     appendCalls,
     batchCalls,
-    listCalls,
     list: () => [],
     save: () => {},
     remove: () => {},
@@ -44,13 +41,8 @@ const createRepositoryStub = (): ConnectionRepository & {
     appendAuditLogs: (payloads: Array<{ action: string }>) => {
       batchCalls.push(payloads);
     },
-    listAuditLogs: (limit) => {
-      listCalls.push(limit ?? 100);
-      return [];
-    },
     clearAuditLogs: () => 0,
     purgeExpiredAuditLogs: () => 0,
-    listMigrations: () => [],
     listCommandHistory: () => [],
     pushCommandHistory: () => ({
       command: "unused",
@@ -82,8 +74,6 @@ const createRepositoryStub = (): ConnectionRepository & {
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
-    listTemplateParams: () => [],
-    upsertTemplateParams: () => {},
     clearTemplateParams: () => {},
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
@@ -212,43 +202,6 @@ const createRepositoryStub = (): ConnectionRepository & {
     } catch {
       // ignore duplicate cleanup failures in bounded retry test
     }
-  }
-})();
-
-(() => {
-  const persistedRecords = [
-    {
-      id: "persisted-audit-1",
-      action: "persisted.audit",
-      level: "info" as const,
-      message: "persisted",
-      createdAt: new Date().toISOString()
-    }
-  ];
-  const inner = {
-    ...createRepositoryStub(),
-    listAuditLogs: (limit?: number) => {
-      inner.listCalls.push(limit ?? 100);
-      return persistedRecords;
-    }
-  };
-  const repository = new CachedConnectionRepository(inner);
-
-  try {
-    repository.appendAuditLog({
-      action: "buffered-audit",
-      level: "info",
-      message: "buffered"
-    });
-
-    const records = repository.listAuditLogs(5);
-
-    assert(records === persistedRecords, "listAuditLogs should return persisted audit records from the inner repository");
-    assert(inner.listCalls.length === 1 && inner.listCalls[0] === 5, "listAuditLogs should delegate the requested limit");
-    assert(inner.appendCalls.length === 0, "listAuditLogs should not synchronously write audit logs one-by-one");
-    assert(inner.batchCalls.length === 0, "listAuditLogs should not flush queued audit logs before reading");
-  } finally {
-    repository.close();
   }
 })();
 

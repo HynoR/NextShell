@@ -41,14 +41,12 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
       metadata: payload.metadata,
       createdAt: new Date().toISOString()
     }),
-    listAuditLogs: () => [...records],
     clearAuditLogs: () => {
       const deleted = records.length;
       records = [];
       return deleted;
     },
     purgeExpiredAuditLogs: () => 0,
-    listMigrations: () => [],
     listCommandHistory: () => [],
     pushCommandHistory: (command) => ({
       command,
@@ -80,8 +78,6 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
-    listTemplateParams: () => [],
-    upsertTemplateParams: () => {},
     clearTemplateParams: () => {},
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
@@ -97,7 +93,7 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
     const deleted = repository.clearAuditLogs();
 
     assert(deleted === 2, "clearAuditLogs should return deleted row count");
-    assert(repository.listAuditLogs(10).length === 0, "clearAuditLogs should remove all audit records");
+    assert(repository.clearAuditLogs() === 0, "clearAuditLogs should have removed all audit records");
   } finally {
     repository.close();
   }

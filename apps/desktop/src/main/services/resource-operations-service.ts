@@ -40,13 +40,6 @@ export interface CopyConnectionInput {
   targetGroupSubPath?: string;
 }
 
-export interface DangerMoveConnectionInput {
-  sourceId: string;
-  targetOriginKind: OriginKind;
-  targetWorkspaceId?: string;
-  targetGroupSubPath?: string;
-}
-
 export interface DeleteConnectionInput {
   id: string;
 }
@@ -182,41 +175,6 @@ export class ResourceOperationsService {
         targetId: copied.id,
         targetOriginKind: input.targetOriginKind,
         copiedFromResourceId: copied.copiedFromResourceId,
-      },
-    });
-
-    return copied;
-  }
-
-  // ── Danger Move Connection ──────────────────────────────────────────
-
-  /**
-   * Move a connection: copy to target + delete source (via recycle bin).
-   * This is the "dangerous" operation — source is removed.
-   */
-  async dangerMoveConnection(input: DangerMoveConnectionInput): Promise<ConnectionProfile> {
-    const source = this.deps.connections.getById(input.sourceId);
-    if (!source) throw new Error(`Source connection not found: ${input.sourceId}`);
-
-    // Step 1: Copy to target
-    const copied = await this.copyConnection({
-      sourceId: input.sourceId,
-      targetOriginKind: input.targetOriginKind,
-      targetWorkspaceId: input.targetWorkspaceId,
-      targetGroupSubPath: input.targetGroupSubPath,
-    });
-
-    // Step 2: Delete source to recycle bin
-    await this.deleteConnection({ id: input.sourceId }, "danger_move");
-
-    this.deps.appendAuditLog({
-      action: "resource.danger_move",
-      level: "warn",
-      connectionId: copied.id,
-      message: `Danger-moved connection "${source.name}" from ${source.originKind ?? "local"} to ${input.targetOriginKind}`,
-      metadata: {
-        sourceId: source.id,
-        targetId: copied.id,
       },
     });
 
@@ -505,21 +463,6 @@ export class ResourceOperationsService {
       level: "warn",
       message: `Permanently purged recycle bin entry ${id}`,
     });
-  }
-
-  /**
-   * Copy an SSH key to a target origin scope.
-   */
-  async copySshKey(input: {
-    sourceId: string;
-    targetOriginKind: OriginKind;
-    targetWorkspaceId?: string;
-  }): Promise<SshKeyProfile> {
-    const targetScope = this.resolveScope(input.targetOriginKind, input.targetWorkspaceId);
-    const newId = await this.ensureSshKeyInScope(input.sourceId, targetScope);
-    const result = this.deps.sshKeyRepo.getById(newId);
-    if (!result) throw new Error("Failed to copy SSH key");
-    return result;
   }
 
   // ── Private helpers ─────────────────────────────────────────────────

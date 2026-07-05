@@ -30,11 +30,9 @@ import {
   type RecycleBinEntry,
   type AuditLogRecord,
   type CommandHistoryEntry,
-  type CommandTemplateParam,
   type ConnectionListQuery,
   type ConnectionProfile,
   type MasterKeyMeta,
-  type MigrationRecord,
   type ProxyProfile,
   type SavedCommand,
   type SshKeyProfile
@@ -117,12 +115,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
 
   // ── Saved commands cache ─────────────────────────────────────────────────
   private savedCache: SavedCommand[] | undefined;
-
-  // ── Template params cache ────────────────────────────────────────────────
-  private tplCache: CommandTemplateParam[] | undefined;
-
-  // ── Migrations cache (immutable after bootstrap) ─────────────────────────
-  private migrCache: MigrationRecord[] | undefined;
 
   // ── Master key meta cache ────────────────────────────────────────────────
   private mkMeta: { loaded: boolean; value: MasterKeyMeta | undefined } = {
@@ -574,27 +566,8 @@ export class CachedConnectionRepository implements ConnectionRepository {
   // Template Params – 内存数组，write-through + invalidate
   // ═══════════════════════════════════════════════════════════════════════════
 
-  listTemplateParams(commandId?: string): CommandTemplateParam[] {
-    if (!this.tplCache) {
-      this.tplCache = this.inner.listTemplateParams();
-    }
-    if (commandId) {
-      return this.tplCache.filter((p) => p.commandId === commandId);
-    }
-    return this.tplCache;
-  }
-
-  upsertTemplateParams(commandId: string, params: Record<string, string>): void {
-    this.inner.upsertTemplateParams(commandId, params);
-    // 直接失效缓存，下次 list 时重新加载
-    this.tplCache = undefined;
-  }
-
   clearTemplateParams(commandId: string): void {
     this.inner.clearTemplateParams(commandId);
-    if (this.tplCache) {
-      this.tplCache = this.tplCache.filter((p) => p.commandId !== commandId);
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -620,10 +593,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
       this.scheduleAuditLogFlushSoon();
     }
     return record;
-  }
-
-  listAuditLogs(limit?: number): AuditLogRecord[] {
-    return this.inner.listAuditLogs(limit);
   }
 
   clearAuditLogs(): number {
@@ -674,17 +643,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
         this.scheduleAuditLogFlushSoon();
       }
     }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Migrations – 只读，启动后不变
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  listMigrations(): MigrationRecord[] {
-    if (!this.migrCache) {
-      this.migrCache = this.inner.listMigrations();
-    }
-    return this.migrCache;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

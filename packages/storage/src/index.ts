@@ -12,11 +12,9 @@ import type {
   RecycleBinEntry,
   AuditLogRecord,
   CommandHistoryEntry,
-  CommandTemplateParam,
   ConnectionListQuery,
   ConnectionProfile,
   MasterKeyMeta,
-  MigrationRecord,
   OriginKind,
   ProxyProfile,
   SavedCommand,
@@ -204,22 +202,6 @@ interface WorkspaceCommandSyncStateRow {
   updated_at: string | null;
 }
 
-interface MigrationRow {
-  version: number;
-  name: string;
-  applied_at: string;
-}
-
-interface AuditLogRow {
-  id: string;
-  action: string;
-  level: "info" | "warn" | "error";
-  connection_id: string | null;
-  message: string;
-  metadata_json: string | null;
-  created_at: string;
-}
-
 interface CommandHistoryRow {
   command: string;
   use_count: number;
@@ -275,19 +257,6 @@ const fromJSON = (value: string): string[] => {
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
   } catch {
     return [];
-  }
-};
-
-const fromMetadataJSON = (value: string | null): Record<string, unknown> | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
   }
 };
 
@@ -569,14 +538,6 @@ const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem =
   updatedAt: row.updated_at,
 });
 
-const rowToMigration = (row: MigrationRow): MigrationRecord => {
-  return {
-    version: row.version,
-    name: row.name,
-    appliedAt: row.applied_at
-  };
-};
-
 const rowToCommandHistory = (row: CommandHistoryRow): CommandHistoryEntry => ({
   command: row.command,
   useCount: row.use_count,
@@ -593,18 +554,6 @@ const rowToSavedCommand = (row: SavedCommandRow): SavedCommand => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
-
-const rowToAuditLog = (row: AuditLogRow): AuditLogRecord => {
-  return {
-    id: row.id,
-    action: row.action,
-    level: row.level,
-    connectionId: row.connection_id ?? undefined,
-    message: row.message,
-    metadata: fromMetadataJSON(row.metadata_json),
-    createdAt: row.created_at
-  };
-};
 
 const cloneDefaultPreferences = (): AppPreferences => {
   return {
@@ -1494,10 +1443,8 @@ export interface ConnectionRepository {
   getById: (id: string) => ConnectionProfile | undefined;
   seedIfEmpty: (connections: ConnectionProfile[]) => void;
   appendAuditLog: (payload: AppendAuditLogInput) => AuditLogRecord;
-  listAuditLogs: (limit?: number) => AuditLogRecord[];
   clearAuditLogs: () => number;
   purgeExpiredAuditLogs: (retentionDays: number) => number;
-  listMigrations: () => MigrationRecord[];
   listCommandHistory: () => CommandHistoryEntry[];
   pushCommandHistory: (command: string) => CommandHistoryEntry;
   removeCommandHistory: (command: string) => void;
@@ -1565,8 +1512,6 @@ export interface ConnectionRepository {
   saveDeviceKey: (key: string) => void;
   clearDeviceKey: () => void;
   getSecretStore: () => SecretStoreDB;
-  listTemplateParams: (commandId?: string) => CommandTemplateParam[];
-  upsertTemplateParams: (commandId: string, params: Record<string, string>) => void;
   clearTemplateParams: (commandId: string) => void;
   backupDatabase: (targetPath: string) => Promise<void>;
   getDbPath: () => string;
@@ -2003,26 +1948,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     tx(payloads);
   }
 
-  listAuditLogs(limit = 100): AuditLogRecord[] {
-    const rows = this.db.prepare(
-      `
-        SELECT
-          id,
-          action,
-          level,
-          connection_id,
-          message,
-          metadata_json,
-          created_at
-        FROM audit_logs
-        ORDER BY created_at DESC
-        LIMIT @limit
-      `
-    ).all({ limit }) as AuditLogRow[];
-
-    return rows.map(rowToAuditLog);
-  }
-
   clearAuditLogs(): number {
     const result = this.db.prepare("DELETE FROM audit_logs").run();
     return result.changes;
@@ -2035,18 +1960,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       "DELETE FROM audit_logs WHERE created_at < @cutoff"
     ).run({ cutoff });
     return result.changes;
-  }
-
-  listMigrations(): MigrationRecord[] {
-    const rows = this.db.prepare(
-      `
-        SELECT version, name, applied_at
-        FROM schema_migrations
-        ORDER BY version ASC
-      `
-    ).all() as MigrationRow[];
-
-    return rows.map(rowToMigration);
   }
 
   private readonly MAX_COMMAND_HISTORY = 500;
@@ -2926,61 +2839,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       this.secretStoreInstance = new SQLiteSecretStore(this.db);
     }
     return this.secretStoreInstance;
-  }
-
-  listTemplateParams(commandId?: string): CommandTemplateParam[] {
-    if (commandId) {
-      const rows = this.db.prepare(
-        "SELECT id, command_id, param_name, param_value, updated_at FROM command_template_params WHERE command_id = ? ORDER BY param_name ASC"
-      ).all(commandId) as Array<{ id: string; command_id: string; param_name: string; param_value: string; updated_at: string }>;
-      return rows.map((r) => ({
-        id: r.id,
-        commandId: r.command_id,
-        paramName: r.param_name,
-        paramValue: r.param_value,
-        updatedAt: r.updated_at
-      }));
-    }
-
-    const rows = this.db.prepare(
-      "SELECT id, command_id, param_name, param_value, updated_at FROM command_template_params ORDER BY command_id ASC, param_name ASC"
-    ).all() as Array<{ id: string; command_id: string; param_name: string; param_value: string; updated_at: string }>;
-    return rows.map((r) => ({
-      id: r.id,
-      commandId: r.command_id,
-      paramName: r.param_name,
-      paramValue: r.param_value,
-      updatedAt: r.updated_at
-    }));
-  }
-
-  upsertTemplateParams(commandId: string, params: Record<string, string>): void {
-    const now = new Date().toISOString();
-    const tx = this.db.transaction(() => {
-      for (const [paramName, paramValue] of Object.entries(params)) {
-        const existing = this.db.prepare(
-          "SELECT id FROM command_template_params WHERE command_id = ? AND param_name = ?"
-        ).get(commandId, paramName) as { id: string } | undefined;
-
-        const id = existing?.id ?? randomUUID();
-        this.db.prepare(
-          `
-            INSERT INTO command_template_params (id, command_id, param_name, param_value, updated_at)
-            VALUES (@id, @command_id, @param_name, @param_value, @updated_at)
-            ON CONFLICT(command_id, param_name) DO UPDATE SET
-              param_value = excluded.param_value,
-              updated_at = excluded.updated_at
-          `
-        ).run({
-          id,
-          command_id: commandId,
-          param_name: paramName,
-          param_value: paramValue,
-          updated_at: now
-        });
-      }
-    });
-    tx();
   }
 
   clearTemplateParams(commandId: string): void {

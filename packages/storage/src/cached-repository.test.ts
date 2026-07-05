@@ -63,10 +63,8 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
       metadata: payload.metadata,
       createdAt: new Date().toISOString()
     }),
-    listAuditLogs: () => [],
     clearAuditLogs: () => 0,
     purgeExpiredAuditLogs: () => 0,
-    listMigrations: () => [],
     listCommandHistory: () => store.map((entry) => ({ ...entry })),
     pushCommandHistory: (command) => {
       const now = new Date().toISOString();
@@ -111,8 +109,6 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
-    listTemplateParams: () => [],
-    upsertTemplateParams: () => {},
     clearTemplateParams: () => {},
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
