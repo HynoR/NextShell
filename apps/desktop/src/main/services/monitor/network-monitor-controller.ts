@@ -89,6 +89,7 @@ export class NetworkMonitorController {
   private lastProbeDurationMs = 0;
   private skipCount = 0;
   private suspended = false;
+  private paused = false;
   private tool: NetworkTool | undefined;
 
   constructor(private readonly options: NetworkMonitorControllerOptions) {
@@ -105,6 +106,29 @@ export class NetworkMonitorController {
 
   clearSuspension(): void {
     this.suspended = false;
+  }
+
+  /** Stop the polling ticker without tearing down runtime state (OS suspend / window hidden). */
+  pause(): void {
+    if (this.paused) {
+      return;
+    }
+    this.paused = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+
+  /** Restart the ticker paused by pause(); idempotent, only restarts while RUNNING. */
+  resume(): void {
+    if (!this.paused) {
+      return;
+    }
+    this.paused = false;
+    if (this.state === "RUNNING" && !this.timer) {
+      this.startTicker(this.generation);
+    }
   }
 
   async start(): Promise<{ ok: true }> {
@@ -233,6 +257,10 @@ export class NetworkMonitorController {
   }
 
   private startTicker(generation: number): void {
+    if (this.paused) {
+      return;
+    }
+
     if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
       return;
     }

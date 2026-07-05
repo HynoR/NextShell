@@ -11,6 +11,7 @@ import { ConnectionPrompt } from "./ConnectionPrompt";
 import { TableSkeleton } from "./LoadingSkeletons";
 import { formatDiskSize } from "../utils/diskUsage";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { pollingScheduler } from "../utils/pollingScheduler";
 import { buildSystemDiskCacheKey } from "../utils/systemDiskSharedCache";
 
 interface SystemStaticInfoPaneProps {
@@ -195,19 +196,22 @@ export const SystemStaticInfoPane = ({
     const delayMs = elapsedMs >= AUTO_REFRESH_INTERVAL_MS
       ? AUTO_REFRESH_INTERVAL_MS
       : Math.max(1, AUTO_REFRESH_INTERVAL_MS - elapsedMs);
-    let intervalId: number | undefined;
+    // Delay the first scheduled refresh so cached data keeps its original
+    // cadence, then hand off to the visibility-aware polling scheduler so
+    // background refreshes pause while the window is hidden.
+    let unsubscribe: (() => void) | undefined;
     const timeoutId = window.setTimeout(() => {
-      void fetchSystemInfo(true, true);
-      intervalId = window.setInterval(() => {
-        void fetchSystemInfo(true, true);
-      }, AUTO_REFRESH_INTERVAL_MS);
+      unsubscribe = pollingScheduler.subscribe({
+        enabled: true,
+        intervalMs: AUTO_REFRESH_INTERVAL_MS,
+        runImmediately: true,
+        task: () => fetchSystemInfo(true, true)
+      });
     }, delayMs);
 
     return () => {
       window.clearTimeout(timeoutId);
-      if (intervalId !== undefined) {
-        window.clearInterval(intervalId);
-      }
+      unsubscribe?.();
       requestIdRef.current += 1;
       setRefreshing(false);
     }

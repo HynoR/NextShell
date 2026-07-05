@@ -153,6 +153,7 @@ export class SystemMonitorController {
   private inFlight = false;
   private consecutiveFailures = 0;
   private suspended = false;
+  private paused = false;
 
   private networkInterface = "eth0";
   private networkInterfaceOptions: string[] = [];
@@ -196,6 +197,31 @@ export class SystemMonitorController {
   /** Clear suspension so the monitor can be started again (call on session reconnect). */
   clearSuspension(): void {
     this.suspended = false;
+  }
+
+  /** Stop the polling ticker without tearing down runtime state (OS suspend / window hidden). */
+  pause(): void {
+    if (this.paused) {
+      return;
+    }
+    this.paused = true;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+
+  /** Restart the ticker paused by pause(); idempotent, only restarts while RUNNING. */
+  resume(): void {
+    if (!this.paused) {
+      return;
+    }
+    this.paused = false;
+    if (this.state === "RUNNING" && !this.timer) {
+      // Counters sampled before a suspend are stale; start from fresh baselines.
+      this.resetSamplingBaselines();
+      this.startTicker(this.generation);
+    }
   }
 
   async start(): Promise<{ ok: true }> {
@@ -342,6 +368,10 @@ export class SystemMonitorController {
   }
 
   private startTicker(generation: number): void {
+    if (this.paused) {
+      return;
+    }
+
     if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
       return;
     }

@@ -296,6 +296,8 @@ export interface ServiceContainer {
   startNetworkMonitor: (connectionId: string, sender: WebContents) => Promise<{ ok: true }>;
   stopNetworkMonitor: (connectionId: string) => { ok: true };
   getNetworkConnections: (connectionId: string, port: number) => Promise<NetworkConnection[]>;
+  pauseMonitors: () => void;
+  resumeMonitors: () => void;
   backupList: () => Promise<BackupArchiveMeta[]>;
   backupRun: (conflictPolicy: BackupConflictPolicy) => Promise<{ ok: true; fileName?: string }>;
   backupRestore: (archiveId: string, conflictPolicy: RestoreConflictPolicy) => Promise<{ ok: true }>;

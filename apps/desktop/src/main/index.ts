@@ -9,7 +9,8 @@ import {
   nativeImage,
   protocol,
   net,
-  nativeTheme
+  nativeTheme,
+  powerMonitor
 } from "electron";
 import { logger } from "./logger";
 import { registerIpcHandlers } from "./ipc/register";
@@ -29,6 +30,41 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let services: ServiceContainer | undefined;
 let tray: Tray | undefined;
 let isQuitting = false;
+
+// ─── Renderer auto-reload & monitor pause/resume ────────────────────────────
+const RENDERER_RELOAD_WINDOW_MS = 5 * 60_000;
+const RENDERER_MAX_AUTO_RELOADS = 3;
+const MONITOR_RESUME_DELAY_MS = 5_000;
+
+let rendererReloadTimestamps: number[] = [];
+let monitorsPausedByHide = false;
+let monitorsPausedBySuspend = false;
+let monitorResumeTimer: ReturnType<typeof setTimeout> | undefined;
+
+const tryAutoReloadRenderer = (webContents: Electron.WebContents, reason: string): void => {
+  const now = Date.now();
+  rendererReloadTimestamps = rendererReloadTimestamps.filter((t) => now - t < RENDERER_RELOAD_WINDOW_MS);
+  if (rendererReloadTimestamps.length >= RENDERER_MAX_AUTO_RELOADS) {
+    logger.error("[Window] renderer auto-reload limit reached, not reloading", { reason });
+    return;
+  }
+  rendererReloadTimestamps.push(now);
+  logger.warn("[Window] reloading renderer", { reason });
+  webContents.reload();
+};
+
+const pauseMonitors = (reason: string): void => {
+  logger.info("[Monitor] pausing all monitor polling", { reason });
+  services?.pauseMonitors();
+};
+
+const resumeMonitorsIfClear = (reason: string): void => {
+  if (monitorsPausedByHide || monitorsPausedBySuspend) {
+    return;
+  }
+  logger.info("[Monitor] resuming all monitor polling", { reason });
+  services?.resumeMonitors();
+};
 
 const getWindowPrefs = () => {
   const prefs = services?.getAppPreferences();
@@ -148,6 +184,32 @@ const createMainWindow = async (): Promise<void> => {
     }
   });
 
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    logger.error("[Window] render process gone", { reason: details.reason, exitCode: details.exitCode });
+    tryAutoReloadRenderer(mainWindow.webContents, `render-process-gone:${details.reason}`);
+  });
+
+  mainWindow.webContents.on("unresponsive", () => {
+    logger.warn("[Window] renderer unresponsive");
+    tryAutoReloadRenderer(mainWindow.webContents, "unresponsive");
+  });
+
+  mainWindow.webContents.on("responsive", () => {
+    logger.info("[Window] renderer responsive again");
+  });
+
+  // Minimize-to-tray uses mainWindow.hide(): stop hidden monitor polling while
+  // nobody can see the data, resume when the window is shown again.
+  mainWindow.on("hide", () => {
+    monitorsPausedByHide = true;
+    pauseMonitors("window hidden");
+  });
+
+  mainWindow.on("show", () => {
+    monitorsPausedByHide = false;
+    resumeMonitorsIfClear("window shown");
+  });
+
   if (process.env.VITE_DEV_SERVER_URL) {
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -188,6 +250,28 @@ app.whenReady().then(async () => {
       }
     });
   }
+
+  powerMonitor.on("suspend", () => {
+    logger.info("[Power] system suspend");
+    monitorsPausedBySuspend = true;
+    if (monitorResumeTimer) {
+      clearTimeout(monitorResumeTimer);
+      monitorResumeTimer = undefined;
+    }
+    pauseMonitors("system suspend");
+  });
+
+  powerMonitor.on("resume", () => {
+    logger.info("[Power] system resume, resuming monitors shortly");
+    if (monitorResumeTimer) {
+      clearTimeout(monitorResumeTimer);
+    }
+    monitorResumeTimer = setTimeout(() => {
+      monitorResumeTimer = undefined;
+      monitorsPausedBySuspend = false;
+      resumeMonitorsIfClear("system resume");
+    }, MONITOR_RESUME_DELAY_MS);
+  });
 
   await createMainWindow();
   logger.info("[App] main window ready");

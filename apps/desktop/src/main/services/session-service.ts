@@ -537,6 +537,10 @@ export class SessionService {
     }
 
     active.descriptor.status = status;
+    // closeWhenDrained is guaranteed to invoke the callback exactly once:
+    // on drain (acks), when the sender is destroyed, on ack-stall timeout, or
+    // at the dispatcher's hard drain deadline. A hung renderer that stops
+    // acking therefore cannot leak this session or its SSH connection.
     this.sessionDataDispatcher.closeWhenDrained(sessionId, () => {
       const drained = this.activeSessions.get(sessionId);
       if (!drained || drained.kind !== "remote") {

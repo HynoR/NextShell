@@ -614,6 +614,8 @@ export const createServiceContainer = async (
     startNetworkMonitor: (id, s) => monitorSvc.startNetworkMonitor(id, s),
     stopNetworkMonitor: (id) => monitorSvc.stopNetworkMonitor(id),
     getNetworkConnections: (id, p) => monitorSvc.getNetworkConnections(id, p),
+    pauseMonitors: () => monitorSvc.pauseAll(),
+    resumeMonitors: () => monitorSvc.resumeAll(),
 
     // Command
     execCommand: (id, cmd) => commandSvc.execCommand(id, cmd),

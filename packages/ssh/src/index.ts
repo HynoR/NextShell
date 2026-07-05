@@ -584,6 +584,10 @@ export class SshConnection {
             stderr,
             exitCode: exitCode ?? 0
           });
+          // "close" is the final channel event; drop listener closures so the
+          // channel does not retain them (mirrors the abort path above).
+          channel.stderr.removeAllListeners();
+          channel.removeAllListeners();
         });
 
         channel.once("error", (err: Error) => {
@@ -591,6 +595,8 @@ export class SshConnection {
           settled = true;
           signal?.removeEventListener("abort", onAbort);
           reject(err);
+          channel.stderr.removeAllListeners();
+          channel.removeAllListeners();
         });
       });
     });

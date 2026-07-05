@@ -3,6 +3,24 @@ import { Buffer } from "node:buffer";
 
 type SenderLike = Pick<WebContents, "isDestroyed" | "send">;
 
+/**
+ * If a delivered frame is not acked within this window the receiver is treated
+ * as dead for that stream (e.g. a hung/white-screened renderer whose
+ * WebContents is still alive): buffered data is dropped, backpressure is
+ * released, and any pending drain callback fires.
+ */
+const DEFAULT_STALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Hard upper bound on how long closeWhenDrained waits for the buffer to drain
+ * before force-dropping it and invoking the callback.
+ */
+const DEFAULT_MAX_DRAIN_WAIT_MS = 60_000;
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>): void {
+  (timer as { unref?: () => void }).unref?.();
+}
+
 interface OrderedPayloadBuilder {
   streamId: string;
   deliveryId: number;
@@ -30,6 +48,8 @@ interface OrderedStreamState<TPayload> {
   onResume: () => void;
   drainTimer?: ReturnType<typeof setTimeout>;
   drainCallback?: () => void;
+  stallTimer?: ReturnType<typeof setTimeout>;
+  drainDeadlineTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface LatestStreamState<TPayload, TValue> {
@@ -48,6 +68,10 @@ export interface OrderedBytesDispatcherOptions<TPayload> {
   highWaterBytes: number;
   lowWaterBytes: number;
   buildPayload: (input: OrderedPayloadBuilder) => TPayload;
+  /** Overrides DEFAULT_STALL_TIMEOUT_MS (mainly for tests). */
+  stallTimeoutMs?: number;
+  /** Overrides DEFAULT_MAX_DRAIN_WAIT_MS (mainly for tests). */
+  maxDrainWaitMs?: number;
 }
 
 export interface LatestOnlyDispatcherOptions<TPayload, TValue> {
@@ -113,6 +137,20 @@ function clearDrainTimer<TPayload>(state: OrderedStreamState<TPayload>): void {
   }
 }
 
+function clearStallTimer<TPayload>(state: OrderedStreamState<TPayload>): void {
+  if (state.stallTimer) {
+    clearTimeout(state.stallTimer);
+    state.stallTimer = undefined;
+  }
+}
+
+function clearDrainDeadlineTimer<TPayload>(state: OrderedStreamState<TPayload>): void {
+  if (state.drainDeadlineTimer) {
+    clearTimeout(state.drainDeadlineTimer);
+    state.drainDeadlineTimer = undefined;
+  }
+}
+
 function chunkByteLength(chunk: string): number {
   return Buffer.byteLength(chunk, "utf8");
 }
@@ -152,6 +190,8 @@ export function createOrderedBytesDispatcher<TPayload>(
   options: OrderedBytesDispatcherOptions<TPayload>
 ): OrderedBytesDispatcher<TPayload> {
   const streams = new Map<string, OrderedStreamState<TPayload>>();
+  const stallTimeoutMs = options.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
+  const maxDrainWaitMs = options.maxDrainWaitMs ?? DEFAULT_MAX_DRAIN_WAIT_MS;
   let nextDeliveryId = 1;
 
   function totalBufferedBytes(state: OrderedStreamState<TPayload>): number {
@@ -179,7 +219,12 @@ export function createOrderedBytesDispatcher<TPayload>(
     }
 
     const drainCallback = notifyDrain ? state.drainCallback : undefined;
+    // Null the field so a stale reference to this state (e.g. in ack()) can
+    // never re-fire the callback.
+    state.drainCallback = undefined;
     clearDrainTimer(state);
+    clearStallTimer(state);
+    clearDrainDeadlineTimer(state);
     if (state.paused) {
       state.paused = false;
       state.onResume();
@@ -198,8 +243,34 @@ export function createOrderedBytesDispatcher<TPayload>(
     }
 
     const callback = state.drainCallback;
+    state.drainCallback = undefined;
     clearState(streamId);
     callback();
+  }
+
+  function dropStalledStream(streamId: string): void {
+    const state = streams.get(streamId);
+    if (!state) {
+      return;
+    }
+
+    // The receiver stopped acking (hung renderer with a live WebContents).
+    // Drop everything buffered so the source is released and any pending
+    // closeWhenDrained callback still fires; clearState resumes a paused
+    // source and clears all timers.
+    state.pendingChunk = "";
+    state.queuedChunks = [];
+    state.queuedBytes = 0;
+    state.inFlight = undefined;
+    clearState(streamId, true);
+  }
+
+  function armStallTimer(streamId: string, state: OrderedStreamState<TPayload>): void {
+    clearStallTimer(state);
+    state.stallTimer = setTimeout(() => {
+      dropStalledStream(streamId);
+    }, stallTimeoutMs);
+    unrefTimer(state.stallTimer);
   }
 
   function sendNext(streamId: string): void {
@@ -239,6 +310,7 @@ export function createOrderedBytesDispatcher<TPayload>(
         chunk,
       })
     );
+    armStallTimer(streamId, state);
   }
 
   function flushPending(streamId: string): void {
@@ -332,12 +404,15 @@ export function createOrderedBytesDispatcher<TPayload>(
       const consumedBytes = input.consumedBytes ?? state.inFlight.byteLength;
       if (consumedBytes < state.inFlight.byteLength) {
         state.inFlight.byteLength -= consumedBytes;
+        // Partial ack proves the receiver is alive: reset the stall window.
+        armStallTimer(input.streamId, state);
         maybeResume(input.streamId, state);
         return;
       }
 
       state.lastAckedDeliveryId = input.deliveryId;
       state.inFlight = undefined;
+      clearStallTimer(state);
       maybeResume(input.streamId, state);
       flushPending(input.streamId);
       maybeNotifyDrain(input.streamId, state);
@@ -352,6 +427,16 @@ export function createOrderedBytesDispatcher<TPayload>(
       state.drainCallback = onDrained;
       flushPending(streamId);
       maybeNotifyDrain(streamId, state);
+
+      // Hard cap: if the buffer has not drained by then (receiver stalled or
+      // acking too slowly), force-drop it so the callback always fires.
+      const remaining = streams.get(streamId);
+      if (remaining && !remaining.drainDeadlineTimer) {
+        remaining.drainDeadlineTimer = setTimeout(() => {
+          dropStalledStream(streamId);
+        }, maxDrainWaitMs);
+        unrefTimer(remaining.drainDeadlineTimer);
+      }
     },
     clear(streamId) {
       clearState(streamId);

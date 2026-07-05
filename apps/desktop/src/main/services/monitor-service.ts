@@ -62,8 +62,15 @@ import type {
   ProcessMonitorRuntime,
   NetworkMonitorRuntime,
 } from "./container-types";
+import { MonitorBackoff } from "./monitor/monitor-runner";
 import { logger } from "../logger";
 import type { LatestOnlyDispatcher } from "./ipc-stream-dispatcher";
+
+// Hidden monitor SSH re-establishment backs off from the FIRST failure so a
+// dead network (e.g. right after OS sleep) doesn't trigger a reconnect storm.
+const HIDDEN_CONNECT_BACKOFF_BASE_MS = 5_000;
+const HIDDEN_CONNECT_BACKOFF_MAX_MS = 300_000; // cap at 5 minutes
+const HIDDEN_MONITOR_TAGS = ["SystemMonitor", "ProcessMonitor", "NetworkMonitor"] as const;
 
 // ─── Options ────────────────────────────────────────────────────────────────
 
@@ -113,6 +120,11 @@ export class MonitorService {
   readonly monitorStates = new Map<string, MonitorState>();
   private readonly networkToolCache = new Map<string, NetworkTool>();
 
+  /** Per hidden-connection ("<tag>:<connectionId>") reconnect backoff. */
+  private readonly hiddenConnectionBackoffs = new Map<string, MonitorBackoff>();
+  /** Guards against registering onClose twice on the same SshConnection object. */
+  private readonly closeListenerRegistered = new WeakSet<SshConnection>();
+
   // ─── Injected dependencies ──────────────────────────────────────────────
   private readonly connections: CachedConnectionRepository;
   private readonly getConnectionOrThrow: (id: string) => ConnectionProfile;
@@ -152,6 +164,10 @@ export class MonitorService {
     if (!this.hasVisibleTerminalAlive(connectionId)) {
       throw new Error("请先连接 SSH 终端以启动 Monitor Session。");
     }
+  }
+
+  private isSenderAlive(sender: WebContents | undefined): boolean {
+    return Boolean(sender && !sender.isDestroyed() && !sender.isCrashed());
   }
 
   private hasVisibleTerminalAlive(connectionId: string): boolean {
@@ -249,6 +265,27 @@ export class MonitorService {
     ]);
     this.monitorStates.delete(connectionId);
     this.networkToolCache.delete(connectionId);
+    for (const tag of HIDDEN_MONITOR_TAGS) {
+      this.hiddenConnectionBackoffs.delete(`${tag}:${connectionId}`);
+    }
+  }
+
+  // ─── Pause / resume all monitor polling (OS suspend, window hidden) ─────
+
+  /** Stop the poll timers of all active monitor controllers without tearing down runtimes. */
+  pauseAll(): void {
+    for (const runtime of this.systemMonitorRuntimes.values()) runtime.controller.pause();
+    for (const runtime of this.processMonitorRuntimes.values()) runtime.controller.pause();
+    for (const runtime of this.networkMonitorRuntimes.values()) runtime.controller.pause();
+  }
+
+  /** Restart poll timers stopped by pauseAll(); idempotent. */
+  resumeAll(): void {
+    // Network conditions have changed (wake / window shown) — retry promptly.
+    for (const backoff of this.hiddenConnectionBackoffs.values()) backoff.reset();
+    for (const runtime of this.systemMonitorRuntimes.values()) runtime.controller.resume();
+    for (const runtime of this.processMonitorRuntimes.values()) runtime.controller.resume();
+    for (const runtime of this.networkMonitorRuntimes.values()) runtime.controller.resume();
   }
 
   /** Clear suspension on all monitors for a connection (call on terminal reconnect). */
@@ -256,19 +293,68 @@ export class MonitorService {
     this.systemMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
     this.processMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
     this.networkMonitorRuntimes.get(connectionId)?.controller.clearSuspension();
+    for (const tag of HIDDEN_MONITOR_TAGS) {
+      this.hiddenConnectionBackoffs.get(`${tag}:${connectionId}`)?.reset();
+    }
   }
 
   // ─── Generic hidden SSH connection factory ──────────────────────────────
 
+  private getHiddenConnectionBackoff(connectionId: string, tag: string): MonitorBackoff {
+    const key = `${tag}:${connectionId}`;
+    let backoff = this.hiddenConnectionBackoffs.get(key);
+    if (!backoff) {
+      backoff = new MonitorBackoff(
+        HIDDEN_CONNECT_BACKOFF_BASE_MS,
+        HIDDEN_CONNECT_BACKOFF_MAX_MS,
+        Number.POSITIVE_INFINITY,
+      );
+      this.hiddenConnectionBackoffs.set(key, backoff);
+    }
+    return backoff;
+  }
+
   private async establishHiddenConnection(
     connectionId: string,
-    tag: string
+    tag: string,
+    options?: { backoff?: boolean }
   ): Promise<SshConnection> {
+    const backoff = (options?.backoff ?? true)
+      ? this.getHiddenConnectionBackoff(connectionId, tag)
+      : undefined;
+    if (backoff?.isActive()) {
+      throw new Error(
+        `${tag} 重连退避中，${Math.ceil(backoff.remainingMs() / 1000)}s 后重试`
+      );
+    }
+
     const profile = this.assertMonitorEnabled(connectionId);
     logger.info(`[${tag}] connecting hidden SSH`, { connectionId, host: profile.host, port: profile.port });
-    const ssh = await SshConnection.connect(await this.resolveConnectOptions(profile));
-    logger.info(`[${tag}] hidden SSH connected`, { connectionId });
-    return ssh;
+    try {
+      const ssh = await SshConnection.connect(await this.resolveConnectOptions(profile));
+      backoff?.reset();
+      logger.info(`[${tag}] hidden SSH connected`, { connectionId });
+      return ssh;
+    } catch (error) {
+      if (backoff) {
+        const delayMs = backoff.apply();
+        logger.warn(`[${tag}] hidden SSH connect failed, backing off`, {
+          connectionId,
+          delayMs,
+          reason: normalizeError(error),
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** Register onClose exactly once per SshConnection object (ssh2 gateway has no listener removal). */
+  private registerCloseListenerOnce(connection: SshConnection, handler: () => void): void {
+    if (this.closeListenerRegistered.has(connection)) {
+      return;
+    }
+    this.closeListenerRegistered.add(connection);
+    connection.onClose(handler);
   }
 
   // ─── System Monitor connection ──────────────────────────────────────────
@@ -313,7 +399,7 @@ export class MonitorService {
       }
 
       this.systemMonitorConnections.set(connectionId, connection);
-      connection.onClose(() => {
+      this.registerCloseListenerOnce(connection, () => {
         const wasActive = this.systemMonitorConnections.get(connectionId) === connection;
         if (wasActive) {
           this.systemMonitorConnections.delete(connectionId);
@@ -375,7 +461,7 @@ export class MonitorService {
       }
 
       this.processMonitorConnections.set(connectionId, connection);
-      connection.onClose(() => {
+      this.registerCloseListenerOnce(connection, () => {
         const wasActive = this.processMonitorConnections.get(connectionId) === connection;
         if (wasActive) {
           this.processMonitorConnections.delete(connectionId);
@@ -437,7 +523,7 @@ export class MonitorService {
       }
 
       this.networkMonitorConnections.set(connectionId, connection);
-      connection.onClose(() => {
+      this.registerCloseListenerOnce(connection, () => {
         const wasActive = this.networkMonitorConnections.get(connectionId) === connection;
         if (wasActive) {
           this.networkMonitorConnections.delete(connectionId);
@@ -497,9 +583,9 @@ export class MonitorService {
       getConnection: () => this.ensureSystemMonitorConnection(connectionId),
       closeConnection: () => this.closeSystemMonitorConnection(connectionId),
       isVisibleTerminalAlive: () => this.hasVisibleTerminalAlive(connectionId),
-      isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
+      isReceiverAlive: () => this.isSenderAlive(runtime.sender),
       emitSnapshot: (snapshot) => {
-        if (runtime.sender && !runtime.sender.isDestroyed()) {
+        if (this.isSenderAlive(runtime.sender) && runtime.sender) {
           this.systemMonitorDispatcher.publish({
             streamId: connectionId,
             sender: runtime.sender,
@@ -563,9 +649,9 @@ export class MonitorService {
         getConnection: () => this.ensureProcessMonitorConnection(connectionId),
         closeConnection: () => this.closeProcessMonitorConnection(connectionId),
         isVisibleTerminalAlive: () => this.hasVisibleTerminalAlive(connectionId),
-        isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
+        isReceiverAlive: () => this.isSenderAlive(runtime.sender),
         emitSnapshot: (snapshot) => {
-          if (runtime.sender && !runtime.sender.isDestroyed()) {
+          if (this.isSenderAlive(runtime.sender) && runtime.sender) {
             this.processMonitorDispatcher.publish({
               streamId: connectionId,
               sender: runtime.sender,
@@ -646,9 +732,9 @@ export class MonitorService {
         getConnection: () => this.ensureNetworkMonitorConnection(connectionId),
         closeConnection: () => this.closeNetworkMonitorConnection(connectionId),
         isVisibleTerminalAlive: () => this.hasVisibleTerminalAlive(connectionId),
-        isReceiverAlive: () => Boolean(runtime.sender && !runtime.sender.isDestroyed()),
+        isReceiverAlive: () => this.isSenderAlive(runtime.sender),
         emitSnapshot: (snapshot) => {
-          if (runtime.sender && !runtime.sender.isDestroyed()) {
+          if (this.isSenderAlive(runtime.sender) && runtime.sender) {
             this.networkMonitorDispatcher.publish({
               streamId: connectionId,
               sender: runtime.sender,
@@ -727,7 +813,7 @@ export class MonitorService {
     }
 
     const promise = (async () => {
-      const connection = await this.establishHiddenConnection(connectionId, "AdhocSession");
+      const connection = await this.establishHiddenConnection(connectionId, "AdhocSession", { backoff: false });
 
       const runtime: AdhocSessionRuntime = {
         connection,

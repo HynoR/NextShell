@@ -7,8 +7,18 @@ import "@xterm/xterm/css/xterm.css";
 import "remixicon/fonts/remixicon.css";
 import type { WindowAppearance } from "@nextshell/core";
 import { App } from "./App";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { usePreferencesStore } from "./store/usePreferencesStore";
 import "./styles/index.css";
+
+// Last-resort visibility for errors that escape React (event handlers,
+// async callbacks, unhandled promise rejections). Log-only: no rethrow.
+window.addEventListener("error", (event) => {
+  console.error("[nextshell:global-error]", event.error ?? event.message);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[nextshell:global-error] unhandled rejection:", event.reason);
+});
 
 // Expose current OS platform as a CSS data attribute so layout can adapt
 // without JS conditionals (e.g. macOS traffic-lights vs Windows overlay)
@@ -185,6 +195,8 @@ const Root = () => {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <Root />
+    <AppErrorBoundary>
+      <Root />
+    </AppErrorBoundary>
   </React.StrictMode>
 );
