@@ -1,6 +1,5 @@
+import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
 import { formatErrorMessage } from "../utils/errorMessage";
-
-const AUTH_REQUIRED_PREFIX = "AUTH_REQUIRED::";
 
 export interface NormalizedOpenError {
   reason: string;
@@ -38,4 +37,3 @@ export const isSessionGenerationCurrent = (
   }
   return (generationBySession.get(sessionId) ?? 0) === generation;
 };
-

@@ -1,10 +1,9 @@
+import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
 import {
   extractAuthRequiredReason,
   isSessionGenerationCurrent,
   normalizeOpenError
 } from "./useSessionLifecycle.helpers";
-
-const AUTH_REQUIRED_PREFIX = "AUTH_REQUIRED::";
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {
@@ -46,4 +45,3 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   cancelled.add("s1");
   assertEqual(isSessionGenerationCurrent(generations, cancelled, "s1", 2), false, "cancelled session should be stale");
 })();
-

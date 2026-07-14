@@ -31,7 +31,12 @@ const sanitizeMessage = (value: string): string => {
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !STACK_LINE_REGEX.test(line));
 
-  const merged = lines.join(" ").replace(/^Error:\s*/i, "").replace(/\s+/g, " ").trim();
+  const merged = lines
+    .join(" ")
+    .replace(/^Error invoking remote method(?: '[^']+')?:\s*/i, "")
+    .replace(/^Error:\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
   return merged;
 };
 

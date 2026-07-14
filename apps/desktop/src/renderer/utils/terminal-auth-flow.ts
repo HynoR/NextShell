@@ -1,4 +1,4 @@
-const AUTH_REQUIRED_PREFIX = "AUTH_REQUIRED::";
+import { AUTH_REQUIRED_PREFIX } from "@nextshell/shared";
 
 export type TerminalAuthStage = "username" | "password" | "submitting";
 

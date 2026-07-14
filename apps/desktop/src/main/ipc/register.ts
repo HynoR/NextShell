@@ -1,7 +1,7 @@
 import { app, ipcMain } from "electron";
 import { ZodError, z } from "zod";
 import { logger } from "../logger";
-import { IPCChannel } from "../../../../../packages/shared/src/index";
+import { AUTH_REQUIRED_PREFIX, IPCChannel } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container";
 import { isTrustedRendererUrl } from "../navigation-security";
 import { ipcInvokeRegistry } from "./registry";
@@ -40,7 +40,7 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
   }
 
   for (const entry of ipcInvokeRegistry) {
-    ipcMain.handle(entry.channel, (event, payload) => {
+    ipcMain.handle(entry.channel, async (event, payload) => {
       if (
         event.senderFrame !== event.sender.mainFrame ||
         !isTrustedRendererUrl(
@@ -55,7 +55,17 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
       const input = entry.schema
         ? parsePayload(entry.schema, entry.coerceEmptyPayload ? (payload ?? {}) : payload, entry.label)
         : undefined;
-      return entry.dispatch(services, input, event);
+      try {
+        return await entry.dispatch(services, input, event);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes(AUTH_REQUIRED_PREFIX)) {
+          logger.debug(`[IPC] ${entry.label} requires interactive authentication`);
+        } else {
+          logger.error(`[IPC] ${entry.label} failed`, error);
+        }
+        throw error;
+      }
     });
   }
 };
