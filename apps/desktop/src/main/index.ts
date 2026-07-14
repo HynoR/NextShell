@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
@@ -13,6 +13,7 @@ import {
   powerMonitor
 } from "electron";
 import { logger } from "./logger";
+import { resolveAllowedAssetPath } from "./asset-protocol";
 import { registerIpcHandlers } from "./ipc/register";
 import { createServiceContainer, type ServiceContainer } from "./services/container";
 import {
@@ -23,7 +24,7 @@ import {
 
 // Must be called before app is ready — register local asset protocol for app background images
 protocol.registerSchemesAsPrivileged([
-  { scheme: "nextshell-asset", privileges: { secure: true, standard: true, supportFetchAPI: true, bypassCSP: true } }
+  { scheme: "nextshell-asset", privileges: { secure: true, standard: true } }
 ]);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -235,9 +236,15 @@ app.whenReady().then(async () => {
 
   // Serve local image files under nextshell-asset:// for app background images
   protocol.handle("nextshell-asset", (request) => {
-    const url = new URL(request.url);
-    const filePath = decodeURIComponent(url.pathname);
-    return net.fetch(`file://${filePath}`);
+    const filePath = resolveAllowedAssetPath(
+      request.url,
+      services?.getAppPreferences().window.backgroundImagePath
+    );
+    if (!filePath) {
+      logger.warn("[Asset] blocked unauthorized local asset request");
+      return new Response(null, { status: 403 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
   });
 
   registerIpcHandlers(services);
