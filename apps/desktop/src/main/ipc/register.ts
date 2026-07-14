@@ -34,7 +34,11 @@ const parsePayload = <T>(
   }
 };
 
-export const registerIpcHandlers = (services: ServiceContainer): void => {
+export const registerIpcHandlers = (
+  serviceSource: ServiceContainer | PromiseLike<ServiceContainer>
+): void => {
+  const servicesPromise = Promise.resolve(serviceSource);
+
   for (const channel of channels) {
     ipcMain.removeHandler(channel);
   }
@@ -56,6 +60,7 @@ export const registerIpcHandlers = (services: ServiceContainer): void => {
         ? parsePayload(entry.schema, entry.coerceEmptyPayload ? (payload ?? {}) : payload, entry.label)
         : undefined;
       try {
+        const services = await servicesPromise;
         return await entry.dispatch(services, input, event);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

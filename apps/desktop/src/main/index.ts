@@ -129,10 +129,10 @@ const createTray = (mainWindow: BrowserWindow): Tray => {
   return t;
 };
 
-const createMainWindow = async (): Promise<void> => {
+const createMainWindow = (): BrowserWindow => {
   const isMac = process.platform === "darwin";
   const isWin = process.platform === "win32";
-  const appearance = services?.getAppPreferences().window.appearance ?? "system";
+  const appearance = "system";
 
   const mainWindow = new BrowserWindow({
     width: 1560,
@@ -237,6 +237,10 @@ const createMainWindow = async (): Promise<void> => {
     resumeMonitorsIfClear("window shown");
   });
 
+  return mainWindow;
+};
+
+const loadMainWindowRenderer = async (mainWindow: BrowserWindow): Promise<void> => {
   if (process.env.VITE_DEV_SERVER_URL) {
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -255,16 +259,18 @@ app.whenReady().then(async () => {
     logger.error("[App] unhandledRejection", reason);
   });
 
-  services = await createServiceContainer({
+  const serviceContainerPromise = createServiceContainer({
     dataDir: path.join(app.getPath("userData"), "storage"),
     keytarServiceName: "NextShell"
   });
+  const mainWindow = createMainWindow();
 
   // Serve local image files under nextshell-asset:// for app background images
-  protocol.handle("nextshell-asset", (request) => {
+  protocol.handle("nextshell-asset", async (request) => {
+    const serviceContainer = await serviceContainerPromise;
     const filePath = resolveAllowedAssetPath(
       request.url,
-      services?.getAppPreferences().window.backgroundImagePath
+      serviceContainer.getAppPreferences().window.backgroundImagePath
     );
     if (!filePath) {
       logger.warn("[Asset] blocked unauthorized local asset request");
@@ -273,7 +279,14 @@ app.whenReady().then(async () => {
     return net.fetch(pathToFileURL(filePath).toString());
   });
 
-  registerIpcHandlers(services);
+  registerIpcHandlers(serviceContainerPromise);
+  const rendererLoadPromise = loadMainWindowRenderer(mainWindow);
+  void rendererLoadPromise.catch((error) => {
+    logger.error("[App] failed to load main window renderer", error);
+  });
+
+  services = await serviceContainerPromise;
+  applyAppearanceToAllWindows(services.getAppPreferences().window.appearance);
 
   if (process.platform === "win32") {
     nativeTheme.on("updated", () => {
@@ -306,7 +319,7 @@ app.whenReady().then(async () => {
     }, MONITOR_RESUME_DELAY_MS);
   });
 
-  await createMainWindow();
+  await rendererLoadPromise;
   logger.info("[App] main window ready");
 
   app.on("activate", () => {
@@ -315,7 +328,10 @@ app.whenReady().then(async () => {
       existingWindow.show();
       existingWindow.focus();
     } else {
-      void createMainWindow();
+      const mainWindow = createMainWindow();
+      void loadMainWindowRenderer(mainWindow).catch((error) => {
+        logger.error("[App] failed to recreate main window", error);
+      });
     }
   });
 });
