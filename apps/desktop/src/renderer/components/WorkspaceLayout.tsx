@@ -1,4 +1,14 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+    lazy,
+    memo,
+    Suspense,
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import { App as AntdApp, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { sessionStatusLabel } from "../utils/sessionStatus";
@@ -12,7 +22,6 @@ import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./command-center";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
-import { EditorPane } from "./EditorPane";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { QuickTransferPane } from "./QuickTransferPane";
 import { LiveEditPane } from "./LiveEditPane";
@@ -34,6 +43,10 @@ import {
     persistWorkspacePanelState,
     resolveWorkspacePanelState,
 } from "../utils/workspaceLayoutState";
+
+const LazyEditorPane = lazy(() =>
+    import("./EditorPane").then((module) => ({ default: module.EditorPane })),
+);
 
 const SESSION_TYPE_ICON: Record<SessionType, string> = {
     terminal: "ri-terminal-line",
@@ -972,7 +985,15 @@ const WorkspaceLayoutComponent = ({
                                             <NetworkMonitorPane session={activeSession} />
                                         ) : null}
                                         {activeSession?.type === "editor" ? (
-                                            <EditorPane session={activeSession} />
+                                            <Suspense
+                                                fallback={
+                                                    <div className="flex-1 flex items-center justify-center text-[var(--t3)]">
+                                                        编辑器加载中...
+                                                    </div>
+                                                }
+                                            >
+                                                <LazyEditorPane session={activeSession} />
+                                            </Suspense>
                                         ) : null}
                                         {activeSession?.type === "quickTransfer" ? (
                                             <QuickTransferPane
