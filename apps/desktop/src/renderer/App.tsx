@@ -11,7 +11,7 @@ import { useMonitorLifecycle } from "./hooks/useMonitorLifecycle";
 import { useSessionLifecycle } from "./hooks/useSessionLifecycle";
 import { useEditorTabStore } from "./store/useEditorTabStore";
 import { usePreferencesStore } from "./store/usePreferencesStore";
-import { useTransferQueueStore } from "./store/useTransferQueueStore";
+import { useTransferQueueStore, type TransferTask } from "./store/useTransferQueueStore";
 import { useWorkspaceStore } from "./store/useWorkspaceStore";
 import { formatErrorMessage } from "./utils/errorMessage";
 import { resolveFollowTerminalSessionId } from "./utils/followTerminalSession";
@@ -504,6 +504,45 @@ export const App = () => {
     void startLocalSession();
   }, [startLocalSession]);
 
+  const handleLoadConnections = useCallback(() => {
+    void loadConnections();
+  }, [loadConnections]);
+
+  const handleOpenSettings = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
+  const handleTreeConnect = useCallback((connectionId: string) => {
+    void startSession(connectionId);
+  }, [startSession]);
+
+  const handleRetryTransfer = useCallback((taskId: string) => {
+    void handleRetryTransferTask(taskId);
+  }, [handleRetryTransferTask]);
+
+  const handleOpenTransferTask = useCallback((task: TransferTask) => {
+    void handleOpenTransferLocalFile(task.localPath);
+  }, [handleOpenTransferLocalFile]);
+
+  const handleTransferPanelToggle = useCallback(() => {
+    setTransferPanelCollapsed((collapsed) => !collapsed);
+  }, []);
+
+  const handleLiveEditPanelToggle = useCallback(() => {
+    setLiveEditPanelCollapsed((collapsed) => !collapsed);
+  }, []);
+
+  const handleSetBottomTab = useCallback((tab: string) => {
+    if (
+      tab === "commands" ||
+      tab === "files" ||
+      tab === "system-info" ||
+      tab === "traceroute"
+    ) {
+      setBottomTab(tab);
+    }
+  }, [setBottomTab]);
+
   const isConnecting = activeConnectionId ? connectingIds.has(activeConnectionId) : false;
   const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
   const hasAppBackgroundImage = normalizedAppBackgroundImagePath.length > 0;
@@ -553,11 +592,11 @@ export const App = () => {
           transferPanelCollapsed={transferPanelCollapsed}
           liveEditPanelCollapsed={liveEditPanelCollapsed}
           bottomTab={bottomTab}
-          onLoadConnections={() => void loadConnections()}
+          onLoadConnections={handleLoadConnections}
           onOpenManager={handleOpenManager}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={handleOpenSettings}
           onActivateConnection={activateConnection}
-          onTreeConnect={(connectionId) => void startSession(connectionId)}
+          onTreeConnect={handleTreeConnect}
           onTitlebarQuickConnect={handleTitlebarQuickConnect}
           onTitlebarQuickCreateConnection={handleTitlebarQuickCreateConnection}
           onCloseSession={handleCloseSession}
@@ -573,21 +612,12 @@ export const App = () => {
           onSetActiveConnection={setActiveConnection}
           onReorderSession={reorderSession}
           onSelectNetworkInterface={handleSelectSystemNetworkInterface}
-          onRetryTransfer={(taskId) => void handleRetryTransferTask(taskId)}
+          onRetryTransfer={handleRetryTransfer}
           onClearFinishedTransfers={clearFinishedTransfers}
-          onOpenLocalFile={(task) => void handleOpenTransferLocalFile(task.localPath)}
-          onTransferPanelToggle={() => setTransferPanelCollapsed((v) => !v)}
-          onLiveEditPanelToggle={() => setLiveEditPanelCollapsed((v) => !v)}
-          onSetBottomTab={(tab) => {
-            if (
-              tab === "commands" ||
-              tab === "files" ||
-              tab === "system-info" ||
-              tab === "traceroute"
-            ) {
-              setBottomTab(tab);
-            }
-          }}
+          onOpenLocalFile={handleOpenTransferTask}
+          onTransferPanelToggle={handleTransferPanelToggle}
+          onLiveEditPanelToggle={handleLiveEditPanelToggle}
+          onSetBottomTab={handleSetBottomTab}
         />
 
         <ConnectionManagerModal

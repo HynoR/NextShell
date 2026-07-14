@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { App as AntdApp, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { sessionStatusLabel } from "../utils/sessionStatus";
@@ -247,7 +247,7 @@ interface WorkspaceLayoutProps {
     onSetBottomTab: (tab: string) => void;
 }
 
-export const WorkspaceLayout = ({
+const WorkspaceLayoutComponent = ({
     connections,
     sshKeys,
     sessions,
@@ -323,18 +323,20 @@ export const WorkspaceLayout = ({
     const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
     const resizeFitRafRef = useRef(0);
     const commandHistory = useCommandHistory();
+    const activeTerminalSessionId = activeTerminalSession?.id;
+    const activeTerminalSessionStatus = activeTerminalSession?.status;
 
     const handleExecuteCommand = useCallback(
         (command: string) => {
-            if (!activeTerminalSession || activeTerminalSession.status !== "connected") {
+            if (!activeTerminalSessionId || activeTerminalSessionStatus !== "connected") {
                 return;
             }
             window.nextshell.session
-                .write({ sessionId: activeTerminalSession.id, data: `${command}\r` })
+                .write({ sessionId: activeTerminalSessionId, data: `${command}\r` })
                 .catch(() => message.error("发送命令失败"));
             void commandHistory.push(command);
         },
-        [activeTerminalSession, commandHistory],
+        [activeTerminalSessionId, activeTerminalSessionStatus, commandHistory.push, message],
     );
 
     const headerSessionText = useMemo(() => {
@@ -1026,3 +1028,5 @@ export const WorkspaceLayout = ({
         </div>
     );
 };
+
+export const WorkspaceLayout = memo(WorkspaceLayoutComponent);

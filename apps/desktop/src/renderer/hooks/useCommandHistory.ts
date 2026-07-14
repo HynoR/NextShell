@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CommandHistoryEntry } from "@nextshell/core";
 import {
   applyOptimisticCommandHistoryPush,
@@ -115,14 +115,17 @@ export const useCommandHistory = () => {
     navigatorRef.current = { index: -1, snapshot: [] };
   }, []);
 
-  return {
-    entries,
-    push,
-    remove,
-    clear,
-    search,
-    navigateUp,
-    navigateDown,
-    resetNavigation
-  };
+  return useMemo(
+    () => ({
+      entries,
+      push,
+      remove,
+      clear,
+      search,
+      navigateUp,
+      navigateDown,
+      resetNavigation
+    }),
+    [entries, push, remove, clear, search, navigateUp, navigateDown, resetNavigation]
+  );
 };
