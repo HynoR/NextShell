@@ -16,9 +16,7 @@ import {
 } from "./useSessionLifecycle.helpers";
 import { deleteSessionFromCollections } from "../utils/sessionScopedCollections";
 
-type RetrySessionAuthResult =
-  | { ok: true }
-  | { ok: false; authRequired: boolean; reason: string };
+type RetrySessionAuthResult = { ok: true } | { ok: false; authRequired: boolean; reason: string };
 
 type LocalAwareSessionDescriptor = SessionDescriptor & {
   target?: "remote" | "local";
@@ -48,9 +46,13 @@ export function useSessionLifecycle() {
 
   const sessionIndexByConnectionRef = useRef<Map<string, number>>(new Map());
   const connectingSetRef = useRef<Set<string>>(new Set());
-  const inFlightOpenByConnectionRef = useRef<Map<string, Promise<SessionDescriptor | undefined>>>(new Map());
+  const inFlightOpenByConnectionRef = useRef<Map<string, Promise<SessionDescriptor | undefined>>>(
+    new Map()
+  );
   const cancelledSessionIdsRef = useRef<Set<string>>(new Set());
-  const inFlightAuthRetryBySessionRef = useRef<Map<string, Promise<RetrySessionAuthResult>>>(new Map());
+  const inFlightAuthRetryBySessionRef = useRef<Map<string, Promise<RetrySessionAuthResult>>>(
+    new Map()
+  );
   const sessionGenerationRef = useRef<Map<string, number>>(new Map());
   const refreshConnectionsPromiseRef = useRef<Promise<void> | undefined>(undefined);
   const statusToastKeyBySessionRef = useRef<Map<string, string>>(new Map());
@@ -112,41 +114,48 @@ export function useSessionLifecycle() {
     window.nextshell.session.close({ sessionId }).catch(() => undefined);
   }, []);
 
-  const clearSessionTracking = useCallback((
-    sessionId: string,
-    options?: {
-      preserveCancellation?: boolean;
-      preserveRetryPromise?: boolean;
-    }
-  ): void => {
-    deleteSessionFromCollections(sessionId, [statusToastKeyBySessionRef.current]);
+  const clearSessionTracking = useCallback(
+    (
+      sessionId: string,
+      options?: {
+        preserveCancellation?: boolean;
+        preserveRetryPromise?: boolean;
+      }
+    ): void => {
+      deleteSessionFromCollections(sessionId, [statusToastKeyBySessionRef.current]);
 
-    if (!options?.preserveCancellation) {
-      deleteSessionFromCollections(sessionId, [
-        cancelledSessionIdsRef.current,
-        sessionGenerationRef.current
-      ]);
-    }
+      if (!options?.preserveCancellation) {
+        deleteSessionFromCollections(sessionId, [
+          cancelledSessionIdsRef.current,
+          sessionGenerationRef.current
+        ]);
+      }
 
-    if (!options?.preserveRetryPromise) {
-      deleteSessionFromCollections(sessionId, [inFlightAuthRetryBySessionRef.current]);
-    }
-  }, []);
+      if (!options?.preserveRetryPromise) {
+        deleteSessionFromCollections(sessionId, [inFlightAuthRetryBySessionRef.current]);
+      }
+    },
+    []
+  );
 
   const refreshConnectionsOnce = useCallback((): Promise<void> => {
     if (refreshConnectionsPromiseRef.current) {
       return refreshConnectionsPromiseRef.current;
     }
 
-    const refresh = window.nextshell.connection.list({}).then((refreshed) => {
-      setConnections(refreshed);
-    }).catch((error) => {
-      message.warning(formatErrorMessage(error, "刷新连接信息失败"));
-    }).finally(() => {
-      if (refreshConnectionsPromiseRef.current === refresh) {
-        refreshConnectionsPromiseRef.current = undefined;
-      }
-    });
+    const refresh = window.nextshell.connection
+      .list({})
+      .then((refreshed) => {
+        setConnections(refreshed);
+      })
+      .catch((error) => {
+        message.warning(formatErrorMessage(error, "刷新连接信息失败"));
+      })
+      .finally(() => {
+        if (refreshConnectionsPromiseRef.current === refresh) {
+          refreshConnectionsPromiseRef.current = undefined;
+        }
+      });
 
     refreshConnectionsPromiseRef.current = refresh;
     return refresh;
@@ -277,7 +286,10 @@ export function useSessionLifecycle() {
       const openPromise = (async () => {
         const connection = connectionsRef.current.find((item) => item.id === connectionId);
         const now = new Date().toISOString();
-        const sessionIndex = claimNextSessionIndex(sessionIndexByConnectionRef.current, connectionId);
+        const sessionIndex = claimNextSessionIndex(
+          sessionIndexByConnectionRef.current,
+          connectionId
+        );
         const sessionId = crypto.randomUUID();
         const sessionGeneration = nextSessionGeneration(sessionId);
         const baseTitle = resolveSessionBaseTitle(undefined, connection);
@@ -347,63 +359,60 @@ export function useSessionLifecycle() {
     ]
   );
 
-  const startLocalSession = useCallback(
-    async (): Promise<SessionDescriptor | undefined> => {
-      const sessionId = crypto.randomUUID();
-      const sessionGeneration = nextSessionGeneration(sessionId);
-      const pendingSession = {
-        id: sessionId,
-        title: "本地终端",
-        type: "terminal",
-        status: "connecting",
-        createdAt: new Date().toISOString(),
-        reconnectable: true,
-        target: "local"
-      } as unknown as SessionDescriptor;
+  const startLocalSession = useCallback(async (): Promise<SessionDescriptor | undefined> => {
+    const sessionId = crypto.randomUUID();
+    const sessionGeneration = nextSessionGeneration(sessionId);
+    const pendingSession = {
+      id: sessionId,
+      title: "本地终端",
+      type: "terminal",
+      status: "connecting",
+      createdAt: new Date().toISOString(),
+      reconnectable: true,
+      target: "local"
+    } as unknown as SessionDescriptor;
 
-      upsertSession(pendingSession);
-      setActiveSession(sessionId);
+    upsertSession(pendingSession);
+    setActiveSession(sessionId);
 
-      try {
-        const openedSession = await window.nextshell.session.open({
-          target: "local",
-          sessionId
-        } as never);
+    try {
+      const openedSession = await window.nextshell.session.open({
+        target: "local",
+        sessionId
+      } as never);
 
-        if (!canApplySessionResult(sessionId, sessionGeneration)) {
-          closeSessionSilently(sessionId);
-          return undefined;
-        }
-
-        return finalizeLocalSession(openedSession);
-      } catch (error) {
-        if (!canApplySessionResult(sessionId, sessionGeneration)) {
-          return undefined;
-        }
-
-        const normalized = normalizeOpenError(error, "打开本地终端失败");
-        setSessionStatus(sessionId, "failed", normalized.reason);
+      if (!canApplySessionResult(sessionId, sessionGeneration)) {
+        closeSessionSilently(sessionId);
         return undefined;
-      } finally {
-        const hasSession = useWorkspaceStore
-          .getState()
-          .sessions.some((session) => session.id === sessionId);
-        if (!hasSession) {
-          clearSessionTracking(sessionId);
-        }
       }
-    },
-    [
-      canApplySessionResult,
-      clearSessionTracking,
-      closeSessionSilently,
-      finalizeLocalSession,
-      nextSessionGeneration,
-      setActiveSession,
-      setSessionStatus,
-      upsertSession
-    ]
-  );
+
+      return finalizeLocalSession(openedSession);
+    } catch (error) {
+      if (!canApplySessionResult(sessionId, sessionGeneration)) {
+        return undefined;
+      }
+
+      const normalized = normalizeOpenError(error, "打开本地终端失败");
+      setSessionStatus(sessionId, "failed", normalized.reason);
+      return undefined;
+    } finally {
+      const hasSession = useWorkspaceStore
+        .getState()
+        .sessions.some((session) => session.id === sessionId);
+      if (!hasSession) {
+        clearSessionTracking(sessionId);
+      }
+    }
+  }, [
+    canApplySessionResult,
+    clearSessionTracking,
+    closeSessionSilently,
+    finalizeLocalSession,
+    nextSessionGeneration,
+    setActiveSession,
+    setSessionStatus,
+    upsertSession
+  ]);
 
   const retrySessionAuth = useCallback(
     async (
@@ -415,7 +424,9 @@ export function useSessionLifecycle() {
         return existingRetry;
       }
 
-      const target = useWorkspaceStore.getState().sessions.find((session) => session.id === sessionId);
+      const target = useWorkspaceStore
+        .getState()
+        .sessions.find((session) => session.id === sessionId);
       if (!target) {
         return {
           ok: false,
@@ -455,54 +466,55 @@ export function useSessionLifecycle() {
 
       const sessionGeneration = nextSessionGeneration(target.id);
 
-      const retryPromise: Promise<RetrySessionAuthResult> = (async (): Promise<RetrySessionAuthResult> => {
-        try {
-          const openedSession = await window.nextshell.session.open({
-            connectionId: target.connectionId,
-            target: "remote",
-            sessionId: target.id,
-            authOverride
-          } as never);
+      const retryPromise: Promise<RetrySessionAuthResult> =
+        (async (): Promise<RetrySessionAuthResult> => {
+          try {
+            const openedSession = await window.nextshell.session.open({
+              connectionId: target.connectionId,
+              target: "remote",
+              sessionId: target.id,
+              authOverride
+            } as never);
 
-          if (!canApplySessionResult(target.id, sessionGeneration)) {
-            closeSessionSilently(target.id);
+            if (!canApplySessionResult(target.id, sessionGeneration)) {
+              closeSessionSilently(target.id);
+              return {
+                ok: false as const,
+                authRequired: false,
+                reason: "会话已关闭。"
+              };
+            }
+
+            finalizeRetriedSession(openedSession, target.title);
+            return { ok: true as const };
+          } catch (error) {
+            if (!canApplySessionResult(target.id, sessionGeneration)) {
+              return {
+                ok: false as const,
+                authRequired: false,
+                reason: "会话已关闭。"
+              };
+            }
+
+            const normalized = normalizeOpenError(error, "打开 SSH 会话失败");
+            setSessionStatus(target.id, "failed", normalized.reason);
+
             return {
               ok: false as const,
-              authRequired: false,
-              reason: "会话已关闭。"
+              authRequired: normalized.authRequired,
+              reason: normalized.reason
             };
+          } finally {
+            endConnecting(targetConnectionId);
+            inFlightAuthRetryBySessionRef.current.delete(target.id);
+            const hasSession = useWorkspaceStore
+              .getState()
+              .sessions.some((session) => session.id === target.id);
+            if (!hasSession) {
+              clearSessionTracking(target.id);
+            }
           }
-
-          finalizeRetriedSession(openedSession, target.title);
-          return { ok: true as const };
-        } catch (error) {
-          if (!canApplySessionResult(target.id, sessionGeneration)) {
-            return {
-              ok: false as const,
-              authRequired: false,
-              reason: "会话已关闭。"
-            };
-          }
-
-          const normalized = normalizeOpenError(error, "打开 SSH 会话失败");
-          setSessionStatus(target.id, "failed", normalized.reason);
-
-          return {
-            ok: false as const,
-            authRequired: normalized.authRequired,
-            reason: normalized.reason
-          };
-        } finally {
-          endConnecting(targetConnectionId);
-          inFlightAuthRetryBySessionRef.current.delete(target.id);
-          const hasSession = useWorkspaceStore
-            .getState()
-            .sessions.some((session) => session.id === target.id);
-          if (!hasSession) {
-            clearSessionTracking(target.id);
-          }
-        }
-      })();
+        })();
 
       inFlightAuthRetryBySessionRef.current.set(sessionId, retryPromise);
       return retryPromise;
@@ -539,7 +551,9 @@ export function useSessionLifecycle() {
 
   const handleCloseSession = useCallback(
     async (sessionId: string): Promise<void> => {
-      const target = useWorkspaceStore.getState().sessions.find((session) => session.id === sessionId);
+      const target = useWorkspaceStore
+        .getState()
+        .sessions.find((session) => session.id === sessionId);
       const keepCancellation =
         target?.status === "connecting" || inFlightAuthRetryBySessionRef.current.has(sessionId);
 
@@ -558,7 +572,9 @@ export function useSessionLifecycle() {
 
   const handleReconnectSession = useCallback(
     async (sessionId: string): Promise<void> => {
-      const target = useWorkspaceStore.getState().sessions.find((session) => session.id === sessionId);
+      const target = useWorkspaceStore
+        .getState()
+        .sessions.find((session) => session.id === sessionId);
       if (!target) {
         return;
       }

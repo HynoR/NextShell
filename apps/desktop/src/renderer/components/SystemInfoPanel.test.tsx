@@ -21,17 +21,13 @@ const snapshot: MonitorSnapshot = {
   networkInterface: "eth0",
   networkInterfaceOptions: ["eth0"],
   processes: [],
-  capturedAt: "2026-03-24T00:00:00.000Z",
+  capturedAt: "2026-03-24T00:00:00.000Z"
 };
 
 describe("SystemInfoPanel", () => {
   test("renders detailed usage values inside the metric track", () => {
     const html = renderToStaticMarkup(
-      <SystemInfoPanel
-        monitorSessionEnabled
-        hasVisibleTerminal
-        snapshot={snapshot}
-      />,
+      <SystemInfoPanel monitorSessionEnabled hasVisibleTerminal snapshot={snapshot} />
     );
 
     expect(html).toMatch("monitor-inline-detail");
@@ -54,7 +50,7 @@ describe("SystemInfoPanel", () => {
         monitorActionsDisabled
         onOpenProcessManager={() => {}}
         onOpenNetworkMonitor={() => {}}
-      />,
+      />
     );
 
     expect(html).toMatch("需先连接 SSH 终端后可用");

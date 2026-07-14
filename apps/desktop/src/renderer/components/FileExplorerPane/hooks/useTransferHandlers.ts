@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type DragEvent, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type DragEvent,
+  type SetStateAction
+} from "react";
 import { App as AntdApp } from "antd";
 import type { AppPreferences, ConnectionProfile } from "@nextshell/core";
 import { usePreferencesStore } from "../../../store/usePreferencesStore";
@@ -10,7 +18,13 @@ import {
   extractDroppedFilePaths,
   isExternalFileDrag
 } from "../../../utils/sftpFileDrop";
-import { ensureTarGzName, inferName, joinLocalPath, joinRemotePath, normalizeRemotePath } from "../shared";
+import {
+  ensureTarGzName,
+  inferName,
+  joinLocalPath,
+  joinRemotePath,
+  normalizeRemotePath
+} from "../shared";
 
 type AppMessage = ReturnType<typeof AntdApp.useApp>["message"];
 type AppModal = ReturnType<typeof AntdApp.useApp>["modal"];
@@ -127,7 +141,17 @@ export const useTransferHandlers = ({
         setBusy(false);
       }
     },
-    [connection, enqueueTask, loadFiles, markFailed, markSuccess, message, pathName, setBusy, syncUploadDefaultDir]
+    [
+      connection,
+      enqueueTask,
+      loadFiles,
+      markFailed,
+      markSuccess,
+      message,
+      pathName,
+      setBusy,
+      syncUploadDefaultDir
+    ]
   );
 
   const confirmDropUpload = useCallback(
@@ -235,79 +259,94 @@ export const useTransferHandlers = ({
     transferPreferences.uploadDefaultDir
   ]);
 
-  const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>): void => {
-    if (!isExternalFileDrag(event.dataTransfer)) {
-      return;
-    }
-    event.preventDefault();
-    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
-      return;
-    }
-    dragDepthRef.current += 1;
-    if (!dropTargetActive) {
-      setDropTargetActive(true);
-    }
-  }, [active, busy, connected, connection, dropTargetActive]);
-
-  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>): void => {
-    if (!isExternalFileDrag(event.dataTransfer)) {
-      return;
-    }
-    event.preventDefault();
-    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
-      return;
-    }
-    event.dataTransfer.dropEffect = "copy";
-    if (!dropTargetActive) {
-      setDropTargetActive(true);
-    }
-  }, [active, busy, connected, connection, dropTargetActive]);
-
-  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>): void => {
-    if (!dropTargetActive) {
-      return;
-    }
-    event.preventDefault();
-    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
-    if (dragDepthRef.current === 0) {
-      setDropTargetActive(false);
-    }
-  }, [dropTargetActive]);
-
-  const handleDropUpload = useCallback(async (event: DragEvent<HTMLDivElement>): Promise<void> => {
-    dragDepthRef.current = 0;
-    setDropTargetActive(false);
-    if (!isExternalFileDrag(event.dataTransfer)) {
-      return;
-    }
-
-    event.preventDefault();
-    if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
-      return;
-    }
-    const result = extractDroppedFilePaths(event.dataTransfer, window.nextshell.getFilePathForDrop);
-    if (result.paths.length === 0) {
-      console.warn("[sftpFileDrop] drop extraction failed", {
-        allPathsEmpty: result.allPathsEmpty,
-        itemCount: event.dataTransfer?.items?.length ?? 0,
-        fileCount: event.dataTransfer?.files?.length ?? 0
-      });
-      if (result.allPathsEmpty) {
-        message.warning("无法读取拖入文件的路径，请尝试使用上传按钮选择文件");
-      } else {
-        message.warning("当前仅支持拖入文件");
+  const handleDragEnter = useCallback(
+    (event: DragEvent<HTMLDivElement>): void => {
+      if (!isExternalFileDrag(event.dataTransfer)) {
+        return;
       }
-      return;
-    }
-    console.info("[sftpFileDrop] extracted paths:", result.paths);
+      event.preventDefault();
+      if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+        return;
+      }
+      dragDepthRef.current += 1;
+      if (!dropTargetActive) {
+        setDropTargetActive(true);
+      }
+    },
+    [active, busy, connected, connection, dropTargetActive]
+  );
 
-    const confirmed = await confirmDropUpload(result.paths);
-    if (!confirmed) {
-      return;
-    }
+  const handleDragOver = useCallback(
+    (event: DragEvent<HTMLDivElement>): void => {
+      if (!isExternalFileDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+        return;
+      }
+      event.dataTransfer.dropEffect = "copy";
+      if (!dropTargetActive) {
+        setDropTargetActive(true);
+      }
+    },
+    [active, busy, connected, connection, dropTargetActive]
+  );
 
-    await uploadLocalFiles(result.paths);
-  }, [active, busy, confirmDropUpload, connected, connection, message, uploadLocalFiles]);
+  const handleDragLeave = useCallback(
+    (event: DragEvent<HTMLDivElement>): void => {
+      if (!dropTargetActive) {
+        return;
+      }
+      event.preventDefault();
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) {
+        setDropTargetActive(false);
+      }
+    },
+    [dropTargetActive]
+  );
+
+  const handleDropUpload = useCallback(
+    async (event: DragEvent<HTMLDivElement>): Promise<void> => {
+      dragDepthRef.current = 0;
+      setDropTargetActive(false);
+      if (!isExternalFileDrag(event.dataTransfer)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (!canAcceptSftpFileDrop({ active, connected, hasConnection: Boolean(connection), busy })) {
+        return;
+      }
+      const result = extractDroppedFilePaths(
+        event.dataTransfer,
+        window.nextshell.getFilePathForDrop
+      );
+      if (result.paths.length === 0) {
+        console.warn("[sftpFileDrop] drop extraction failed", {
+          allPathsEmpty: result.allPathsEmpty,
+          itemCount: event.dataTransfer?.items?.length ?? 0,
+          fileCount: event.dataTransfer?.files?.length ?? 0
+        });
+        if (result.allPathsEmpty) {
+          message.warning("无法读取拖入文件的路径，请尝试使用上传按钮选择文件");
+        } else {
+          message.warning("当前仅支持拖入文件");
+        }
+        return;
+      }
+      console.info("[sftpFileDrop] extracted paths:", result.paths);
+
+      const confirmed = await confirmDropUpload(result.paths);
+      if (!confirmed) {
+        return;
+      }
+
+      await uploadLocalFiles(result.paths);
+    },
+    [active, busy, confirmDropUpload, connected, connection, message, uploadLocalFiles]
+  );
 
   const handleDownload = useCallback(
     async (
@@ -402,7 +441,7 @@ export const useTransferHandlers = ({
       const pathSegment =
         normalizedCurrentPath === "/"
           ? "root"
-          : normalizedCurrentPath.split("/").filter(Boolean).at(-1) ?? "bundle";
+          : (normalizedCurrentPath.split("/").filter(Boolean).at(-1) ?? "bundle");
       const archiveBase =
         entries.length === 1 ? entries[0]!.name : `${pathSegment}-bundle-${Date.now()}`;
       const archiveName = ensureTarGzName(archiveBase);

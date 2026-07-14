@@ -68,8 +68,12 @@ export const App = () => {
   const [liveEditPanelCollapsed, setLiveEditPanelCollapsed] = useState(false);
 
   const initializePreferences = usePreferencesStore((state) => state.initialize);
-  const appBackgroundImagePath = usePreferencesStore((state) => state.preferences.window.backgroundImagePath);
-  const appBackgroundOpacity = usePreferencesStore((state) => state.preferences.window.backgroundOpacity);
+  const appBackgroundImagePath = usePreferencesStore(
+    (state) => state.preferences.window.backgroundImagePath
+  );
+  const appBackgroundOpacity = usePreferencesStore(
+    (state) => state.preferences.window.backgroundOpacity
+  );
   const applyTransferEvent = useTransferQueueStore((state) => state.applyEvent);
   const enqueueTransferTask = useTransferQueueStore((state) => state.enqueueTask);
   const getTransferTask = useTransferQueueStore((state) => state.getTask);
@@ -77,7 +81,8 @@ export const App = () => {
   const markTransferSuccess = useTransferQueueStore((state) => state.markSuccess);
   const clearFinishedTransfers = useTransferQueueStore((state) => state.clearFinished);
 
-  const { loadConnections, handleConnectionSaved, handleConnectionRemoved } = useConnectionManager();
+  const { loadConnections, handleConnectionSaved, handleConnectionRemoved } =
+    useConnectionManager();
 
   const editorTabOpenTab = useEditorTabStore((state) => state.openTab);
   const editorTabCloseTab = useEditorTabStore((state) => state.closeTab);
@@ -204,8 +209,7 @@ export const App = () => {
     if (activeConnectionId) {
       const conn = sessions.find(
         (session) =>
-          getSessionConnectionId(session) === activeConnectionId &&
-          isTerminalSession(session)
+          getSessionConnectionId(session) === activeConnectionId && isTerminalSession(session)
       );
       if (conn) return conn;
     }
@@ -254,7 +258,9 @@ export const App = () => {
     const unsubscribe = window.nextshell.sftp.onTransferStatus((event) => {
       applyTransferEvent(event);
     });
-    return () => { unsubscribe(); };
+    return () => {
+      unsubscribe();
+    };
   }, [applyTransferEvent]);
 
   const connectActiveConnection = useCallback(async () => {
@@ -275,18 +281,28 @@ export const App = () => {
   );
 
   const handleOpenProcessManager = useCallback(
-    (connectionId: string) => openMonitorTab(
-      connectionId, "processManager", connections,
-      setActiveSession, setActiveConnection, upsertSession
-    ),
+    (connectionId: string) =>
+      openMonitorTab(
+        connectionId,
+        "processManager",
+        connections,
+        setActiveSession,
+        setActiveConnection,
+        upsertSession
+      ),
     [openMonitorTab, connections, setActiveSession, setActiveConnection, upsertSession]
   );
 
   const handleOpenNetworkMonitor = useCallback(
-    (connectionId: string) => openMonitorTab(
-      connectionId, "networkMonitor", connections,
-      setActiveSession, setActiveConnection, upsertSession
-    ),
+    (connectionId: string) =>
+      openMonitorTab(
+        connectionId,
+        "networkMonitor",
+        connections,
+        setActiveSession,
+        setActiveConnection,
+        upsertSession
+      ),
     [openMonitorTab, connections, setActiveSession, setActiveConnection, upsertSession]
   );
 
@@ -351,7 +367,14 @@ export const App = () => {
         message.error(`打开编辑器失败：${formatErrorMessage(err, "请检查连接状态")}`);
       }
     },
-    [connections, editorTabFindByRemotePath, editorTabOpenTab, setActiveConnection, setActiveSession, upsertSession]
+    [
+      connections,
+      editorTabFindByRemotePath,
+      editorTabOpenTab,
+      setActiveConnection,
+      setActiveSession,
+      upsertSession
+    ]
   );
 
   const handleCloseMonitorTab = useCallback(
@@ -369,52 +392,57 @@ export const App = () => {
   const handleSelectSystemNetworkInterface = useCallback(
     (networkInterface: string) => {
       if (!activeConnectionId) return;
-      void window.nextshell.monitor.selectSystemInterface({
-        connectionId: activeConnectionId,
-        networkInterface
-      }).catch((error) => {
-        message.error(`切换监控网卡失败：${formatErrorMessage(error, "请稍后重试")}`);
-      });
+      void window.nextshell.monitor
+        .selectSystemInterface({
+          connectionId: activeConnectionId,
+          networkInterface
+        })
+        .catch((error) => {
+          message.error(`切换监控网卡失败：${formatErrorMessage(error, "请稍后重试")}`);
+        });
     },
     [activeConnectionId]
   );
 
-  const handleRetryTransferTask = useCallback(async (taskId: string) => {
-    const failedTask = getTransferTask(taskId);
-    if (!failedTask || failedTask.status !== "failed") return;
-    if (failedTask.retryable === false) return;
+  const handleRetryTransferTask = useCallback(
+    async (taskId: string) => {
+      const failedTask = getTransferTask(taskId);
+      if (!failedTask || failedTask.status !== "failed") return;
+      if (failedTask.retryable === false) return;
 
-    const retryTask = enqueueTransferTask({
-      direction: failedTask.direction,
-      connectionId: failedTask.connectionId,
-      localPath: failedTask.localPath,
-      remotePath: failedTask.remotePath,
-      retryOfTaskId: failedTask.id
-    });
+      const retryTask = enqueueTransferTask({
+        direction: failedTask.direction,
+        connectionId: failedTask.connectionId,
+        localPath: failedTask.localPath,
+        remotePath: failedTask.remotePath,
+        retryOfTaskId: failedTask.id
+      });
 
-    try {
-      if (failedTask.direction === "upload") {
-        await window.nextshell.sftp.upload({
-          connectionId: failedTask.connectionId,
-          localPath: failedTask.localPath,
-          remotePath: failedTask.remotePath,
-          taskId: retryTask.id
-        });
-      } else {
-        await window.nextshell.sftp.download({
-          connectionId: failedTask.connectionId,
-          remotePath: failedTask.remotePath,
-          localPath: failedTask.localPath,
-          taskId: retryTask.id
-        });
+      try {
+        if (failedTask.direction === "upload") {
+          await window.nextshell.sftp.upload({
+            connectionId: failedTask.connectionId,
+            localPath: failedTask.localPath,
+            remotePath: failedTask.remotePath,
+            taskId: retryTask.id
+          });
+        } else {
+          await window.nextshell.sftp.download({
+            connectionId: failedTask.connectionId,
+            remotePath: failedTask.remotePath,
+            localPath: failedTask.localPath,
+            taskId: retryTask.id
+          });
+        }
+        markTransferSuccess(retryTask.id);
+      } catch (error) {
+        const reason = formatErrorMessage(error, "重试失败");
+        markTransferFailed(retryTask.id, reason);
+        message.error(`重试传输失败：${reason}`);
       }
-      markTransferSuccess(retryTask.id);
-    } catch (error) {
-      const reason = formatErrorMessage(error, "重试失败");
-      markTransferFailed(retryTask.id, reason);
-      message.error(`重试传输失败：${reason}`);
-    }
-  }, [enqueueTransferTask, getTransferTask, markTransferFailed, markTransferSuccess]);
+    },
+    [enqueueTransferTask, getTransferTask, markTransferFailed, markTransferSuccess]
+  );
 
   const handleOpenTransferLocalFile = useCallback(async (localPath: string) => {
     const result = await window.nextshell.dialog.openPath({
@@ -446,9 +474,8 @@ export const App = () => {
         const existing = findExistingByAddress(connections, parsed.value);
         const connectionId = existing
           ? existing.id
-          : (await window.nextshell.connection.upsert(
-              buildQuickConnectUpsertInput(parsed.value)
-            )).id;
+          : (await window.nextshell.connection.upsert(buildQuickConnectUpsertInput(parsed.value)))
+              .id;
 
         if (!existing) {
           const refreshed = await window.nextshell.connection.list({});
@@ -512,17 +539,26 @@ export const App = () => {
     setSettingsOpen(true);
   }, []);
 
-  const handleTreeConnect = useCallback((connectionId: string) => {
-    void startSession(connectionId);
-  }, [startSession]);
+  const handleTreeConnect = useCallback(
+    (connectionId: string) => {
+      void startSession(connectionId);
+    },
+    [startSession]
+  );
 
-  const handleRetryTransfer = useCallback((taskId: string) => {
-    void handleRetryTransferTask(taskId);
-  }, [handleRetryTransferTask]);
+  const handleRetryTransfer = useCallback(
+    (taskId: string) => {
+      void handleRetryTransferTask(taskId);
+    },
+    [handleRetryTransferTask]
+  );
 
-  const handleOpenTransferTask = useCallback((task: TransferTask) => {
-    void handleOpenTransferLocalFile(task.localPath);
-  }, [handleOpenTransferLocalFile]);
+  const handleOpenTransferTask = useCallback(
+    (task: TransferTask) => {
+      void handleOpenTransferLocalFile(task.localPath);
+    },
+    [handleOpenTransferLocalFile]
+  );
 
   const handleTransferPanelToggle = useCallback(() => {
     setTransferPanelCollapsed((collapsed) => !collapsed);
@@ -532,16 +568,14 @@ export const App = () => {
     setLiveEditPanelCollapsed((collapsed) => !collapsed);
   }, []);
 
-  const handleSetBottomTab = useCallback((tab: string) => {
-    if (
-      tab === "commands" ||
-      tab === "files" ||
-      tab === "system-info" ||
-      tab === "traceroute"
-    ) {
-      setBottomTab(tab);
-    }
-  }, [setBottomTab]);
+  const handleSetBottomTab = useCallback(
+    (tab: string) => {
+      if (tab === "commands" || tab === "files" || tab === "system-info" || tab === "traceroute") {
+        setBottomTab(tab);
+      }
+    },
+    [setBottomTab]
+  );
 
   const isConnecting = activeConnectionId ? connectingIds.has(activeConnectionId) : false;
   const normalizedAppBackgroundImagePath = appBackgroundImagePath.trim();
@@ -641,10 +675,7 @@ export const App = () => {
           onOpenLocalTerminal={handleOpenLocalTerminal}
         />
 
-        <SettingsCenterModal
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
+        <SettingsCenterModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       </div>
     </div>
   );

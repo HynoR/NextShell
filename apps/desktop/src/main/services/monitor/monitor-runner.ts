@@ -35,7 +35,7 @@ export class MonitorBackoff {
   constructor(
     private readonly baseMs = DEFAULT_BACKOFF_BASE_MS,
     private readonly maxMs = DEFAULT_BACKOFF_MAX_MS,
-    private readonly maxMultiplier = DEFAULT_BACKOFF_MULTIPLIER_CAP,
+    private readonly maxMultiplier = DEFAULT_BACKOFF_MULTIPLIER_CAP
   ) {}
 
   isActive(): boolean {

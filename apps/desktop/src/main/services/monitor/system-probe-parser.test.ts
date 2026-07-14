@@ -2,7 +2,7 @@ import {
   parseCompoundOutput,
   parseNetworkInterfaceList,
   parseSystemProbeSections,
-  sanitizeProbeText,
+  sanitizeProbeText
 } from "./system-probe-parser";
 
 const assertTrue = (value: unknown, message: string): void => {
@@ -25,83 +25,79 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
 })();
 
 (() => {
-  const raw = [
-    "---NS_NETCOUNTERS---",
-    "123",
-    "456",
-    "---NS_PROBE_END---",
-  ].join("\n");
+  const raw = ["---NS_NETCOUNTERS---", "123", "456", "---NS_PROBE_END---"].join("\n");
 
   const sections = parseCompoundOutput(raw);
   assertEqual(sections.get("NETCOUNTERS"), "123\n456", "parse NETCOUNTERS section");
 })();
 
 (() => {
-  const sections = parseCompoundOutput([
-    "---NS_CPUSTAT---",
-    "cpu  1 2 3 4 5 6 7",
-    "---NS_MEMINFO---",
-    "MemTotal: 1000 kB",
-    "MemAvailable: 500 kB",
-    "---NS_PROBE_END---",
-  ].join("\n"));
+  const sections = parseCompoundOutput(
+    [
+      "---NS_CPUSTAT---",
+      "cpu  1 2 3 4 5 6 7",
+      "---NS_MEMINFO---",
+      "MemTotal: 1000 kB",
+      "MemAvailable: 500 kB",
+      "---NS_PROBE_END---"
+    ].join("\n")
+  );
 
   const parsed = parseSystemProbeSections(sections, {
     collectCpuMemSwap: true,
     collectDisk: false,
-    includeInterfaceMeta: false,
+    includeInterfaceMeta: false
   });
 
   assertTrue(!parsed.ok, "missing NETCOUNTERS should fail");
 })();
 
 (() => {
-  const sections = parseCompoundOutput([
-    "---NS_NETCOUNTERS---",
-    "invalid",
-    "456",
-    "---NS_PROBE_END---",
-  ].join("\n"));
+  const sections = parseCompoundOutput(
+    ["---NS_NETCOUNTERS---", "invalid", "456", "---NS_PROBE_END---"].join("\n")
+  );
 
   const parsed = parseSystemProbeSections(sections, {
     collectCpuMemSwap: false,
     collectDisk: false,
-    includeInterfaceMeta: false,
+    includeInterfaceMeta: false
   });
 
   assertTrue(!parsed.ok, "invalid NETCOUNTERS should fail");
 })();
 
 (() => {
-  const sections = parseCompoundOutput([
-    "---NS_LOADAVG---",
-    "0.10 0.20 0.30",
-    "---NS_CPUSTAT---",
-    "cpu  100 10 20 300 40 0 0 0 0 0",
-    "---NS_MEMINFO---",
-    "MemTotal: 1024000 kB",
-    "MemAvailable: 512000 kB",
-    "SwapTotal: 1024 kB",
-    "SwapFree: 1024 kB",
-    "---NS_DISK---",
-    "/dev/vda1 102400 20480 81920 20% /",
-    "---NS_NETIFACES---",
-    "eth0",
-    "ens5",
-    "---NS_NETDEFAULT---",
-    "ens5",
-    "---NS_NETCOUNTER_IFACE---",
-    "ens5",
-    "---NS_NETCOUNTERS---",
-    "1000",
-    "2000",
-    "---NS_PROBE_END---",
-  ].join("\n"));
+  const sections = parseCompoundOutput(
+    [
+      "---NS_LOADAVG---",
+      "0.10 0.20 0.30",
+      "---NS_CPUSTAT---",
+      "cpu  100 10 20 300 40 0 0 0 0 0",
+      "---NS_MEMINFO---",
+      "MemTotal: 1024000 kB",
+      "MemAvailable: 512000 kB",
+      "SwapTotal: 1024 kB",
+      "SwapFree: 1024 kB",
+      "---NS_DISK---",
+      "/dev/vda1 102400 20480 81920 20% /",
+      "---NS_NETIFACES---",
+      "eth0",
+      "ens5",
+      "---NS_NETDEFAULT---",
+      "ens5",
+      "---NS_NETCOUNTER_IFACE---",
+      "ens5",
+      "---NS_NETCOUNTERS---",
+      "1000",
+      "2000",
+      "---NS_PROBE_END---"
+    ].join("\n")
+  );
 
   const parsed = parseSystemProbeSections(sections, {
     collectCpuMemSwap: true,
     collectDisk: true,
-    includeInterfaceMeta: true,
+    includeInterfaceMeta: true
   });
 
   assertTrue(parsed.ok, "valid probe payload should pass");

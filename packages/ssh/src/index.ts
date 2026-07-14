@@ -5,13 +5,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
-import type {
-  Client,
-  ClientChannel,
-  ConnectConfig,
-  SFTPWrapper,
-  Stats
-} from "ssh2";
+import type { Client, ClientChannel, ConnectConfig, SFTPWrapper, Stats } from "ssh2";
 
 type AuthType = "password" | "privateKey" | "agent" | "interactive";
 type ProxyType = "socks4" | "socks5";
@@ -61,7 +55,9 @@ interface SocksCreateConnectionResult {
 
 interface SocksModule {
   SocksClient: {
-    createConnection: (options: SocksCreateConnectionOptions) => Promise<SocksCreateConnectionResult>;
+    createConnection: (
+      options: SocksCreateConnectionOptions
+    ) => Promise<SocksCreateConnectionResult>;
   };
 }
 
@@ -150,7 +146,10 @@ export type SftpProgressListener = (progress: SftpTransferProgress) => void;
 
 const buildTransferOptions = (onProgress?: SftpProgressListener) =>
   onProgress
-    ? { step: (transferred: number, _chunk: number, total: number) => onProgress({ transferred, total }) }
+    ? {
+        step: (transferred: number, _chunk: number, total: number) =>
+          onProgress({ transferred, total })
+      }
     : {};
 
 /** Thrown when a transfer is aborted via its AbortSignal. */
@@ -164,7 +163,9 @@ export class TransferCancelledError extends Error {
 
 export const isTransferCancelledError = (error: unknown): boolean =>
   error instanceof TransferCancelledError ||
-  (typeof error === "object" && error !== null && (error as { cancelled?: boolean }).cancelled === true);
+  (typeof error === "object" &&
+    error !== null &&
+    (error as { cancelled?: boolean }).cancelled === true);
 
 /**
  * Run `op`, but reject with TransferCancelledError if `signal` aborts first,
@@ -269,7 +270,9 @@ export const matchHostFingerprint = (expected: string, key: Buffer | string): bo
     return normalizedExpected === md5Colon.toLowerCase();
   }
 
-  return normalizedExpected === sha256Hex.toLowerCase() || normalizedExpected === md5Hex.toLowerCase();
+  return (
+    normalizedExpected === sha256Hex.toLowerCase() || normalizedExpected === md5Hex.toLowerCase()
+  );
 };
 
 export class SshConnection {
@@ -374,7 +377,7 @@ export class SshConnection {
       if (!matches) {
         this.hostKeyError = new Error(
           `HOST_KEY_MISMATCH: 远端主机密钥与已固定的指纹不一致（可能是中间人攻击，或服务器密钥已更换）。` +
-            `当前指纹为 ${observed}。若确属合法变更，请在连接管理器中清除或更新该连接的主机指纹后重试。`,
+            `当前指纹为 ${observed}。若确属合法变更，请在连接管理器中清除或更新该连接的主机指纹后重试。`
         );
       }
       return matches;
@@ -821,13 +824,18 @@ export class SshConnection {
         signal,
         () =>
           new Promise<void>((resolve, reject) => {
-            sftp.fastPut(resolvedLocalPath, remotePath, buildTransferOptions(onProgress), (error) => {
-              if (error) {
-                reject(error);
-                return;
+            sftp.fastPut(
+              resolvedLocalPath,
+              remotePath,
+              buildTransferOptions(onProgress),
+              (error) => {
+                if (error) {
+                  reject(error);
+                  return;
+                }
+                resolve();
               }
-              resolve();
-            });
+            );
           })
       )
     );

@@ -15,7 +15,8 @@ export const MONITOR_SYSTEM_INFO_ARCH_COMMAND = "uname -m 2>/dev/null";
 export const MONITOR_SYSTEM_INFO_CPUINFO_COMMAND = "cat /proc/cpuinfo 2>/dev/null";
 export const MONITOR_SYSTEM_INFO_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
 export const MONITOR_SYSTEM_INFO_NET_DEV_COMMAND = "cat /proc/net/dev 2>/dev/null";
-export const MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND = "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
+export const MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND =
+  "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
 export const MONITOR_NETWORK_INTERVAL_MS = 5000;
 export const MONITOR_PROCESS_INTERVAL_MS = 5000;
 export const ADHOC_IDLE_TIMEOUT_MS = 30_000;
@@ -37,7 +38,9 @@ export const mapEntryType = (permissions: string): RemoteFileEntry["type"] => {
   return "file";
 };
 
-export const parseLongname = (longname: string): { permissions: string; owner: string; group: string } => {
+export const parseLongname = (
+  longname: string
+): { permissions: string; owner: string; group: string } => {
   const parts = longname.trim().split(/\s+/);
 
   return {
@@ -331,7 +334,11 @@ export const resolveLocalPath = (rawPath: string): string => {
 };
 
 export const parseUptimeSeconds = (raw: string): number => {
-  const firstLine = raw.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim() ?? "";
+  const firstLine =
+    raw
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0)
+      ?.trim() ?? "";
   if (!firstLine) {
     return 0;
   }

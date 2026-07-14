@@ -1,8 +1,5 @@
 import { create } from "zustand";
-import {
-  DEFAULT_APP_PREFERENCES,
-  type AppPreferences
-} from "@nextshell/core";
+import { DEFAULT_APP_PREFERENCES, type AppPreferences } from "@nextshell/core";
 import type { AppPreferencesPatchInput } from "@nextshell/shared";
 
 const LEGACY_DOWNLOAD_DIR_KEY = "nextshell.downloadDir";
@@ -79,7 +76,8 @@ const buildLegacyPatch = (current: AppPreferences): AppPreferencesPatchInput | u
 
   if (
     legacyEditorCommand &&
-    current.remoteEdit.defaultEditorCommand === DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand
+    current.remoteEdit.defaultEditorCommand ===
+      DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand
   ) {
     patch.remoteEdit = {
       ...(patch.remoteEdit ?? {}),

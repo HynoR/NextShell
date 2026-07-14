@@ -7,13 +7,13 @@ import type {
   CloudSyncWorkspaceProfile,
   ConnectionProfile,
   ScopedCommandItem,
-  SavedCommand,
+  SavedCommand
 } from "@nextshell/core";
 import type { SshConnection } from "@nextshell/ssh";
 import type {
   CommandBatchExecInput,
   SavedCommandRemoveInput,
-  SavedCommandUpsertInput,
+  SavedCommandUpsertInput
 } from "@nextshell/shared";
 import type { CachedConnectionRepository } from "@nextshell/storage";
 
@@ -52,10 +52,7 @@ export class CommandService {
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
   }
 
-  async execCommand(
-    connectionId: string,
-    command: string,
-  ): Promise<CommandExecutionResult> {
+  async execCommand(connectionId: string, command: string): Promise<CommandExecutionResult> {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
     const result = await connection.exec(command);
@@ -65,21 +62,19 @@ export class CommandService {
       stdout: result.stdout,
       stderr: result.stderr,
       exitCode: result.exitCode,
-      executedAt: new Date().toISOString(),
+      executedAt: new Date().toISOString()
     };
     this.appendAuditLogIfEnabled({
       action: "command.exec",
       level: result.exitCode === 0 ? "info" : "warn",
       connectionId,
       message: "Executed command on remote host",
-      metadata: { command, exitCode: result.exitCode },
+      metadata: { command, exitCode: result.exitCode }
     });
     return execution;
   }
 
-  async getSessionHomeDir(
-    connectionId: string,
-  ): Promise<{ path: string } | null> {
+  async getSessionHomeDir(connectionId: string): Promise<{ path: string } | null> {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
     try {
@@ -94,7 +89,7 @@ export class CommandService {
   async executeCommandWithRetry(
     connectionId: string,
     command: string,
-    retryCount: number,
+    retryCount: number
   ): Promise<BatchCommandResultItem> {
     const maxAttempts = Math.max(1, retryCount + 1);
     let attempts = 0;
@@ -125,13 +120,11 @@ export class CommandService {
       success: false,
       attempts,
       durationMs: Date.now() - startedAt,
-      error: lastError,
+      error: lastError
     };
   }
 
-  async execBatchCommand(
-    input: CommandBatchExecInput,
-  ): Promise<BatchCommandExecutionResult> {
+  async execBatchCommand(input: CommandBatchExecInput): Promise<BatchCommandExecutionResult> {
     const startedAt = new Date();
     const uniqueConnectionIds = Array.from(new Set(input.connectionIds));
     const queue = [...uniqueConnectionIds];
@@ -153,14 +146,18 @@ export class CommandService {
               success: false,
               attempts: 0,
               durationMs: 0,
-              error: "Connection not found",
+              error: "Connection not found"
             });
             continue;
           }
-          const result = await this.executeCommandWithRetry(connectionId, input.command, input.retryCount);
+          const result = await this.executeCommandWithRetry(
+            connectionId,
+            input.command,
+            input.retryCount
+          );
           results.push(result);
         }
-      }),
+      })
     );
     const finishedAt = new Date();
     const successCount = results.filter((item) => item.success).length;
@@ -173,7 +170,7 @@ export class CommandService {
       total: results.length,
       successCount,
       failedCount,
-      results: results.sort((a, b) => a.connectionId.localeCompare(b.connectionId)),
+      results: results.sort((a, b) => a.connectionId.localeCompare(b.connectionId))
     };
     this.appendAuditLogIfEnabled({
       action: "command.exec_batch",
@@ -185,8 +182,8 @@ export class CommandService {
         successCount,
         failedCount,
         retryCount: input.retryCount,
-        maxConcurrency: input.maxConcurrency,
-      },
+        maxConcurrency: input.maxConcurrency
+      }
     });
     return summary;
   }
@@ -211,11 +208,14 @@ export class CommandService {
 
   listScopedSavedCommands(): ScopedCommandItem[] {
     const workspaceNameById = new Map(
-      this.listWorkspaces().map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])
+      this.listWorkspaces().map((workspace) => [
+        workspace.id,
+        workspace.displayName || workspace.workspaceName
+      ])
     );
     const local = this.connections.listSavedCommands({}).map((command) => ({
       ...command,
-      scope: "local" as const,
+      scope: "local" as const
     }));
     const workspaceScoped = this.listWorkspaces().flatMap((workspace) =>
       this.connections.listWorkspaceCommands(workspace.id).map((command) => ({
@@ -229,7 +229,7 @@ export class CommandService {
         updatedAt: command.updatedAt,
         scope: "workspace" as const,
         workspaceId: workspace.id,
-        workspaceName: workspaceNameById.get(workspace.id),
+        workspaceName: workspaceNameById.get(workspace.id)
       }))
     );
     return [...local, ...workspaceScoped];
@@ -238,7 +238,9 @@ export class CommandService {
   upsertSavedCommand(input: SavedCommandUpsertInput): SavedCommand {
     if (input.workspaceId) {
       const existing = input.id
-        ? this.connections.listWorkspaceCommands(input.workspaceId).find((item) => item.id === input.id)
+        ? this.connections
+            .listWorkspaceCommands(input.workspaceId)
+            .find((item) => item.id === input.id)
         : undefined;
       const now = new Date().toISOString();
       const saved = this.connections.upsertWorkspaceCommand({
@@ -250,7 +252,7 @@ export class CommandService {
         command: input.command,
         isTemplate: input.isTemplate,
         createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
+        updatedAt: now
       });
       this.markWorkspaceCommandsDirty(input.workspaceId);
       return {
@@ -261,7 +263,7 @@ export class CommandService {
         command: saved.command,
         isTemplate: saved.isTemplate,
         createdAt: saved.createdAt,
-        updatedAt: saved.updatedAt,
+        updatedAt: saved.updatedAt
       };
     }
     return this.connections.upsertSavedCommand({
@@ -270,7 +272,7 @@ export class CommandService {
       description: input.description,
       group: input.group,
       command: input.command,
-      isTemplate: input.isTemplate,
+      isTemplate: input.isTemplate
     });
   }
 

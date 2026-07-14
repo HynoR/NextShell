@@ -50,8 +50,10 @@ export const isExternalFileDrag = (dataTransfer: DataTransferLike | null | undef
     return false;
   }
 
-  return Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file")
-    || Array.from(dataTransfer.files ?? []).length > 0;
+  return (
+    Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file") ||
+    Array.from(dataTransfer.files ?? []).length > 0
+  );
 };
 
 export interface DropExtractionResult {

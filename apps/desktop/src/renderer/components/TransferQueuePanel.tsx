@@ -65,12 +65,18 @@ export const TransferQueuePanel = ({
   return (
     <section className="transfer-panel">
       <div className="transfer-panel-header" onClick={onToggle}>
-        <i className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"} aria-hidden="true" />
-        <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">传输队列</span>
+        <i
+          className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
+          aria-hidden="true"
+        />
+        <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
+          传输队列
+        </span>
         <div className="transfer-header-right" onClick={(e) => e.stopPropagation()}>
           {collapsed && (runningCount > 0 || failedCount > 0 || finishedCount > 0) ? (
             <span className="transfer-summary">
-              {runningCount > 0 ? `运行 ${runningCount} / ` : ""}失败 {failedCount} / 完成 {finishedCount}
+              {runningCount > 0 ? `运行 ${runningCount} / ` : ""}失败 {failedCount} / 完成{" "}
+              {finishedCount}
             </span>
           ) : !collapsed ? (
             <Button
@@ -112,12 +118,19 @@ export const TransferQueuePanel = ({
                   }}
                 >
                   <div className="transfer-task-main">
-                    <span className="transfer-task-name" title={taskLabel(task)}>{taskLabel(task)}</span>
-                    <Tag color={tag.color} bordered={false} className="transfer-task-tag">{tag.text}</Tag>
+                    <span className="transfer-task-name" title={taskLabel(task)}>
+                      {taskLabel(task)}
+                    </span>
+                    <Tag color={tag.color} bordered={false} className="transfer-task-tag">
+                      {tag.text}
+                    </Tag>
                   </div>
                   <div className="transfer-progress-row">
                     <div className="transfer-progress-track">
-                      <div className="transfer-progress-fill" style={{ width: `${task.progress}%` }} />
+                      <div
+                        className="transfer-progress-fill"
+                        style={{ width: `${task.progress}%` }}
+                      />
                     </div>
                     <span>{Math.round(task.progress)}%</span>
                   </div>
@@ -128,11 +141,15 @@ export const TransferQueuePanel = ({
                   <div className="transfer-task-paths">
                     <div className="path-row">
                       <span className="path-label">本地</span>
-                      <span className="path-value" title={task.localPath}>{task.localPath}</span>
+                      <span className="path-value" title={task.localPath}>
+                        {task.localPath}
+                      </span>
                     </div>
                     <div className="path-row">
                       <span className="path-label">远端</span>
-                      <span className="path-value" title={task.remotePath}>{task.remotePath}</span>
+                      <span className="path-value" title={task.remotePath}>
+                        {task.remotePath}
+                      </span>
                     </div>
                   </div>
                   {task.status === "running" ? (

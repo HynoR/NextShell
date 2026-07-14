@@ -1,7 +1,4 @@
-import {
-  sessionDataEventSchema,
-  streamDeliveryAckSchema,
-} from "./contracts";
+import { sessionDataEventSchema, streamDeliveryAckSchema } from "./contracts";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -14,7 +11,7 @@ function assert(condition: boolean, message: string): void {
     sessionId: "67c5901f-6793-4dbd-b98d-650ef2a385db",
     data: "hello",
     deliveryId: 1,
-    byteLength: 5,
+    byteLength: 5
   });
 
   assert(parsed.success, "sessionDataEventSchema should require delivery metadata");
@@ -25,7 +22,7 @@ function assert(condition: boolean, message: string): void {
     streamKind: "session",
     streamId: "session-1",
     deliveryId: 3,
-    consumedBytes: 1024,
+    consumedBytes: 1024
   });
 
   assert(parsed.success, "streamDeliveryAckSchema should accept session acknowledgements");
@@ -35,7 +32,7 @@ function assert(condition: boolean, message: string): void {
   const parsed = streamDeliveryAckSchema.safeParse({
     streamKind: "session",
     streamId: "session-1",
-    deliveryId: 3,
+    deliveryId: 3
   });
 
   assert(parsed.success === false, "session ack should require consumedBytes");
@@ -46,7 +43,7 @@ function assert(condition: boolean, message: string): void {
     streamKind: "monitor-system",
     streamId: "connection-1",
     deliveryId: 9,
-    consumedBytes: 0,
+    consumedBytes: 0
   });
 
   assert(

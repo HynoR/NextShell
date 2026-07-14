@@ -4,14 +4,16 @@ import path from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
   buildImportGroupPathFromRelativeFile,
-  scanConnectionImportDirectory,
+  scanConnectionImportDirectory
 } from "./connection-import-directory";
 
 describe("connection import directory scanning", () => {
   test("maps relative file directories into the import zone without selected root", () => {
     expect(buildImportGroupPathFromRelativeFile("alpha.json")).toBe("/import");
     expect(buildImportGroupPathFromRelativeFile("prod/alpha.json")).toBe("/import/prod");
-    expect(buildImportGroupPathFromRelativeFile("客户A/prod/alpha.json")).toBe("/import/客户A/prod");
+    expect(buildImportGroupPathFromRelativeFile("客户A/prod/alpha.json")).toBe(
+      "/import/客户A/prod"
+    );
   });
 
   test("recursively scans regular files and skips symbolic links", async () => {
@@ -30,14 +32,8 @@ describe("connection import directory scanning", () => {
 
       const result = await scanConnectionImportDirectory(root);
 
-      expect(result.files.map((file) => file.relativePath)).toEqual([
-        "prod/web.json",
-        "root.json",
-      ]);
-      expect(result.files.map((file) => file.groupPath)).toEqual([
-        "/import/prod",
-        "/import",
-      ]);
+      expect(result.files.map((file) => file.relativePath)).toEqual(["prod/web.json", "root.json"]);
+      expect(result.files.map((file) => file.groupPath)).toEqual(["/import/prod", "/import"]);
       if (symlinkCreated) {
         expect(result.warnings.some((warning) => warning.includes("linked.json"))).toBe(true);
       }

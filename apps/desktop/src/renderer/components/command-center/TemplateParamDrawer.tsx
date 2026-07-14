@@ -8,7 +8,7 @@ import {
   getCommandStorageKey,
   loadParamsFromStorage,
   saveParamsToStorage,
-  substituteTemplate,
+  substituteTemplate
 } from "../../utils/commandTemplate";
 
 export type TemplateExecutionMode = "single" | "batch";
@@ -28,7 +28,7 @@ export const TemplateParamDrawer = ({
   batchTargetCount,
   open,
   onExecute,
-  onClose,
+  onClose
 }: TemplateParamDrawerProps) => {
   const rememberParams = usePreferencesStore(
     (s) => s.preferences.commandCenter.rememberTemplateParams
@@ -36,10 +36,7 @@ export const TemplateParamDrawer = ({
 
   const [params, setParams] = useState<Record<string, string>>({});
 
-  const keys = useMemo(
-    () => (command ? extractPlaceholderKeys(command.command) : []),
-    [command]
-  );
+  const keys = useMemo(() => (command ? extractPlaceholderKeys(command.command) : []), [command]);
 
   useEffect(() => {
     if (!open || !command) return;
@@ -85,9 +82,7 @@ export const TemplateParamDrawer = ({
                 {mode === "batch"
                   ? `将对选定的 ${batchTargetCount} 个目标服务器批量执行，`
                   : "执行，"}
-                {rememberParams
-                  ? "将自动记住本次输入。"
-                  : "本次输入不会被记住。"}
+                {rememberParams ? "将自动记住本次输入。" : "本次输入不会被记住。"}
               </Typography.Text>
               {keys.map((key) => (
                 <div key={key}>
@@ -97,7 +92,7 @@ export const TemplateParamDrawer = ({
                     onChange={(e) =>
                       setParams((prev) => ({
                         ...prev,
-                        [key]: e.target.value,
+                        [key]: e.target.value
                       }))
                     }
                     placeholder={key}
@@ -106,9 +101,7 @@ export const TemplateParamDrawer = ({
               ))}
             </>
           ) : (
-            <Typography.Text type="secondary">
-              无需参数，点击「执行」直接运行。
-            </Typography.Text>
+            <Typography.Text type="secondary">无需参数，点击「执行」直接运行。</Typography.Text>
           )}
         </Space>
       )}

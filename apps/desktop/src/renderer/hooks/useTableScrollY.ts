@@ -23,7 +23,7 @@ export const useTableScrollY = (minimum = 48): [RefObject<HTMLDivElement | null>
         header?.getBoundingClientRect().height ?? 0,
         minimum
       );
-      setScrollY((current) => current === next ? current : next);
+      setScrollY((current) => (current === next ? current : next));
     };
 
     update();

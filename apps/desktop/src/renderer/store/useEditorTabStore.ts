@@ -74,5 +74,5 @@ export const useEditorTabStore = create<EditorTabState>((set, get) => ({
     }
     return undefined;
   },
-  getTab: (sessionId) => get().tabs.get(sessionId),
+  getTab: (sessionId) => get().tabs.get(sessionId)
 }));

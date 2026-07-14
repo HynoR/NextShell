@@ -12,7 +12,8 @@ const DEFAULT_START_DELAY_MS = 200;
 const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
 
-export type ProcessMonitorControllerState = "IDLE" | "STARTING" | "RUNNING" | "STOPPING" | "STOPPED";
+export type ProcessMonitorControllerState =
+  "IDLE" | "STARTING" | "RUNNING" | "STOPPING" | "STOPPED";
 
 export interface ProcessMonitorLogger {
   info: (message: string, metadata?: Record<string, unknown>) => void;
@@ -114,7 +115,7 @@ export class ProcessMonitorController {
   async start(): Promise<{ ok: true }> {
     if (this.suspended) {
       this.options.logger.info("[ProcessMonitor] start refused: suspended until reconnection", {
-        connectionId: this.options.connectionId,
+        connectionId: this.options.connectionId
       });
       return { ok: true };
     }
@@ -162,7 +163,7 @@ export class ProcessMonitorController {
       if (this.isGenerationActive(generation)) {
         this.startTicker(generation);
         this.options.logger.info("[ProcessMonitor] started (ps polling)", {
-          connectionId: this.options.connectionId,
+          connectionId: this.options.connectionId
         });
       }
 
@@ -207,7 +208,9 @@ export class ProcessMonitorController {
       this.state = "STOPPED";
     }
 
-    this.options.logger.info("[ProcessMonitor] stopped", { connectionId: this.options.connectionId });
+    this.options.logger.info("[ProcessMonitor] stopped", {
+      connectionId: this.options.connectionId
+    });
     return { ok: true };
   }
 
@@ -217,7 +220,9 @@ export class ProcessMonitorController {
   }
 
   private isGenerationActive(generation: number): boolean {
-    return generation === this.generation && (this.state === "STARTING" || this.state === "RUNNING");
+    return (
+      generation === this.generation && (this.state === "STARTING" || this.state === "RUNNING")
+    );
   }
 
   private startTicker(generation: number): void {
@@ -251,7 +256,7 @@ export class ProcessMonitorController {
     if (this.backoff.isActive()) {
       this.options.logger.debug("[ProcessMonitor] skipping poll: backoff active", {
         connectionId: this.options.connectionId,
-        remainingMs: this.backoff.remainingMs(),
+        remainingMs: this.backoff.remainingMs()
       });
       return;
     }
@@ -259,10 +264,13 @@ export class ProcessMonitorController {
     if (this.lastProbeDurationMs > this.pollIntervalMs * 0.5) {
       this.skipCount += 1;
       if (this.skipCount % 2 !== 0) {
-        this.options.logger.debug("[ProcessMonitor] throttling: slow probe detected, skipping frame", {
-          connectionId: this.options.connectionId,
-          lastProbeDurationMs: this.lastProbeDurationMs,
-        });
+        this.options.logger.debug(
+          "[ProcessMonitor] throttling: slow probe detected, skipping frame",
+          {
+            connectionId: this.options.connectionId,
+            lastProbeDurationMs: this.lastProbeDurationMs
+          }
+        );
         return;
       }
     } else {
@@ -271,7 +279,7 @@ export class ProcessMonitorController {
 
     if (this.inFlight) {
       this.options.logger.debug("[ProcessMonitor] drop frame: previous probe still running", {
-        connectionId: this.options.connectionId,
+        connectionId: this.options.connectionId
       });
       return;
     }
@@ -303,29 +311,32 @@ export class ProcessMonitorController {
         stdout: result.stdout.slice(0, 4096),
         exitCode: result.exitCode,
         durationMs: result.durationMs,
-        ok: result.exitCode === 0,
+        ok: result.exitCode === 0
       });
 
       if (result.exitCode !== 0) {
         this.consecutiveFailures += 1;
         this.options.logger.debug("[ProcessMonitor] drop frame: command non-zero exit", {
           connectionId: this.options.connectionId,
-          exitCode: result.exitCode,
+          exitCode: result.exitCode
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
           await this.options.closeConnection();
           this.backoff.apply();
           if (this.backoff.isExhausted()) {
             this.suspended = true;
-            this.options.logger.warn("[ProcessMonitor] server unresponsive, suspending monitor until reconnection", {
-              connectionId: this.options.connectionId,
-            });
+            this.options.logger.warn(
+              "[ProcessMonitor] server unresponsive, suspending monitor until reconnection",
+              {
+                connectionId: this.options.connectionId
+              }
+            );
             await this.stop();
             return;
           }
           this.options.logger.warn("[ProcessMonitor] backing off after consecutive failures", {
             connectionId: this.options.connectionId,
-            consecutiveFailures: this.consecutiveFailures,
+            consecutiveFailures: this.consecutiveFailures
           });
         }
         return;
@@ -353,17 +364,20 @@ export class ProcessMonitorController {
         exitCode: -1,
         durationMs: 0,
         ok: false,
-        error: errorMessage,
+        error: errorMessage
       });
 
       this.consecutiveFailures += 1;
-      if (error instanceof MonitorExecTimeoutError || this.consecutiveFailures >= this.maxConsecutiveFailures) {
+      if (
+        error instanceof MonitorExecTimeoutError ||
+        this.consecutiveFailures >= this.maxConsecutiveFailures
+      ) {
         await this.options.closeConnection();
         this.backoff.apply();
         if (this.backoff.isExhausted()) {
           this.options.logger.warn("[ProcessMonitor] server unresponsive, stopping monitor", {
             connectionId: this.options.connectionId,
-            reason: errorMessage,
+            reason: errorMessage
           });
           await this.stop();
           return;
@@ -371,13 +385,13 @@ export class ProcessMonitorController {
         this.options.logger.warn("[ProcessMonitor] backing off after probe failure", {
           connectionId: this.options.connectionId,
           consecutiveFailures: this.consecutiveFailures,
-          reason: errorMessage,
+          reason: errorMessage
         });
       }
 
       this.options.logger.warn("[ProcessMonitor] drop frame: probe execution failed", {
         connectionId: this.options.connectionId,
-        reason: errorMessage,
+        reason: errorMessage
       });
     }
   }

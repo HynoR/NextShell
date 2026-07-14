@@ -107,13 +107,7 @@ export interface WorkspaceRepoLocalState {
   remoteCommandsVersion?: string;
   lastSyncAt?: string;
   lastError?: string;
-  syncState:
-    | "idle"
-    | "syncing"
-    | "diverged"
-    | "error"
-    | "disabled"
-    | "synced";
+  syncState: "idle" | "syncing" | "diverged" | "error" | "disabled" | "synced";
 }
 
 export interface WorkspaceRepoConflict {
@@ -136,7 +130,8 @@ export interface WorkspaceRepoStatus {
   commandsVersion?: string;
 }
 
-export type RecycleBinReason = "delete" | "conflict_accept_remote" | "conflict_keep_local" | "danger_move";
+export type RecycleBinReason =
+  "delete" | "conflict_accept_remote" | "conflict_keep_local" | "danger_move";
 
 /** 回收站条目 — 物理隔离存储，恢复时总是创建新副本 */
 export interface RecycleBinEntry {
@@ -181,7 +176,11 @@ export interface CloudSyncResourceStateV2 {
 export const LOCAL_DEFAULT_SCOPE_KEY = "local-default";
 
 /** 构造 scopeKey: 对本地来说是 "local-default", 对云来说是 "<apiBaseUrl>-<workspaceName>" */
-export const buildScopeKey = (origin: { kind: OriginKind; apiBaseUrl?: string; workspaceName?: string }): string => {
+export const buildScopeKey = (origin: {
+  kind: OriginKind;
+  apiBaseUrl?: string;
+  workspaceName?: string;
+}): string => {
   if (origin.kind === "local") return LOCAL_DEFAULT_SCOPE_KEY;
   const base = (origin.apiBaseUrl ?? "").replace(/^https?:\/\//, "").replace(/[\/\s]+$/g, "");
   return `${base}-${origin.workspaceName ?? ""}`;
@@ -295,7 +294,8 @@ export interface ConnectionListQuery {
 }
 
 export type SessionStatus = "connecting" | "connected" | "disconnected" | "failed";
-export type SessionType = "terminal" | "processManager" | "networkMonitor" | "editor" | "quickTransfer";
+export type SessionType =
+  "terminal" | "processManager" | "networkMonitor" | "editor" | "quickTransfer";
 
 export interface SessionDescriptor {
   id: string;
@@ -855,10 +855,7 @@ export const normalizeBatchMaxConcurrency = (
   return value as number;
 };
 
-export const normalizeBatchRetryCount = (
-  value: number | undefined,
-  fallback: number
-): number => {
+export const normalizeBatchRetryCount = (value: number | undefined, fallback: number): number => {
   if (!Number.isInteger(value) || (value ?? 0) < 0 || (value ?? 0) > 5) {
     return fallback;
   }

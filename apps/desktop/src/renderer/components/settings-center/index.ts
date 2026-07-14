@@ -15,7 +15,7 @@ export type {
   LocalShellMode,
   LocalShellPreset,
   LocalShellPreference,
-  SaveFn,
+  SaveFn
 } from "./types";
 
 export {
@@ -23,5 +23,5 @@ export {
   EDITOR_PRESETS,
   DEFAULT_LOCAL_SHELL,
   readLocalShellPreference,
-  resolvePresetByColors,
+  resolvePresetByColors
 } from "./constants";

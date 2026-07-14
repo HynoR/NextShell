@@ -153,14 +153,24 @@ export interface NextShellApi {
   connection: {
     list: (query: ConnectionListQuery) => Promise<ConnectionProfile[]>;
     upsert: (payload: ConnectionUpsertInput) => Promise<ConnectionProfile>;
-    batchUpdateAuth: (payload: ConnectionBatchAuthUpdateInput) => Promise<ConnectionBatchAuthUpdateResult>;
+    batchUpdateAuth: (
+      payload: ConnectionBatchAuthUpdateInput
+    ) => Promise<ConnectionBatchAuthUpdateResult>;
     remove: (payload: ConnectionRemoveInput) => Promise<{ ok: true }>;
-    exportToFile: (payload: ConnectionExportInput) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
+    exportToFile: (
+      payload: ConnectionExportInput
+    ) => Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }>;
     exportBatch: (payload: ConnectionExportBatchInput) => Promise<ConnectionExportBatchResult>;
-    revealPassword: (payload: ConnectionRevealPasswordInput) => Promise<ConnectionRevealPasswordResult>;
+    revealPassword: (
+      payload: ConnectionRevealPasswordInput
+    ) => Promise<ConnectionRevealPasswordResult>;
     importPreview: (payload: ConnectionImportPreviewInput) => Promise<ConnectionImportEntry[]>;
-    importFinalShellPreview: (payload: ConnectionImportFinalShellPreviewInput) => Promise<ConnectionImportEntry[]>;
-    importDirectoryPreview: (payload: ConnectionImportDirectoryPreviewInput) => Promise<ConnectionImportDirectoryPreviewResult>;
+    importFinalShellPreview: (
+      payload: ConnectionImportFinalShellPreviewInput
+    ) => Promise<ConnectionImportEntry[]>;
+    importDirectoryPreview: (
+      payload: ConnectionImportDirectoryPreviewInput
+    ) => Promise<ConnectionImportDirectoryPreviewResult>;
     importExecute: (payload: ConnectionImportExecuteInput) => Promise<ConnectionImportResult>;
   };
   session: {
@@ -187,7 +197,9 @@ export interface NextShellApi {
     startNetwork: (payload: MonitorNetworkStartInput) => Promise<{ ok: true }>;
     stopNetwork: (payload: MonitorNetworkStopInput) => Promise<{ ok: true }>;
     onNetworkData: (listener: (event: NetworkSnapshot) => void) => SessionEventUnsubscribe;
-    getNetworkConnections: (payload: MonitorNetworkConnectionsInput) => Promise<NetworkConnection[]>;
+    getNetworkConnections: (
+      payload: MonitorNetworkConnectionsInput
+    ) => Promise<NetworkConnection[]>;
   };
   command: {
     exec: (payload: CommandExecInput) => Promise<CommandExecutionResult>;
@@ -201,8 +213,12 @@ export interface NextShellApi {
     update: (payload: AppPreferencesPatchInput) => Promise<AppPreferences>;
   };
   dialog: {
-    openFiles: (payload?: DialogOpenFilesInput) => Promise<{ canceled: boolean; filePaths: string[] }>;
-    openDirectory: (payload?: DialogOpenDirectoryInput) => Promise<{ canceled: boolean; filePath?: string }>;
+    openFiles: (
+      payload?: DialogOpenFilesInput
+    ) => Promise<{ canceled: boolean; filePaths: string[] }>;
+    openDirectory: (
+      payload?: DialogOpenDirectoryInput
+    ) => Promise<{ canceled: boolean; filePath?: string }>;
     openPath: (payload: DialogOpenPathInput) => Promise<{ ok: boolean; error?: string }>;
   };
   sftp: {
@@ -211,20 +227,26 @@ export interface NextShellApi {
     upload: (payload: SftpUploadInput) => Promise<{ ok: true }>;
     download: (payload: SftpDownloadInput) => Promise<{ ok: true }>;
     uploadPacked: (payload: SftpUploadPackedInput) => Promise<{ ok: true }>;
-    downloadPacked: (payload: SftpDownloadPackedInput) => Promise<{ ok: true; localArchivePath: string }>;
+    downloadPacked: (
+      payload: SftpDownloadPackedInput
+    ) => Promise<{ ok: true; localArchivePath: string }>;
     transferPacked: (payload: SftpTransferPackedInput) => Promise<{ ok: true }>;
     cancelTransfer: (payload: SftpTransferCancelInput) => Promise<{ ok: true; cancelled: boolean }>;
     mkdir: (payload: SftpMkdirInput) => Promise<{ ok: true }>;
     rename: (payload: SftpRenameInput) => Promise<{ ok: true }>;
     remove: (payload: SftpDeleteInput) => Promise<{ ok: true }>;
     editOpen: (payload: SftpEditOpenInput) => Promise<{ editId: string; localPath: string }>;
-    editOpenBuiltin: (payload: SftpEditOpenBuiltinInput) => Promise<{ editId: string; content: string }>;
+    editOpenBuiltin: (
+      payload: SftpEditOpenBuiltinInput
+    ) => Promise<{ editId: string; content: string }>;
     editSaveBuiltin: (payload: SftpEditSaveBuiltinInput) => Promise<{ ok: true }>;
     editStop: (payload: SftpEditStopInput) => Promise<{ ok: true }>;
     editStopAll: () => Promise<{ ok: true }>;
     editList: () => Promise<SftpEditSessionInfo[]>;
     onEditStatus: (listener: (event: SftpEditStatusEvent) => void) => SessionEventUnsubscribe;
-    onTransferStatus: (listener: (event: SftpTransferStatusEvent) => void) => SessionEventUnsubscribe;
+    onTransferStatus: (
+      listener: (event: SftpTransferStatusEvent) => void
+    ) => SessionEventUnsubscribe;
   };
   commandHistory: {
     list: (payload?: CommandHistoryListInput) => Promise<CommandHistoryEntry[]>;
@@ -247,12 +269,18 @@ export interface NextShellApi {
     workspaceAdd: (payload: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceUpdate: (payload: CloudSyncWorkspaceUpdateInput) => Promise<CloudSyncWorkspaceProfile>;
     workspaceRemove: (payload: CloudSyncWorkspaceRemoveInput) => Promise<{ ok: true }>;
-    workspaceExportToken: (payload: CloudSyncWorkspaceExportTokenInput) => Promise<{ token: string }>;
-    workspaceParseToken: (payload: CloudSyncWorkspaceParseTokenInput) => Promise<CloudSyncWorkspaceTokenDraft>;
+    workspaceExportToken: (
+      payload: CloudSyncWorkspaceExportTokenInput
+    ) => Promise<{ token: string }>;
+    workspaceParseToken: (
+      payload: CloudSyncWorkspaceParseTokenInput
+    ) => Promise<CloudSyncWorkspaceTokenDraft>;
     status: () => Promise<{ workspaces: WorkspaceRepoStatus[] }>;
     syncNow: (payload?: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
     listConflicts: () => Promise<Array<WorkspaceRepoConflict & { workspaceName: string }>>;
-    testConnection: (payload: CloudSyncTestConnectionInput) => Promise<{ ok: true; displayName?: string }>;
+    testConnection: (
+      payload: CloudSyncTestConnectionInput
+    ) => Promise<{ ok: true; displayName?: string }>;
     resolveConflict: (payload: CloudSyncResolveConflictInput) => Promise<{ ok: true }>;
     onStatus: (listener: (event: CloudSyncManagerStatusEvent) => void) => SessionEventUnsubscribe;
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
@@ -416,7 +444,6 @@ export type IpcInvokePayload<C extends IpcInvokeChannel> =
         : NonNullable<Parameters<IpcInvokeMethods[C]>[0]>
     : never;
 
-export type IpcInvokeResult<C extends IpcInvokeChannel> =
-  IpcInvokeMethods[C] extends AsyncApiMethod
-    ? Awaited<ReturnType<IpcInvokeMethods[C]>>
-    : never;
+export type IpcInvokeResult<C extends IpcInvokeChannel> = IpcInvokeMethods[C] extends AsyncApiMethod
+  ? Awaited<ReturnType<IpcInvokeMethods[C]>>
+  : never;

@@ -45,8 +45,14 @@
 }
 
 @keyframes monitor-expand {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .monitor-placeholder {
@@ -76,7 +82,10 @@
   font-size: 12px;
   font-family: var(--sans);
   cursor: pointer;
-  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  transition:
+    border-color 0.12s,
+    color 0.12s,
+    background 0.12s;
 }
 
 .monitor-manager-btn i {
@@ -93,4 +102,3 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
-

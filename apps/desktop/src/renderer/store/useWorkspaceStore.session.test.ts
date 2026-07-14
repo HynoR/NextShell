@@ -71,16 +71,17 @@ const resetStore = (): void => {
   useWorkspaceStore.getState().setSessionStatus("s1", "connected");
   const session = useWorkspaceStore.getState().sessions[0];
   assert(session !== undefined, "session should exist");
-  assertEqual(session?.reason, undefined, "reason should clear on non-failed status when reason omitted");
+  assertEqual(
+    session?.reason,
+    undefined,
+    "reason should clear on non-failed status when reason omitted"
+  );
 })();
 
 (() => {
   resetStore();
   useWorkspaceStore.setState({
-    sessions: [
-      createSession("s1", "c1", "connected"),
-      createSession("s2", "c2", "connected")
-    ],
+    sessions: [createSession("s1", "c1", "connected"), createSession("s2", "c2", "connected")],
     activeSessionId: "s1",
     activeConnectionId: "c1"
   });
@@ -93,10 +94,7 @@ const resetStore = (): void => {
 (() => {
   resetStore();
   useWorkspaceStore.setState({
-    sessions: [
-      createSession("s1", "c1", "connected"),
-      createSession("s2", "c2", "connected")
-    ],
+    sessions: [createSession("s1", "c1", "connected"), createSession("s2", "c2", "connected")],
     activeSessionId: "s1",
     activeConnectionId: "c1",
     networkRateHistory: {
@@ -110,7 +108,11 @@ const resetStore = (): void => {
   assertEqual(state.sessions[0]?.id, "s2", "remaining session should be from other connection");
   assertEqual(state.activeSessionId, "s2", "active session should align after bulk remove");
   assertEqual(state.activeConnectionId, "c2", "active connection should align after bulk remove");
-  assertEqual(state.networkRateHistory["c1:eth0"], undefined, "removed connection history should be pruned");
+  assertEqual(
+    state.networkRateHistory["c1:eth0"],
+    undefined,
+    "removed connection history should be pruned"
+  );
 })();
 
 (() => {
@@ -149,13 +151,25 @@ const resetStore = (): void => {
       c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", processes: [] }
     },
     networkSnapshots: {
-      c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", listeners: [], connections: [] }
+      c1: {
+        connectionId: "c1",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        listeners: [],
+        connections: []
+      }
     }
   });
   useWorkspaceStore.getState().removeSession("pm1");
   const state = useWorkspaceStore.getState();
-  assertEqual(state.processSnapshots.c1, undefined, "closing process manager should clear process snapshot");
-  assert(state.networkSnapshots.c1 !== undefined, "closing process manager should keep network snapshot");
+  assertEqual(
+    state.processSnapshots.c1,
+    undefined,
+    "closing process manager should clear process snapshot"
+  );
+  assert(
+    state.networkSnapshots.c1 !== undefined,
+    "closing process manager should keep network snapshot"
+  );
 })();
 
 (() => {
@@ -169,13 +183,25 @@ const resetStore = (): void => {
       c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", processes: [] }
     },
     networkSnapshots: {
-      c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", listeners: [], connections: [] }
+      c1: {
+        connectionId: "c1",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        listeners: [],
+        connections: []
+      }
     }
   });
   useWorkspaceStore.getState().removeSession("nm1");
   const state = useWorkspaceStore.getState();
-  assertEqual(state.networkSnapshots.c1, undefined, "closing network monitor should clear network snapshot");
-  assert(state.processSnapshots.c1 !== undefined, "closing network monitor should keep process snapshot");
+  assertEqual(
+    state.networkSnapshots.c1,
+    undefined,
+    "closing network monitor should clear network snapshot"
+  );
+  assert(
+    state.processSnapshots.c1 !== undefined,
+    "closing network monitor should keep process snapshot"
+  );
 })();
 
 (() => {
@@ -189,13 +215,24 @@ const resetStore = (): void => {
       c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", processes: [] }
     },
     networkSnapshots: {
-      c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", listeners: [], connections: [] }
+      c1: {
+        connectionId: "c1",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        listeners: [],
+        connections: []
+      }
     }
   });
   useWorkspaceStore.getState().removeSession("s1");
   const state = useWorkspaceStore.getState();
-  assert(state.processSnapshots.c1 !== undefined, "closing terminal should not clear process snapshot");
-  assert(state.networkSnapshots.c1 !== undefined, "closing terminal should not clear network snapshot");
+  assert(
+    state.processSnapshots.c1 !== undefined,
+    "closing terminal should not clear process snapshot"
+  );
+  assert(
+    state.networkSnapshots.c1 !== undefined,
+    "closing terminal should not clear network snapshot"
+  );
 })();
 
 (() => {
@@ -214,8 +251,18 @@ const resetStore = (): void => {
       c2: { connectionId: "c2", capturedAt: "2026-01-01T00:00:00.000Z", processes: [] }
     },
     networkSnapshots: {
-      c1: { connectionId: "c1", capturedAt: "2026-01-01T00:00:00.000Z", listeners: [], connections: [] },
-      c2: { connectionId: "c2", capturedAt: "2026-01-01T00:00:00.000Z", listeners: [], connections: [] }
+      c1: {
+        connectionId: "c1",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        listeners: [],
+        connections: []
+      },
+      c2: {
+        connectionId: "c2",
+        capturedAt: "2026-01-01T00:00:00.000Z",
+        listeners: [],
+        connections: []
+      }
     },
     networkRateHistory: {
       "c1:eth0": [{ inMbps: 1, outMbps: 1, capturedAt: "1" }],
@@ -226,8 +273,14 @@ const resetStore = (): void => {
   const state = useWorkspaceStore.getState();
   assertEqual(state.processSnapshots.c1, undefined, "bulk remove should clear process snapshot");
   assertEqual(state.networkSnapshots.c1, undefined, "bulk remove should clear network snapshot");
-  assert(state.processSnapshots.c2 !== undefined, "bulk remove should keep other process snapshots");
-  assert(state.networkSnapshots.c2 !== undefined, "bulk remove should keep other network snapshots");
+  assert(
+    state.processSnapshots.c2 !== undefined,
+    "bulk remove should keep other process snapshots"
+  );
+  assert(
+    state.networkSnapshots.c2 !== undefined,
+    "bulk remove should keep other network snapshots"
+  );
   assertEqual(state.activeSessionId, "s2", "bulk remove should advance active session");
   assertEqual(state.activeConnectionId, "c2", "bulk remove should advance active connection");
 })();
@@ -235,10 +288,7 @@ const resetStore = (): void => {
 (() => {
   resetStore();
   useWorkspaceStore.setState({
-    sessions: [
-      createSession("s1", "c1", "connected"),
-      createSession("s2", "c2", "connected")
-    ],
+    sessions: [createSession("s1", "c1", "connected"), createSession("s2", "c2", "connected")],
     activeSessionId: "s1",
     activeConnectionId: "c1"
   });
@@ -261,7 +311,11 @@ const resetStore = (): void => {
 
   useWorkspaceStore.getState().setActiveSession("local-1");
   const state = useWorkspaceStore.getState();
-  assertEqual(state.activeSessionId, "local-1", "setActiveSession should switch to local terminal session");
+  assertEqual(
+    state.activeSessionId,
+    "local-1",
+    "setActiveSession should switch to local terminal session"
+  );
   assertEqual(
     state.activeConnectionId,
     "c1",

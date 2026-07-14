@@ -21,7 +21,7 @@ const CONNECTION_STATES = new Set([
   "FIN-WAIT-2",
   "FIN_WAIT2",
   "LAST-ACK",
-  "LAST_ACK",
+  "LAST_ACK"
 ]);
 
 const parseAddress = (address: string): { ip: string; port: number } => {
@@ -35,7 +35,7 @@ const parseAddress = (address: string): { ip: string; port: number } => {
 
   return {
     ip: host || "*",
-    port: Number.isFinite(port) ? port : 0,
+    port: Number.isFinite(port) ? port : 0
   };
 };
 
@@ -113,7 +113,7 @@ export const parseSsOutput = (stdout: string): ParsedNetworkProbe => {
           ipCount: 0,
           connectionCount: 0,
           uploadBytes: 0,
-          downloadBytes: 0,
+          downloadBytes: 0
         });
       }
       continue;
@@ -131,7 +131,7 @@ export const parseSsOutput = (stdout: string): ParsedNetworkProbe => {
       remotePort,
       state,
       pid,
-      processName,
+      processName
     });
 
     for (const listener of listenerMap.values()) {
@@ -205,7 +205,7 @@ export const parseNetstatOutput = (stdout: string): ParsedNetworkProbe => {
           ipCount: 0,
           connectionCount: 0,
           uploadBytes: 0,
-          downloadBytes: 0,
+          downloadBytes: 0
         });
       }
       continue;
@@ -225,7 +225,7 @@ export const parseNetstatOutput = (stdout: string): ParsedNetworkProbe => {
       remotePort,
       state,
       pid,
-      processName,
+      processName
     });
   }
 

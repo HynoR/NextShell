@@ -61,61 +61,64 @@ export const useConnectionExportActions = ({
     });
   }, [modal]);
 
-  const promptExportEncryptionPassword = useCallback((defaultPassword?: string): Promise<string | null> => {
-    return new Promise((resolve) => {
-      let password = defaultPassword ?? "";
-      let confirmPassword = defaultPassword ?? "";
-      let settled = false;
-      const settle = (value: string | null): void => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
+  const promptExportEncryptionPassword = useCallback(
+    (defaultPassword?: string): Promise<string | null> => {
+      return new Promise((resolve) => {
+        let password = defaultPassword ?? "";
+        let confirmPassword = defaultPassword ?? "";
+        let settled = false;
+        const settle = (value: string | null): void => {
+          if (settled) return;
+          settled = true;
+          resolve(value);
+        };
 
-      modal.confirm({
-        title: "输入导出加密密码",
-        okText: "确认",
-        cancelText: "取消",
-        content: (
-          <div style={{ display: "grid", gap: 8 }}>
-            {defaultPassword ? (
-              <div style={{ fontSize: 12, color: "var(--t3)" }}>
-                已自动填充主密码，可按需修改。
-              </div>
-            ) : null}
-            <Input.Password
-              placeholder="请输入密码（至少 6 位）"
-              defaultValue={defaultPassword}
-              onChange={(event) => {
-                password = event.target.value;
-              }}
-            />
-            <Input.Password
-              placeholder="请再次输入密码"
-              defaultValue={defaultPassword}
-              onChange={(event) => {
-                confirmPassword = event.target.value;
-              }}
-            />
-          </div>
-        ),
-        onOk: async () => {
-          const trimmedPassword = password.trim();
-          const trimmedConfirm = confirmPassword.trim();
-          if (trimmedPassword.length < 6) {
-            message.warning("导出加密密码至少需要 6 个字符。");
-            throw new Error("invalid-export-password-length");
-          }
-          if (trimmedPassword !== trimmedConfirm) {
-            message.warning("两次输入的密码不一致。");
-            throw new Error("invalid-export-password-confirm");
-          }
-          settle(trimmedPassword);
-        },
-        onCancel: () => settle(null)
+        modal.confirm({
+          title: "输入导出加密密码",
+          okText: "确认",
+          cancelText: "取消",
+          content: (
+            <div style={{ display: "grid", gap: 8 }}>
+              {defaultPassword ? (
+                <div style={{ fontSize: 12, color: "var(--t3)" }}>
+                  已自动填充主密码，可按需修改。
+                </div>
+              ) : null}
+              <Input.Password
+                placeholder="请输入密码（至少 6 位）"
+                defaultValue={defaultPassword}
+                onChange={(event) => {
+                  password = event.target.value;
+                }}
+              />
+              <Input.Password
+                placeholder="请再次输入密码"
+                defaultValue={defaultPassword}
+                onChange={(event) => {
+                  confirmPassword = event.target.value;
+                }}
+              />
+            </div>
+          ),
+          onOk: async () => {
+            const trimmedPassword = password.trim();
+            const trimmedConfirm = confirmPassword.trim();
+            if (trimmedPassword.length < 6) {
+              message.warning("导出加密密码至少需要 6 个字符。");
+              throw new Error("invalid-export-password-length");
+            }
+            if (trimmedPassword !== trimmedConfirm) {
+              message.warning("两次输入的密码不一致。");
+              throw new Error("invalid-export-password-confirm");
+            }
+            settle(trimmedPassword);
+          },
+          onCancel: () => settle(null)
+        });
       });
-    });
-  }, [message, modal]);
+    },
+    [message, modal]
+  );
 
   const runSingleExport = useCallback(
     async (exportIds: string[]): Promise<void> => {

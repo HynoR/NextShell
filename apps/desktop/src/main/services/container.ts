@@ -1,4 +1,3 @@
-
 import fs from "node:fs";
 import path from "node:path";
 import { BrowserWindow } from "electron";
@@ -7,27 +6,21 @@ import type {
   ConnectionProfile,
   MonitorSnapshot,
   NetworkSnapshot,
-  ProcessSnapshot,
+  ProcessSnapshot
 } from "../../../../../packages/core/src/index";
-import {
-  SshConnection,
-  type SshConnectOptions,
-} from "../../../../../packages/ssh/src/index";
-import {
-  IPCChannel,
-  AUTH_REQUIRED_PREFIX,
-} from "../../../../../packages/shared/src/index";
+import { SshConnection, type SshConnectOptions } from "../../../../../packages/ssh/src/index";
+import { IPCChannel, AUTH_REQUIRED_PREFIX } from "../../../../../packages/shared/src/index";
 import type {
   DebugLogEntry,
   SessionAuthOverrideInput,
   SessionStatusEvent,
-  SftpTransferStatusEvent,
+  SftpTransferStatusEvent
 } from "../../../../../packages/shared/src/index";
 import {
   EncryptedSecretVault,
   KeytarPasswordCache,
   resolveDeviceKey,
-  verifyMasterPassword,
+  verifyMasterPassword
 } from "../../../../../packages/security/src/index";
 import {
   SQLiteConnectionRepository,
@@ -35,7 +28,7 @@ import {
   SQLiteSshKeyRepository,
   CachedSshKeyRepository,
   SQLiteProxyRepository,
-  CachedProxyRepository,
+  CachedProxyRepository
 } from "../../../../../packages/storage/src/index";
 import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
@@ -84,23 +77,31 @@ export const createServiceContainer = async (
   // database (where the ciphertext also lives) by storing it in the OS keychain
   // via keytar — otherwise copying nextshell.db yields both key and ciphertext.
   // Fall back to DB storage only when the keychain is unavailable.
-  const deviceKeyStore = new KeytarPasswordCache(options.keytarServiceName ?? "NextShell", "device-key");
+  const deviceKeyStore = new KeytarPasswordCache(
+    options.keytarServiceName ?? "NextShell",
+    "device-key"
+  );
   const deviceKey = await resolveDeviceKey(deviceKeyStore, {
     getLegacy: () => connections.getDeviceKey(),
     saveLegacy: (key) => connections.saveDeviceKey(key),
-    clearLegacy: () => connections.clearDeviceKey(),
+    clearLegacy: () => connections.clearDeviceKey()
   });
   if (deviceKey.storedIn === "keychain") {
     logger.info(
       deviceKey.migratedFromDatabase
         ? "[Security] migrated device key from database to system keychain"
-        : "[Security] device key resolved from system keychain",
+        : "[Security] device key resolved from system keychain"
     );
   } else {
-    logger.warn("[Security] system keychain unavailable; device key stored in local database (degraded)");
+    logger.warn(
+      "[Security] system keychain unavailable; device key stored in local database (degraded)"
+    );
   }
 
-  const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKey.deviceKeyHex, "hex"));
+  const vault = new EncryptedSecretVault(
+    connections.getSecretStore(),
+    Buffer.from(deviceKey.deviceKeyHex, "hex")
+  );
 
   // ─── Master Password ────────────────────────────────────────────────────
   const keytarServiceName = options.keytarServiceName ?? "NextShell";
@@ -123,7 +124,7 @@ export const createServiceContainer = async (
   const backupService = new BackupService({
     dataDir: options.dataDir,
     repo: connections,
-    getMasterPassword: () => masterPassword,
+    getMasterPassword: () => masterPassword
   });
 
   // ─── Audit ───────────────────────────────────────────────────────────────
@@ -156,7 +157,8 @@ export const createServiceContainer = async (
       const days = prefs.audit.retentionDays;
       if (days > 0) {
         const deleted = connections.purgeExpiredAuditLogs(days);
-        if (deleted > 0) logger.info(`[Audit] purged ${deleted} expired audit log(s) (retention=${days}d)`);
+        if (deleted > 0)
+          logger.info(`[Audit] purged ${deleted} expired audit log(s) (retention=${days}d)`);
       }
     } catch (error) {
       logger.warn("[Audit] failed to purge expired logs", error);
@@ -181,7 +183,10 @@ export const createServiceContainer = async (
     if (!sender.isDestroyed()) sender.send(IPCChannel.SessionStatus, payload);
   };
 
-  const sendTransferStatus = (sender: WebContents | undefined, payload: SftpTransferStatusEvent): void => {
+  const sendTransferStatus = (
+    sender: WebContents | undefined,
+    payload: SftpTransferStatusEvent
+  ): void => {
     if (!sender || sender.isDestroyed()) return;
     sender.send(IPCChannel.SftpTransferStatus, payload);
   };
@@ -197,8 +202,11 @@ export const createServiceContainer = async (
       // byteLength comes from the dispatcher's single measurement of the
       // frame — the same value used for in-flight accounting, so the
       // renderer's verbatim ack always drains the stream.
-      sessionId: streamId, data: chunk, deliveryId, byteLength,
-    }),
+      sessionId: streamId,
+      data: chunk,
+      deliveryId,
+      byteLength
+    })
   });
 
   // Monitor snapshots are low-rate (≤1Hz) and sent directly — no delivery-id/ack
@@ -206,16 +214,23 @@ export const createServiceContainer = async (
   // terminal byte stream above). A blocked-but-alive renderer can therefore queue
   // snapshots in the IPC channel at poll rate; that window is bounded by the
   // main process's "unresponsive" auto-reload and the hide/suspend poll pausing.
-  const createMonitorSnapshotEmitter = <TSnapshot>(channel: string) =>
+  const createMonitorSnapshotEmitter =
+    <TSnapshot>(channel: string) =>
     (sender: WebContents | undefined, snapshot: TSnapshot): void => {
       if (sender && !sender.isDestroyed() && !sender.isCrashed()) {
         sender.send(channel, snapshot);
       }
     };
 
-  const emitSystemMonitorSnapshot = createMonitorSnapshotEmitter<MonitorSnapshot>(IPCChannel.MonitorSystemData);
-  const emitProcessMonitorSnapshot = createMonitorSnapshotEmitter<ProcessSnapshot>(IPCChannel.MonitorProcessData);
-  const emitNetworkMonitorSnapshot = createMonitorSnapshotEmitter<NetworkSnapshot>(IPCChannel.MonitorNetworkData);
+  const emitSystemMonitorSnapshot = createMonitorSnapshotEmitter<MonitorSnapshot>(
+    IPCChannel.MonitorSystemData
+  );
+  const emitProcessMonitorSnapshot = createMonitorSnapshotEmitter<ProcessSnapshot>(
+    IPCChannel.MonitorProcessData
+  );
+  const emitNetworkMonitorSnapshot = createMonitorSnapshotEmitter<NetworkSnapshot>(
+    IPCChannel.MonitorNetworkData
+  );
 
   // ─── Connection Pool ─────────────────────────────────────────────────────
   const remoteEditManager = new RemoteEditManager({ getConnection: ensureConnection });
@@ -228,19 +243,26 @@ export const createServiceContainer = async (
 
   const resolveConnectOptions = async (
     profile: ConnectionProfile,
-    authOverride?: SessionAuthOverrideInput,
+    authOverride?: SessionAuthOverrideInput
   ): Promise<SshConnectOptions> => {
     let proxy: SshConnectOptions["proxy"];
     if (profile.proxyId) {
       const proxyProfile = proxyRepo.getById(profile.proxyId);
-      if (!proxyProfile) throw new Error("Referenced proxy profile not found. Please update the connection.");
-      const proxySecret = proxyProfile.credentialRef ? await vault.readCredential(proxyProfile.credentialRef) : undefined;
+      if (!proxyProfile)
+        throw new Error("Referenced proxy profile not found. Please update the connection.");
+      const proxySecret = proxyProfile.credentialRef
+        ? await vault.readCredential(proxyProfile.credentialRef)
+        : undefined;
       proxy = {
-        type: proxyProfile.proxyType, host: proxyProfile.host, port: proxyProfile.port,
+        type: proxyProfile.proxyType,
+        host: proxyProfile.host,
+        port: proxyProfile.port,
         username: proxyProfile.username,
-        password: proxyProfile.proxyType === "socks5" && proxyProfile.username ? proxySecret : undefined,
+        password:
+          proxyProfile.proxyType === "socks5" && proxyProfile.username ? proxySecret : undefined
       };
-      if (!proxy.host || proxy.port <= 0) throw new Error("Proxy host and port are required when proxy is enabled.");
+      if (!proxy.host || proxy.port <= 0)
+        throw new Error("Proxy host and port are required when proxy is enabled.");
     }
 
     const username = authOverride?.username?.trim() || profile.username.trim();
@@ -251,29 +273,40 @@ export const createServiceContainer = async (
     const intervalCandidate = profile.keepAliveIntervalSec ?? prefs.ssh.keepAliveIntervalSec;
     const keepAliveIntervalSec =
       Number.isInteger(intervalCandidate) && intervalCandidate >= 5 && intervalCandidate <= 600
-        ? intervalCandidate : prefs.ssh.keepAliveIntervalSec;
+        ? intervalCandidate
+        : prefs.ssh.keepAliveIntervalSec;
     const keepaliveInterval = keepAliveEnabled ? keepAliveIntervalSec * 1000 : 0;
 
     const base: Omit<SshConnectOptions, "authType"> = {
-      host: profile.host, port: profile.port, username,
+      host: profile.host,
+      port: profile.port,
+      username,
       hostFingerprint: profile.hostFingerprint,
       strictHostKeyChecking: profile.strictHostKeyChecking,
-      proxy, keepaliveInterval,
+      proxy,
+      keepaliveInterval
     };
 
-    const secret = profile.credentialRef ? await vault.readCredential(profile.credentialRef) : undefined;
+    const secret = profile.credentialRef
+      ? await vault.readCredential(profile.credentialRef)
+      : undefined;
     const effectiveAuthType = authOverride?.authType ?? profile.authType;
-    const isPasswordStyleAuth = effectiveAuthType === "password" || effectiveAuthType === "interactive";
+    const isPasswordStyleAuth =
+      effectiveAuthType === "password" || effectiveAuthType === "interactive";
 
     if (isPasswordStyleAuth) {
       const password =
         authOverride?.authType === "password" || authOverride?.authType === "interactive"
           ? authOverride.password
-          : profile.authType === "password" || profile.authType === "interactive" ? secret : undefined;
+          : profile.authType === "password" || profile.authType === "interactive"
+            ? secret
+            : undefined;
       if (!password) {
-        throw new Error(effectiveAuthType === "interactive"
-          ? "Interactive auth requires password"
-          : "Password credential is missing. Please provide password.");
+        throw new Error(
+          effectiveAuthType === "interactive"
+            ? "Interactive auth requires password"
+            : "Password credential is missing. Please provide password."
+        );
       }
       return { ...base, authType: effectiveAuthType, password };
     }
@@ -287,12 +320,15 @@ export const createServiceContainer = async (
         passphrase = authOverride.passphrase;
       } else if (effectiveKeyId) {
         const keyProfile = sshKeyRepo.getById(effectiveKeyId);
-        if (!keyProfile) throw new Error("Referenced SSH key not found. Please update the connection.");
+        if (!keyProfile)
+          throw new Error("Referenced SSH key not found. Please update the connection.");
         privateKey = await vault.readCredential(keyProfile.keyContentRef);
-        if (keyProfile.passphraseRef) passphrase = await vault.readCredential(keyProfile.passphraseRef);
+        if (keyProfile.passphraseRef)
+          passphrase = await vault.readCredential(keyProfile.passphraseRef);
         if (authOverride?.passphrase) passphrase = authOverride.passphrase;
       }
-      if (!privateKey) throw new Error("Private key auth requires an SSH key. Please select a key.");
+      if (!privateKey)
+        throw new Error("Private key auth requires an SSH key. Please select a key.");
       return { ...base, authType: "privateKey", privateKey, passphrase };
     }
 
@@ -305,29 +341,40 @@ export const createServiceContainer = async (
     try {
       const latest = connections.getById(connectionId);
       if (!latest || latest.hostFingerprint?.trim()) return;
-      connections.save({ ...latest, hostFingerprint: fingerprint, updatedAt: new Date().toISOString() });
+      connections.save({
+        ...latest,
+        hostFingerprint: fingerprint,
+        updatedAt: new Date().toISOString()
+      });
       appendAuditLogIfEnabled({
         action: "connection.host_fingerprint_pinned",
         level: "info",
         connectionId,
         message: "Pinned host key fingerprint on first connect (TOFU)",
-        metadata: { fingerprint },
+        metadata: { fingerprint }
       });
       logger.info("[Security] pinned host fingerprint (TOFU)", { connectionId, fingerprint });
     } catch (error) {
-      logger.warn("[Security] failed to pin host fingerprint", { connectionId, error: normalizeError(error) });
+      logger.warn("[Security] failed to pin host fingerprint", {
+        connectionId,
+        error: normalizeError(error)
+      });
     }
   };
 
   const establishConnection = async (
-    connectionId: string, profile: ConnectionProfile, authOverride?: SessionAuthOverrideInput,
+    connectionId: string,
+    profile: ConnectionProfile,
+    authOverride?: SessionAuthOverrideInput
   ): Promise<SshConnection> => {
     logger.info("[SSH] connecting", { connectionId, host: profile.host, port: profile.port });
     const connectOptions = await resolveConnectOptions(profile, authOverride);
     let observedFingerprint: string | undefined;
     const ssh = await SshConnection.connect({
       ...connectOptions,
-      onHostFingerprint: (fingerprint) => { observedFingerprint = fingerprint; },
+      onHostFingerprint: (fingerprint) => {
+        observedFingerprint = fingerprint;
+      }
     });
     if (observedFingerprint && !profile.hostFingerprint?.trim()) {
       pinHostFingerprint(connectionId, observedFingerprint);
@@ -342,7 +389,10 @@ export const createServiceContainer = async (
     return ssh;
   };
 
-  function ensureConnection(connectionId: string, authOverride?: SessionAuthOverrideInput): Promise<SshConnection> {
+  function ensureConnection(
+    connectionId: string,
+    authOverride?: SessionAuthOverrideInput
+  ): Promise<SshConnection> {
     const existing = activeConnections.get(connectionId);
     if (existing) return Promise.resolve(existing);
     if (authOverride) {
@@ -354,12 +404,14 @@ export const createServiceContainer = async (
     const profile = getConnectionOrThrow(connectionId);
     const promise = establishConnection(connectionId, profile);
     connectionPromises.set(connectionId, promise);
-    return promise.finally(() => { connectionPromises.delete(connectionId); });
+    return promise.finally(() => {
+      connectionPromises.delete(connectionId);
+    });
   }
 
   const closeConnectionIfIdle = async (connectionId: string): Promise<void> => {
     const stillUsed = Array.from(activeSessions.values()).some(
-      (s) => s.kind === "remote" && s.connectionId === connectionId,
+      (s) => s.kind === "remote" && s.connectionId === connectionId
     );
     if (stillUsed) return;
     await monitorSvc.disposeAllMonitorSessions(connectionId);
@@ -372,23 +424,35 @@ export const createServiceContainer = async (
 
   const hasVisibleTerminalAlive = (connectionId: string): boolean =>
     Array.from(activeSessions.values()).some(
-      (s) => s.kind === "remote" && s.connectionId === connectionId
-        && s.descriptor.type === "terminal" && s.descriptor.status === "connected",
+      (s) =>
+        s.kind === "remote" &&
+        s.connectionId === connectionId &&
+        s.descriptor.type === "terminal" &&
+        s.descriptor.status === "connected"
     );
 
   const assertMonitorEnabled = (connectionId: string): ConnectionProfile => {
     const profile = getConnectionOrThrow(connectionId);
-    if (!profile.monitorSession) throw new Error("当前连接未启用 Monitor Session，请在连接配置中开启后重试。");
+    if (!profile.monitorSession)
+      throw new Error("当前连接未启用 Monitor Session，请在连接配置中开启后重试。");
     return profile;
   };
 
   const assertVisibleTerminalAlive = (connectionId: string): void => {
-    if (!hasVisibleTerminalAlive(connectionId)) throw new Error("请先连接 SSH 终端以启动 Monitor Session。");
+    if (!hasVisibleTerminalAlive(connectionId))
+      throw new Error("请先连接 SSH 终端以启动 Monitor Session。");
   };
 
-  const establishHiddenConnection = async (connectionId: string, tag: string): Promise<SshConnection> => {
+  const establishHiddenConnection = async (
+    connectionId: string,
+    tag: string
+  ): Promise<SshConnection> => {
     const profile = assertMonitorEnabled(connectionId);
-    logger.info(`[${tag}] connecting hidden SSH`, { connectionId, host: profile.host, port: profile.port });
+    logger.info(`[${tag}] connecting hidden SSH`, {
+      connectionId,
+      host: profile.host,
+      port: profile.port
+    });
     const ssh = await SshConnection.connect(await resolveConnectOptions(profile));
     logger.info(`[${tag}] hidden SSH connected`, { connectionId });
     return ssh;
@@ -397,7 +461,7 @@ export const createServiceContainer = async (
   // ─── Sub-Service Instantiation ───────────────────────────────────────────
   const prefsSvc = new PreferencesDialogService({
     connections,
-    auditEnabledForSession,
+    auditEnabledForSession
   });
 
   const networkToolSvc = new NetworkToolService({ connections });
@@ -412,7 +476,7 @@ export const createServiceContainer = async (
     emitDebugLog: (entry) => prefsSvc.emitDebugLog(entry),
     emitSystemSnapshot: emitSystemMonitorSnapshot,
     emitProcessSnapshot: emitProcessMonitorSnapshot,
-    emitNetworkSnapshot: emitNetworkMonitorSnapshot,
+    emitNetworkSnapshot: emitNetworkMonitorSnapshot
   });
 
   const sftpSvc = new SftpService({
@@ -420,11 +484,14 @@ export const createServiceContainer = async (
     ensureConnection,
     remoteEditManager,
     appendAuditLogIfEnabled,
-    sendTransferStatus,
+    sendTransferStatus
   });
 
   const connectionSvc = new ConnectionService({
-    connections, sshKeyRepo, proxyRepo, vault,
+    connections,
+    sshKeyRepo,
+    proxyRepo,
+    vault,
     activeSessions,
     disposeAllMonitorSessions: (id) => monitorSvc.disposeAllMonitorSessions(id),
     closeConnectionIfIdle,
@@ -432,15 +499,20 @@ export const createServiceContainer = async (
     monitorStates: monitorSvc.monitorStates,
     getCloudSyncManager: () => cloudSyncManager,
     appendAuditLogIfEnabled,
-    sendSessionStatus,
+    sendSessionStatus
   });
 
   const backupPasswordSvc = new BackupPasswordService({
-    connections, vault, keytarCache, backupService,
+    connections,
+    vault,
+    keytarCache,
+    backupService,
     getMasterPassword: () => masterPassword,
-    setMasterPassword: (p) => { masterPassword = p; },
+    setMasterPassword: (p) => {
+      masterPassword = p;
+    },
     tryRecallMasterPassword,
-    appendAuditLogIfEnabled,
+    appendAuditLogIfEnabled
   });
 
   let cloudSyncManager: CloudSyncManager | undefined;
@@ -453,17 +525,19 @@ export const createServiceContainer = async (
     markWorkspaceCommandsDirty: (workspaceId) => {
       cloudSyncManager?.markWorkspaceCommandsDirty(workspaceId);
     },
-    appendAuditLogIfEnabled,
+    appendAuditLogIfEnabled
   });
 
   const importExportSvc = new ImportExportService({
-    connections, vault,
+    connections,
+    vault,
     upsertConnection: (input) => connectionSvc.upsertConnection(input),
-    appendAuditLogIfEnabled,
+    appendAuditLogIfEnabled
   });
 
   const sessionSvc = new SessionService({
-    connections, activeSessions,
+    connections,
+    activeSessions,
     getConnectionOrThrow,
     ensureConnection,
     closeConnectionIfIdle,
@@ -473,7 +547,7 @@ export const createServiceContainer = async (
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
     clearMonitorSuspension: (id) => monitorSvc.clearMonitorSuspension(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
-    persistAuthOverride: (id, override) => connectionSvc.persistSuccessfulAuthOverride(id, override),
+    persistAuthOverride: (id, override) => connectionSvc.persistSuccessfulAuthOverride(id, override)
   });
 
   // Cloud Sync Manager
@@ -488,7 +562,11 @@ export const createServiceContainer = async (
     saveProxy: (proxy) => proxyRepo.save(proxy),
     removeProxy: (id) => proxyRepo.remove(id),
     readCredential: async (ref) => {
-      try { return await vault.readCredential(ref); } catch { return undefined; }
+      try {
+        return await vault.readCredential(ref);
+      } catch {
+        return undefined;
+      }
     },
     storeCredential: (name, secret) => vault.storeCredential(name, secret),
     deleteCredential: (ref) => vault.deleteCredential(ref),
@@ -503,9 +581,11 @@ export const createServiceContainer = async (
       connections.removeWorkspaceRepoConflict(wId, resourceType, resourceId),
     clearWorkspaceRepoConflicts: (wId) => connections.clearWorkspaceRepoConflicts(wId),
     listWorkspaceCommands: (wId) => connections.listWorkspaceCommands(wId),
-    replaceWorkspaceCommands: (wId, commands) => connections.replaceWorkspaceCommands(wId, commands),
+    replaceWorkspaceCommands: (wId, commands) =>
+      connections.replaceWorkspaceCommands(wId, commands),
     getWorkspaceCommandsVersion: (wId) => connections.getWorkspaceCommandsVersion(wId),
-    saveWorkspaceCommandsVersion: (wId, version) => connections.saveWorkspaceCommandsVersion(wId, version),
+    saveWorkspaceCommandsVersion: (wId, version) =>
+      connections.saveWorkspaceCommandsVersion(wId, version),
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
     listRecycleBinEntries: () => connections.listRecycleBinEntries(),
     removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
@@ -513,7 +593,11 @@ export const createServiceContainer = async (
       await vault.storeCredential(`cloud-sync-ws-${wId}`, pwd);
     },
     getWorkspacePassword: async (wId) => {
-      try { return await vault.readCredential(cloudSyncWorkspacePasswordRef(wId)); } catch { return undefined; }
+      try {
+        return await vault.readCredential(cloudSyncWorkspacePasswordRef(wId));
+      } catch {
+        return undefined;
+      }
     },
     deleteWorkspacePassword: async (wId) => {
       await vault.deleteCredential(cloudSyncWorkspacePasswordRef(wId)).catch(() => {});
@@ -521,7 +605,8 @@ export const createServiceContainer = async (
     getJsonSetting: (key) => connections.getJsonSetting(key),
     saveJsonSetting: (key, value) => connections.saveJsonSetting(key, value),
     broadcastStatus: (status) => broadcastToAllWindows(IPCChannel.CloudSyncStatusEvent, status),
-    broadcastApplied: (wId) => broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId }),
+    broadcastApplied: (wId) =>
+      broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId })
   });
   cloudSyncManager.initialize();
 
@@ -535,7 +620,7 @@ export const createServiceContainer = async (
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
     listRecycleBinEntries: () => connections.listRecycleBinEntries(),
     removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
-    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload),
+    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload)
   });
 
   // ─── Dispose ─────────────────────────────────────────────────────────────
@@ -596,6 +681,6 @@ export const createServiceContainer = async (
     resumeMonitors: () => monitorSvc.resumeAll(),
     getAppPreferences: () => prefsSvc.getAppPreferences(),
 
-    dispose,
+    dispose
   };
 };

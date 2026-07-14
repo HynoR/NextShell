@@ -20,29 +20,26 @@ export const useCommandHistory = () => {
     void reload();
   }, [reload]);
 
-  const push = useCallback(
-    async (command: string) => {
-      const trimmed = command.trim();
-      if (!trimmed) {
-        return;
-      }
+  const push = useCallback(async (command: string) => {
+    const trimmed = command.trim();
+    if (!trimmed) {
+      return;
+    }
 
-      // Optimistic: prepend immediately
-      const optimisticEntry: CommandHistoryEntry = {
-        command: trimmed,
-        useCount: 1,
-        lastUsedAt: new Date().toISOString()
-      };
-      setEntries((prev) => applyOptimisticCommandHistoryPush(prev, optimisticEntry));
-      navigatorRef.current = { index: -1, snapshot: [] };
+    // Optimistic: prepend immediately
+    const optimisticEntry: CommandHistoryEntry = {
+      command: trimmed,
+      useCount: 1,
+      lastUsedAt: new Date().toISOString()
+    };
+    setEntries((prev) => applyOptimisticCommandHistoryPush(prev, optimisticEntry));
+    navigatorRef.current = { index: -1, snapshot: [] };
 
-      // Fire-and-forget: persist to DB
-      window.nextshell.commandHistory.push({ command: trimmed }).catch(() => {
-        // Silent — will be synced on next reload
-      });
-    },
-    []
-  );
+    // Fire-and-forget: persist to DB
+    window.nextshell.commandHistory.push({ command: trimmed }).catch(() => {
+      // Silent — will be synced on next reload
+    });
+  }, []);
 
   const remove = useCallback(
     async (command: string) => {

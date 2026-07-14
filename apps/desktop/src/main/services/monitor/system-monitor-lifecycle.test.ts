@@ -64,9 +64,9 @@ await (async () => {
       return {
         stdout: buildProbeOutput(command, sample),
         stderr: "",
-        exitCode: 0,
+        exitCode: 0
       };
-    },
+    }
   } as unknown as SshConnection;
 
   const controller = new SystemMonitorController({
@@ -88,26 +88,33 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
       pollIntervalMs: 20,
       cpuMemSwapIntervalTicks: 1,
       diskIntervalTicks: 1000,
       interfaceMetaIntervalTicks: 1000,
-      startDelayMs: 0,
-    },
+      startDelayMs: 0
+    }
   });
 
   await controller.start();
   await wait(60);
-  assertTrue(getConnectionCalls > 0, "controller should acquire hidden monitor connection after start");
+  assertTrue(
+    getConnectionCalls > 0,
+    "controller should acquire hidden monitor connection after start"
+  );
   assertTrue(snapshots.length > 0, "controller should emit snapshots while running");
 
   visible = false;
   await wait(80);
 
-  assertEqual(controller.currentState, "STOPPED", "controller should stop when last visible terminal disappears");
+  assertEqual(
+    controller.currentState,
+    "STOPPED",
+    "controller should stop when last visible terminal disappears"
+  );
   assertTrue(closeCalls > 0, "controller should close hidden monitor connection during stop");
 
   receiver = false;
@@ -123,10 +130,11 @@ await (async () => {
 })();
 
 await (async () => {
-  const writes: Array<{ selectedNetworkInterface?: string; networkInterfaceOptions?: string[] }> = [];
+  const writes: Array<{ selectedNetworkInterface?: string; networkInterfaceOptions?: string[] }> =
+    [];
   let selection = {
     selectedNetworkInterface: "eth0",
-    networkInterfaceOptions: ["ens5"],
+    networkInterfaceOptions: ["ens5"]
   };
 
   const fakeConnection = {
@@ -157,12 +165,12 @@ await (async () => {
           "---NS_NETCOUNTERS---",
           "1000",
           "1100",
-          "---NS_PROBE_END---",
+          "---NS_PROBE_END---"
         ].join("\n"),
         stderr: "",
-        exitCode: 0,
+        exitCode: 0
       };
-    },
+    }
   } as unknown as SshConnection;
 
   const controller = new SystemMonitorController({
@@ -180,12 +188,12 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
       pollIntervalMs: 100,
-      startDelayMs: 0,
-    },
+      startDelayMs: 0
+    }
   });
 
   await controller.start();

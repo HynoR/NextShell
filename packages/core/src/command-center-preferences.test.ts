@@ -1,7 +1,4 @@
-import {
-  normalizeBatchMaxConcurrency,
-  normalizeBatchRetryCount
-} from "./index";
+import { normalizeBatchMaxConcurrency, normalizeBatchRetryCount } from "./index";
 
 const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   if (actual !== expected) {
@@ -33,24 +30,12 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
 })();
 
 (() => {
-  assertEqual(
-    normalizeBatchRetryCount(3, 1),
-    3,
-    "batch retry count should accept in-range values"
-  );
+  assertEqual(normalizeBatchRetryCount(3, 1), 3, "batch retry count should accept in-range values");
   assertEqual(
     normalizeBatchRetryCount(undefined, 1),
     1,
     "batch retry count should fallback on undefined"
   );
-  assertEqual(
-    normalizeBatchRetryCount(-1, 1),
-    1,
-    "batch retry count should fallback below min"
-  );
-  assertEqual(
-    normalizeBatchRetryCount(8, 1),
-    1,
-    "batch retry count should fallback above max"
-  );
+  assertEqual(normalizeBatchRetryCount(-1, 1), 1, "batch retry count should fallback below min");
+  assertEqual(normalizeBatchRetryCount(8, 1), 1, "batch retry count should fallback above max");
 })();

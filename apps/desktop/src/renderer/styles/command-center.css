@@ -158,9 +158,16 @@
   padding: 4px 0;
 }
 
-.cc-body::-webkit-scrollbar { width: 4px; }
-.cc-body::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
-.cc-body::-webkit-scrollbar-track { background: transparent; }
+.cc-body::-webkit-scrollbar {
+  width: 4px;
+}
+.cc-body::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 4px;
+}
+.cc-body::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 /* Empty state */
 .cc-empty {
@@ -203,7 +210,9 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
   user-select: none;
   text-align: left;
 }
@@ -242,8 +251,14 @@
 }
 
 @keyframes cc-expand {
-  from { opacity: 0; transform: translateY(-3px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ── Command item (row) ───────────────────────────────────── */
@@ -377,8 +392,12 @@
   background: var(--bg-elevated);
 }
 
-.cc-batch-ok { color: var(--ok); }
-.cc-batch-fail { color: var(--err); }
+.cc-batch-ok {
+  color: var(--ok);
+}
+.cc-batch-fail {
+  color: var(--err);
+}
 
 .cc-batch-items {
   max-height: 200px;
@@ -389,9 +408,16 @@
   gap: 4px;
 }
 
-.cc-batch-items::-webkit-scrollbar { width: 4px; }
-.cc-batch-items::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
-.cc-batch-items::-webkit-scrollbar-track { background: transparent; }
+.cc-batch-items::-webkit-scrollbar {
+  width: 4px;
+}
+.cc-batch-items::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 4px;
+}
+.cc-batch-items::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 .cc-batch-drawer .cc-batch-items {
   max-height: calc(100vh - 240px);
@@ -438,6 +464,13 @@
   color: #fca5a5;
 }
 
-.cc-output::-webkit-scrollbar { width: 3px; }
-.cc-output::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
-.cc-output::-webkit-scrollbar-track { background: transparent; }
+.cc-output::-webkit-scrollbar {
+  width: 3px;
+}
+.cc-output::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 3px;
+}
+.cc-output::-webkit-scrollbar-track {
+  background: transparent;
+}

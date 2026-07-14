@@ -1,8 +1,5 @@
 import { DEFAULT_APP_PREFERENCES } from "../../core/src/index";
-import {
-  appPreferencesPatchSchema,
-  appPreferencesSchema
-} from "./contracts";
+import { appPreferencesPatchSchema, appPreferencesSchema } from "./contracts";
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {
@@ -11,7 +8,10 @@ const assert = (condition: boolean, message: string): void => {
 };
 
 (() => {
-  assert(DEFAULT_APP_PREFERENCES.audit.enabled === false, "audit should default to disabled in core defaults");
+  assert(
+    DEFAULT_APP_PREFERENCES.audit.enabled === false,
+    "audit should default to disabled in core defaults"
+  );
 
   const parsed = appPreferencesSchema.parse({});
   assert(parsed.audit.enabled === false, "audit should default to disabled in schema parsing");
@@ -28,7 +28,10 @@ const assert = (condition: boolean, message: string): void => {
     }
   });
 
-  assert(parsed.success, "appPreferencesSchema should accept window preferences without layout defaults");
+  assert(
+    parsed.success,
+    "appPreferencesSchema should accept window preferences without layout defaults"
+  );
   if (!parsed.success) {
     return;
   }
@@ -64,7 +67,10 @@ const assert = (condition: boolean, message: string): void => {
     }
   });
 
-  assert(parsed.success, "appPreferencesSchema should accept terminal preferences without explicit fontFamily");
+  assert(
+    parsed.success,
+    "appPreferencesSchema should accept terminal preferences without explicit fontFamily"
+  );
   if (!parsed.success) {
     return;
   }
@@ -78,7 +84,7 @@ const assert = (condition: boolean, message: string): void => {
 (() => {
   const parsed = appPreferencesPatchSchema.safeParse({
     terminal: {
-      fontFamily: "\"Fira Code\", monospace"
+      fontFamily: '"Fira Code", monospace'
     }
   });
 

@@ -37,7 +37,7 @@ const trimQuotedValue = (raw: string): string => {
   }
 
   const startsWithQuote =
-    (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"));
 
   if (!startsWithQuote) {
@@ -133,7 +133,8 @@ export const parseCpuInfo = (raw: string): SystemCpuInfo => {
     }
   }
 
-  const normalizedCoreCount = coreCount > 0 ? coreCount : fallbackCpuCores > 0 ? fallbackCpuCores : 1;
+  const normalizedCoreCount =
+    coreCount > 0 ? coreCount : fallbackCpuCores > 0 ? fallbackCpuCores : 1;
   return {
     modelName: modelName || "Unknown CPU",
     coreCount: normalizedCoreCount,

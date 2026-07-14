@@ -70,18 +70,16 @@ export const QuickConnectBar = ({
       new Set(
         sessions
           .filter((s) => s.status === "connected" && s.type === "terminal")
-          .map((s) => s.connectionId),
+          .map((s) => s.connectionId)
       ),
-    [sessions],
+    [sessions]
   );
 
   const recentConnections = useMemo<ResultItem[]>(() => {
     return [...connections]
       .filter((c) => c.lastConnectedAt)
       .sort(
-        (a, b) =>
-          new Date(b.lastConnectedAt!).getTime() -
-          new Date(a.lastConnectedAt!).getTime(),
+        (a, b) => new Date(b.lastConnectedAt!).getTime() - new Date(a.lastConnectedAt!).getTime()
       )
       .slice(0, MAX_RECENT)
       .map((c) => ({ connection: c, isConnected: connectedIds.has(c.id) }));
@@ -255,12 +253,7 @@ export const QuickConnectBar = ({
     } finally {
       setQuickCreateSaving(false);
     }
-  }, [
-    handleClose,
-    onQuickCreateConnection,
-    quickCreateForm,
-    quickCreateSaving
-  ]);
+  }, [handleClose, onQuickCreateConnection, quickCreateForm, quickCreateSaving]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -318,18 +311,15 @@ export const QuickConnectBar = ({
       onQuickConnectInput,
       open,
       quickInputMode,
-      submitting,
-    ],
+      submitting
+    ]
   );
 
   // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         handleClose();
       }
     };
@@ -337,19 +327,14 @@ export const QuickConnectBar = ({
     return () => document.removeEventListener("mousedown", handler);
   }, [open, handleClose]);
 
-  const sectionLabel = keyword.trim()
-    ? `${filteredResults.length} 个结果`
-    : "最近连接";
+  const sectionLabel = keyword.trim() ? `${filteredResults.length} 个结果` : "最近连接";
   const firstConnectionIndex = displayItems.findIndex((item) => item.type === "connection");
   const inputPlaceholder = quickInputMode
     ? "输入 username@host[:port] 后按 Enter 连接…"
     : "快速连接服务器…";
 
   return (
-    <div
-      ref={containerRef}
-      className={`qcb-wrap${open ? " qcb-open" : ""}`}
-    >
+    <div ref={containerRef} className={`qcb-wrap${open ? " qcb-open" : ""}`}>
       <div className="qcb-field" onClick={handleOpen}>
         <i className="ri-search-line qcb-icon" aria-hidden="true" />
         <input
@@ -380,9 +365,7 @@ export const QuickConnectBar = ({
             <i className="ri-close-line" aria-hidden="true" />
           </button>
         )}
-        {!open && (
-          <kbd className="qcb-shortcut">{shortcutLabel}</kbd>
-        )}
+        {!open && <kbd className="qcb-shortcut">{shortcutLabel}</kbd>}
       </div>
 
       {open && (
@@ -402,9 +385,7 @@ export const QuickConnectBar = ({
           ) : keyword.trim() && filteredResults.length === 0 && !isPlusPrefixed ? (
             <div className="qcb-empty">
               <i className="ri-server-line" aria-hidden="true" />
-              <span>
-                未找到匹配的服务器
-              </span>
+              <span>未找到匹配的服务器</span>
             </div>
           ) : (
             <>
@@ -622,7 +603,7 @@ const QuickConnectItem = ({
   isActive,
   keyword,
   onSelect,
-  onMouseEnter,
+  onMouseEnter
 }: QuickConnectItemProps) => {
   const c = item.connection;
   const groupLabel = c.groupPath && c.groupPath !== "/" ? c.groupPath : null;
@@ -637,12 +618,8 @@ const QuickConnectItem = ({
     >
       <span className={`qcb-dot${item.isConnected ? " online" : ""}`} />
       <span className="qcb-item-body">
-        <span className="qcb-item-name">
-          {highlight(c.name, keyword)}
-        </span>
-        {groupLabel && (
-          <span className="qcb-item-group">{groupLabel}</span>
-        )}
+        <span className="qcb-item-name">{highlight(c.name, keyword)}</span>
+        {groupLabel && <span className="qcb-item-group">{groupLabel}</span>}
       </span>
       <span className="qcb-item-host">
         {highlight(c.host, keyword)}

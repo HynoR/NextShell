@@ -21,7 +21,7 @@ export const CommandEditModal = ({
   scopeLabel,
   editingCommand,
   onSubmit,
-  onCancel,
+  onCancel
 }: CommandEditModalProps) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -52,7 +52,7 @@ export const CommandEditModal = ({
       description: description.trim(),
       group: group.trim() || "默认",
       command: command.trim(),
-      isTemplate,
+      isTemplate
     });
   }, [name, description, group, command, isTemplate, onSubmit]);
 
@@ -71,11 +71,7 @@ export const CommandEditModal = ({
         </Typography.Text>
         <div>
           <Typography.Text type="secondary">名称</Typography.Text>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="命令名称"
-          />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="命令名称" />
         </div>
         <div>
           <Typography.Text type="secondary">描述（可选）</Typography.Text>
@@ -87,16 +83,10 @@ export const CommandEditModal = ({
         </div>
         <div>
           <Typography.Text type="secondary">分组</Typography.Text>
-          <Input
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            placeholder="默认"
-          />
+          <Input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="默认" />
         </div>
         <div>
-          <Typography.Text type="secondary">
-            命令内容（模板可用 [#key] 占位符）
-          </Typography.Text>
+          <Typography.Text type="secondary">命令内容（模板可用 [#key] 占位符）</Typography.Text>
           <Input.TextArea
             value={command}
             onChange={(e) => setCommand(e.target.value)}
@@ -106,9 +96,7 @@ export const CommandEditModal = ({
         </div>
         <div>
           <Space>
-            <Typography.Text type="secondary">
-              模板命令（含 [#占位符] 时勾选）
-            </Typography.Text>
+            <Typography.Text type="secondary">模板命令（含 [#占位符] 时勾选）</Typography.Text>
             <Switch checked={isTemplate} onChange={setIsTemplate} />
           </Space>
         </div>

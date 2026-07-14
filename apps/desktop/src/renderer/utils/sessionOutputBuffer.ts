@@ -27,16 +27,14 @@ const isContinuationByte = (byte: number): boolean => {
  * byte-identically); only a mid-sequence cut — which makes the decoder emit
  * replacement characters — requires re-encoding to stay exact.
  */
-const trimLeadingEncodedBytes = (
-  encoded: Uint8Array,
-  bytesToTrim: number
-): SessionOutputChunk => {
+const trimLeadingEncodedBytes = (encoded: Uint8Array, bytesToTrim: number): SessionOutputChunk => {
   const remaining = encoded.subarray(bytesToTrim);
   const text = decoder.decode(remaining);
   const firstByte = remaining[0];
-  const bytes = firstByte !== undefined && isContinuationByte(firstByte)
-    ? encoder.encode(text).length
-    : remaining.length;
+  const bytes =
+    firstByte !== undefined && isContinuationByte(firstByte)
+      ? encoder.encode(text).length
+      : remaining.length;
 
   return { text, bytes };
 };
@@ -75,9 +73,10 @@ export const appendWithLimit = (
   // Encode the incoming chunk once and reuse the bytes for both the
   // oversized-chunk truncation and the stored byte count.
   const encoded = encoder.encode(text);
-  const chunk: SessionOutputChunk = encoded.length <= maxBytes
-    ? { text, bytes: encoded.length }
-    : trimLeadingEncodedBytes(encoded, encoded.length - maxBytes);
+  const chunk: SessionOutputChunk =
+    encoded.length <= maxBytes
+      ? { text, bytes: encoded.length }
+      : trimLeadingEncodedBytes(encoded, encoded.length - maxBytes);
   if (chunk.bytes <= 0) {
     return buffer;
   }

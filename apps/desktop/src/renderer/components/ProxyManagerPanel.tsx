@@ -33,7 +33,13 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
   const selectedProxy = proxies.find((p) => p.id === selectedProxyId);
   const scopeLocked = mode === "edit" && selectedProxy?.originKind === "cloud";
   const workspaceNameById = useMemo(
-    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])),
+    () =>
+      new Map(
+        workspaces.map((workspace) => [
+          workspace.id,
+          workspace.displayName || workspace.workspaceName
+        ])
+      ),
     [workspaces]
   );
 
@@ -56,7 +62,12 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
   const handleNew = useCallback(() => {
     setSelectedProxyId(undefined);
     form.resetFields();
-    form.setFieldsValue({ proxyType: "socks5", port: 1080, scope: "local", workspaceId: undefined });
+    form.setFieldsValue({
+      proxyType: "socks5",
+      port: 1080,
+      scope: "local",
+      workspaceId: undefined
+    });
     setMode("new");
   }, [form]);
 
@@ -105,15 +116,21 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
   }, [selectedProxyId, selectedProxy, form, onReload]);
 
   return (
-    <div className={mode !== "idle" ? "grid grid-cols-[230px_1fr] h-[540px] overflow-hidden" : "h-[540px] overflow-hidden"}>
+    <div
+      className={
+        mode !== "idle"
+          ? "grid grid-cols-[230px_1fr] h-[540px] overflow-hidden"
+          : "h-[540px] overflow-hidden"
+      }
+    >
       {/* ── Sidebar ─────────────────────────── */}
-      <div className={`flex flex-col bg-[var(--bg-elevated)] overflow-hidden${mode !== "idle" ? " border-r border-[var(--border)]" : ""}`}>
+      <div
+        className={`flex flex-col bg-[var(--bg-elevated)] overflow-hidden${mode !== "idle" ? " border-r border-[var(--border)]" : ""}`}
+      >
         <div className="mgr-sidebar-head">
           <div className="mgr-sidebar-title-row">
             <span className="mgr-sidebar-title">代理</span>
-            {proxies.length > 0 && (
-              <span className="mgr-count-badge">{proxies.length}</span>
-            )}
+            {proxies.length > 0 && <span className="mgr-count-badge">{proxies.length}</span>}
           </div>
           <button className="mgr-new-btn" onClick={handleNew} title="新建代理">
             <i className="ri-add-line" aria-hidden="true" />
@@ -206,7 +223,10 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
               <button
                 type="button"
                 className="mgr-form-close-btn"
-                onClick={() => { setMode("idle"); setSelectedProxyId(undefined); }}
+                onClick={() => {
+                  setMode("idle");
+                  setSelectedProxyId(undefined);
+                }}
                 aria-label="收起表单"
                 title="收起表单"
               >
@@ -309,7 +329,11 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
               ) : null}
             </div>
 
-            <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入代理名称" }]}>
+            <Form.Item
+              label="名称"
+              name="name"
+              rules={[{ required: true, message: "请输入代理名称" }]}
+            >
               <Input placeholder="办公室代理" />
             </Form.Item>
 
@@ -337,7 +361,13 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
                 rules={[{ required: true, message: "请输入端口" }]}
                 className="w-[90px] shrink-0"
               >
-                <InputNumber min={1} max={65535} precision={0} placeholder="1080" style={{ width: "100%" }} />
+                <InputNumber
+                  min={1}
+                  max={65535}
+                  precision={0}
+                  placeholder="1080"
+                  style={{ width: "100%" }}
+                />
               </Form.Item>
             </div>
 
@@ -352,12 +382,7 @@ export const ProxyManagerPanel = ({ proxies, workspaces, onReload }: ProxyManage
                 <Input placeholder="可选" />
               </Form.Item>
               {proxyType === "socks5" ? (
-                <Form.Item
-                  label="密码"
-                  name="password"
-                  className="flex-1"
-                  preserve={false}
-                >
+                <Form.Item label="密码" name="password" className="flex-1" preserve={false}>
                   <Input.Password placeholder="留空则不更新" />
                 </Form.Item>
               ) : null}

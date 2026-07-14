@@ -9,19 +9,49 @@ import type { TracerouteEvent } from "@nextshell/shared";
 // Map of SGR colour codes → CSS colour values.
 // Covers standard 8 + bright 8 foreground (30-37, 90-97) and background (40-47, 100-107).
 const ANSI_FG: Record<number, string> = {
-  30: "#4c4c4c", 31: "#ff5555", 32: "#50fa7b", 33: "#f1fa8c",
-  34: "#6272a4", 35: "#ff79c6", 36: "#8be9fd", 37: "#f8f8f2",
-  90: "#6272a4", 91: "#ff6e6e", 92: "#69ff94", 93: "#ffffa5",
-  94: "#d6acff", 95: "#ff92df", 96: "#a4ffff", 97: "#ffffff",
+  30: "#4c4c4c",
+  31: "#ff5555",
+  32: "#50fa7b",
+  33: "#f1fa8c",
+  34: "#6272a4",
+  35: "#ff79c6",
+  36: "#8be9fd",
+  37: "#f8f8f2",
+  90: "#6272a4",
+  91: "#ff6e6e",
+  92: "#69ff94",
+  93: "#ffffa5",
+  94: "#d6acff",
+  95: "#ff92df",
+  96: "#a4ffff",
+  97: "#ffffff"
 };
 const ANSI_BG: Record<number, string> = {
-  40: "#4c4c4c", 41: "#ff5555", 42: "#50fa7b", 43: "#f1fa8c",
-  44: "#6272a4", 45: "#ff79c6", 46: "#8be9fd", 47: "#f8f8f2",
-  100: "#6272a4", 101: "#ff6e6e", 102: "#69ff94", 103: "#ffffa5",
-  104: "#d6acff", 105: "#ff92df", 106: "#a4ffff", 107: "#ffffff",
+  40: "#4c4c4c",
+  41: "#ff5555",
+  42: "#50fa7b",
+  43: "#f1fa8c",
+  44: "#6272a4",
+  45: "#ff79c6",
+  46: "#8be9fd",
+  47: "#f8f8f2",
+  100: "#6272a4",
+  101: "#ff6e6e",
+  102: "#69ff94",
+  103: "#ffffa5",
+  104: "#d6acff",
+  105: "#ff92df",
+  106: "#a4ffff",
+  107: "#ffffff"
 };
 
-interface Span { text: string; color?: string; bg?: string; bold?: boolean; dim?: boolean; }
+interface Span {
+  text: string;
+  color?: string;
+  bg?: string;
+  bold?: boolean;
+  dim?: boolean;
+}
 
 /** Parse a single raw line (may contain ANSI escape sequences) into styled spans. */
 const parseAnsi = (raw: string): Span[] => {
@@ -51,30 +81,49 @@ const parseAnsi = (raw: string): Span[] => {
     let i = 0;
     while (i < codes.length) {
       const c = codes[i]!;
-      if (c === 0) { fg = undefined; bg = undefined; bold = false; dim = false; }
-      else if (c === 1) { bold = true; }
-      else if (c === 2) { dim = true; }
-      else if (c === 22) { bold = false; dim = false; }
-      else if (c === 38) {
+      if (c === 0) {
+        fg = undefined;
+        bg = undefined;
+        bold = false;
+        dim = false;
+      } else if (c === 1) {
+        bold = true;
+      } else if (c === 2) {
+        dim = true;
+      } else if (c === 22) {
+        bold = false;
+        dim = false;
+      } else if (c === 38) {
         // 256-colour or truecolor fg
         if (codes[i + 1] === 5 && codes[i + 2] !== undefined) {
-          fg = ansi256(codes[i + 2]!); i += 2;
+          fg = ansi256(codes[i + 2]!);
+          i += 2;
         } else if (codes[i + 1] === 2 && codes[i + 4] !== undefined) {
-          fg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`; i += 4;
+          fg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
+          i += 4;
         }
       } else if (c === 48) {
         // 256-colour or truecolor bg
         if (codes[i + 1] === 5 && codes[i + 2] !== undefined) {
-          bg = ansi256(codes[i + 2]!); i += 2;
+          bg = ansi256(codes[i + 2]!);
+          i += 2;
         } else if (codes[i + 1] === 2 && codes[i + 4] !== undefined) {
-          bg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`; i += 4;
+          bg = `rgb(${codes[i + 2]},${codes[i + 3]},${codes[i + 4]})`;
+          i += 4;
         }
-      } else if (c >= 30 && c <= 37) { fg = ANSI_FG[c]; }
-      else if (c >= 40 && c <= 47) { bg = ANSI_BG[c]; }
-      else if (c >= 90 && c <= 97) { fg = ANSI_FG[c]; }
-      else if (c >= 100 && c <= 107) { bg = ANSI_BG[c]; }
-      else if (c === 39) { fg = undefined; }
-      else if (c === 49) { bg = undefined; }
+      } else if (c >= 30 && c <= 37) {
+        fg = ANSI_FG[c];
+      } else if (c >= 40 && c <= 47) {
+        bg = ANSI_BG[c];
+      } else if (c >= 90 && c <= 97) {
+        fg = ANSI_FG[c];
+      } else if (c >= 100 && c <= 107) {
+        bg = ANSI_BG[c];
+      } else if (c === 39) {
+        fg = undefined;
+      } else if (c === 49) {
+        bg = undefined;
+      }
       i++;
     }
   }
@@ -86,8 +135,22 @@ const ansi256 = (n: number): string => {
   if (n < 16) {
     // Standard palette (reuse ANSI_FG + add index 8-15 aliases)
     const base = [
-      "#4c4c4c","#ff5555","#50fa7b","#f1fa8c","#6272a4","#ff79c6","#8be9fd","#f8f8f2",
-      "#6272a4","#ff6e6e","#69ff94","#ffffa5","#d6acff","#ff92df","#a4ffff","#ffffff",
+      "#4c4c4c",
+      "#ff5555",
+      "#50fa7b",
+      "#f1fa8c",
+      "#6272a4",
+      "#ff79c6",
+      "#8be9fd",
+      "#f8f8f2",
+      "#6272a4",
+      "#ff6e6e",
+      "#69ff94",
+      "#ffffa5",
+      "#d6acff",
+      "#ff92df",
+      "#a4ffff",
+      "#ffffff"
     ];
     return base[n] ?? "#f8f8f2";
   }
@@ -103,7 +166,9 @@ const ansi256 = (n: number): string => {
   return `rgb(${v},${v},${v})`;
 };
 
-interface AnsiLineProps { raw: string; }
+interface AnsiLineProps {
+  raw: string;
+}
 
 const AnsiLine = ({ raw }: AnsiLineProps) => {
   const spans = parseAnsi(raw);
@@ -208,17 +273,12 @@ export const TraceroutePane = ({ connection, connected }: TraceroutePaneProps) =
   }, []);
 
   if (!connection) {
-    return (
-      <ConnectionPrompt message="先选择一个连接再使用路由追踪。" icon="ri-route-line" />
-    );
+    return <ConnectionPrompt message="先选择一个连接再使用路由追踪。" icon="ri-route-line" />;
   }
 
   if (!connected) {
     return (
-      <ConnectionPrompt
-        message="当前连接未建立会话，请先连接 SSH 终端。"
-        icon="ri-links-line"
-      />
+      <ConnectionPrompt message="当前连接未建立会话，请先连接 SSH 终端。" icon="ri-links-line" />
     );
   }
 
@@ -250,7 +310,9 @@ export const TraceroutePane = ({ connection, connected }: TraceroutePaneProps) =
       )}
       <pre ref={outputRef} className="traceroute-output">
         {lines.length === 0 ? (
-          running ? null : <span className="traceroute-placeholder">点击「开始追踪」运行 nexttrace</span>
+          running ? null : (
+            <span className="traceroute-placeholder">点击「开始追踪」运行 nexttrace</span>
+          )
         ) : (
           lines.map((line, i) => (
             <span key={i} className="traceroute-line">

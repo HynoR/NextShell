@@ -22,9 +22,6 @@ const baseStyle: CSSProperties = {
   color: "#fff"
 };
 
-export const StatusBadge = ({
-  label,
-  tone = "gray"
-}: StatusBadgeProps) => {
+export const StatusBadge = ({ label, tone = "gray" }: StatusBadgeProps) => {
   return <span style={{ ...baseStyle, backgroundColor: colors[tone] }}>{label}</span>;
 };

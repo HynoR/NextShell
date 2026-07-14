@@ -43,6 +43,8 @@ describe("connection manager external drop guards", () => {
     expect(getConnectionManagerDropPathWarning({ allPathsEmpty: true })).toBe(
       "无法读取拖入文件的路径，请尝试使用导入按钮选择文件"
     );
-    expect(getConnectionManagerDropPathWarning({ allPathsEmpty: false })).toBe("当前仅支持拖入文件");
+    expect(getConnectionManagerDropPathWarning({ allPathsEmpty: false })).toBe(
+      "当前仅支持拖入文件"
+    );
   });
 });

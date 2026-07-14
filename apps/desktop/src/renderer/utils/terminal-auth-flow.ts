@@ -71,14 +71,11 @@ export const buildTerminalAuthRetryNotice = (reason?: string): string => {
   return `\r\n${detail}\r\nlogin as: `;
 };
 
-const isBackspace = (value: string): boolean =>
-  value === "\b" || value === "\x7f";
+const isBackspace = (value: string): boolean => value === "\b" || value === "\x7f";
 
-const isEnter = (value: string): boolean =>
-  value === "\r" || value === "\n";
+const isEnter = (value: string): boolean => value === "\r" || value === "\n";
 
-const isInterrupt = (value: string): boolean =>
-  value === "\x03";
+const isInterrupt = (value: string): boolean => value === "\x03";
 
 const isPrintable = (value: string): boolean => {
   if (!value) return false;

@@ -61,7 +61,12 @@ export const parseDfOutput = (output: string): DiskUsageEntry[] => {
     if (!filesystem || !mountPoint) {
       continue;
     }
-    if (totalKb === undefined || usedKb === undefined || availableKb === undefined || totalKb <= 0) {
+    if (
+      totalKb === undefined ||
+      usedKb === undefined ||
+      availableKb === undefined ||
+      totalKb <= 0
+    ) {
       continue;
     }
 
@@ -95,4 +100,3 @@ export const formatDiskSize = (kilobytes: number): string => {
   const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
   return `${value.toFixed(precision)}${units[unitIndex]}`;
 };
-

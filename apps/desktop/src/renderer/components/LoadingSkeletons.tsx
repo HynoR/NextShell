@@ -15,7 +15,12 @@ interface PanelSkeletonProps {
   style?: CSSProperties;
 }
 
-export const PanelSkeleton = ({ rows = 5, compact = false, className, style }: PanelSkeletonProps) => {
+export const PanelSkeleton = ({
+  rows = 5,
+  compact = false,
+  className,
+  style
+}: PanelSkeletonProps) => {
   return (
     <div
       className={className}

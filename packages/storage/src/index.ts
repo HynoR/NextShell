@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import type Database from "better-sqlite3";
 
-export { CachedConnectionRepository, CachedSshKeyRepository, CachedProxyRepository } from "./cached-repository";
+export {
+  CachedConnectionRepository,
+  CachedSshKeyRepository,
+  CachedProxyRepository
+} from "./cached-repository";
 import type {
   AppPreferences,
   CloudSyncResourceStateV2,
@@ -240,9 +244,7 @@ export interface AppendAuditLogInput {
 }
 
 export type CommandHistoryMutationInput =
-  | { type: "push"; command: string }
-  | { type: "remove"; command: string }
-  | { type: "clear" };
+  { type: "push"; command: string } | { type: "remove"; command: string } | { type: "clear" };
 
 const loadDatabaseDriver = (): BetterSqlite3Module => {
   const moduleName = `better-sqlite${3}`;
@@ -254,7 +256,9 @@ const toJSON = (value: string[]): string => JSON.stringify(value);
 const fromJSON = (value: string): string[] => {
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
   } catch {
     return [];
   }
@@ -277,21 +281,25 @@ const AUDIT_REDACTED = "«redacted»";
 
 const SENSITIVE_VALUE_RULES: Array<{ re: RegExp; replace: string }> = [
   // PEM private key blocks
-  { re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, replace: AUDIT_REDACTED },
+  {
+    re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    replace: AUDIT_REDACTED
+  },
   // Authorization: Bearer <token> (or a bare "Bearer <token>")
   { re: /(bearer\s+)[A-Za-z0-9._\-+/=]+/gi, replace: `$1${AUDIT_REDACTED}` },
   // key=value / key: value for sensitive identifiers
   {
     re: /\b(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth)\b(\s*[=:]\s*)("?)([^\s"']+)\3/gi,
-    replace: `$1$2${AUDIT_REDACTED}`,
+    replace: `$1$2${AUDIT_REDACTED}`
   },
   // --password=<secret> / --token <secret>
   { re: /(--(?:password|token)[=\s])[^\s'"]+/gi, replace: `$1${AUDIT_REDACTED}` },
   // mysql/redis style inline -p<secret> / -a<secret> (flag immediately followed by value)
-  { re: /(^|\s)(-[pa])[^\s'"]+/g, replace: `$1$2${AUDIT_REDACTED}` },
+  { re: /(^|\s)(-[pa])[^\s'"]+/g, replace: `$1$2${AUDIT_REDACTED}` }
 ];
 
-const SENSITIVE_KEY = /^(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth(?:orization)?)$/i;
+const SENSITIVE_KEY =
+  /^(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth(?:orization)?)$/i;
 
 const redactAuditString = (input: string): string => {
   let out = input;
@@ -311,7 +319,10 @@ const redactAuditValue = (value: unknown): unknown => {
   if (value && typeof value === "object") {
     const result: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      result[key] = typeof child === "string" && SENSITIVE_KEY.test(key) ? AUDIT_REDACTED : redactAuditValue(child);
+      result[key] =
+        typeof child === "string" && SENSITIVE_KEY.test(key)
+          ? AUDIT_REDACTED
+          : redactAuditValue(child);
     }
     return result;
   }
@@ -319,7 +330,7 @@ const redactAuditValue = (value: unknown): unknown => {
 };
 
 export const redactAuditMetadata = (
-  metadata: Record<string, unknown> | undefined,
+  metadata: Record<string, unknown> | undefined
 ): Record<string, unknown> | undefined => {
   if (!metadata) {
     return undefined;
@@ -357,10 +368,12 @@ const parseGroupPath = (raw: string | null | undefined): string => {
 };
 
 const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
-  const rawKeepAliveEnabled = (row as ConnectionRow & { keepalive_enabled?: number | null }).keepalive_enabled;
+  const rawKeepAliveEnabled = (row as ConnectionRow & { keepalive_enabled?: number | null })
+    .keepalive_enabled;
   const keepAliveEnabled =
     rawKeepAliveEnabled === 1 ? true : rawKeepAliveEnabled === 0 ? false : undefined;
-  const rawKeepAliveInterval = (row as ConnectionRow & { keepalive_interval_sec?: number | null }).keepalive_interval_sec;
+  const rawKeepAliveInterval = (row as ConnectionRow & { keepalive_interval_sec?: number | null })
+    .keepalive_interval_sec;
   const keepAliveIntervalSec =
     typeof rawKeepAliveInterval === "number" &&
     Number.isInteger(rawKeepAliveInterval) &&
@@ -475,12 +488,15 @@ const rowToPendingOp = (row: PendingOpRow): CloudSyncPendingOp => ({
   lastError: row.last_error ?? undefined
 });
 
-const rowToCloudSyncResourceStateV2 = (row: CloudSyncResourceStateV2Row): CloudSyncResourceStateV2 => ({
+const rowToCloudSyncResourceStateV2 = (
+  row: CloudSyncResourceStateV2Row
+): CloudSyncResourceStateV2 => ({
   workspaceId: row.workspace_id,
   resourceType: row.resource_type,
   resourceId: row.resource_id,
   serverRevision: typeof row.server_revision === "number" ? row.server_revision : undefined,
-  conflictRemoteRevision: typeof row.conflict_remote_revision === "number" ? row.conflict_remote_revision : undefined,
+  conflictRemoteRevision:
+    typeof row.conflict_remote_revision === "number" ? row.conflict_remote_revision : undefined,
   conflictRemotePayloadJson: row.conflict_remote_payload_json ?? undefined,
   conflictRemoteUpdatedAt: row.conflict_remote_updated_at ?? undefined,
   conflictRemoteDeleted: row.conflict_remote_deleted === 1,
@@ -502,17 +518,19 @@ const rowToProxy = (row: ProxyRow): ProxyProfile => ({
   originKind: row.origin_kind === "cloud" ? "cloud" : "local",
   originScopeKey: row.origin_scope_key ?? LOCAL_DEFAULT_SCOPE_KEY,
   originWorkspaceId: row.origin_workspace_id ?? undefined,
-  copiedFromResourceId: row.copied_from_resource_id ?? undefined,
+  copiedFromResourceId: row.copied_from_resource_id ?? undefined
 });
 
-const rowToWorkspaceRepoLocalState = (row: WorkspaceRepoLocalStateRow): WorkspaceRepoLocalState => ({
+const rowToWorkspaceRepoLocalState = (
+  row: WorkspaceRepoLocalStateRow
+): WorkspaceRepoLocalState => ({
   workspaceId: row.workspace_id,
   baseSnapshotJson: row.base_snapshot_json ?? undefined,
   remoteVersion: row.remote_version ?? undefined,
   remoteCommandsVersion: row.remote_commands_version ?? undefined,
   lastSyncAt: row.last_sync_at ?? undefined,
   lastError: row.last_error ?? undefined,
-  syncState: row.sync_state as WorkspaceRepoLocalState["syncState"],
+  syncState: row.sync_state as WorkspaceRepoLocalState["syncState"]
 });
 
 const rowToWorkspaceRepoConflict = (row: WorkspaceRepoConflictRow): WorkspaceRepoConflict => ({
@@ -523,7 +541,7 @@ const rowToWorkspaceRepoConflict = (row: WorkspaceRepoConflictRow): WorkspaceRep
   localSnapshotJson: row.local_snapshot_json ?? undefined,
   remoteSnapshotJson: row.remote_snapshot_json ?? undefined,
   remoteDeleted: row.remote_deleted === 1,
-  detectedAt: row.detected_at,
+  detectedAt: row.detected_at
 });
 
 const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem => ({
@@ -535,7 +553,7 @@ const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem =
   command: row.command,
   isTemplate: row.is_template === 1,
   createdAt: row.created_at,
-  updatedAt: row.updated_at,
+  updatedAt: row.updated_at
 });
 
 const rowToCommandHistory = (row: CommandHistoryRow): CommandHistoryEntry => ({
@@ -810,8 +828,7 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
             ? parsed.traceroute.noRdns
             : fallback.traceroute.noRdns,
         language:
-          parsed.traceroute?.language === "cn" ||
-          parsed.traceroute?.language === "en"
+          parsed.traceroute?.language === "cn" || parsed.traceroute?.language === "en"
             ? parsed.traceroute.language
             : fallback.traceroute.language,
         powProvider:
@@ -849,9 +866,9 @@ const hasColumn = (db: Database.Database, table: string, column: string): boolea
 };
 
 const hasTable = (db: Database.Database, table: string): boolean => {
-  const row = db.prepare(
-    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
-  ).get(table) as { name?: string } | undefined;
+  const row = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get(table) as { name?: string } | undefined;
   return Boolean(row?.name);
 };
 
@@ -1179,7 +1196,12 @@ const migrations: MigrationDefinition[] = [
       ensureColumn(db, "connections", "resource_id", "resource_id TEXT");
       ensureColumn(db, "connections", "uuid_in_scope", "uuid_in_scope TEXT");
       ensureColumn(db, "connections", "origin_kind", "origin_kind TEXT DEFAULT 'local'");
-      ensureColumn(db, "connections", "origin_scope_key", "origin_scope_key TEXT DEFAULT 'local-default'");
+      ensureColumn(
+        db,
+        "connections",
+        "origin_scope_key",
+        "origin_scope_key TEXT DEFAULT 'local-default'"
+      );
       ensureColumn(db, "connections", "origin_workspace_id", "origin_workspace_id TEXT");
       ensureColumn(db, "connections", "ssh_key_resource_id", "ssh_key_resource_id TEXT");
       ensureColumn(db, "connections", "copied_from_resource_id", "copied_from_resource_id TEXT");
@@ -1188,7 +1210,12 @@ const migrations: MigrationDefinition[] = [
       ensureColumn(db, "ssh_keys", "resource_id", "resource_id TEXT");
       ensureColumn(db, "ssh_keys", "uuid_in_scope", "uuid_in_scope TEXT");
       ensureColumn(db, "ssh_keys", "origin_kind", "origin_kind TEXT DEFAULT 'local'");
-      ensureColumn(db, "ssh_keys", "origin_scope_key", "origin_scope_key TEXT DEFAULT 'local-default'");
+      ensureColumn(
+        db,
+        "ssh_keys",
+        "origin_scope_key",
+        "origin_scope_key TEXT DEFAULT 'local-default'"
+      );
       ensureColumn(db, "ssh_keys", "origin_workspace_id", "origin_workspace_id TEXT");
       ensureColumn(db, "ssh_keys", "copied_from_resource_id", "copied_from_resource_id TEXT");
 
@@ -1471,7 +1498,11 @@ export interface ConnectionRepository {
   removeCloudSyncWorkspace: (id: string) => void;
   // ── Cloud Sync v2: workspace-scoped resource state ──
   listResourceStatesV2: (workspaceId: string) => CloudSyncResourceStateV2[];
-  getResourceStateV2: (workspaceId: string, resourceType: string, resourceId: string) => CloudSyncResourceStateV2 | undefined;
+  getResourceStateV2: (
+    workspaceId: string,
+    resourceType: string,
+    resourceId: string
+  ) => CloudSyncResourceStateV2 | undefined;
   saveResourceStateV2: (state: CloudSyncResourceStateV2) => void;
   removeResourceStateV2: (workspaceId: string, resourceType: string, resourceId: string) => void;
   clearResourceStatesV2: (workspaceId: string) => void;
@@ -1491,7 +1522,11 @@ export interface ConnectionRepository {
   saveWorkspaceRepoLocalState: (state: WorkspaceRepoLocalState) => void;
   listWorkspaceRepoConflicts: (workspaceId: string) => WorkspaceRepoConflict[];
   saveWorkspaceRepoConflict: (conflict: WorkspaceRepoConflict) => void;
-  removeWorkspaceRepoConflict: (workspaceId: string, resourceType: string, resourceId: string) => void;
+  removeWorkspaceRepoConflict: (
+    workspaceId: string,
+    resourceType: string,
+    resourceId: string
+  ) => void;
   clearWorkspaceRepoConflicts: (workspaceId: string) => void;
   // ── Workspace commands ──
   listWorkspaceCommands: (workspaceId: string) => WorkspaceCommandItem[];
@@ -1557,7 +1592,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
     const applied = new Set(
       (
-        this.db.prepare("SELECT version FROM schema_migrations ORDER BY version ASC").all() as Array<{
+        this.db
+          .prepare("SELECT version FROM schema_migrations ORDER BY version ASC")
+          .all() as Array<{
           version: number;
         }>
       ).map((row) => row.version)
@@ -1570,16 +1607,18 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
       const tx = this.db.transaction(() => {
         migration.apply(this.db);
-        this.db.prepare(
-          `
+        this.db
+          .prepare(
+            `
             INSERT INTO schema_migrations (version, name, applied_at)
             VALUES (@version, @name, @applied_at)
           `
-        ).run({
-          version: migration.version,
-          name: migration.name,
-          applied_at: new Date().toISOString()
-        });
+          )
+          .run({
+            version: migration.version,
+            name: migration.name,
+            applied_at: new Date().toISOString()
+          });
       });
 
       tx();
@@ -1587,7 +1626,12 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
     if (hasTable(this.db, "connections")) {
       ensureColumn(this.db, "connections", "keepalive_enabled", "keepalive_enabled INTEGER");
-      ensureColumn(this.db, "connections", "keepalive_interval_sec", "keepalive_interval_sec INTEGER");
+      ensureColumn(
+        this.db,
+        "connections",
+        "keepalive_interval_sec",
+        "keepalive_interval_sec INTEGER"
+      );
     }
   }
 
@@ -1871,8 +1915,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       createdAt: new Date().toISOString()
     };
 
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO audit_logs (
           id,
           action,
@@ -1891,15 +1936,16 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           @created_at
         )
       `
-    ).run({
-      id: record.id,
-      action: record.action,
-      level: record.level,
-      connection_id: record.connectionId ?? null,
-      message: record.message,
-      metadata_json: toMetadataJSON(record.metadata),
-      created_at: record.createdAt
-    });
+      )
+      .run({
+        id: record.id,
+        action: record.action,
+        level: record.level,
+        connection_id: record.connectionId ?? null,
+        message: record.message,
+        metadata_json: toMetadataJSON(record.metadata),
+        created_at: record.createdAt
+      });
 
     return record;
   }
@@ -1956,22 +2002,24 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   purgeExpiredAuditLogs(retentionDays: number): number {
     if (retentionDays <= 0) return 0;
     const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
-    const result = this.db.prepare(
-      "DELETE FROM audit_logs WHERE created_at < @cutoff"
-    ).run({ cutoff });
+    const result = this.db
+      .prepare("DELETE FROM audit_logs WHERE created_at < @cutoff")
+      .run({ cutoff });
     return result.changes;
   }
 
   private readonly MAX_COMMAND_HISTORY = 500;
 
   listCommandHistory(): CommandHistoryEntry[] {
-    const rows = this.db.prepare(
-      `
+    const rows = this.db
+      .prepare(
+        `
         SELECT command, use_count, last_used_at
         FROM command_history
         ORDER BY last_used_at DESC
       `
-    ).all() as CommandHistoryRow[];
+      )
+      .all() as CommandHistoryRow[];
 
     return rows.map(rowToCommandHistory);
   }
@@ -1979,21 +2027,23 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   pushCommandHistory(command: string): CommandHistoryEntry {
     const now = new Date().toISOString();
 
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO command_history (command, use_count, last_used_at)
         VALUES (@command, 1, @now)
         ON CONFLICT(command) DO UPDATE SET
           use_count = use_count + 1,
           last_used_at = @now
       `
-    ).run({ command, now });
+      )
+      .run({ command, now });
 
     this.evictCommandHistory();
 
-    const row = this.db.prepare(
-      "SELECT command, use_count, last_used_at FROM command_history WHERE command = ?"
-    ).get(command) as CommandHistoryRow;
+    const row = this.db
+      .prepare("SELECT command, use_count, last_used_at FROM command_history WHERE command = ?")
+      .get(command) as CommandHistoryRow;
 
     return rowToCommandHistory(row);
   }
@@ -2041,17 +2091,18 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   }
 
   private evictCommandHistory(): void {
-    const countRow = this.db.prepare(
-      "SELECT COUNT(*) AS total FROM command_history"
-    ).get() as { total: number };
+    const countRow = this.db.prepare("SELECT COUNT(*) AS total FROM command_history").get() as {
+      total: number;
+    };
 
     if (countRow.total <= this.MAX_COMMAND_HISTORY) {
       return;
     }
 
     const excess = countRow.total - this.MAX_COMMAND_HISTORY;
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         DELETE FROM command_history
         WHERE command IN (
           SELECT command FROM command_history
@@ -2059,7 +2110,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           LIMIT @excess
         )
       `
-    ).run({ excess });
+      )
+      .run({ excess });
   }
 
   listSavedCommands(query: { keyword?: string; group?: string }): SavedCommand[] {
@@ -2074,7 +2126,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     `;
     const params: Record<string, string | number> = {};
     if (keywordLike) {
-      sql += " AND (LOWER(name) LIKE @keyword OR LOWER(command) LIKE @keyword OR LOWER(description) LIKE @keyword)";
+      sql +=
+        " AND (LOWER(name) LIKE @keyword OR LOWER(command) LIKE @keyword OR LOWER(description) LIKE @keyword)";
       params.keyword = keywordLike;
     }
     if (group) {
@@ -2100,8 +2153,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const description = input.description?.trim() || null;
     const groupName = input.group.trim() || "默认";
 
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO saved_commands (id, name, description, group_name, command, is_template, created_at, updated_at)
         VALUES (@id, @name, @description, @groupName, @command, @isTemplate, @now, @now)
         ON CONFLICT(id) DO UPDATE SET
@@ -2112,19 +2166,22 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           is_template = @isTemplate,
           updated_at = @now
       `
-    ).run({
-      id,
-      name: input.name.trim(),
-      description,
-      groupName,
-      command: input.command.trim(),
-      isTemplate: input.isTemplate ? 1 : 0,
-      now
-    });
+      )
+      .run({
+        id,
+        name: input.name.trim(),
+        description,
+        groupName,
+        command: input.command.trim(),
+        isTemplate: input.isTemplate ? 1 : 0,
+        now
+      });
 
-    const row = this.db.prepare(
-      "SELECT id, name, description, group_name, command, is_template, created_at, updated_at FROM saved_commands WHERE id = ?"
-    ).get(id) as SavedCommandRow;
+    const row = this.db
+      .prepare(
+        "SELECT id, name, description, group_name, command, is_template, created_at, updated_at FROM saved_commands WHERE id = ?"
+      )
+      .get(id) as SavedCommandRow;
 
     return rowToSavedCommand(row);
   }
@@ -2134,9 +2191,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   }
 
   getAppPreferences(): AppPreferences {
-    const row = this.db.prepare(
-      "SELECT key, value_json, updated_at FROM app_settings WHERE key = ?"
-    ).get("app_preferences") as AppSettingRow | undefined;
+    const row = this.db
+      .prepare("SELECT key, value_json, updated_at FROM app_settings WHERE key = ?")
+      .get("app_preferences") as AppSettingRow | undefined;
 
     return parseAppPreferences(row?.value_json ?? null);
   }
@@ -2145,27 +2202,28 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const now = new Date().toISOString();
     const normalized = parseAppPreferences(JSON.stringify(preferences));
 
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO app_settings (key, value_json, updated_at)
         VALUES (@key, @value_json, @updated_at)
         ON CONFLICT(key) DO UPDATE SET
           value_json = excluded.value_json,
           updated_at = excluded.updated_at
       `
-    ).run({
-      key: "app_preferences",
-      value_json: JSON.stringify(normalized),
-      updated_at: now
-    });
+      )
+      .run({
+        key: "app_preferences",
+        value_json: JSON.stringify(normalized),
+        updated_at: now
+      });
 
     return normalized;
   }
 
   getJsonSetting<T = unknown>(key: string): T | undefined {
-    const row = this.db.prepare(
-      "SELECT value_json FROM app_settings WHERE key = ?"
-    ).get(key) as { value_json: string } | undefined;
+    const row = this.db.prepare("SELECT value_json FROM app_settings WHERE key = ?").get(key) as
+      { value_json: string } | undefined;
 
     if (!row?.value_json) {
       return undefined;
@@ -2180,19 +2238,21 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   saveJsonSetting(key: string, value: unknown): void {
     const now = new Date().toISOString();
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO app_settings (key, value_json, updated_at)
         VALUES (@key, @value_json, @updated_at)
         ON CONFLICT(key) DO UPDATE SET
           value_json = excluded.value_json,
           updated_at = excluded.updated_at
       `
-    ).run({
-      key,
-      value_json: JSON.stringify(value),
-      updated_at: now
-    });
+      )
+      .run({
+        key,
+        value_json: JSON.stringify(value),
+        updated_at: now
+      });
   }
 
   removeSetting(key: string): void {
@@ -2201,31 +2261,40 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   // ── Cloud Sync v2: workspace-scoped resource state ──
   listResourceStatesV2(workspaceId: string): CloudSyncResourceStateV2[] {
-    const rows = this.db.prepare(
-      `SELECT workspace_id, resource_type, resource_id, server_revision,
+    const rows = this.db
+      .prepare(
+        `SELECT workspace_id, resource_type, resource_id, server_revision,
               conflict_remote_revision, conflict_remote_payload_json,
               conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
        FROM cloud_sync_resource_state
        WHERE workspace_id = ?
        ORDER BY resource_type ASC, resource_id ASC`
-    ).all(workspaceId) as CloudSyncResourceStateV2Row[];
+      )
+      .all(workspaceId) as CloudSyncResourceStateV2Row[];
     return rows.map(rowToCloudSyncResourceStateV2);
   }
 
-  getResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): CloudSyncResourceStateV2 | undefined {
-    const row = this.db.prepare(
-      `SELECT workspace_id, resource_type, resource_id, server_revision,
+  getResourceStateV2(
+    workspaceId: string,
+    resourceType: string,
+    resourceId: string
+  ): CloudSyncResourceStateV2 | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT workspace_id, resource_type, resource_id, server_revision,
               conflict_remote_revision, conflict_remote_payload_json,
               conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
        FROM cloud_sync_resource_state
        WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?`
-    ).get(workspaceId, resourceType, resourceId) as CloudSyncResourceStateV2Row | undefined;
+      )
+      .get(workspaceId, resourceType, resourceId) as CloudSyncResourceStateV2Row | undefined;
     return row ? rowToCloudSyncResourceStateV2(row) : undefined;
   }
 
   saveResourceStateV2(state: CloudSyncResourceStateV2): void {
-    this.db.prepare(
-      `INSERT INTO cloud_sync_resource_state (
+    this.db
+      .prepare(
+        `INSERT INTO cloud_sync_resource_state (
          workspace_id, resource_type, resource_id, server_revision,
          conflict_remote_revision, conflict_remote_payload_json,
          conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
@@ -2241,47 +2310,57 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          conflict_remote_updated_at = excluded.conflict_remote_updated_at,
          conflict_remote_deleted = excluded.conflict_remote_deleted,
          conflict_detected_at = excluded.conflict_detected_at`
-    ).run({
-      workspace_id: state.workspaceId,
-      resource_type: state.resourceType,
-      resource_id: state.resourceId,
-      server_revision: state.serverRevision ?? null,
-      conflict_remote_revision: state.conflictRemoteRevision ?? null,
-      conflict_remote_payload_json: state.conflictRemotePayloadJson ?? null,
-      conflict_remote_updated_at: state.conflictRemoteUpdatedAt ?? null,
-      conflict_remote_deleted: state.conflictRemoteDeleted ? 1 : 0,
-      conflict_detected_at: state.conflictDetectedAt ?? null
-    });
+      )
+      .run({
+        workspace_id: state.workspaceId,
+        resource_type: state.resourceType,
+        resource_id: state.resourceId,
+        server_revision: state.serverRevision ?? null,
+        conflict_remote_revision: state.conflictRemoteRevision ?? null,
+        conflict_remote_payload_json: state.conflictRemotePayloadJson ?? null,
+        conflict_remote_updated_at: state.conflictRemoteUpdatedAt ?? null,
+        conflict_remote_deleted: state.conflictRemoteDeleted ? 1 : 0,
+        conflict_detected_at: state.conflictDetectedAt ?? null
+      });
   }
 
   removeResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.db.prepare(
-      "DELETE FROM cloud_sync_resource_state WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
-    ).run(workspaceId, resourceType, resourceId);
+    this.db
+      .prepare(
+        "DELETE FROM cloud_sync_resource_state WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
+      )
+      .run(workspaceId, resourceType, resourceId);
   }
 
   clearResourceStatesV2(workspaceId: string): void {
-    this.db.prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?").run(workspaceId);
+    this.db
+      .prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?")
+      .run(workspaceId);
   }
 
   // ── Cloud Sync v2: workspace management ──
   listCloudSyncWorkspaces(): CloudSyncWorkspaceProfile[] {
-    const rows = this.db.prepare(
-      "SELECT id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error FROM cloud_sync_workspaces ORDER BY display_name ASC"
-    ).all() as CloudSyncWorkspaceRow[];
+    const rows = this.db
+      .prepare(
+        "SELECT id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error FROM cloud_sync_workspaces ORDER BY display_name ASC"
+      )
+      .all() as CloudSyncWorkspaceRow[];
     return rows.map(rowToCloudSyncWorkspace);
   }
 
   getCloudSyncWorkspace(id: string): CloudSyncWorkspaceProfile | undefined {
-    const row = this.db.prepare(
-      "SELECT id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error FROM cloud_sync_workspaces WHERE id = ?"
-    ).get(id) as CloudSyncWorkspaceRow | undefined;
+    const row = this.db
+      .prepare(
+        "SELECT id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error FROM cloud_sync_workspaces WHERE id = ?"
+      )
+      .get(id) as CloudSyncWorkspaceRow | undefined;
     return row ? rowToCloudSyncWorkspace(row) : undefined;
   }
 
   saveCloudSyncWorkspace(ws: CloudSyncWorkspaceProfile): void {
-    this.db.prepare(
-      `INSERT INTO cloud_sync_workspaces (id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error)
+    this.db
+      .prepare(
+        `INSERT INTO cloud_sync_workspaces (id, api_base_url, workspace_name, display_name, pull_interval_sec, ignore_tls_errors, enabled, created_at, updated_at, last_sync_at, last_error)
        VALUES (@id, @api_base_url, @workspace_name, @display_name, @pull_interval_sec, @ignore_tls_errors, @enabled, @created_at, @updated_at, @last_sync_at, @last_error)
        ON CONFLICT(id) DO UPDATE SET
          api_base_url = excluded.api_base_url,
@@ -2293,19 +2372,20 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          updated_at = excluded.updated_at,
          last_sync_at = excluded.last_sync_at,
          last_error = excluded.last_error`
-    ).run({
-      id: ws.id,
-      api_base_url: ws.apiBaseUrl,
-      workspace_name: ws.workspaceName,
-      display_name: ws.displayName,
-      pull_interval_sec: ws.pullIntervalSec,
-      ignore_tls_errors: ws.ignoreTlsErrors ? 1 : 0,
-      enabled: ws.enabled ? 1 : 0,
-      created_at: ws.createdAt,
-      updated_at: ws.updatedAt,
-      last_sync_at: ws.lastSyncAt,
-      last_error: ws.lastError
-    });
+      )
+      .run({
+        id: ws.id,
+        api_base_url: ws.apiBaseUrl,
+        workspace_name: ws.workspaceName,
+        display_name: ws.displayName,
+        pull_interval_sec: ws.pullIntervalSec,
+        ignore_tls_errors: ws.ignoreTlsErrors ? 1 : 0,
+        enabled: ws.enabled ? 1 : 0,
+        created_at: ws.createdAt,
+        updated_at: ws.updatedAt,
+        last_sync_at: ws.lastSyncAt,
+        last_error: ws.lastError
+      });
   }
 
   removeCloudSyncWorkspace(id: string): void {
@@ -2324,34 +2404,39 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   // ── Cloud Sync v2: pending ops ──
   listPendingOps(workspaceId: string): CloudSyncPendingOp[] {
-    const rows = this.db.prepare(
-      "SELECT id, workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error FROM cloud_sync_pending_ops WHERE workspace_id = ? ORDER BY id ASC"
-    ).all(workspaceId) as PendingOpRow[];
+    const rows = this.db
+      .prepare(
+        "SELECT id, workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error FROM cloud_sync_pending_ops WHERE workspace_id = ? ORDER BY id ASC"
+      )
+      .all(workspaceId) as PendingOpRow[];
     return rows.map(rowToPendingOp);
   }
 
   savePendingOp(op: CloudSyncPendingOp): number {
-    const result = this.db.prepare(
-      `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
+    const result = this.db
+      .prepare(
+        `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
        VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)`
-    ).run({
-      workspace_id: op.workspaceId,
-      resource_type: op.resourceType,
-      resource_id: op.resourceId,
-      action: op.action,
-      base_revision: op.baseRevision,
-      force: op.force ? 1 : 0,
-      payload_json: op.payloadJson ?? null,
-      queued_at: op.queuedAt,
-      last_attempt_at: op.lastAttemptAt ?? null,
-      last_error: op.lastError ?? null
-    });
+      )
+      .run({
+        workspace_id: op.workspaceId,
+        resource_type: op.resourceType,
+        resource_id: op.resourceId,
+        action: op.action,
+        base_revision: op.baseRevision,
+        force: op.force ? 1 : 0,
+        payload_json: op.payloadJson ?? null,
+        queued_at: op.queuedAt,
+        last_attempt_at: op.lastAttemptAt ?? null,
+        last_error: op.lastError ?? null
+      });
     return Number(result.lastInsertRowid);
   }
 
   upsertPendingOp(op: CloudSyncPendingOp): number {
-    const result = this.db.prepare(
-      `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
+    const result = this.db
+      .prepare(
+        `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
        VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)
        ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
          action = CASE
@@ -2362,35 +2447,38 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          queued_at = excluded.queued_at,
          last_attempt_at = NULL,
          last_error = NULL`
-    ).run({
-      workspace_id: op.workspaceId,
-      resource_type: op.resourceType,
-      resource_id: op.resourceId,
-      action: op.action,
-      base_revision: op.baseRevision,
-      force: op.force ? 1 : 0,
-      payload_json: op.payloadJson ?? null,
-      queued_at: op.queuedAt,
-      last_attempt_at: op.lastAttemptAt ?? null,
-      last_error: op.lastError ?? null
-    });
+      )
+      .run({
+        workspace_id: op.workspaceId,
+        resource_type: op.resourceType,
+        resource_id: op.resourceId,
+        action: op.action,
+        base_revision: op.baseRevision,
+        force: op.force ? 1 : 0,
+        payload_json: op.payloadJson ?? null,
+        queued_at: op.queuedAt,
+        last_attempt_at: op.lastAttemptAt ?? null,
+        last_error: op.lastError ?? null
+      });
     return Number(result.lastInsertRowid);
   }
 
   updatePendingOp(op: CloudSyncPendingOp): void {
     if (op.id == null) return;
-    this.db.prepare(
-      `UPDATE cloud_sync_pending_ops SET
+    this.db
+      .prepare(
+        `UPDATE cloud_sync_pending_ops SET
          last_attempt_at = @last_attempt_at,
          last_error = @last_error,
          force = @force
        WHERE id = @id`
-    ).run({
-      id: op.id,
-      last_attempt_at: op.lastAttemptAt ?? null,
-      last_error: op.lastError ?? null,
-      force: op.force ? 1 : 0
-    });
+      )
+      .run({
+        id: op.id,
+        last_attempt_at: op.lastAttemptAt ?? null,
+        last_error: op.lastError ?? null,
+        force: op.force ? 1 : 0
+      });
   }
 
   removePendingOp(id: number): void {
@@ -2403,17 +2491,19 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   // ── Cloud Sync v2: runtime state persistence ──
   getRuntimeCurrentVersion(workspaceId: string): number | null {
-    const row = this.db.prepare(
-      "SELECT current_version FROM cloud_sync_runtime_state WHERE workspace_id = ?"
-    ).get(workspaceId) as { current_version: number } | undefined;
+    const row = this.db
+      .prepare("SELECT current_version FROM cloud_sync_runtime_state WHERE workspace_id = ?")
+      .get(workspaceId) as { current_version: number } | undefined;
     return row?.current_version ?? null;
   }
 
   saveRuntimeCurrentVersion(workspaceId: string, currentVersion: number): void {
-    this.db.prepare(
-      `INSERT INTO cloud_sync_runtime_state (workspace_id, current_version) VALUES (?, ?)
+    this.db
+      .prepare(
+        `INSERT INTO cloud_sync_runtime_state (workspace_id, current_version) VALUES (?, ?)
        ON CONFLICT(workspace_id) DO UPDATE SET current_version = excluded.current_version`
-    ).run(workspaceId, currentVersion);
+      )
+      .run(workspaceId, currentVersion);
   }
 
   removeRuntimeCurrentVersion(workspaceId: string): void {
@@ -2422,19 +2512,22 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   // ── Workspace repo ──
   getWorkspaceRepoLocalState(workspaceId: string): WorkspaceRepoLocalState | undefined {
-    const row = this.db.prepare(
-      `
+    const row = this.db
+      .prepare(
+        `
         SELECT workspace_id, base_snapshot_json, remote_version, remote_commands_version, last_sync_at, last_error, sync_state
         FROM workspace_repo_local_state
         WHERE workspace_id = ?
       `
-    ).get(workspaceId) as WorkspaceRepoLocalStateRow | undefined;
+      )
+      .get(workspaceId) as WorkspaceRepoLocalStateRow | undefined;
     return row ? rowToWorkspaceRepoLocalState(row) : undefined;
   }
 
   saveWorkspaceRepoLocalState(state: WorkspaceRepoLocalState): void {
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_repo_local_state (
           workspace_id,
           base_snapshot_json,
@@ -2460,32 +2553,36 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           last_error = excluded.last_error,
           sync_state = excluded.sync_state
       `
-    ).run({
-      workspace_id: state.workspaceId,
-      base_snapshot_json: state.baseSnapshotJson ?? null,
-      remote_version: state.remoteVersion ?? null,
-      remote_commands_version: state.remoteCommandsVersion ?? null,
-      last_sync_at: state.lastSyncAt ?? null,
-      last_error: state.lastError ?? null,
-      sync_state: state.syncState
-    });
+      )
+      .run({
+        workspace_id: state.workspaceId,
+        base_snapshot_json: state.baseSnapshotJson ?? null,
+        remote_version: state.remoteVersion ?? null,
+        remote_commands_version: state.remoteCommandsVersion ?? null,
+        last_sync_at: state.lastSyncAt ?? null,
+        last_error: state.lastError ?? null,
+        sync_state: state.syncState
+      });
   }
 
   listWorkspaceRepoConflicts(workspaceId: string): WorkspaceRepoConflict[] {
-    const rows = this.db.prepare(
-      `
+    const rows = this.db
+      .prepare(
+        `
         SELECT workspace_id, resource_type, resource_id, display_name, local_snapshot_json, remote_snapshot_json, remote_deleted, detected_at
         FROM workspace_repo_conflicts
         WHERE workspace_id = ?
         ORDER BY detected_at DESC, resource_type ASC, resource_id ASC
       `
-    ).all(workspaceId) as WorkspaceRepoConflictRow[];
+      )
+      .all(workspaceId) as WorkspaceRepoConflictRow[];
     return rows.map(rowToWorkspaceRepoConflict);
   }
 
   saveWorkspaceRepoConflict(conflict: WorkspaceRepoConflict): void {
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_repo_conflicts (
           workspace_id,
           resource_type,
@@ -2512,22 +2609,25 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           remote_deleted = excluded.remote_deleted,
           detected_at = excluded.detected_at
       `
-    ).run({
-      workspace_id: conflict.workspaceId,
-      resource_type: conflict.resourceType,
-      resource_id: conflict.resourceId,
-      display_name: conflict.displayName,
-      local_snapshot_json: conflict.localSnapshotJson ?? null,
-      remote_snapshot_json: conflict.remoteSnapshotJson ?? null,
-      remote_deleted: conflict.remoteDeleted ? 1 : 0,
-      detected_at: conflict.detectedAt
-    });
+      )
+      .run({
+        workspace_id: conflict.workspaceId,
+        resource_type: conflict.resourceType,
+        resource_id: conflict.resourceId,
+        display_name: conflict.displayName,
+        local_snapshot_json: conflict.localSnapshotJson ?? null,
+        remote_snapshot_json: conflict.remoteSnapshotJson ?? null,
+        remote_deleted: conflict.remoteDeleted ? 1 : 0,
+        detected_at: conflict.detectedAt
+      });
   }
 
   removeWorkspaceRepoConflict(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.db.prepare(
-      "DELETE FROM workspace_repo_conflicts WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
-    ).run(workspaceId, resourceType, resourceId);
+    this.db
+      .prepare(
+        "DELETE FROM workspace_repo_conflicts WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
+      )
+      .run(workspaceId, resourceType, resourceId);
   }
 
   clearWorkspaceRepoConflicts(workspaceId: string): void {
@@ -2536,14 +2636,16 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   // ── Workspace commands ──
   listWorkspaceCommands(workspaceId: string): WorkspaceCommandItem[] {
-    const rows = this.db.prepare(
-      `
+    const rows = this.db
+      .prepare(
+        `
         SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
         FROM workspace_commands
         WHERE workspace_id = ?
         ORDER BY group_name ASC, updated_at DESC, id ASC
       `
-    ).all(workspaceId) as WorkspaceCommandRow[];
+      )
+      .all(workspaceId) as WorkspaceCommandRow[];
     return rows.map(rowToWorkspaceCommand);
   }
 
@@ -2590,27 +2692,30 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           updated_at: item.updatedAt
         });
       }
-      this.db.prepare(
-        `
+      this.db
+        .prepare(
+          `
           INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
           VALUES (@workspace_id, @commands_version, @updated_at)
           ON CONFLICT(workspace_id) DO UPDATE SET
             commands_version = excluded.commands_version,
             updated_at = excluded.updated_at
         `
-      ).run({
-        workspace_id: workspaceId,
-        commands_version: null,
-        updated_at: now
-      });
+        )
+        .run({
+          workspace_id: workspaceId,
+          commands_version: null,
+          updated_at: now
+        });
     })(commands);
   }
 
   upsertWorkspaceCommand(command: WorkspaceCommandItem): WorkspaceCommandItem {
     const now = new Date().toISOString();
     const id = command.id || randomUUID();
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_commands (
           id,
           workspace_id,
@@ -2640,100 +2745,116 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           is_template = excluded.is_template,
           updated_at = excluded.updated_at
       `
-    ).run({
-      id,
-      workspace_id: command.workspaceId,
-      name: command.name.trim(),
-      description: command.description?.trim() || null,
-      group_name: command.group.trim() || "默认",
-      command: command.command.trim(),
-      is_template: command.isTemplate ? 1 : 0,
-      created_at: command.createdAt,
-      updated_at: command.updatedAt || now
-    });
+      )
+      .run({
+        id,
+        workspace_id: command.workspaceId,
+        name: command.name.trim(),
+        description: command.description?.trim() || null,
+        group_name: command.group.trim() || "默认",
+        command: command.command.trim(),
+        is_template: command.isTemplate ? 1 : 0,
+        created_at: command.createdAt,
+        updated_at: command.updatedAt || now
+      });
 
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
         VALUES (@workspace_id, @commands_version, @updated_at)
         ON CONFLICT(workspace_id) DO UPDATE SET
           commands_version = excluded.commands_version,
           updated_at = excluded.updated_at
       `
-    ).run({
-      workspace_id: command.workspaceId,
-      commands_version: null,
-      updated_at: now
-    });
+      )
+      .run({
+        workspace_id: command.workspaceId,
+        commands_version: null,
+        updated_at: now
+      });
 
-    const row = this.db.prepare(
-      `
+    const row = this.db
+      .prepare(
+        `
         SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
         FROM workspace_commands
         WHERE workspace_id = ? AND id = ?
       `
-    ).get(command.workspaceId, id) as WorkspaceCommandRow;
+      )
+      .get(command.workspaceId, id) as WorkspaceCommandRow;
     return rowToWorkspaceCommand(row);
   }
 
   removeWorkspaceCommand(workspaceId: string, id: string): void {
-    this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ? AND id = ?").run(workspaceId, id);
-    this.db.prepare(
-      `
+    this.db
+      .prepare("DELETE FROM workspace_commands WHERE workspace_id = ? AND id = ?")
+      .run(workspaceId, id);
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
         VALUES (@workspace_id, @commands_version, @updated_at)
         ON CONFLICT(workspace_id) DO UPDATE SET
           commands_version = excluded.commands_version,
           updated_at = excluded.updated_at
       `
-    ).run({
-      workspace_id: workspaceId,
-      commands_version: null,
-      updated_at: new Date().toISOString()
-    });
+      )
+      .run({
+        workspace_id: workspaceId,
+        commands_version: null,
+        updated_at: new Date().toISOString()
+      });
   }
 
   getWorkspaceCommandsVersion(workspaceId: string): string | undefined {
-    const row = this.db.prepare(
-      "SELECT commands_version FROM workspace_command_sync_state WHERE workspace_id = ?"
-    ).get(workspaceId) as { commands_version: string | null } | undefined;
+    const row = this.db
+      .prepare("SELECT commands_version FROM workspace_command_sync_state WHERE workspace_id = ?")
+      .get(workspaceId) as { commands_version: string | null } | undefined;
     return row?.commands_version ?? undefined;
   }
 
   saveWorkspaceCommandsVersion(workspaceId: string, version: string): void {
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
         VALUES (@workspace_id, @commands_version, @updated_at)
         ON CONFLICT(workspace_id) DO UPDATE SET
           commands_version = excluded.commands_version,
           updated_at = excluded.updated_at
       `
-    ).run({
-      workspace_id: workspaceId,
-      commands_version: version,
-      updated_at: new Date().toISOString()
-    });
+      )
+      .run({
+        workspace_id: workspaceId,
+        commands_version: version,
+        updated_at: new Date().toISOString()
+      });
   }
 
   // ── Recycle bin ──
   listRecycleBinEntries(): RecycleBinEntry[] {
-    const rows = this.db.prepare(
-      "SELECT id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at FROM recycle_bin_entries ORDER BY created_at DESC"
-    ).all() as RecycleBinRow[];
+    const rows = this.db
+      .prepare(
+        "SELECT id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at FROM recycle_bin_entries ORDER BY created_at DESC"
+      )
+      .all() as RecycleBinRow[];
     return rows.map(rowToRecycleBinEntry);
   }
 
   getRecycleBinEntry(id: string): RecycleBinEntry | undefined {
-    const row = this.db.prepare(
-      "SELECT id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at FROM recycle_bin_entries WHERE id = ?"
-    ).get(id) as RecycleBinRow | undefined;
+    const row = this.db
+      .prepare(
+        "SELECT id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at FROM recycle_bin_entries WHERE id = ?"
+      )
+      .get(id) as RecycleBinRow | undefined;
     return row ? rowToRecycleBinEntry(row) : undefined;
   }
 
   saveRecycleBinEntry(entry: RecycleBinEntry): void {
-    this.db.prepare(
-      `INSERT INTO recycle_bin_entries (id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at)
+    this.db
+      .prepare(
+        `INSERT INTO recycle_bin_entries (id, resource_type, display_name, original_resource_id, original_scope_key, reason, snapshot_json, created_at)
        VALUES (@id, @resource_type, @display_name, @original_resource_id, @original_scope_key, @reason, @snapshot_json, @created_at)
        ON CONFLICT(id) DO UPDATE SET
          resource_type = excluded.resource_type,
@@ -2742,16 +2863,17 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          original_scope_key = excluded.original_scope_key,
          reason = excluded.reason,
          snapshot_json = excluded.snapshot_json`
-    ).run({
-      id: entry.id,
-      resource_type: entry.resourceType,
-      display_name: entry.displayName,
-      original_resource_id: entry.originalResourceId,
-      original_scope_key: entry.originalScopeKey,
-      reason: entry.reason,
-      snapshot_json: entry.snapshotJson,
-      created_at: entry.createdAt
-    });
+      )
+      .run({
+        id: entry.id,
+        resource_type: entry.resourceType,
+        display_name: entry.displayName,
+        original_resource_id: entry.originalResourceId,
+        original_scope_key: entry.originalScopeKey,
+        reason: entry.reason,
+        snapshot_json: entry.snapshotJson,
+        created_at: entry.createdAt
+      });
   }
 
   removeRecycleBinEntry(id: string): void {
@@ -2764,9 +2886,9 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   }
 
   getMasterKeyMeta(): MasterKeyMeta | undefined {
-    const row = this.db.prepare(
-      "SELECT key, value_json, updated_at FROM app_settings WHERE key = ?"
-    ).get("master_key_meta") as AppSettingRow | undefined;
+    const row = this.db
+      .prepare("SELECT key, value_json, updated_at FROM app_settings WHERE key = ?")
+      .get("master_key_meta") as AppSettingRow | undefined;
 
     if (!row?.value_json) {
       return undefined;
@@ -2791,25 +2913,27 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   saveMasterKeyMeta(meta: MasterKeyMeta): void {
     const now = new Date().toISOString();
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO app_settings (key, value_json, updated_at)
         VALUES (@key, @value_json, @updated_at)
         ON CONFLICT(key) DO UPDATE SET
           value_json = excluded.value_json,
           updated_at = excluded.updated_at
       `
-    ).run({
-      key: "master_key_meta",
-      value_json: JSON.stringify(meta),
-      updated_at: now
-    });
+      )
+      .run({
+        key: "master_key_meta",
+        value_json: JSON.stringify(meta),
+        updated_at: now
+      });
   }
 
   getDeviceKey(): string | undefined {
-    const row = this.db.prepare(
-      "SELECT value_json FROM app_settings WHERE key = ?"
-    ).get("device_key") as { value_json: string } | undefined;
+    const row = this.db
+      .prepare("SELECT value_json FROM app_settings WHERE key = ?")
+      .get("device_key") as { value_json: string } | undefined;
     if (!row?.value_json) return undefined;
     try {
       const parsed = JSON.parse(row.value_json);
@@ -2821,13 +2945,15 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   saveDeviceKey(key: string): void {
     const now = new Date().toISOString();
-    this.db.prepare(
-      `INSERT INTO app_settings (key, value_json, updated_at)
+    this.db
+      .prepare(
+        `INSERT INTO app_settings (key, value_json, updated_at)
        VALUES (@key, @value_json, @updated_at)
        ON CONFLICT(key) DO UPDATE SET
          value_json = excluded.value_json,
          updated_at = excluded.updated_at`
-    ).run({ key: "device_key", value_json: JSON.stringify(key), updated_at: now });
+      )
+      .run({ key: "device_key", value_json: JSON.stringify(key), updated_at: now });
   }
 
   clearDeviceKey(): void {
@@ -2869,22 +2995,27 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
   constructor(private readonly db: Database.Database) {}
 
   list(): SshKeyProfile[] {
-    const rows = this.db.prepare(
-      "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys ORDER BY name ASC"
-    ).all() as SshKeyRow[];
+    const rows = this.db
+      .prepare(
+        "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys ORDER BY name ASC"
+      )
+      .all() as SshKeyRow[];
     return rows.map(rowToSshKey);
   }
 
   getById(id: string): SshKeyProfile | undefined {
-    const row = this.db.prepare(
-      "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys WHERE id = ?"
-    ).get(id) as SshKeyRow | undefined;
+    const row = this.db
+      .prepare(
+        "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys WHERE id = ?"
+      )
+      .get(id) as SshKeyRow | undefined;
     return row ? rowToSshKey(row) : undefined;
   }
 
   save(key: SshKeyProfile): void {
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO ssh_keys (id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id)
         VALUES (@id, @name, @key_content_ref, @passphrase_ref, @created_at, @updated_at, @resource_id, @uuid_in_scope, @origin_kind, @origin_scope_key, @origin_workspace_id, @copied_from_resource_id)
         ON CONFLICT(id) DO UPDATE SET
@@ -2899,20 +3030,21 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
           origin_workspace_id = excluded.origin_workspace_id,
           copied_from_resource_id = excluded.copied_from_resource_id
       `
-    ).run({
-      id: key.id,
-      name: key.name,
-      key_content_ref: key.keyContentRef,
-      passphrase_ref: key.passphraseRef ?? null,
-      created_at: key.createdAt,
-      updated_at: key.updatedAt,
-      resource_id: key.resourceId ?? null,
-      uuid_in_scope: key.uuidInScope ?? null,
-      origin_kind: key.originKind ?? "local",
-      origin_scope_key: key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
-      origin_workspace_id: key.originWorkspaceId ?? null,
-      copied_from_resource_id: key.copiedFromResourceId ?? null
-    });
+      )
+      .run({
+        id: key.id,
+        name: key.name,
+        key_content_ref: key.keyContentRef,
+        passphrase_ref: key.passphraseRef ?? null,
+        created_at: key.createdAt,
+        updated_at: key.updatedAt,
+        resource_id: key.resourceId ?? null,
+        uuid_in_scope: key.uuidInScope ?? null,
+        origin_kind: key.originKind ?? "local",
+        origin_scope_key: key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+        origin_workspace_id: key.originWorkspaceId ?? null,
+        copied_from_resource_id: key.copiedFromResourceId ?? null
+      });
   }
 
   remove(id: string): void {
@@ -2920,9 +3052,9 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
   }
 
   getReferencingConnectionIds(keyId: string): string[] {
-    const rows = this.db.prepare(
-      "SELECT id FROM connections WHERE ssh_key_id = ?"
-    ).all(keyId) as Array<{ id: string }>;
+    const rows = this.db
+      .prepare("SELECT id FROM connections WHERE ssh_key_id = ?")
+      .all(keyId) as Array<{ id: string }>;
     return rows.map((r) => r.id);
   }
 }
@@ -2933,8 +3065,9 @@ export class SQLiteProxyRepository implements ProxyRepository {
   constructor(private readonly db: Database.Database) {}
 
   list(): ProxyProfile[] {
-    const rows = this.db.prepare(
-      `
+    const rows = this.db
+      .prepare(
+        `
         SELECT
           id,
           name,
@@ -2954,13 +3087,15 @@ export class SQLiteProxyRepository implements ProxyRepository {
         FROM proxies
         ORDER BY name ASC
       `
-    ).all() as ProxyRow[];
+      )
+      .all() as ProxyRow[];
     return rows.map(rowToProxy);
   }
 
   getById(id: string): ProxyProfile | undefined {
-    const row = this.db.prepare(
-      `
+    const row = this.db
+      .prepare(
+        `
         SELECT
           id,
           name,
@@ -2980,13 +3115,15 @@ export class SQLiteProxyRepository implements ProxyRepository {
         FROM proxies
         WHERE id = ?
       `
-    ).get(id) as ProxyRow | undefined;
+      )
+      .get(id) as ProxyRow | undefined;
     return row ? rowToProxy(row) : undefined;
   }
 
   save(proxy: ProxyProfile): void {
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO proxies (
           id,
           name,
@@ -3036,23 +3173,24 @@ export class SQLiteProxyRepository implements ProxyRepository {
           origin_workspace_id = excluded.origin_workspace_id,
           copied_from_resource_id = excluded.copied_from_resource_id
       `
-    ).run({
-      id: proxy.id,
-      name: proxy.name,
-      proxy_type: proxy.proxyType,
-      host: proxy.host,
-      port: proxy.port,
-      username: proxy.username ?? null,
-      credential_ref: proxy.credentialRef ?? null,
-      created_at: proxy.createdAt,
-      updated_at: proxy.updatedAt,
-      resource_id: proxy.resourceId ?? null,
-      uuid_in_scope: proxy.uuidInScope ?? null,
-      origin_kind: proxy.originKind ?? "local",
-      origin_scope_key: proxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
-      origin_workspace_id: proxy.originWorkspaceId ?? null,
-      copied_from_resource_id: proxy.copiedFromResourceId ?? null
-    });
+      )
+      .run({
+        id: proxy.id,
+        name: proxy.name,
+        proxy_type: proxy.proxyType,
+        host: proxy.host,
+        port: proxy.port,
+        username: proxy.username ?? null,
+        credential_ref: proxy.credentialRef ?? null,
+        created_at: proxy.createdAt,
+        updated_at: proxy.updatedAt,
+        resource_id: proxy.resourceId ?? null,
+        uuid_in_scope: proxy.uuidInScope ?? null,
+        origin_kind: proxy.originKind ?? "local",
+        origin_scope_key: proxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+        origin_workspace_id: proxy.originWorkspaceId ?? null,
+        copied_from_resource_id: proxy.copiedFromResourceId ?? null
+      });
   }
 
   remove(id: string): void {
@@ -3060,9 +3198,9 @@ export class SQLiteProxyRepository implements ProxyRepository {
   }
 
   getReferencingConnectionIds(proxyId: string): string[] {
-    const rows = this.db.prepare(
-      "SELECT id FROM connections WHERE proxy_id = ?"
-    ).all(proxyId) as Array<{ id: string }>;
+    const rows = this.db
+      .prepare("SELECT id FROM connections WHERE proxy_id = ?")
+      .all(proxyId) as Array<{ id: string }>;
     return rows.map((r) => r.id);
   }
 }
@@ -3072,10 +3210,18 @@ export class SQLiteProxyRepository implements ProxyRepository {
 class SQLiteSecretStore implements SecretStoreDB {
   constructor(private readonly db: Database.Database) {}
 
-  putSecret(id: string, purpose: string, ciphertextB64: string, ivB64: string, tagB64: string, aad: string): void {
+  putSecret(
+    id: string,
+    purpose: string,
+    ciphertextB64: string,
+    ivB64: string,
+    tagB64: string,
+    aad: string
+  ): void {
     const now = new Date().toISOString();
-    this.db.prepare(
-      `
+    this.db
+      .prepare(
+        `
         INSERT INTO secret_store (id, purpose, ciphertext_b64, iv_b64, tag_b64, aad, created_at, updated_at)
         VALUES (@id, @purpose, @ciphertext_b64, @iv_b64, @tag_b64, @aad, @created_at, @updated_at)
         ON CONFLICT(id) DO UPDATE SET
@@ -3086,22 +3232,26 @@ class SQLiteSecretStore implements SecretStoreDB {
           aad = excluded.aad,
           updated_at = excluded.updated_at
       `
-    ).run({
-      id,
-      purpose,
-      ciphertext_b64: ciphertextB64,
-      iv_b64: ivB64,
-      tag_b64: tagB64,
-      aad,
-      created_at: now,
-      updated_at: now
-    });
+      )
+      .run({
+        id,
+        purpose,
+        ciphertext_b64: ciphertextB64,
+        iv_b64: ivB64,
+        tag_b64: tagB64,
+        aad,
+        created_at: now,
+        updated_at: now
+      });
   }
 
-  getSecret(id: string): { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined {
-    const row = this.db.prepare(
-      "SELECT ciphertext_b64, iv_b64, tag_b64, aad FROM secret_store WHERE id = ?"
-    ).get(id) as { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined;
+  getSecret(
+    id: string
+  ): { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined {
+    const row = this.db
+      .prepare("SELECT ciphertext_b64, iv_b64, tag_b64, aad FROM secret_store WHERE id = ?")
+      .get(id) as
+      { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined;
     return row;
   }
 
@@ -3109,9 +3259,25 @@ class SQLiteSecretStore implements SecretStoreDB {
     this.db.prepare("DELETE FROM secret_store WHERE id = ?").run(id);
   }
 
-  listSecrets(): Array<{ id: string; purpose: string; ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string }> {
-    return this.db.prepare(
-      "SELECT id, purpose, ciphertext_b64, iv_b64, tag_b64, aad FROM secret_store ORDER BY id ASC"
-    ).all() as Array<{ id: string; purpose: string; ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string }>;
+  listSecrets(): Array<{
+    id: string;
+    purpose: string;
+    ciphertext_b64: string;
+    iv_b64: string;
+    tag_b64: string;
+    aad: string;
+  }> {
+    return this.db
+      .prepare(
+        "SELECT id, purpose, ciphertext_b64, iv_b64, tag_b64, aad FROM secret_store ORDER BY id ASC"
+      )
+      .all() as Array<{
+      id: string;
+      purpose: string;
+      ciphertext_b64: string;
+      iv_b64: string;
+      tag_b64: string;
+      aad: string;
+    }>;
   }
 }

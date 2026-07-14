@@ -88,10 +88,7 @@ const createRepositoryStub = (
 };
 
 (() => {
-  const inner = createRepositoryStub([
-    makeHistoryEntry("ls", 0),
-    makeHistoryEntry("pwd", 1)
-  ]);
+  const inner = createRepositoryStub([makeHistoryEntry("ls", 0), makeHistoryEntry("pwd", 1)]);
   const repository = new CachedConnectionRepository(inner);
 
   try {
@@ -137,7 +134,10 @@ const createRepositoryStub = (
       firstError = error;
     }
 
-    assert(firstError instanceof Error, "first command history flush should surface the batch failure");
+    assert(
+      firstError instanceof Error,
+      "first command history flush should surface the batch failure"
+    );
 
     repository.flush();
 
@@ -181,8 +181,14 @@ await (async () => {
     await sleep(650);
     await sleep(650);
 
-    assert(uncaughtErrors.length === 0, "timer-based history flush should not leak uncaught exceptions");
-    assert(batchCalls.length === 2, "timer-based history flush should retry after a transient failure");
+    assert(
+      uncaughtErrors.length === 0,
+      "timer-based history flush should not leak uncaught exceptions"
+    );
+    assert(
+      batchCalls.length === 2,
+      "timer-based history flush should retry after a transient failure"
+    );
   } finally {
     process.off("uncaughtException", onUncaughtException);
     try {
@@ -196,10 +202,7 @@ await (async () => {
 (() => {
   const batchCalls: Array<Array<{ type: string; command?: string }>> = [];
   const inner = {
-    ...createRepositoryStub([
-      makeHistoryEntry("ls", 0),
-      makeHistoryEntry("pwd", 1)
-    ]),
+    ...createRepositoryStub([makeHistoryEntry("ls", 0), makeHistoryEntry("pwd", 1)]),
     pushCommandHistory: () => {
       throw new Error("close flush should use applyCommandHistoryBatch when available");
     },
@@ -227,10 +230,7 @@ await (async () => {
 })();
 
 (() => {
-  const inner = createRepositoryStub([
-    makeHistoryEntry("ls", 0),
-    makeHistoryEntry("pwd", 1)
-  ]);
+  const inner = createRepositoryStub([makeHistoryEntry("ls", 0), makeHistoryEntry("pwd", 1)]);
   const repository = new CachedConnectionRepository(inner);
 
   try {

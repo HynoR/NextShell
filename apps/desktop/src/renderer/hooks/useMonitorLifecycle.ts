@@ -29,7 +29,9 @@ export function useMonitorLifecycle(
         }
       }
     });
-    return () => { unsubscribe(); };
+    return () => {
+      unsubscribe();
+    };
   }, [activeConnectionId, setMonitor, appendNetworkRate]);
 
   // Start/stop system monitor when connection or terminal status changes
@@ -39,24 +41,32 @@ export function useMonitorLifecycle(
       return;
     }
 
-    const shouldStartSystemMonitor = Boolean(monitorSessionEnabled && isActiveConnectionTerminalConnected);
+    const shouldStartSystemMonitor = Boolean(
+      monitorSessionEnabled && isActiveConnectionTerminalConnected
+    );
 
     if (!shouldStartSystemMonitor) {
       setMonitor(undefined);
-      void window.nextshell.monitor.stopSystem({ connectionId: activeConnectionId }).catch(() => {});
+      void window.nextshell.monitor
+        .stopSystem({ connectionId: activeConnectionId })
+        .catch(() => {});
       return;
     }
 
     let disposed = false;
-    void window.nextshell.monitor.startSystem({ connectionId: activeConnectionId }).catch((error) => {
-      if (disposed) return;
-      message.error(`启动系统监控失败：${formatErrorMessage(error, "请检查连接状态")}`);
-      setMonitor(undefined);
-    });
+    void window.nextshell.monitor
+      .startSystem({ connectionId: activeConnectionId })
+      .catch((error) => {
+        if (disposed) return;
+        message.error(`启动系统监控失败：${formatErrorMessage(error, "请检查连接状态")}`);
+        setMonitor(undefined);
+      });
 
     return () => {
       disposed = true;
-      void window.nextshell.monitor.stopSystem({ connectionId: activeConnectionId }).catch(() => {});
+      void window.nextshell.monitor
+        .stopSystem({ connectionId: activeConnectionId })
+        .catch(() => {});
     };
   }, [monitorSessionEnabled, activeConnectionId, isActiveConnectionTerminalConnected, setMonitor]);
 
@@ -69,15 +79,18 @@ export function useMonitorLifecycle(
     );
 
     const staleMonitorSessionIds = sessions
-      .filter((session) =>
-        (session.type === "processManager" || session.type === "networkMonitor") &&
-        !connectedTerminalConnectionIds.has(session.connectionId)
+      .filter(
+        (session) =>
+          (session.type === "processManager" || session.type === "networkMonitor") &&
+          !connectedTerminalConnectionIds.has(session.connectionId)
       )
       .map((session) => session.id);
 
     if (staleMonitorSessionIds.length === 0) return;
 
-    staleMonitorSessionIds.forEach((sessionId) => { removeSession(sessionId); });
+    staleMonitorSessionIds.forEach((sessionId) => {
+      removeSession(sessionId);
+    });
   }, [sessions, removeSession]);
 
   const openMonitorTab = useCallback(

@@ -105,106 +105,127 @@ export const useFileActions = ({
     }
   }, [connection, execSSH, loadFiles, message, modal, pathName, setBusy]);
 
-  const handleRename = useCallback(async (entry?: RemoteFileEntry): Promise<void> => {
-    const target = entry ?? singleSelected;
-    if (!connection || !target) return;
-    const toPath = await promptModal(modal, "重命名为", undefined, target.path);
-    if (!toPath || toPath === target.path) return;
-    const normalized = normalizeRemotePath(toPath);
-    setBusy(true);
-    try {
-      await window.nextshell.sftp.rename({
-        connectionId: connection.id,
-        fromPath: target.path,
-        toPath: normalized
-      });
-      message.success("重命名成功");
-      await loadFiles();
-    } catch (error) {
-      message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection, loadFiles, message, modal, setBusy, singleSelected]);
+  const handleRename = useCallback(
+    async (entry?: RemoteFileEntry): Promise<void> => {
+      const target = entry ?? singleSelected;
+      if (!connection || !target) return;
+      const toPath = await promptModal(modal, "重命名为", undefined, target.path);
+      if (!toPath || toPath === target.path) return;
+      const normalized = normalizeRemotePath(toPath);
+      setBusy(true);
+      try {
+        await window.nextshell.sftp.rename({
+          connectionId: connection.id,
+          fromPath: target.path,
+          toPath: normalized
+        });
+        message.success("重命名成功");
+        await loadFiles();
+      } catch (error) {
+        message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connection, loadFiles, message, modal, setBusy, singleSelected]
+  );
 
   // 安全删除：走 SFTP remove，带乐观更新（失败回滚）。
-  const runSafeDelete = useCallback(async (targets: RemoteFileEntry[]): Promise<void> => {
-    if (!connection) return;
-    const prevFiles = [...files];
-    const targetPaths = new Set(targets.map((target) => target.path));
-    setFiles((prev) => prev.filter((file) => !targetPaths.has(file.path)));
+  const runSafeDelete = useCallback(
+    async (targets: RemoteFileEntry[]): Promise<void> => {
+      if (!connection) return;
+      const prevFiles = [...files];
+      const targetPaths = new Set(targets.map((target) => target.path));
+      setFiles((prev) => prev.filter((file) => !targetPaths.has(file.path)));
 
-    try {
-      setBusy(true);
-      await pMap(
-        targets,
-        async (entry) => {
-          await window.nextshell.sftp.remove({
-            connectionId: connection.id,
-            path: entry.path,
-            type: entry.type
-          });
-        },
-        5
-      );
-      message.success("删除成功");
-      await loadFiles();
-    } catch (error) {
-      message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
-      setFiles(prevFiles);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection, files, loadFiles, message, setBusy, setFiles]);
+      try {
+        setBusy(true);
+        await pMap(
+          targets,
+          async (entry) => {
+            await window.nextshell.sftp.remove({
+              connectionId: connection.id,
+              path: entry.path,
+              type: entry.type
+            });
+          },
+          5
+        );
+        message.success("删除成功");
+        await loadFiles();
+      } catch (error) {
+        message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
+        setFiles(prevFiles);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connection, files, loadFiles, message, setBusy, setFiles]
+  );
 
   // 强制删除：远端执行 rm -rf（可删只读/非空目录，不可恢复）。
-  const runForceDelete = useCallback(async (targets: RemoteFileEntry[]): Promise<void> => {
-    if (!connection) return;
-    const paths = targets.map((entry) => shellEscape(entry.path)).join(" ");
-    setBusy(true);
-    const { ok } = await execSSH(`rm -rf ${paths}`);
-    setBusy(false);
-    if (ok) {
-      message.success("已删除");
-      await loadFiles();
-    }
-  }, [connection, execSSH, loadFiles, message, setBusy]);
+  const runForceDelete = useCallback(
+    async (targets: RemoteFileEntry[]): Promise<void> => {
+      if (!connection) return;
+      const paths = targets.map((entry) => shellEscape(entry.path)).join(" ");
+      setBusy(true);
+      const { ok } = await execSSH(`rm -rf ${paths}`);
+      setBusy(false);
+      if (ok) {
+        message.success("已删除");
+        await loadFiles();
+      }
+    },
+    [connection, execSSH, loadFiles, message, setBusy]
+  );
 
-  const requestDelete = useCallback((targets: RemoteFileEntry[] = selectedEntries): void => {
-    if (!connection || targets.length === 0) return;
-    setDeleteTargets(targets);
-  }, [connection, selectedEntries]);
+  const requestDelete = useCallback(
+    (targets: RemoteFileEntry[] = selectedEntries): void => {
+      if (!connection || targets.length === 0) return;
+      setDeleteTargets(targets);
+    },
+    [connection, selectedEntries]
+  );
 
   const cancelDelete = useCallback(() => {
     setDeleteTargets(null);
   }, []);
 
-  const confirmDelete = useCallback(async (force: boolean): Promise<void> => {
-    const targets = deleteTargets;
-    if (!targets || targets.length === 0) {
+  const confirmDelete = useCallback(
+    async (force: boolean): Promise<void> => {
+      const targets = deleteTargets;
+      if (!targets || targets.length === 0) {
+        setDeleteTargets(null);
+        return;
+      }
+      // 保持对话框开启（显示确认 loading）直到操作完成后再关闭。
+      if (force) {
+        await runForceDelete(targets);
+      } else {
+        await runSafeDelete(targets);
+      }
       setDeleteTargets(null);
-      return;
-    }
-    // 保持对话框开启（显示确认 loading）直到操作完成后再关闭。
-    if (force) {
-      await runForceDelete(targets);
-    } else {
-      await runSafeDelete(targets);
-    }
-    setDeleteTargets(null);
-  }, [deleteTargets, runForceDelete, runSafeDelete]);
+    },
+    [deleteTargets, runForceDelete, runSafeDelete]
+  );
 
-  const handleCopy = useCallback((entries: RemoteFileEntry[]) => {
-    if (!connection) return;
-    setClipboard({ mode: "copy", entries, sourceConnectionId: connection.id });
-    message.success(`已复制 ${entries.length} 项到剪贴板`);
-  }, [connection, message]);
+  const handleCopy = useCallback(
+    (entries: RemoteFileEntry[]) => {
+      if (!connection) return;
+      setClipboard({ mode: "copy", entries, sourceConnectionId: connection.id });
+      message.success(`已复制 ${entries.length} 项到剪贴板`);
+    },
+    [connection, message]
+  );
 
-  const handleCut = useCallback((entries: RemoteFileEntry[]) => {
-    if (!connection) return;
-    setClipboard({ mode: "cut", entries, sourceConnectionId: connection.id });
-    message.success(`已剪切 ${entries.length} 项到剪贴板`);
-  }, [connection, message]);
+  const handleCut = useCallback(
+    (entries: RemoteFileEntry[]) => {
+      if (!connection) return;
+      setClipboard({ mode: "cut", entries, sourceConnectionId: connection.id });
+      message.success(`已剪切 ${entries.length} 项到剪贴板`);
+    },
+    [connection, message]
+  );
 
   const handlePaste = useCallback(async (): Promise<void> => {
     if (!connection || !clipboard) return;
@@ -241,53 +262,71 @@ export const useFileActions = ({
     await loadFiles();
   }, [clipboard, connection, execSSH, loadFiles, message, pathName, setBusy]);
 
-  const handleCopyPath = useCallback((entries: RemoteFileEntry[]) => {
-    const paths = entries.map((entry) => entry.path).join("\n");
-    void navigator.clipboard.writeText(paths);
-    message.success("路径已复制到系统剪贴板");
-  }, [message]);
+  const handleCopyPath = useCallback(
+    (entries: RemoteFileEntry[]) => {
+      const paths = entries.map((entry) => entry.path).join("\n");
+      void navigator.clipboard.writeText(paths);
+      message.success("路径已复制到系统剪贴板");
+    },
+    [message]
+  );
 
-  const doRemoteEdit = useCallback(async (entry: RemoteFileEntry, editorCmd: string) => {
-    if (!connection) return;
-    setBusy(true);
-    try {
-      await window.nextshell.sftp.editOpen({
-        connectionId: connection.id,
-        remotePath: entry.path,
-        editorCommand: editorCmd
-      });
-      message.success(`已打开远端编辑: ${entry.name}`);
-    } catch (error) {
-      message.error(`远端编辑失败：${formatErrorMessage(error, "请检查编辑器配置或环境变量")}`);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection, message, setBusy]);
+  const doRemoteEdit = useCallback(
+    async (entry: RemoteFileEntry, editorCmd: string) => {
+      if (!connection) return;
+      setBusy(true);
+      try {
+        await window.nextshell.sftp.editOpen({
+          connectionId: connection.id,
+          remotePath: entry.path,
+          editorCommand: editorCmd
+        });
+        message.success(`已打开远端编辑: ${entry.name}`);
+      } catch (error) {
+        message.error(`远端编辑失败：${formatErrorMessage(error, "请检查编辑器配置或环境变量")}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connection, message, setBusy]
+  );
 
-  const handleRemoteEdit = useCallback((entry: RemoteFileEntry) => {
-    const editorMode = remoteEditPreferences.editorMode ?? "builtin";
-    if (editorMode === "builtin" && onOpenEditorTab && connection) {
-      void onOpenEditorTab(connection.id, entry.path);
-      return;
-    }
-    const editor = remoteEditPreferences.defaultEditorCommand?.trim() ?? "";
-    void doRemoteEdit(entry, editor);
-  }, [connection, doRemoteEdit, onOpenEditorTab, remoteEditPreferences.defaultEditorCommand, remoteEditPreferences.editorMode]);
+  const handleRemoteEdit = useCallback(
+    (entry: RemoteFileEntry) => {
+      const editorMode = remoteEditPreferences.editorMode ?? "builtin";
+      if (editorMode === "builtin" && onOpenEditorTab && connection) {
+        void onOpenEditorTab(connection.id, entry.path);
+        return;
+      }
+      const editor = remoteEditPreferences.defaultEditorCommand?.trim() ?? "";
+      void doRemoteEdit(entry, editor);
+    },
+    [
+      connection,
+      doRemoteEdit,
+      onOpenEditorTab,
+      remoteEditPreferences.defaultEditorCommand,
+      remoteEditPreferences.editorMode
+    ]
+  );
 
-  const handleContextMenu = useCallback((event: ReactMouseEvent, row?: RemoteFileEntry) => {
-    event.preventDefault();
-    event.stopPropagation();
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent, row?: RemoteFileEntry) => {
+      event.preventDefault();
+      event.stopPropagation();
 
-    let targetEntries: RemoteFileEntry[];
-    if (row) {
-      targetEntries =
-        selectedPaths.includes(row.path) && selectedEntries.length > 0 ? selectedEntries : [row];
-    } else {
-      targetEntries = [];
-    }
+      let targetEntries: RemoteFileEntry[];
+      if (row) {
+        targetEntries =
+          selectedPaths.includes(row.path) && selectedEntries.length > 0 ? selectedEntries : [row];
+      } else {
+        targetEntries = [];
+      }
 
-    setContextMenu({ x: event.clientX, y: event.clientY, entries: targetEntries });
-  }, [selectedEntries, selectedPaths]);
+      setContextMenu({ x: event.clientX, y: event.clientY, entries: targetEntries });
+    },
+    [selectedEntries, selectedPaths]
+  );
 
   return {
     clearClipboard,

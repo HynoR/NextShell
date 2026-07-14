@@ -48,9 +48,15 @@ describe("terminal control sequence compatibility", () => {
   });
 
   test("registers guards that only suppress query sequences", () => {
-    const csiHandlers = new Map<string, (params: (number | number[])[]) => boolean | Promise<boolean>>();
+    const csiHandlers = new Map<
+      string,
+      (params: (number | number[])[]) => boolean | Promise<boolean>
+    >();
     const oscHandlers = new Map<number, (data: string) => boolean | Promise<boolean>>();
-    const dcsHandlers = new Map<string, (data: string, params: (number | number[])[]) => boolean | Promise<boolean>>();
+    const dcsHandlers = new Map<
+      string,
+      (data: string, params: (number | number[])[]) => boolean | Promise<boolean>
+    >();
     const suppressed: string[] = [];
 
     const disposer = installTerminalQueryCompatibilityGuards(

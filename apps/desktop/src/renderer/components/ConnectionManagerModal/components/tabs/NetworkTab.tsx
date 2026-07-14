@@ -9,10 +9,7 @@ interface NetworkTabProps {
 export const NetworkTab = ({ keepAliveSetting, proxies }: NetworkTabProps) => {
   return (
     <>
-      <Form.Item
-        label="代理"
-        name="proxyId"
-      >
+      <Form.Item label="代理" name="proxyId">
         <Select
           placeholder="直连（不使用代理）"
           allowClear
@@ -52,9 +49,7 @@ export const NetworkTab = ({ keepAliveSetting, proxies }: NetworkTabProps) => {
         />
       </Form.Item>
 
-      <div className="mgr-form-subtitle">
-        留空表示跟随全局设置，修改后需重连会话生效。
-      </div>
+      <div className="mgr-form-subtitle">留空表示跟随全局设置，修改后需重连会话生效。</div>
     </>
   );
 };

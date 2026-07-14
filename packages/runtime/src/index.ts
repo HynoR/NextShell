@@ -122,21 +122,23 @@ const getDefaultDataDir = (options: ResolveNextShellDataPathsOptions): string =>
   }
 
   if (platform === "win32") {
-    return path.join(env.APPDATA ?? path.join(homeDir, "AppData", "Roaming"), productName, "storage");
+    return path.join(
+      env.APPDATA ?? path.join(homeDir, "AppData", "Roaming"),
+      productName,
+      "storage"
+    );
   }
 
   return path.join(env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config"), productName, "storage");
 };
 
-const isHexString = (value: string): boolean => value.length > 0 && value.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(value);
+const isHexString = (value: string): boolean =>
+  value.length > 0 && value.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(value);
 
 const getSearchableText = (connection: ConnectionProfile): string => {
-  return [
-    connection.name,
-    connection.host,
-    connection.groupPath,
-    ...connection.tags
-  ].join(" ").toLowerCase();
+  return [connection.name, connection.host, connection.groupPath, ...connection.tags]
+    .join(" ")
+    .toLowerCase();
 };
 
 const selectUniqueMatches = (connections: ConnectionProfile[]): ConnectionProfile[] => {
@@ -158,14 +160,18 @@ const resolveMatches = (
   predicate: (connection: ConnectionProfile, normalizedTarget: string) => boolean
 ): ConnectionProfile[] => {
   const normalizedTarget = normalizeText(target);
-  return selectUniqueMatches(connections.filter((connection) => predicate(connection, normalizedTarget)));
+  return selectUniqueMatches(
+    connections.filter((connection) => predicate(connection, normalizedTarget))
+  );
 };
 
 const toSummaryMap = (connections: ConnectionProfile[]): ServerSummary[] => {
   return connections.map((connection) => buildServerSummary(connection));
 };
 
-export const resolveNextShellDataPaths = (options: ResolveNextShellDataPathsOptions = {}): NextShellDataPaths => {
+export const resolveNextShellDataPaths = (
+  options: ResolveNextShellDataPathsOptions = {}
+): NextShellDataPaths => {
   const env = options.env ?? process.env;
 
   if (options.dbPath ?? env["NEXTSHELL_DB_PATH"]) {
@@ -176,7 +182,9 @@ export const resolveNextShellDataPaths = (options: ResolveNextShellDataPathsOpti
     };
   }
 
-  const dataDir = path.resolve(options.dataDir ?? env["NEXTSHELL_DATA_DIR"] ?? getDefaultDataDir(options));
+  const dataDir = path.resolve(
+    options.dataDir ?? env["NEXTSHELL_DATA_DIR"] ?? getDefaultDataDir(options)
+  );
   return {
     dataDir,
     dbPath: path.join(dataDir, DEFAULT_DB_FILE_NAME)
@@ -201,11 +209,16 @@ export const createReadonlyCredentialContext = (
   const deviceKeyHex = connections.getDeviceKey();
   if (!deviceKeyHex || !isHexString(deviceKeyHex)) {
     connections.close();
-    throw new CredentialStoreUnavailableError("credential store unavailable: device key missing or invalid");
+    throw new CredentialStoreUnavailableError(
+      "credential store unavailable: device key missing or invalid"
+    );
   }
 
   const preferences = connections.getAppPreferences();
-  const vault = new EncryptedSecretVault(connections.getSecretStore(), Buffer.from(deviceKeyHex, "hex"));
+  const vault = new EncryptedSecretVault(
+    connections.getSecretStore(),
+    Buffer.from(deviceKeyHex, "hex")
+  );
 
   return {
     paths,
@@ -270,7 +283,8 @@ export const resolveConnectionTarget = (
   const exactNameId = resolveMatches(
     connections,
     trimmedTarget,
-    (connection, normalizedTarget) => normalizeText(buildServerSummary(connection).nameId) === normalizedTarget
+    (connection, normalizedTarget) =>
+      normalizeText(buildServerSummary(connection).nameId) === normalizedTarget
   );
   if (exactNameId.length === 1) {
     const match = exactNameId[0]!;
@@ -306,10 +320,8 @@ export const resolveConnectionTarget = (
     throw new ConnectionTargetAmbiguousError(trimmedTarget, toSummaryMap(exactHost));
   }
 
-  const prefixMatches = resolveMatches(
-    connections,
-    trimmedTarget,
-    (connection, normalizedTarget) => normalizeText(connection.name).startsWith(normalizedTarget)
+  const prefixMatches = resolveMatches(connections, trimmedTarget, (connection, normalizedTarget) =>
+    normalizeText(connection.name).startsWith(normalizedTarget)
   );
   if (prefixMatches.length === 1) {
     const match = prefixMatches[0]!;
@@ -319,10 +331,8 @@ export const resolveConnectionTarget = (
     throw new ConnectionTargetAmbiguousError(trimmedTarget, toSummaryMap(prefixMatches));
   }
 
-  const fuzzyMatches = resolveMatches(
-    connections,
-    trimmedTarget,
-    (connection, normalizedTarget) => getSearchableText(connection).includes(normalizedTarget)
+  const fuzzyMatches = resolveMatches(connections, trimmedTarget, (connection, normalizedTarget) =>
+    getSearchableText(connection).includes(normalizedTarget)
   );
   if (fuzzyMatches.length === 1) {
     const match = fuzzyMatches[0]!;
@@ -363,7 +373,8 @@ export const buildSshConnectOptions = async (
   }
 
   const keepAliveEnabled = profile.keepAliveEnabled ?? context.preferences.ssh.keepAliveEnabled;
-  const intervalCandidate = profile.keepAliveIntervalSec ?? context.preferences.ssh.keepAliveIntervalSec;
+  const intervalCandidate =
+    profile.keepAliveIntervalSec ?? context.preferences.ssh.keepAliveIntervalSec;
   const keepAliveIntervalSec =
     Number.isInteger(intervalCandidate) && intervalCandidate >= 5 && intervalCandidate <= 600
       ? intervalCandidate
@@ -379,7 +390,9 @@ export const buildSshConnectOptions = async (
     keepaliveInterval: keepAliveEnabled ? keepAliveIntervalSec * 1000 : 0
   };
 
-  const secret = profile.credentialRef ? await context.vault.readCredential(profile.credentialRef) : undefined;
+  const secret = profile.credentialRef
+    ? await context.vault.readCredential(profile.credentialRef)
+    : undefined;
 
   if (profile.authType === "password" || profile.authType === "interactive") {
     if (!secret) {

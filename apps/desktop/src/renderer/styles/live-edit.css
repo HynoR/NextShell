@@ -121,7 +121,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
 }
 
 .live-edit-item:hover {
@@ -181,7 +183,9 @@
   cursor: pointer;
   font-size: 14px;
   padding: 0;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
   flex-shrink: 0;
 }
 

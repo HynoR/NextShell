@@ -48,7 +48,9 @@
   border-radius: var(--r-sm);
   background: transparent;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   text-align: left;
 }
 .stg-nav-item:hover {
@@ -424,4 +426,3 @@
     align-items: stretch;
   }
 }
-

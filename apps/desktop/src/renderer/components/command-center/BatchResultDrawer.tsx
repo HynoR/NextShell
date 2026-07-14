@@ -1,8 +1,5 @@
 import { Drawer, Tag, Typography } from "antd";
-import type {
-  BatchCommandExecutionResult,
-  ConnectionProfile,
-} from "@nextshell/core";
+import type { BatchCommandExecutionResult, ConnectionProfile } from "@nextshell/core";
 
 interface BatchResultDrawerProps {
   result?: BatchCommandExecutionResult;
@@ -15,7 +12,7 @@ export const BatchResultDrawer = ({
   result,
   connections,
   open,
-  onClose,
+  onClose
 }: BatchResultDrawerProps) => (
   <Drawer
     title={result ? `批量执行结果：${result.command}` : "批量执行结果"}
@@ -35,14 +32,9 @@ export const BatchResultDrawer = ({
         </div>
         <div className="cc-batch-items">
           {result.results.map((item) => {
-            const target = connections.find(
-              (c) => c.id === item.connectionId
-            );
+            const target = connections.find((c) => c.id === item.connectionId);
             return (
-              <div
-                key={`${item.connectionId}-${item.executedAt}`}
-                className="cc-result-item"
-              >
+              <div key={`${item.connectionId}-${item.executedAt}`} className="cc-result-item">
                 <div className="cc-result-item-head">
                   <span>{target?.name ?? item.connectionId}</span>
                   <Tag
@@ -54,9 +46,7 @@ export const BatchResultDrawer = ({
                 </div>
                 <pre className="cc-output">{item.stdout || "(empty)"}</pre>
                 {item.stderr || item.error ? (
-                  <pre className="cc-output error">
-                    {item.stderr || item.error}
-                  </pre>
+                  <pre className="cc-output error">{item.stderr || item.error}</pre>
                 ) : null}
               </div>
             );
@@ -64,9 +54,7 @@ export const BatchResultDrawer = ({
         </div>
       </div>
     ) : (
-      <Typography.Text type="secondary">
-        暂无批量执行结果。
-      </Typography.Text>
+      <Typography.Text type="secondary">暂无批量执行结果。</Typography.Text>
     )}
   </Drawer>
 );

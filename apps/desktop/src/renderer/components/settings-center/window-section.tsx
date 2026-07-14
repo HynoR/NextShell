@@ -10,7 +10,7 @@ export const WindowSection = ({
   confirmBeforeClose,
   leftSidebarDefaultCollapsed,
   bottomWorkbenchDefaultCollapsed,
-  save,
+  save
 }: {
   loading: boolean;
   appearance: WindowAppearance;
@@ -31,7 +31,7 @@ export const WindowSection = ({
           options={[
             { label: "跟随系统（默认）", value: "system" },
             { label: "亮色模式", value: "light" },
-            { label: "暗色模式", value: "dark" },
+            { label: "暗色模式", value: "dark" }
           ]}
         />
       </SettingsRow>
@@ -52,9 +52,7 @@ export const WindowSection = ({
         onChange={(v) => save({ window: { confirmBeforeClose: v } })}
       />
       {minimizeToTray && (
-        <div className="stg-note">
-          关闭按钮将隐藏窗口到系统托盘；可从托盘菜单中退出应用。
-        </div>
+        <div className="stg-note">关闭按钮将隐藏窗口到系统托盘；可从托盘菜单中退出应用。</div>
       )}
     </SettingsCard>
 

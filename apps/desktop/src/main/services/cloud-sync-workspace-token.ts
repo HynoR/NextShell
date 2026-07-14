@@ -1,6 +1,6 @@
 import {
   cloudSyncWorkspaceTokenDraftSchema,
-  type CloudSyncWorkspaceTokenDraft,
+  type CloudSyncWorkspaceTokenDraft
 } from "@nextshell/shared";
 
 const CLOUD_SYNC_WORKSPACE_TOKEN_PREFIX = "nshell-csv1:";
@@ -19,7 +19,7 @@ export const encodeCloudSyncWorkspaceToken = (draft: CloudSyncWorkspaceTokenDraf
     workspacePassword: normalized.workspacePassword,
     pullIntervalSec: normalized.pullIntervalSec,
     ignoreTlsErrors: normalized.ignoreTlsErrors,
-    enabled: normalized.enabled,
+    enabled: normalized.enabled
   });
   const payload = Buffer.from(json, "utf8").toString("base64");
   return `${CLOUD_SYNC_WORKSPACE_TOKEN_PREFIX}${payload}`;

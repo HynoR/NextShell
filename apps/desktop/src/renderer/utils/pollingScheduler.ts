@@ -131,7 +131,12 @@ export const createPollingScheduler = (env: PollingSchedulerEnv = {}): PollingSc
   };
 
   return {
-    subscribe: ({ enabled, intervalMs, runImmediately = false, task }: PollingSubscriptionOptions) => {
+    subscribe: ({
+      enabled,
+      intervalMs,
+      runImmediately = false,
+      task
+    }: PollingSubscriptionOptions) => {
       if (!enabled) {
         return () => {};
       }

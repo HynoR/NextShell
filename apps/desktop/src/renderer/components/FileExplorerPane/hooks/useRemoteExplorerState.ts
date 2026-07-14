@@ -235,9 +235,7 @@ export const useRemoteExplorerState = ({
 
     void (async () => {
       const initialPath = normalizeRemotePath(
-        await resolveInitialRemotePath(() =>
-          window.nextshell.session.getHomeDir({ connectionId })
-        )
+        await resolveInitialRemotePath(() => window.nextshell.session.getHomeDir({ connectionId }))
       );
       if (initialPathRequestIdRef.current !== requestId) {
         return;
@@ -274,11 +272,11 @@ export const useRemoteExplorerState = ({
 
   const followCwdTrackingEnabled = Boolean(
     active &&
-      followCwd &&
-      connectionId &&
-      connected &&
-      connection?.monitorSession &&
-      followSessionId
+    followCwd &&
+    connectionId &&
+    connected &&
+    connection?.monitorSession &&
+    followSessionId
   );
 
   useEffect(() => {

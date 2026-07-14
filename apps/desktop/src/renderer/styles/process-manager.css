@@ -57,7 +57,9 @@
   cursor: pointer;
   font-size: 14px;
   padding: 0;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .pm-action-btn:hover {
@@ -73,4 +75,3 @@
   opacity: 0.3;
   cursor: not-allowed;
 }
-

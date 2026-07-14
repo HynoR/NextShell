@@ -1,7 +1,20 @@
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { App as AntdApp, Form, Modal } from "antd";
-import type { CloudSyncWorkspaceProfile, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type {
+  CloudSyncWorkspaceProfile,
+  ConnectionProfile,
+  ProxyProfile,
+  SshKeyProfile
+} from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import {
   CONNECTION_ZONES,
@@ -168,22 +181,19 @@ export const ConnectionManagerModal = ({
     () => buildConnectionSearchIndex(connections, workspaces),
     [connections, workspaces]
   );
-  const treeBuildResult = useMemo(
-    () => {
-      const result = buildManagerTreeResult(
-        connections,
-        deferredKeyword,
-        workspaces,
-        emptyFolders,
-        searchIndex
-      );
-      return {
-        ...result,
-        tree: sortMgrChildren(result.tree, sortMode)
-      };
-    },
-    [connections, deferredKeyword, emptyFolders, searchIndex, sortMode, workspaces]
-  );
+  const treeBuildResult = useMemo(() => {
+    const result = buildManagerTreeResult(
+      connections,
+      deferredKeyword,
+      workspaces,
+      emptyFolders,
+      searchIndex
+    );
+    return {
+      ...result,
+      tree: sortMgrChildren(result.tree, sortMode)
+    };
+  }, [connections, deferredKeyword, emptyFolders, searchIndex, sortMode, workspaces]);
   const tree = treeBuildResult.tree;
   const hasVisibleConnections = useMemo(() => countMgrLeaves(tree) > 0, [tree]);
   const selectedConnection = useMemo(
@@ -195,9 +205,8 @@ export const ConnectionManagerModal = ({
     return new Set(clipboard.connectionIds);
   }, [clipboard]);
   const scopeLocked = mode === "edit" && selectedConnection?.originKind === "cloud";
-  const effectiveWorkspaceId = groupZone === CONNECTION_ZONES.WORKSPACE
-    ? formWorkspaceId
-    : undefined;
+  const effectiveWorkspaceId =
+    groupZone === CONNECTION_ZONES.WORKSPACE ? formWorkspaceId : undefined;
   const filteredSshKeys = useMemo(() => {
     if (groupZone === CONNECTION_ZONES.WORKSPACE) {
       if (!effectiveWorkspaceId) {
@@ -239,10 +248,7 @@ export const ConnectionManagerModal = ({
     message,
     onConnectionsImported
   });
-  const {
-    handleExportAll,
-    handleExportSelected
-  } = useConnectionExportActions({
+  const { handleExportAll, handleExportSelected } = useConnectionExportActions({
     connections,
     selectedIds,
     modal,
@@ -297,11 +303,14 @@ export const ConnectionManagerModal = ({
   useEffect(() => {
     if (!open) return;
     const loadWorkspaces = () => {
-      window.nextshell.cloudSync.workspaceList().then((list) => {
-        setWorkspaces(list);
-      }).catch(() => {
-        setWorkspaces([]);
-      });
+      window.nextshell.cloudSync
+        .workspaceList()
+        .then((list) => {
+          setWorkspaces(list);
+        })
+        .catch(() => {
+          setWorkspaces([]);
+        });
     };
 
     loadWorkspaces();
@@ -380,121 +389,136 @@ export const ConnectionManagerModal = ({
     });
   }, [connections, selectedIds.size]);
 
-  const applyConnectionToForm = useCallback((connection: ConnectionProfile) => {
-    const connectionZone = extractZone(connection.groupPath);
-    const connectionWorkspace = connection.originKind === "cloud"
-      ? workspaces.find((workspace) => workspace.id === connection.originWorkspaceId)
-      : findWorkspaceByGroupPath(connection.groupPath, workspaces);
-    const connectionSubPath = connectionZone === CONNECTION_ZONES.WORKSPACE
-      ? getWorkspaceSubPath(connection.groupPath)
-      : getSubPath(connection.groupPath);
-    (form as any).setFieldsValue({
-      id: connection.id,
-      name: connection.name,
-      host: connection.host,
-      port: connection.port,
-      username: connection.username,
-      authType: connection.authType,
-      sshKeyId: connection.sshKeyId,
-      hostFingerprint: connection.hostFingerprint,
-      strictHostKeyChecking: connection.strictHostKeyChecking,
-      proxyId: connection.proxyId,
-      keepAliveEnabled: connection.keepAliveEnabled,
-      keepAliveIntervalSec: connection.keepAliveIntervalSec,
-      terminalEncoding: connection.terminalEncoding,
-      backspaceMode: connection.backspaceMode,
-      deleteMode: connection.deleteMode,
-      groupPath: connection.groupPath,
-      groupZone: isValidZone(connectionZone) ? connectionZone : CONNECTION_ZONES.SERVER,
-      groupSubPath: connectionSubPath,
-      workspaceId: connectionWorkspace?.id ?? connection.originWorkspaceId,
-      tags: connection.tags,
-      notes: connection.notes,
-      favorite: connection.favorite,
-      monitorSession: connection.monitorSession,
-      password: undefined
-    });
-  }, [form, workspaces]);
-
-  const handleNew = useCallback((prefillGroupPath?: string) => {
-    setPrimarySelectedId(undefined);
-    form.resetFields();
-    form.setFieldsValue(DEFAULT_VALUES);
-    if (prefillGroupPath) {
-      const zone = extractZone(prefillGroupPath);
-      const targetWorkspace = findWorkspaceByGroupPath(prefillGroupPath, workspaces);
-      const subPath = zone === CONNECTION_ZONES.WORKSPACE
-        ? getWorkspaceSubPath(prefillGroupPath)
-        : getSubPath(prefillGroupPath);
+  const applyConnectionToForm = useCallback(
+    (connection: ConnectionProfile) => {
+      const connectionZone = extractZone(connection.groupPath);
+      const connectionWorkspace =
+        connection.originKind === "cloud"
+          ? workspaces.find((workspace) => workspace.id === connection.originWorkspaceId)
+          : findWorkspaceByGroupPath(connection.groupPath, workspaces);
+      const connectionSubPath =
+        connectionZone === CONNECTION_ZONES.WORKSPACE
+          ? getWorkspaceSubPath(connection.groupPath)
+          : getSubPath(connection.groupPath);
       (form as any).setFieldsValue({
-        groupPath: prefillGroupPath,
-        groupZone: isValidZone(zone) ? zone : CONNECTION_ZONES.SERVER,
-        groupSubPath: subPath,
-        workspaceId: targetWorkspace?.id
+        id: connection.id,
+        name: connection.name,
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        authType: connection.authType,
+        sshKeyId: connection.sshKeyId,
+        hostFingerprint: connection.hostFingerprint,
+        strictHostKeyChecking: connection.strictHostKeyChecking,
+        proxyId: connection.proxyId,
+        keepAliveEnabled: connection.keepAliveEnabled,
+        keepAliveIntervalSec: connection.keepAliveIntervalSec,
+        terminalEncoding: connection.terminalEncoding,
+        backspaceMode: connection.backspaceMode,
+        deleteMode: connection.deleteMode,
+        groupPath: connection.groupPath,
+        groupZone: isValidZone(connectionZone) ? connectionZone : CONNECTION_ZONES.SERVER,
+        groupSubPath: connectionSubPath,
+        workspaceId: connectionWorkspace?.id ?? connection.originWorkspaceId,
+        tags: connection.tags,
+        notes: connection.notes,
+        favorite: connection.favorite,
+        monitorSession: connection.monitorSession,
+        password: undefined
       });
-    }
-    setFormTab("basic");
-    setMode("new");
-  }, [form, workspaces]);
+    },
+    [form, workspaces]
+  );
 
-  const handleSelectSingle = useCallback((connectionId: string) => {
-    const connection = connections.find((item) => item.id === connectionId);
-    if (!connection) return;
-    const expandedKeys = new Set<string>(["root"]);
-    const parts = groupPathToSegments(connection.groupPath);
-    const segments: string[] = [];
-    for (const part of parts) {
-      segments.push(part);
-      expandedKeys.add(`mgr-group:${segments.join("/")}`);
-    }
-    setExpanded(expandedKeys);
-    setPrimarySelectedId(connectionId);
-    setSelectedIds(new Set([connectionId]));
-    setSelectionAnchorId(connectionId);
-    applyConnectionToForm(connection);
-    setMode("edit");
-  }, [applyConnectionToForm, connections]);
+  const handleNew = useCallback(
+    (prefillGroupPath?: string) => {
+      setPrimarySelectedId(undefined);
+      form.resetFields();
+      form.setFieldsValue(DEFAULT_VALUES);
+      if (prefillGroupPath) {
+        const zone = extractZone(prefillGroupPath);
+        const targetWorkspace = findWorkspaceByGroupPath(prefillGroupPath, workspaces);
+        const subPath =
+          zone === CONNECTION_ZONES.WORKSPACE
+            ? getWorkspaceSubPath(prefillGroupPath)
+            : getSubPath(prefillGroupPath);
+        (form as any).setFieldsValue({
+          groupPath: prefillGroupPath,
+          groupZone: isValidZone(zone) ? zone : CONNECTION_ZONES.SERVER,
+          groupSubPath: subPath,
+          workspaceId: targetWorkspace?.id
+        });
+      }
+      setFormTab("basic");
+      setMode("new");
+    },
+    [form, workspaces]
+  );
 
-  const handleMultiSelect = useCallback((connectionId: string, event: React.MouseEvent) => {
-    const connection = connections.find((item) => item.id === connectionId);
-    if (!connection) return;
+  const handleSelectSingle = useCallback(
+    (connectionId: string) => {
+      const connection = connections.find((item) => item.id === connectionId);
+      if (!connection) return;
+      const expandedKeys = new Set<string>(["root"]);
+      const parts = groupPathToSegments(connection.groupPath);
+      const segments: string[] = [];
+      for (const part of parts) {
+        segments.push(part);
+        expandedKeys.add(`mgr-group:${segments.join("/")}`);
+      }
+      setExpanded(expandedKeys);
+      setPrimarySelectedId(connectionId);
+      setSelectedIds(new Set([connectionId]));
+      setSelectionAnchorId(connectionId);
+      applyConnectionToForm(connection);
+      setMode("edit");
+    },
+    [applyConnectionToForm, connections]
+  );
 
-    if (event.shiftKey && selectionAnchorId) {
-      const flatIds = collectFlatLeafIds(tree, expanded, 0);
-      const anchorIndex = flatIds.indexOf(selectionAnchorId);
-      const currentIndex = flatIds.indexOf(connectionId);
-      if (anchorIndex >= 0 && currentIndex >= 0) {
-        const start = Math.min(anchorIndex, currentIndex);
-        const end = Math.max(anchorIndex, currentIndex);
-        const rangeIds = flatIds.slice(start, end + 1);
-        setSelectedIds(new Set(rangeIds));
+  const handleMultiSelect = useCallback(
+    (connectionId: string, event: React.MouseEvent) => {
+      const connection = connections.find((item) => item.id === connectionId);
+      if (!connection) return;
+
+      if (event.shiftKey && selectionAnchorId) {
+        const flatIds = collectFlatLeafIds(tree, expanded, 0);
+        const anchorIndex = flatIds.indexOf(selectionAnchorId);
+        const currentIndex = flatIds.indexOf(connectionId);
+        if (anchorIndex >= 0 && currentIndex >= 0) {
+          const start = Math.min(anchorIndex, currentIndex);
+          const end = Math.max(anchorIndex, currentIndex);
+          const rangeIds = flatIds.slice(start, end + 1);
+          setSelectedIds(new Set(rangeIds));
+          setPrimarySelectedId(connectionId);
+          applyConnectionToForm(connection);
+          setMode("edit");
+          return;
+        }
+      }
+
+      if (event.metaKey || event.ctrlKey) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(connectionId)) next.delete(connectionId);
+          else next.add(connectionId);
+          return next;
+        });
         setPrimarySelectedId(connectionId);
+        setSelectionAnchorId(connectionId);
         applyConnectionToForm(connection);
         setMode("edit");
         return;
       }
-    }
 
-    if (event.metaKey || event.ctrlKey) {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(connectionId)) next.delete(connectionId);
-        else next.add(connectionId);
-        return next;
-      });
+      setSelectedIds(new Set([connectionId]));
       setPrimarySelectedId(connectionId);
       setSelectionAnchorId(connectionId);
       applyConnectionToForm(connection);
       setMode("edit");
-      return;
-    }
-
-    setSelectedIds(new Set([connectionId]));
-    setPrimarySelectedId(connectionId);
-    setSelectionAnchorId(connectionId);
-    applyConnectionToForm(connection);
-    setMode("edit");
-  }, [applyConnectionToForm, connections, expanded, selectionAnchorId, tree]);
+    },
+    [applyConnectionToForm, connections, expanded, selectionAnchorId, tree]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -522,15 +546,17 @@ export const ConnectionManagerModal = ({
   }, [applyConnectionToForm, form, selectedConnection]);
 
   const handleDelete = useCallback(() => {
-    const idsToDelete = selectedIds.size > 0
-      ? Array.from(selectedIds)
-      : (primarySelectedId ? [primarySelectedId] : []);
+    const idsToDelete =
+      selectedIds.size > 0 ? Array.from(selectedIds) : primarySelectedId ? [primarySelectedId] : [];
     if (idsToDelete.length === 0) return;
 
-    const names = idsToDelete.map((id) => connections.find((connection) => connection.id === id)?.name ?? id);
-    const content = idsToDelete.length === 1
-      ? `删除「${names[0]}」后会关闭相关会话，是否继续？`
-      : `确认删除 ${idsToDelete.length} 个连接？删除后会关闭相关会话。`;
+    const names = idsToDelete.map(
+      (id) => connections.find((connection) => connection.id === id)?.name ?? id
+    );
+    const content =
+      idsToDelete.length === 1
+        ? `删除「${names[0]}」后会关闭相关会话，是否继续？`
+        : `确认删除 ${idsToDelete.length} 个连接？删除后会关闭相关会话。`;
 
     modal.confirm({
       title: "确认删除",
@@ -556,85 +582,102 @@ export const ConnectionManagerModal = ({
     setPrimarySelectedId(undefined);
   }, []);
 
-  const saveConnection = useCallback(async (values: ConnectionFormValues): Promise<string | undefined> => {
-    const payload = toConnectionPayload(values, {
-      selectedConnectionId: primarySelectedId,
-      workspaces
-    });
-
-    if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在连接管理器的云同步中配置云同步工作区");
-      return undefined;
-    }
-    if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !payload.workspaceId) {
-      message.warning("请选择目标 workspace。");
-      setFormTab("property");
-      return undefined;
-    }
-    if (payload.workspaceId && !workspaces.some((workspace) => workspace.id === payload.workspaceId)) {
-      message.warning("选择的 workspace 不存在或已被移除。");
-      setFormTab("property");
-      return undefined;
-    }
-    if (
-      selectedConnection?.originKind === "cloud" &&
-      payload.workspaceId !== selectedConnection.originWorkspaceId
-    ) {
-      message.warning("共享连接不能直接改到其他作用域；如需迁移请复制到目标 workspace。");
-      setFormTab("property");
-      return undefined;
-    }
-
-    if (values.authType === "privateKey" && !values.sshKeyId) {
-      message.error("私钥认证需要选择一个 SSH 密钥。");
-      setFormTab("basic");
-      return undefined;
-    }
-
-    if (payload.strictHostKeyChecking && !payload.hostFingerprint) {
-      message.error("启用严格主机校验时必须填写主机指纹。");
-      setFormTab("basic");
-      return undefined;
-    }
-
-    if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
-      message.error("端口必须是 1-65535 的整数。");
-      setFormTab("basic");
-      return undefined;
-    }
-
-    if (!payload.host) {
-      message.error("请填写主机地址（在「基本」标签页）。");
-      setFormTab("basic");
-      return undefined;
-    }
-
-    if (
-      payload.keepAliveIntervalSec !== undefined &&
-      (!Number.isInteger(payload.keepAliveIntervalSec) || payload.keepAliveIntervalSec < 5 || payload.keepAliveIntervalSec > 600)
-    ) {
-      message.error("Keepalive 间隔需为 5-600 秒的整数。");
-      setFormTab("network");
-      return undefined;
-    }
-
-    setSaving(true);
-    try {
-      await onConnectionSaved(payload);
-      message.success(primarySelectedId ? "连接已更新" : "连接已创建");
-      setPrimarySelectedId(payload.id);
-      setMode("edit");
-      form.setFieldsValue({
-        password: undefined
+  const saveConnection = useCallback(
+    async (values: ConnectionFormValues): Promise<string | undefined> => {
+      const payload = toConnectionPayload(values, {
+        selectedConnectionId: primarySelectedId,
+        workspaces
       });
-      return payload.id;
-    } catch (error) {
-      message.error(`保存连接失败：${formatErrorMessage(error, "请检查输入内容")}`);
-      return undefined;
-    } finally {
-      setSaving(false);
-    }
-  }, [form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId, selectedConnection?.originKind, selectedConnection?.originWorkspaceId, workspaces]);
+
+      if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
+        message.warning("请先在连接管理器的云同步中配置云同步工作区");
+        return undefined;
+      }
+      if (extractZone(payload.groupPath) === CONNECTION_ZONES.WORKSPACE && !payload.workspaceId) {
+        message.warning("请选择目标 workspace。");
+        setFormTab("property");
+        return undefined;
+      }
+      if (
+        payload.workspaceId &&
+        !workspaces.some((workspace) => workspace.id === payload.workspaceId)
+      ) {
+        message.warning("选择的 workspace 不存在或已被移除。");
+        setFormTab("property");
+        return undefined;
+      }
+      if (
+        selectedConnection?.originKind === "cloud" &&
+        payload.workspaceId !== selectedConnection.originWorkspaceId
+      ) {
+        message.warning("共享连接不能直接改到其他作用域；如需迁移请复制到目标 workspace。");
+        setFormTab("property");
+        return undefined;
+      }
+
+      if (values.authType === "privateKey" && !values.sshKeyId) {
+        message.error("私钥认证需要选择一个 SSH 密钥。");
+        setFormTab("basic");
+        return undefined;
+      }
+
+      if (payload.strictHostKeyChecking && !payload.hostFingerprint) {
+        message.error("启用严格主机校验时必须填写主机指纹。");
+        setFormTab("basic");
+        return undefined;
+      }
+
+      if (!Number.isInteger(payload.port) || payload.port < 1 || payload.port > 65535) {
+        message.error("端口必须是 1-65535 的整数。");
+        setFormTab("basic");
+        return undefined;
+      }
+
+      if (!payload.host) {
+        message.error("请填写主机地址（在「基本」标签页）。");
+        setFormTab("basic");
+        return undefined;
+      }
+
+      if (
+        payload.keepAliveIntervalSec !== undefined &&
+        (!Number.isInteger(payload.keepAliveIntervalSec) ||
+          payload.keepAliveIntervalSec < 5 ||
+          payload.keepAliveIntervalSec > 600)
+      ) {
+        message.error("Keepalive 间隔需为 5-600 秒的整数。");
+        setFormTab("network");
+        return undefined;
+      }
+
+      setSaving(true);
+      try {
+        await onConnectionSaved(payload);
+        message.success(primarySelectedId ? "连接已更新" : "连接已创建");
+        setPrimarySelectedId(payload.id);
+        setMode("edit");
+        form.setFieldsValue({
+          password: undefined
+        });
+        return payload.id;
+      } catch (error) {
+        message.error(`保存连接失败：${formatErrorMessage(error, "请检查输入内容")}`);
+        return undefined;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      form,
+      hasCloudWorkspaces,
+      message,
+      onConnectionSaved,
+      primarySelectedId,
+      selectedConnection?.originKind,
+      selectedConnection?.originWorkspaceId,
+      workspaces
+    ]
+  );
 
   const handleSaveAndConnect = useCallback(async () => {
     if (saving || connectingFromForm) {
@@ -646,8 +689,8 @@ export const ConnectionManagerModal = ({
       values = await form.validateFields();
     } catch (errorInfo) {
       const firstField = String(
-        (errorInfo as { errorFields?: Array<{ name: Array<string | number> }> })
-          ?.errorFields?.[0]?.name?.[0] ?? ""
+        (errorInfo as { errorFields?: Array<{ name: Array<string | number> }> })?.errorFields?.[0]
+          ?.name?.[0] ?? ""
       );
       const errorTab = FIELD_TAB_MAP[firstField];
       if (errorTab) setFormTab(errorTab);
@@ -668,10 +711,13 @@ export const ConnectionManagerModal = ({
     }
   }, [connectingFromForm, form, onClose, onConnectConnection, saveConnection, saving]);
 
-  const handleQuickConnect = useCallback(async (connectionId: string) => {
-    await onConnectConnection(connectionId);
-    onClose();
-  }, [onClose, onConnectConnection]);
+  const handleQuickConnect = useCallback(
+    async (connectionId: string) => {
+      await onConnectConnection(connectionId);
+      onClose();
+    },
+    [onClose, onConnectConnection]
+  );
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -683,99 +729,138 @@ export const ConnectionManagerModal = ({
   }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const connection = (event.active.data.current as { connection: ConnectionProfile } | undefined)?.connection;
+    const connection = (event.active.data.current as { connection: ConnectionProfile } | undefined)
+      ?.connection;
     if (connection) setDraggingConnection(connection);
   }, []);
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    setDraggingConnection(null);
-    const overId = event.over?.id as string | undefined;
-    if (!overId) return;
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      setDraggingConnection(null);
+      const overId = event.over?.id as string | undefined;
+      if (!overId) return;
 
-    const connection = (event.active.data.current as { connection: ConnectionProfile } | undefined)?.connection;
-    if (!connection) return;
+      const connection = (
+        event.active.data.current as { connection: ConnectionProfile } | undefined
+      )?.connection;
+      if (!connection) return;
 
-    const safePath = overId === "root"
-      ? `/${CONNECTION_ZONES.SERVER}`
-      : groupKeyToPath(overId);
-    const targetZone = extractZone(safePath);
-    const targetWorkspace = findWorkspaceByGroupPath(safePath, workspaces);
+      const safePath = overId === "root" ? `/${CONNECTION_ZONES.SERVER}` : groupKeyToPath(overId);
+      const targetZone = extractZone(safePath);
+      const targetWorkspace = findWorkspaceByGroupPath(safePath, workspaces);
 
-    if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在连接管理器的云同步中配置云同步工作区");
-      return;
-    }
-    if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
-      message.warning("目标 workspace 不存在或已被移除。");
-      return;
-    }
-
-    const connectionsToMove = selectedIds.has(connection.id) && selectedIds.size > 1
-      ? connections.filter((item) => selectedIds.has(item.id) && item.groupPath !== safePath)
-      : (connection.groupPath !== safePath ? [connection] : []);
-
-    if (connectionsToMove.length === 0) return;
-
-    if (
-      connectionsToMove.some((item) =>
-        item.originKind === "cloud" && item.originWorkspaceId !== targetWorkspace?.id
-      )
-    ) {
-      message.warning("共享连接只能在当前 workspace 内调整子路径；如需迁移请使用复制。");
-      return;
-    }
-
-    try {
-      for (const item of connectionsToMove) {
-        await onConnectionSaved(toQuickUpsertInput(item, {
-          groupPath: safePath,
-          workspaceId: item.originKind === "cloud" ? item.originWorkspaceId : targetWorkspace?.id
-        }));
+      if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
+        message.warning("请先在连接管理器的云同步中配置云同步工作区");
+        return;
       }
-      const displayName = targetWorkspace
-        ? (targetWorkspace.displayName || targetWorkspace.workspaceName)
-        : (isValidZone(targetZone) ? ZONE_DISPLAY_NAMES[targetZone] : targetZone);
-      const displaySubPath = targetWorkspace ? getWorkspaceSubPath(safePath) : getSubPath(safePath);
-      message.success(
-        connectionsToMove.length === 1
-          ? `已移动到 ${displayName}${displaySubPath || ""}`
-          : `已移动 ${connectionsToMove.length} 个连接到 ${displayName}${displaySubPath || ""}`
-      );
-      if (primarySelectedId && connectionsToMove.some((item) => item.id === primarySelectedId)) {
-        form.setFieldValue("groupPath", safePath);
-        (form as any).setFieldValue("groupZone", isValidZone(targetZone) ? targetZone : CONNECTION_ZONES.SERVER);
-        (form as any).setFieldValue(
-          "groupSubPath",
-          targetZone === CONNECTION_ZONES.WORKSPACE ? getWorkspaceSubPath(safePath) : getSubPath(safePath)
+      if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
+        message.warning("目标 workspace 不存在或已被移除。");
+        return;
+      }
+
+      const connectionsToMove =
+        selectedIds.has(connection.id) && selectedIds.size > 1
+          ? connections.filter((item) => selectedIds.has(item.id) && item.groupPath !== safePath)
+          : connection.groupPath !== safePath
+            ? [connection]
+            : [];
+
+      if (connectionsToMove.length === 0) return;
+
+      if (
+        connectionsToMove.some(
+          (item) => item.originKind === "cloud" && item.originWorkspaceId !== targetWorkspace?.id
+        )
+      ) {
+        message.warning("共享连接只能在当前 workspace 内调整子路径；如需迁移请使用复制。");
+        return;
+      }
+
+      try {
+        for (const item of connectionsToMove) {
+          await onConnectionSaved(
+            toQuickUpsertInput(item, {
+              groupPath: safePath,
+              workspaceId:
+                item.originKind === "cloud" ? item.originWorkspaceId : targetWorkspace?.id
+            })
+          );
+        }
+        const displayName = targetWorkspace
+          ? targetWorkspace.displayName || targetWorkspace.workspaceName
+          : isValidZone(targetZone)
+            ? ZONE_DISPLAY_NAMES[targetZone]
+            : targetZone;
+        const displaySubPath = targetWorkspace
+          ? getWorkspaceSubPath(safePath)
+          : getSubPath(safePath);
+        message.success(
+          connectionsToMove.length === 1
+            ? `已移动到 ${displayName}${displaySubPath || ""}`
+            : `已移动 ${connectionsToMove.length} 个连接到 ${displayName}${displaySubPath || ""}`
         );
-        (form as any).setFieldValue("workspaceId", targetWorkspace?.id);
+        if (primarySelectedId && connectionsToMove.some((item) => item.id === primarySelectedId)) {
+          form.setFieldValue("groupPath", safePath);
+          (form as any).setFieldValue(
+            "groupZone",
+            isValidZone(targetZone) ? targetZone : CONNECTION_ZONES.SERVER
+          );
+          (form as any).setFieldValue(
+            "groupSubPath",
+            targetZone === CONNECTION_ZONES.WORKSPACE
+              ? getWorkspaceSubPath(safePath)
+              : getSubPath(safePath)
+          );
+          (form as any).setFieldValue("workspaceId", targetWorkspace?.id);
+        }
+      } catch (error) {
+        message.error(`移动连接失败：${formatErrorMessage(error, "请稍后重试")}`);
       }
-    } catch (error) {
-      message.error(`移动连接失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  }, [connections, form, hasCloudWorkspaces, message, onConnectionSaved, primarySelectedId, selectedIds, workspaces]);
+    },
+    [
+      connections,
+      form,
+      hasCloudWorkspaces,
+      message,
+      onConnectionSaved,
+      primarySelectedId,
+      selectedIds,
+      workspaces
+    ]
+  );
 
-  const handleConnectionContextMenu = useCallback((event: React.MouseEvent, connectionId: string) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!selectedIds.has(connectionId)) {
-      setSelectedIds(new Set([connectionId]));
-      setPrimarySelectedId(connectionId);
-      setSelectionAnchorId(connectionId);
-      const connection = connections.find((item) => item.id === connectionId);
-      if (connection) {
-        applyConnectionToForm(connection);
-        setMode("edit");
+  const handleConnectionContextMenu = useCallback(
+    (event: React.MouseEvent, connectionId: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!selectedIds.has(connectionId)) {
+        setSelectedIds(new Set([connectionId]));
+        setPrimarySelectedId(connectionId);
+        setSelectionAnchorId(connectionId);
+        const connection = connections.find((item) => item.id === connectionId);
+        if (connection) {
+          applyConnectionToForm(connection);
+          setMode("edit");
+        }
       }
-    }
-    setContextMenu({ x: event.clientX, y: event.clientY, target: { type: "connection", connectionId } });
-  }, [applyConnectionToForm, connections, selectedIds]);
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        target: { type: "connection", connectionId }
+      });
+    },
+    [applyConnectionToForm, connections, selectedIds]
+  );
 
   const handleGroupContextMenu = useCallback((event: React.MouseEvent, node: MgrGroupNode) => {
     event.preventDefault();
     event.stopPropagation();
     const groupPath = groupKeyToPath(node.key);
-    setContextMenu({ x: event.clientX, y: event.clientY, target: { type: "group", groupKey: node.key, groupPath } });
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      target: { type: "group", groupKey: node.key, groupPath }
+    });
   }, []);
 
   const handleEmptyContextMenu = useCallback((event: React.MouseEvent) => {
@@ -799,9 +884,7 @@ export const ConnectionManagerModal = ({
   }, []);
 
   const handleCtxCopy = useCallback(() => {
-    const ids = Array.from(selectedIds).filter((id) =>
-      connections.some((item) => item.id === id)
-    );
+    const ids = Array.from(selectedIds).filter((id) => connections.some((item) => item.id === id));
     if (ids.length === 0) return;
     setClipboard({ mode: "copy", connectionIds: ids });
     message.success(`已复制 ${ids.length} 个连接`);
@@ -817,49 +900,63 @@ export const ConnectionManagerModal = ({
     message.success(`已剪切 ${ids.length} 个连接`);
   }, [connections, message, selectedIds]);
 
-  const handleCtxPaste = useCallback(async (targetGroupPath: string) => {
-    if (!clipboard) return;
-    const targetZone = extractZone(targetGroupPath);
-    const targetWorkspace = findWorkspaceByGroupPath(targetGroupPath, workspaces);
-    if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
-      message.warning("请先在连接管理器的云同步中配置云同步工作区");
-      return;
-    }
-    if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
-      message.warning("目标 workspace 不存在或已被移除。");
-      return;
-    }
-    try {
-      if (clipboard.mode === "copy") {
-        for (const sourceId of clipboard.connectionIds) {
-          await window.nextshell.resourceOps.copyConnection({
-            sourceId,
-            targetOriginKind: targetWorkspace ? "cloud" : "local",
-            targetWorkspaceId: targetWorkspace?.id,
-            targetGroupSubPath: (
-              targetWorkspace ? getWorkspaceSubPath(targetGroupPath) : getSubPath(targetGroupPath)
-            ) || undefined
-          });
-        }
-        message.success(`已粘贴 ${clipboard.connectionIds.length} 个连接`);
-        await onConnectionsImported();
-      } else {
-        for (const connectionId of clipboard.connectionIds) {
-          const connection = connections.find((item) => item.id === connectionId);
-          if (connection) {
-            await onConnectionSaved(toQuickUpsertInput(connection, {
-              groupPath: targetGroupPath,
-              workspaceId: targetWorkspace?.id
-            }));
-          }
-        }
-        message.success(`已移动 ${clipboard.connectionIds.length} 个连接`);
-        setClipboard(null);
+  const handleCtxPaste = useCallback(
+    async (targetGroupPath: string) => {
+      if (!clipboard) return;
+      const targetZone = extractZone(targetGroupPath);
+      const targetWorkspace = findWorkspaceByGroupPath(targetGroupPath, workspaces);
+      if (targetZone === CONNECTION_ZONES.WORKSPACE && !hasCloudWorkspaces) {
+        message.warning("请先在连接管理器的云同步中配置云同步工作区");
+        return;
       }
-    } catch (error) {
-      message.error(`粘贴失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  }, [clipboard, connections, hasCloudWorkspaces, message, onConnectionSaved, onConnectionsImported, workspaces]);
+      if (targetZone === CONNECTION_ZONES.WORKSPACE && !targetWorkspace) {
+        message.warning("目标 workspace 不存在或已被移除。");
+        return;
+      }
+      try {
+        if (clipboard.mode === "copy") {
+          for (const sourceId of clipboard.connectionIds) {
+            await window.nextshell.resourceOps.copyConnection({
+              sourceId,
+              targetOriginKind: targetWorkspace ? "cloud" : "local",
+              targetWorkspaceId: targetWorkspace?.id,
+              targetGroupSubPath:
+                (targetWorkspace
+                  ? getWorkspaceSubPath(targetGroupPath)
+                  : getSubPath(targetGroupPath)) || undefined
+            });
+          }
+          message.success(`已粘贴 ${clipboard.connectionIds.length} 个连接`);
+          await onConnectionsImported();
+        } else {
+          for (const connectionId of clipboard.connectionIds) {
+            const connection = connections.find((item) => item.id === connectionId);
+            if (connection) {
+              await onConnectionSaved(
+                toQuickUpsertInput(connection, {
+                  groupPath: targetGroupPath,
+                  workspaceId: targetWorkspace?.id
+                })
+              );
+            }
+          }
+          message.success(`已移动 ${clipboard.connectionIds.length} 个连接`);
+          setClipboard(null);
+        }
+      } catch (error) {
+        message.error(`粘贴失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
+    },
+    [
+      clipboard,
+      connections,
+      hasCloudWorkspaces,
+      message,
+      onConnectionSaved,
+      onConnectionsImported,
+      workspaces
+    ]
+  );
 
   const handleOpenBatchAuth = useCallback(() => {
     if (!contextMenu) return;
@@ -872,15 +969,16 @@ export const ConnectionManagerModal = ({
       setBatchAuthTarget({
         type: "connections",
         connectionIds: targetIds,
-        label: targetIds.length === 1 ? "选中的 1 个连接" : `选中的 ${targetIds.length} 个连接`,
+        label: targetIds.length === 1 ? "选中的 1 个连接" : `选中的 ${targetIds.length} 个连接`
       });
       return;
     }
 
     if (contextMenu.target.type === "group") {
       const groupPath = contextMenu.target.groupPath;
-      const count = connections.filter((connection) =>
-        connection.groupPath === groupPath || connection.groupPath.startsWith(`${groupPath}/`)
+      const count = connections.filter(
+        (connection) =>
+          connection.groupPath === groupPath || connection.groupPath.startsWith(`${groupPath}/`)
       ).length;
       if (count === 0) {
         message.warning("该文件夹下没有可批量绑定的连接");
@@ -889,113 +987,140 @@ export const ConnectionManagerModal = ({
       setBatchAuthTarget({
         type: "group",
         groupPath,
-        label: `${groupPath} 下的 ${count} 个连接`,
+        label: `${groupPath} 下的 ${count} 个连接`
       });
     }
   }, [connections, contextMenu, message, selectedIds]);
 
-  const handleCtxCopyAddress = useCallback((connectionId: string) => {
-    const connection = connections.find((item) => item.id === connectionId);
-    if (!connection) return;
-    const address = `${connection.host}:${connection.port}`;
-    void navigator.clipboard.writeText(address);
-    message.success(`已复制地址：${address}`);
-  }, [connections, message]);
+  const handleCtxCopyAddress = useCallback(
+    (connectionId: string) => {
+      const connection = connections.find((item) => item.id === connectionId);
+      if (!connection) return;
+      const address = `${connection.host}:${connection.port}`;
+      void navigator.clipboard.writeText(address);
+      message.success(`已复制地址：${address}`);
+    },
+    [connections, message]
+  );
 
-  const handleCtxNewFolder = useCallback(async (parentGroupPath: string) => {
-    const name = await promptModal(modal, "新建文件夹", "请输入文件夹名称");
-    if (!name) return;
-    if (name.includes("/") || name.includes("\\")) {
-      message.error("文件夹名称不能包含 / 或 \\");
-      return;
-    }
-    const folderPath = `${parentGroupPath}/${name}`;
-    setEmptyFolders((prev) => [...prev, folderPath]);
-    const parentKey = parentGroupPath === "/" ? "root" : `mgr-group:${parentGroupPath.slice(1)}`;
-    const folderKey = `mgr-group:${folderPath.slice(1)}`;
-    setExpanded((prev) => new Set([...prev, parentKey, folderKey]));
-    message.success(`已创建文件夹「${name}」`);
-  }, [message, modal]);
+  const handleCtxNewFolder = useCallback(
+    async (parentGroupPath: string) => {
+      const name = await promptModal(modal, "新建文件夹", "请输入文件夹名称");
+      if (!name) return;
+      if (name.includes("/") || name.includes("\\")) {
+        message.error("文件夹名称不能包含 / 或 \\");
+        return;
+      }
+      const folderPath = `${parentGroupPath}/${name}`;
+      setEmptyFolders((prev) => [...prev, folderPath]);
+      const parentKey = parentGroupPath === "/" ? "root" : `mgr-group:${parentGroupPath.slice(1)}`;
+      const folderKey = `mgr-group:${folderPath.slice(1)}`;
+      setExpanded((prev) => new Set([...prev, parentKey, folderKey]));
+      message.success(`已创建文件夹「${name}」`);
+    },
+    [message, modal]
+  );
 
   const handleCtxRename = useCallback((connectionId: string) => {
     setRenamingId(connectionId);
   }, []);
 
-  const handleRenameCommit = useCallback(async (connectionId: string, newName: string) => {
-    setRenamingId(undefined);
-    const connection = connections.find((item) => item.id === connectionId);
-    if (!connection || connection.name === newName) return;
-    try {
-      await onConnectionSaved(toQuickUpsertInput(connection, { name: newName }));
-      message.success(`已重命名为「${newName}」`);
-    } catch (error) {
-      message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  }, [connections, message, onConnectionSaved]);
+  const handleRenameCommit = useCallback(
+    async (connectionId: string, newName: string) => {
+      setRenamingId(undefined);
+      const connection = connections.find((item) => item.id === connectionId);
+      if (!connection || connection.name === newName) return;
+      try {
+        await onConnectionSaved(toQuickUpsertInput(connection, { name: newName }));
+        message.success(`已重命名为「${newName}」`);
+      } catch (error) {
+        message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
+    },
+    [connections, message, onConnectionSaved]
+  );
 
   const handleRenameCancel = useCallback(() => {
     setRenamingId(undefined);
   }, []);
 
   const selectedExportCount = selectedIds.size;
-  const sourceProgress = importPreviewQueue.length > 1
-    ? `${importQueueIndex + 1}/${importPreviewQueue.length}`
-    : undefined;
+  const sourceProgress =
+    importPreviewQueue.length > 1
+      ? `${importQueueIndex + 1}/${importPreviewQueue.length}`
+      : undefined;
   const canAcceptExternalDrop = canAcceptConnectionManagerExternalDrop({
     open,
     activeTab,
     importingPreview
   });
 
-  const handleExternalDragEnter = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
-      return;
-    }
-    event.preventDefault();
-    externalDropDepthRef.current += 1;
-    if (!dropTargetActive) {
-      setDropTargetActive(true);
-    }
-  }, [canAcceptExternalDrop, dropTargetActive]);
+  const handleExternalDragEnter = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
+        return;
+      }
+      event.preventDefault();
+      externalDropDepthRef.current += 1;
+      if (!dropTargetActive) {
+        setDropTargetActive(true);
+      }
+    },
+    [canAcceptExternalDrop, dropTargetActive]
+  );
 
-  const handleExternalDragOver = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
-    if (!dropTargetActive) {
-      setDropTargetActive(true);
-    }
-  }, [canAcceptExternalDrop, dropTargetActive]);
+  const handleExternalDragOver = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      if (!dropTargetActive) {
+        setDropTargetActive(true);
+      }
+    },
+    [canAcceptExternalDrop, dropTargetActive]
+  );
 
-  const handleExternalDragLeave = useCallback((event: ReactDragEvent<HTMLDivElement>) => {
-    if (!dropTargetActive || !isExternalFileDrag(event.dataTransfer)) {
-      return;
-    }
-    event.preventDefault();
-    externalDropDepthRef.current = Math.max(0, externalDropDepthRef.current - 1);
-    if (externalDropDepthRef.current === 0) {
+  const handleExternalDragLeave = useCallback(
+    (event: ReactDragEvent<HTMLDivElement>) => {
+      if (!dropTargetActive || !isExternalFileDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      externalDropDepthRef.current = Math.max(0, externalDropDepthRef.current - 1);
+      if (externalDropDepthRef.current === 0) {
+        setDropTargetActive(false);
+      }
+    },
+    [dropTargetActive]
+  );
+
+  const handleExternalDrop = useCallback(
+    async (event: ReactDragEvent<HTMLDivElement>) => {
+      externalDropDepthRef.current = 0;
       setDropTargetActive(false);
-    }
-  }, [dropTargetActive]);
-
-  const handleExternalDrop = useCallback(async (event: ReactDragEvent<HTMLDivElement>) => {
-    externalDropDepthRef.current = 0;
-    setDropTargetActive(false);
-    if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
-      return;
-    }
-    event.preventDefault();
-    const result = extractDroppedFilePaths(event.dataTransfer, window.nextshell.getFilePathForDrop);
-    if (result.paths.length === 0) {
-      message.warning(getConnectionManagerDropPathWarning({
-        allPathsEmpty: result.allPathsEmpty
-      }));
-      return;
-    }
-    await handleImportDroppedNextShellFiles(result.paths);
-  }, [canAcceptExternalDrop, handleImportDroppedNextShellFiles, message]);
+      if (!isExternalFileDrag(event.dataTransfer) || !canAcceptExternalDrop) {
+        return;
+      }
+      event.preventDefault();
+      const result = extractDroppedFilePaths(
+        event.dataTransfer,
+        window.nextshell.getFilePathForDrop
+      );
+      if (result.paths.length === 0) {
+        message.warning(
+          getConnectionManagerDropPathWarning({
+            allPathsEmpty: result.allPathsEmpty
+          })
+        );
+        return;
+      }
+      await handleImportDroppedNextShellFiles(result.paths);
+    },
+    [canAcceptExternalDrop, handleImportDroppedNextShellFiles, message]
+  );
 
   return (
     <>
@@ -1006,7 +1131,11 @@ export const ConnectionManagerModal = ({
         width={960}
         style={{ top: 48 }}
         styles={{
-          header: { padding: "13px 18px", marginBottom: 0, borderBottom: "1px solid var(--border)" },
+          header: {
+            padding: "13px 18px",
+            marginBottom: 0,
+            borderBottom: "1px solid var(--border)"
+          },
           body: { padding: 0, overflow: "hidden" }
         }}
         title={<span className="mgr-modal-title">连接管理器</span>}
@@ -1131,11 +1260,19 @@ export const ConnectionManagerModal = ({
           ) : null}
 
           {activeTab === "keys" ? (
-            <SshKeyManagerPanel sshKeys={sshKeys} workspaces={workspaces} onReload={onReloadSshKeys} />
+            <SshKeyManagerPanel
+              sshKeys={sshKeys}
+              workspaces={workspaces}
+              onReload={onReloadSshKeys}
+            />
           ) : null}
 
           {activeTab === "proxies" ? (
-            <ProxyManagerPanel proxies={proxies} workspaces={workspaces} onReload={onReloadProxies} />
+            <ProxyManagerPanel
+              proxies={proxies}
+              workspaces={workspaces}
+              onReload={onReloadProxies}
+            />
           ) : null}
 
           {activeTab === "cloudSync" ? (

@@ -28,7 +28,10 @@ function networkRateHistoryKey(connectionId: string, iface: string): string {
   return `${connectionId}:${iface}`;
 }
 
-function omitConnectionSnapshot<T>(snapshots: Record<string, T>, connectionId: string): Record<string, T> {
+function omitConnectionSnapshot<T>(
+  snapshots: Record<string, T>,
+  connectionId: string
+): Record<string, T> {
   if (!(connectionId in snapshots)) {
     return snapshots;
   }
@@ -83,7 +86,11 @@ interface WorkspaceState {
   setProxies: (proxies: ProxyProfile[]) => void;
   setActiveConnection: (connectionId?: string) => void;
   upsertSession: (session: SessionDescriptor) => void;
-  setSessionStatus: (sessionId: string, status: SessionDescriptor["status"], reason?: string | null) => void;
+  setSessionStatus: (
+    sessionId: string,
+    status: SessionDescriptor["status"],
+    reason?: string | null
+  ) => void;
   removeSession: (sessionId: string) => void;
   removeSessionsByConnection: (connectionId: string) => void;
   reorderSession: (sourceSessionId: string, targetSessionId: string) => void;
@@ -115,7 +122,12 @@ const omitLastActiveTerminalForSession = (
   lastActiveRemoteTerminalByConnection: Record<string, string | undefined>,
   session?: SessionDescriptor
 ): Record<string, string | undefined> => {
-  if (!session || session.target !== "remote" || session.type !== "terminal" || !session.connectionId) {
+  if (
+    !session ||
+    session.target !== "remote" ||
+    session.type !== "terminal" ||
+    !session.connectionId
+  ) {
     return lastActiveRemoteTerminalByConnection;
   }
 
@@ -186,9 +198,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
       const nextActiveConnectionId = nextActiveSession
-        ? (isLocalSession(nextActiveSession)
-            ? state.activeConnectionId
-            : getSessionConnectionId(nextActiveSession))
+        ? isLocalSession(nextActiveSession)
+          ? state.activeConnectionId
+          : getSessionConnectionId(nextActiveSession)
         : undefined;
 
       const processSnapshots =
@@ -215,7 +227,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
   removeSessionsByConnection: (connectionId) =>
     set((state) => {
-      const removedSessions = state.sessions.filter((session) => session.connectionId === connectionId);
+      const removedSessions = state.sessions.filter(
+        (session) => session.connectionId === connectionId
+      );
       const sessions = state.sessions.filter((session) => session.connectionId !== connectionId);
       const hasCurrentActiveSession = Boolean(
         state.activeSessionId && sessions.some((session) => session.id === state.activeSessionId)
@@ -227,9 +241,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
         ? sessions.find((session) => session.id === candidateActiveSessionId)
         : undefined;
       const nextActiveConnectionId = nextActiveSession
-        ? (isLocalSession(nextActiveSession)
-            ? state.activeConnectionId
-            : getSessionConnectionId(nextActiveSession))
+        ? isLocalSession(nextActiveSession)
+          ? state.activeConnectionId
+          : getSessionConnectionId(nextActiveSession)
         : undefined;
 
       let sessionCwdById = state.sessionCwdById;
@@ -362,10 +376,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   setBottomTab: (tab) =>
     set({
       bottomTab:
-        tab === "commands" ||
-        tab === "files" ||
-        tab === "system-info" ||
-        tab === "traceroute"
+        tab === "commands" || tab === "files" || tab === "system-info" || tab === "traceroute"
           ? tab
           : "files"
     })

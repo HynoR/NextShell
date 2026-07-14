@@ -42,7 +42,10 @@ const makeEntry = (command: string, index: number): CommandHistoryEntry => ({
 
   assert(result.length === 3, "optimistic push should not duplicate existing commands");
   assert(result[0]?.command === "beta", "existing command should be moved to the top");
-  assert(result.filter((entry) => entry.command === "beta").length === 1, "existing command should appear once");
+  assert(
+    result.filter((entry) => entry.command === "beta").length === 1,
+    "existing command should appear once"
+  );
 })();
 
 (() => {
@@ -50,7 +53,10 @@ const makeEntry = (command: string, index: number): CommandHistoryEntry => ({
 
   const result = applyOptimisticCommandHistoryRemove(entries, "beta");
 
-  assert(result.length === 2, `optimistic remove should delete exactly one command, got ${result.length}`);
+  assert(
+    result.length === 2,
+    `optimistic remove should delete exactly one command, got ${result.length}`
+  );
   assert(!result.some((entry) => entry.command === "beta"), "removed command should be absent");
   assert(result[0]?.command === "alpha", "remaining order should be preserved after remove");
 })();

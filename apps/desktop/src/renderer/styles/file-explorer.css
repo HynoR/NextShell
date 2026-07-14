@@ -7,7 +7,11 @@
 
 .fe-shell--drop-target {
   background:
-    linear-gradient(0deg, color-mix(in srgb, var(--accent) 7%, transparent), color-mix(in srgb, var(--accent) 7%, transparent)),
+    linear-gradient(
+      0deg,
+      color-mix(in srgb, var(--accent) 7%, transparent),
+      color-mix(in srgb, var(--accent) 7%, transparent)
+    ),
     transparent;
 }
 
@@ -22,9 +26,16 @@
   padding: 4px 0;
 }
 
-.fe-tree-panel::-webkit-scrollbar { width: 4px; }
-.fe-tree-panel::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 4px; }
-.fe-tree-panel::-webkit-scrollbar-track { background: transparent; }
+.fe-tree-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.fe-tree-panel::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 4px;
+}
+.fe-tree-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 .fe-tree-panel .ant-tree {
   background: transparent !important;
@@ -32,14 +43,32 @@
   font-size: 12px;
 }
 
-.fe-tree-panel .ant-tree-treenode { padding: 1px 0; }
-.fe-tree-panel .ant-tree-node-content-wrapper { border-radius: 3px; transition: background 0.1s; }
-.fe-tree-panel .ant-tree-node-content-wrapper:hover { background: var(--bg-hover) !important; }
-.fe-tree-panel .ant-tree-node-content-wrapper.ant-tree-node-selected { background: var(--accent-dim) !important; }
-.fe-tree-panel .ant-tree-node-selected .ant-tree-title { color: var(--accent); }
-.fe-tree-panel .ant-tree-title { color: var(--t1); font-size: 12px; }
-.fe-tree-panel .ant-tree-switcher { color: var(--t3) !important; }
-.fe-tree-panel .ant-tree-indent-unit { width: 12px; }
+.fe-tree-panel .ant-tree-treenode {
+  padding: 1px 0;
+}
+.fe-tree-panel .ant-tree-node-content-wrapper {
+  border-radius: 3px;
+  transition: background 0.1s;
+}
+.fe-tree-panel .ant-tree-node-content-wrapper:hover {
+  background: var(--bg-hover) !important;
+}
+.fe-tree-panel .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: var(--accent-dim) !important;
+}
+.fe-tree-panel .ant-tree-node-selected .ant-tree-title {
+  color: var(--accent);
+}
+.fe-tree-panel .ant-tree-title {
+  color: var(--t1);
+  font-size: 12px;
+}
+.fe-tree-panel .ant-tree-switcher {
+  color: var(--t3) !important;
+}
+.fe-tree-panel .ant-tree-indent-unit {
+  width: 12px;
+}
 
 /* ── Right: main area ── */
 
@@ -104,7 +133,10 @@
   font-size: 12px;
   font-family: var(--sans);
   cursor: pointer;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s,
+    border-color 0.1s;
 }
 
 .fe-icon-btn i {
@@ -149,8 +181,12 @@
   transition: border-color 0.12s;
 }
 
-.fe-path-input:focus { border-color: var(--accent); }
-.fe-path-input::placeholder { color: var(--t3); }
+.fe-path-input:focus {
+  border-color: var(--accent);
+}
+.fe-path-input::placeholder {
+  color: var(--t3);
+}
 
 /* ── Table area ── */
 
@@ -167,7 +203,9 @@
   font-size: 12px;
 }
 
-.fe-table-wrap .ant-table-header { background: var(--bg-elevated) !important; }
+.fe-table-wrap .ant-table-header {
+  background: var(--bg-elevated) !important;
+}
 
 .fe-table-wrap .ant-table-thead > tr > th {
   background: var(--bg-elevated) !important;
@@ -278,7 +316,9 @@
   transition: color 0.12s;
 }
 
-.fe-clipboard-clear:hover { color: var(--err); }
+.fe-clipboard-clear:hover {
+  color: var(--err);
+}
 
 /* ── Context Menu ─────────────────────────────────────── */
 .fe-ctx-menu {
@@ -288,7 +328,9 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-mid);
   border-radius: var(--r-md);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    0 2px 8px rgba(0, 0, 0, 0.3);
   padding: 4px;
   user-select: none;
 }
@@ -308,7 +350,9 @@
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.08s, color 0.08s;
+  transition:
+    background 0.08s,
+    color 0.08s;
   position: relative;
 }
 
@@ -322,14 +366,18 @@
   cursor: not-allowed;
 }
 
-.fe-ctx-item.fe-ctx-danger { color: var(--err); }
+.fe-ctx-item.fe-ctx-danger {
+  color: var(--err);
+}
 
 .fe-ctx-item.fe-ctx-danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--err) 12%, transparent);
   color: var(--err);
 }
 
-.fe-ctx-item.fe-ctx-muted { color: var(--t2); }
+.fe-ctx-item.fe-ctx-muted {
+  color: var(--t2);
+}
 
 .fe-ctx-icon {
   width: 16px;

@@ -137,9 +137,17 @@ const ServerRow = ({
           <span className="mgr-server-name">{connection.name}</span>
         )}
         {connection.originKind === "cloud" ? (
-          <i className="ri-cloud-line" aria-hidden="true" style={{ fontSize: 12, color: "var(--t3)", marginLeft: 4 }} />
+          <i
+            className="ri-cloud-line"
+            aria-hidden="true"
+            style={{ fontSize: 12, color: "var(--t3)", marginLeft: 4 }}
+          />
         ) : null}
-        {!isRenaming ? <span className="mgr-server-host">{connection.host}:{connection.port}</span> : null}
+        {!isRenaming ? (
+          <span className="mgr-server-host">
+            {connection.host}:{connection.port}
+          </span>
+        ) : null}
       </button>
       <button
         type="button"
@@ -202,44 +210,46 @@ const TreeGroup = ({
           onCtrlClick={() => onGroupCtrlClick(node)}
         />
       ) : null}
-      {(depth === 0 || isExpanded) ? (
+      {depth === 0 || isExpanded ? (
         <div className={`mgr-group-children${depth > 0 ? " mgr-group-children--indented" : ""}`}>
-          {node.children.map((child) => child.type === "group" ? (
-            <TreeGroup
-              key={child.key}
-              node={child}
-              depth={depth + 1}
-              expanded={expanded}
-              toggleExpanded={toggleExpanded}
-              primarySelectedId={primarySelectedId}
-              selectedIds={selectedIds}
-              cutIds={cutIds}
-              renamingId={renamingId}
-              onSelect={onSelect}
-              onDoubleClick={onDoubleClick}
-              onQuickConnect={onQuickConnect}
-              onContextMenu={onContextMenu}
-              onGroupContextMenu={onGroupContextMenu}
-              onGroupCtrlClick={onGroupCtrlClick}
-              onRenameCommit={onRenameCommit}
-              onRenameCancel={onRenameCancel}
-            />
-          ) : (
-            <ServerRow
-              key={child.connection.id}
-              connection={child.connection}
-              isPrimary={child.connection.id === primarySelectedId}
-              isMultiSelected={selectedIds.has(child.connection.id)}
-              isCutPending={cutIds.has(child.connection.id)}
-              isRenaming={renamingId === child.connection.id}
-              onSelect={(event) => onSelect(child.connection.id, event)}
-              onDoubleClick={() => onDoubleClick(child.connection.id)}
-              onQuickConnect={() => onQuickConnect(child.connection.id)}
-              onContextMenu={(event) => onContextMenu(event, child.connection.id)}
-              onRenameCommit={(newName) => onRenameCommit(child.connection.id, newName)}
-              onRenameCancel={onRenameCancel}
-            />
-          ))}
+          {node.children.map((child) =>
+            child.type === "group" ? (
+              <TreeGroup
+                key={child.key}
+                node={child}
+                depth={depth + 1}
+                expanded={expanded}
+                toggleExpanded={toggleExpanded}
+                primarySelectedId={primarySelectedId}
+                selectedIds={selectedIds}
+                cutIds={cutIds}
+                renamingId={renamingId}
+                onSelect={onSelect}
+                onDoubleClick={onDoubleClick}
+                onQuickConnect={onQuickConnect}
+                onContextMenu={onContextMenu}
+                onGroupContextMenu={onGroupContextMenu}
+                onGroupCtrlClick={onGroupCtrlClick}
+                onRenameCommit={onRenameCommit}
+                onRenameCancel={onRenameCancel}
+              />
+            ) : (
+              <ServerRow
+                key={child.connection.id}
+                connection={child.connection}
+                isPrimary={child.connection.id === primarySelectedId}
+                isMultiSelected={selectedIds.has(child.connection.id)}
+                isCutPending={cutIds.has(child.connection.id)}
+                isRenaming={renamingId === child.connection.id}
+                onSelect={(event) => onSelect(child.connection.id, event)}
+                onDoubleClick={() => onDoubleClick(child.connection.id)}
+                onQuickConnect={() => onQuickConnect(child.connection.id)}
+                onContextMenu={(event) => onContextMenu(event, child.connection.id)}
+                onRenameCommit={(newName) => onRenameCommit(child.connection.id, newName)}
+                onRenameCancel={onRenameCancel}
+              />
+            )
+          )}
         </div>
       ) : null}
     </div>

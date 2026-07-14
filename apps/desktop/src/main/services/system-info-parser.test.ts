@@ -13,22 +13,23 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
 
 (() => {
   const raw = [
-    "NAME=\"Debian GNU/Linux\"",
-    "VERSION_ID=\"12\"",
-    "VERSION=\"12 (bookworm)\"",
-    "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\""
+    'NAME="Debian GNU/Linux"',
+    'VERSION_ID="12"',
+    'VERSION="12 (bookworm)"',
+    'PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"'
   ].join("\n");
 
   assertEqual(parseOsReleaseName(raw), "Debian GNU/Linux 12 (bookworm)", "parse PRETTY_NAME");
 })();
 
 (() => {
-  const raw = [
-    "NAME=\"Ubuntu\"",
-    "VERSION=\"22.04.4 LTS (Jammy Jellyfish)\""
-  ].join("\n");
+  const raw = ['NAME="Ubuntu"', 'VERSION="22.04.4 LTS (Jammy Jellyfish)"'].join("\n");
 
-  assertEqual(parseOsReleaseName(raw), "Ubuntu 22.04.4 LTS (Jammy Jellyfish)", "fallback to NAME + VERSION");
+  assertEqual(
+    parseOsReleaseName(raw),
+    "Ubuntu 22.04.4 LTS (Jammy Jellyfish)",
+    "fallback to NAME + VERSION"
+  );
 })();
 
 (() => {

@@ -4,7 +4,7 @@ export { SettingsCard } from "../SettingsCard";
 export const SettingsRow = ({
   label,
   hint,
-  children,
+  children
 }: {
   label: string;
   hint?: string;
@@ -24,7 +24,7 @@ export const SettingsSwitchRow = ({
   hint,
   checked,
   disabled,
-  onChange,
+  onChange
 }: {
   label: string;
   hint?: string;

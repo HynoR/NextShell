@@ -31,8 +31,9 @@ export const resolveAllowedAssetPath = (
 
   const requestedPath = normalizeAssetPath(decodeURIComponent(url.pathname), platform);
   const allowedPath = normalizeAssetPath(allowedValue, platform);
-  const matches = platform === "win32"
-    ? requestedPath.toLowerCase() === allowedPath.toLowerCase()
-    : requestedPath === allowedPath;
+  const matches =
+    platform === "win32"
+      ? requestedPath.toLowerCase() === allowedPath.toLowerCase()
+      : requestedPath === allowedPath;
   return matches ? allowedPath : undefined;
 };

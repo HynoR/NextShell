@@ -54,8 +54,10 @@ const api: NextShellApi = {
     exportBatch: (payload) => invoke(IPCChannel.ConnectionExportBatch, payload),
     revealPassword: (payload) => invoke(IPCChannel.ConnectionRevealPassword, payload),
     importPreview: (payload) => invoke(IPCChannel.ConnectionImportPreview, payload),
-    importFinalShellPreview: (payload) => invoke(IPCChannel.ConnectionImportFinalShellPreview, payload),
-    importDirectoryPreview: (payload) => invoke(IPCChannel.ConnectionImportDirectoryPreview, payload),
+    importFinalShellPreview: (payload) =>
+      invoke(IPCChannel.ConnectionImportFinalShellPreview, payload),
+    importDirectoryPreview: (payload) =>
+      invoke(IPCChannel.ConnectionImportDirectoryPreview, payload),
     importExecute: (payload) => invoke(IPCChannel.ConnectionImportExecute, payload)
   },
   session: {
@@ -214,14 +216,18 @@ const api: NextShellApi = {
         listener(payload);
       };
       ipcRenderer.on(IPCChannel.CloudSyncStatusEvent, handler);
-      return () => { ipcRenderer.off(IPCChannel.CloudSyncStatusEvent, handler); };
+      return () => {
+        ipcRenderer.off(IPCChannel.CloudSyncStatusEvent, handler);
+      };
     },
     onApplied: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { workspaceId: string }) => {
         listener(payload);
       };
       ipcRenderer.on(IPCChannel.CloudSyncAppliedEvent, handler);
-      return () => { ipcRenderer.off(IPCChannel.CloudSyncAppliedEvent, handler); };
+      return () => {
+        ipcRenderer.off(IPCChannel.CloudSyncAppliedEvent, handler);
+      };
     }
   },
   masterPassword: masterPasswordApi,

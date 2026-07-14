@@ -53,8 +53,8 @@ export const buildNextShellImportPreviewQueue = async ({
         const reason = formatErrorMessage(error, "导入预览失败");
         if (reason.startsWith(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX)) {
           const promptText =
-            reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim()
-            || "该导入文件已加密，请输入密码";
+            reason.slice(CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX.length).trim() ||
+            "该导入文件已加密，请输入密码";
           const inputPassword = await promptImportDecryptionPassword(fileName, promptText);
           if (!inputPassword) {
             warnings.push(`${fileName}：用户取消解密，已跳过该文件`);

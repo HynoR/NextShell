@@ -1,7 +1,4 @@
-import {
-  isEnterInput,
-  shouldReconnectOnInput
-} from "./terminal-reconnect";
+import { isEnterInput, shouldReconnectOnInput } from "./terminal-reconnect";
 
 const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   if (actual !== expected) {
@@ -31,11 +28,7 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
     false,
     "connected + enter should not reconnect"
   );
-  assertEqual(
-    shouldReconnectOnInput("failed", "\r"),
-    false,
-    "failed + enter should not reconnect"
-  );
+  assertEqual(shouldReconnectOnInput("failed", "\r"), false, "failed + enter should not reconnect");
   assertEqual(
     shouldReconnectOnInput(undefined, "\r"),
     false,

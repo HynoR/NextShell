@@ -16,7 +16,7 @@ const STATUS_LABEL_MAP: Record<SessionStatusKey, string> = {
   connecting: "连接中",
   disconnected: "已断开",
   failed: "连接失败",
-  "no-session": "未选择会话",
+  "no-session": "未选择会话"
 };
 
 /**

@@ -1,8 +1,4 @@
-import {
-  appendWithLimit,
-  createEmptyBuffer,
-  toReplayChunks
-} from "./sessionOutputBuffer";
+import { appendWithLimit, createEmptyBuffer, toReplayChunks } from "./sessionOutputBuffer";
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -28,7 +24,11 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
   assertEqual(buffer.chunks.length, 2, "each append should store one chunk");
   assertEqual(buffer.totalBytes, utf8Length("hello world"), "totalBytes should be the byte sum");
   assertEqual(buffer.chunks[0]?.bytes, 5, "stored chunk should carry its own byte count");
-  assertEqual(toReplayChunks(buffer).join(""), "hello world", "replay should reproduce appends in order");
+  assertEqual(
+    toReplayChunks(buffer).join(""),
+    "hello world",
+    "replay should reproduce appends in order"
+  );
 }
 
 // Empty text is a no-op; non-positive maxBytes empties the buffer.
@@ -62,7 +62,11 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
   appendWithLimit(buffer, "cccc", 10);
 
   assertEqual(buffer.totalBytes, 10, "buffer should stay at the byte cap after a partial trim");
-  assertEqual(toReplayChunks(buffer).join(""), "aabbbbcccc", "oldest chunk should lose only the overflow");
+  assertEqual(
+    toReplayChunks(buffer).join(""),
+    "aabbbbcccc",
+    "oldest chunk should lose only the overflow"
+  );
 }
 
 // A single chunk larger than the cap keeps only its last maxBytes bytes.
@@ -78,7 +82,11 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
 {
   const buffer = createEmptyBuffer();
   appendWithLimit(buffer, "你好", 3);
-  assertEqual(toReplayChunks(buffer).join(""), "好", "boundary truncation should keep whole characters");
+  assertEqual(
+    toReplayChunks(buffer).join(""),
+    "好",
+    "boundary truncation should keep whole characters"
+  );
   assertEqual(buffer.totalBytes, 3, "boundary truncation should report exact bytes");
 }
 
@@ -89,7 +97,11 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
   appendWithLimit(buffer, "你好", 9);
   appendWithLimit(buffer, "世界", 9);
   assertEqual(buffer.totalBytes, 9, "multibyte trim should land exactly on the cap");
-  assertEqual(toReplayChunks(buffer).join(""), "好世界", "multibyte trim should drop whole leading characters");
+  assertEqual(
+    toReplayChunks(buffer).join(""),
+    "好世界",
+    "multibyte trim should drop whole leading characters"
+  );
 }
 
 // Multibyte boundary: a mid-character cut cannot make progress (replacement
@@ -99,6 +111,10 @@ const utf8Length = (text: string): number => new TextEncoder().encode(text).leng
   const buffer = createEmptyBuffer();
   appendWithLimit(buffer, "你好", 10);
   appendWithLimit(buffer, "世界", 10);
-  assertEqual(toReplayChunks(buffer).join(""), "世界", "non-converging mid-character trim should evict the whole chunk");
+  assertEqual(
+    toReplayChunks(buffer).join(""),
+    "世界",
+    "non-converging mid-character trim should evict the whole chunk"
+  );
   assertEqual(buffer.totalBytes, 6, "totalBytes should match the surviving chunks");
 }

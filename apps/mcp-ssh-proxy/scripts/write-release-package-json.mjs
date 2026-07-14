@@ -24,20 +24,17 @@ const releasePackage = {
   bin: {
     "nextshell-mcp-ssh-proxy": "./index.js"
   },
-  files: [
-    "index.js",
-    "README.md"
-  ],
+  files: ["index.js", "README.md"],
   engines: {
     node: ">=20"
   },
   dependencies: {
     "@modelcontextprotocol/sdk": appPackage.dependencies["@modelcontextprotocol/sdk"],
     "better-sqlite3": storagePackage.dependencies["better-sqlite3"],
-    "keytar": securityPackage.dependencies["keytar"],
-    "socks": sshPackage.dependencies["socks"],
-    "ssh2": appPackage.dependencies["ssh2"],
-    "zod": appPackage.dependencies["zod"]
+    keytar: securityPackage.dependencies["keytar"],
+    socks: sshPackage.dependencies["socks"],
+    ssh2: appPackage.dependencies["ssh2"],
+    zod: appPackage.dependencies["zod"]
   }
 };
 

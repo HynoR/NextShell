@@ -8,7 +8,11 @@ import { describe, test } from "node:test";
 import type { ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import { DEFAULT_APP_PREFERENCES } from "@nextshell/core";
 import { EncryptedSecretVault, generateDeviceKey } from "@nextshell/security";
-import { SQLiteConnectionRepository, SQLiteProxyRepository, SQLiteSshKeyRepository } from "@nextshell/storage";
+import {
+  SQLiteConnectionRepository,
+  SQLiteProxyRepository,
+  SQLiteSshKeyRepository
+} from "@nextshell/storage";
 import {
   buildServerSummary,
   buildSshConnectOptions,
@@ -28,7 +32,8 @@ interface Fixture {
 const now = () => new Date().toISOString();
 
 const createConnectionProfile = (
-  overrides: Partial<ConnectionProfile> & Pick<ConnectionProfile, "name" | "host" | "username" | "authType">
+  overrides: Partial<ConnectionProfile> &
+    Pick<ConnectionProfile, "name" | "host" | "username" | "authType">
 ): ConnectionProfile => ({
   id: overrides.id ?? randomUUID(),
   name: overrides.name,
@@ -112,62 +117,72 @@ const createFixture = async (): Promise<Fixture> => {
   sshKeyRepo.save(sshKey);
 
   const passwordCredentialRef = await vault.storeCredential("conn-password", "super-secret");
-  repo.save(createConnectionProfile({
-    name: "server1",
-    host: "10.0.0.1",
-    username: "root",
-    authType: "password",
-    credentialRef: passwordCredentialRef,
-    proxyId: proxyProfile.id,
-    groupPath: "/server/prod",
-    tags: ["api", "prod"],
-    favorite: true,
-    resourceId: "local-default-11111111-1111-1111-1111-111111111111"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "server1",
+      host: "10.0.0.1",
+      username: "root",
+      authType: "password",
+      credentialRef: passwordCredentialRef,
+      proxyId: proxyProfile.id,
+      groupPath: "/server/prod",
+      tags: ["api", "prod"],
+      favorite: true,
+      resourceId: "local-default-11111111-1111-1111-1111-111111111111"
+    })
+  );
 
-  repo.save(createConnectionProfile({
-    name: "server1-backup",
-    host: "10.0.0.2",
-    username: "root",
-    authType: "password",
-    credentialRef: passwordCredentialRef,
-    groupPath: "/server/prod",
-    tags: ["backup"],
-    resourceId: "local-default-22222222-2222-2222-2222-222222222222"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "server1-backup",
+      host: "10.0.0.2",
+      username: "root",
+      authType: "password",
+      credentialRef: passwordCredentialRef,
+      groupPath: "/server/prod",
+      tags: ["backup"],
+      resourceId: "local-default-22222222-2222-2222-2222-222222222222"
+    })
+  );
 
-  repo.save(createConnectionProfile({
-    name: "bastion",
-    host: "10.0.0.10",
-    username: "ubuntu",
-    authType: "privateKey",
-    sshKeyId: sshKey.id,
-    groupPath: "/server/infra",
-    tags: ["gateway"],
-    resourceId: "local-default-33333333-3333-3333-3333-333333333333"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "bastion",
+      host: "10.0.0.10",
+      username: "ubuntu",
+      authType: "privateKey",
+      sshKeyId: sshKey.id,
+      groupPath: "/server/infra",
+      tags: ["gateway"],
+      resourceId: "local-default-33333333-3333-3333-3333-333333333333"
+    })
+  );
 
-  repo.save(createConnectionProfile({
-    name: "shared",
-    host: "192.168.1.20",
-    username: "ops",
-    authType: "password",
-    credentialRef: passwordCredentialRef,
-    groupPath: "/server/shared",
-    tags: ["team-a"],
-    resourceId: "local-default-44444444-4444-4444-4444-444444444444"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "shared",
+      host: "192.168.1.20",
+      username: "ops",
+      authType: "password",
+      credentialRef: passwordCredentialRef,
+      groupPath: "/server/shared",
+      tags: ["team-a"],
+      resourceId: "local-default-44444444-4444-4444-4444-444444444444"
+    })
+  );
 
-  repo.save(createConnectionProfile({
-    name: "shared",
-    host: "192.168.1.21",
-    username: "ops",
-    authType: "password",
-    credentialRef: passwordCredentialRef,
-    groupPath: "/server/shared",
-    tags: ["team-b"],
-    resourceId: "local-default-55555555-5555-5555-5555-555555555555"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "shared",
+      host: "192.168.1.21",
+      username: "ops",
+      authType: "password",
+      credentialRef: passwordCredentialRef,
+      groupPath: "/server/shared",
+      tags: ["team-b"],
+      resourceId: "local-default-55555555-5555-5555-5555-555555555555"
+    })
+  );
 
   repo.close();
 
@@ -186,7 +201,10 @@ describe("runtime data path resolution", () => {
       homeDir: "/Users/example"
     });
     assert.equal(paths.dataDir, "/Users/example/Library/Application Support/NextShell/storage");
-    assert.equal(paths.dbPath, "/Users/example/Library/Application Support/NextShell/storage/nextshell.db");
+    assert.equal(
+      paths.dbPath,
+      "/Users/example/Library/Application Support/NextShell/storage/nextshell.db"
+    );
   });
 
   test("prefers explicit db path override", () => {

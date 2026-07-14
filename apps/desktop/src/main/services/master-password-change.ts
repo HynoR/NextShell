@@ -24,7 +24,9 @@ interface ChangeMasterPasswordOptions {
   appendAuditLog: (payload: AuditLogPayload) => void;
 }
 
-export const changeMasterPassword = async (options: ChangeMasterPasswordOptions): Promise<{ ok: true }> => {
+export const changeMasterPassword = async (
+  options: ChangeMasterPasswordOptions
+): Promise<{ ok: true }> => {
   const meta = options.getMasterKeyMeta();
   if (!meta) {
     throw new Error("尚未设置主密码。请先设置主密码。");

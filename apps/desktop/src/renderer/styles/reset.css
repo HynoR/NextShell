@@ -41,9 +41,29 @@ body {
 }
 
 .app-shell--with-wallpaper {
-  --bg-base: color-mix(in srgb, var(--bg-base-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
-  --bg-surface: color-mix(in srgb, var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
-  --bg-elevated: color-mix(in srgb, var(--bg-elevated-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
-  --bg-hover: color-mix(in srgb, var(--bg-hover-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
-  --bg-active: color-mix(in srgb, var(--bg-active-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  --bg-base: color-mix(
+    in srgb,
+    var(--bg-base-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
+  --bg-surface: color-mix(
+    in srgb,
+    var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
+  --bg-elevated: color-mix(
+    in srgb,
+    var(--bg-elevated-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
+  --bg-hover: color-mix(
+    in srgb,
+    var(--bg-hover-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
+  --bg-active: color-mix(
+    in srgb,
+    var(--bg-active-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
 }

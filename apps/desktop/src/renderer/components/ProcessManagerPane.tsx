@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, App as AntdApp, Descriptions, Drawer, Input, Popconfirm, Select, Spin, Table, Tooltip } from "antd";
+import {
+  Alert,
+  App as AntdApp,
+  Descriptions,
+  Drawer,
+  Input,
+  Popconfirm,
+  Select,
+  Spin,
+  Table,
+  Tooltip
+} from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type {
   MonitorProcess,
@@ -24,9 +35,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   if (!connectionId) {
     throw new Error("ProcessManagerPane requires a remote session connectionId");
   }
-  const processSnapshot = useWorkspaceStore(
-    (state) => state.processSnapshots[connectionId]
-  );
+  const processSnapshot = useWorkspaceStore((state) => state.processSnapshots[connectionId]);
   const setProcessSnapshot = useWorkspaceStore((state) => state.setProcessSnapshot);
 
   const [search, setSearch] = useState("");
@@ -38,7 +47,9 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailPid, setDetailPid] = useState<number | undefined>(undefined);
   const [detailError, setDetailError] = useState<string | undefined>(undefined);
-  const [detailSnapshot, setDetailSnapshot] = useState<ProcessDetailSnapshot | undefined>(undefined);
+  const [detailSnapshot, setDetailSnapshot] = useState<ProcessDetailSnapshot | undefined>(
+    undefined
+  );
   const unsubRef = useRef<(() => void) | undefined>(undefined);
 
   // Subscribe to process data events + start monitor on mount
@@ -237,11 +248,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
             cancelText="取消"
           >
             <Tooltip title="优雅终止 (SIGTERM)">
-              <button
-                type="button"
-                className="pm-action-btn"
-                disabled={killing.has(record.pid)}
-              >
+              <button type="button" className="pm-action-btn" disabled={killing.has(record.pid)}>
                 <i className="ri-stop-circle-line" aria-hidden="true" />
               </button>
             </Tooltip>
@@ -265,11 +272,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
             </Tooltip>
           </Popconfirm>
           <Tooltip title="复制基础信息">
-            <button
-              type="button"
-              className="pm-action-btn"
-              onClick={() => handleCopyRow(record)}
-            >
+            <button type="button" className="pm-action-btn" onClick={() => handleCopyRow(record)}>
               <i className="ri-clipboard-line" aria-hidden="true" />
             </button>
           </Tooltip>
@@ -317,7 +320,9 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
           pagination={false}
           scroll={{ y: tableScrollY }}
           className="pm-table"
-          locale={{ emptyText: initialLoading ? <TableSkeleton rows={6} columns={4} /> : "暂无进程数据" }}
+          locale={{
+            emptyText: initialLoading ? <TableSkeleton rows={6} columns={4} /> : "暂无进程数据"
+          }}
         />
       </div>
       <Drawer
@@ -340,9 +345,15 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
               <Descriptions.Item label="PPID">{detailSnapshot.ppid}</Descriptions.Item>
               <Descriptions.Item label="用户">{detailSnapshot.user}</Descriptions.Item>
               <Descriptions.Item label="状态">{detailSnapshot.state}</Descriptions.Item>
-              <Descriptions.Item label="CPU %">{detailSnapshot.cpuPercent.toFixed(2)}</Descriptions.Item>
-              <Descriptions.Item label="内存 %">{detailSnapshot.memoryPercent.toFixed(2)}</Descriptions.Item>
-              <Descriptions.Item label="RSS (MB)">{detailSnapshot.rssMb.toFixed(2)}</Descriptions.Item>
+              <Descriptions.Item label="CPU %">
+                {detailSnapshot.cpuPercent.toFixed(2)}
+              </Descriptions.Item>
+              <Descriptions.Item label="内存 %">
+                {detailSnapshot.memoryPercent.toFixed(2)}
+              </Descriptions.Item>
+              <Descriptions.Item label="RSS (MB)">
+                {detailSnapshot.rssMb.toFixed(2)}
+              </Descriptions.Item>
               <Descriptions.Item label="运行时长">{detailSnapshot.elapsed}</Descriptions.Item>
               <Descriptions.Item label="命令">{detailSnapshot.command}</Descriptions.Item>
               <Descriptions.Item label="采样时间">

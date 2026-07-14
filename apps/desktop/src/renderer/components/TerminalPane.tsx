@@ -1,11 +1,4 @@
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState
-} from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { App as AntdApp } from "antd";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -54,8 +47,7 @@ type LocalAwareSessionDescriptor = SessionDescriptor & {
 const isLocalSession = (session?: SessionDescriptor): boolean =>
   (session as LocalAwareSessionDescriptor | undefined)?.target === "local";
 
-const isRemoteSession = (session?: SessionDescriptor): boolean =>
-  !isLocalSession(session);
+const isRemoteSession = (session?: SessionDescriptor): boolean => !isLocalSession(session);
 
 interface SessionLookupEntry {
   session: SessionDescriptor | undefined;
@@ -124,9 +116,7 @@ interface SessionAckAccumulator {
   timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-const sequenceByBackspaceMode = (
-  mode: ConnectionProfile["backspaceMode"]
-): string => {
+const sequenceByBackspaceMode = (mode: ConnectionProfile["backspaceMode"]): string => {
   if (mode === "ascii-delete") {
     return "\x7f";
   }
@@ -134,9 +124,7 @@ const sequenceByBackspaceMode = (
   return "\x08";
 };
 
-const sequenceByDeleteMode = (
-  mode: ConnectionProfile["deleteMode"]
-): string => {
+const sequenceByDeleteMode = (mode: ConnectionProfile["deleteMode"]): string => {
   if (mode === "ascii-delete") {
     return "\x7f";
   }
@@ -159,17 +147,15 @@ const runSessionAction = (action: Promise<unknown>): void => {
   action.catch(swallowSessionActionError);
 };
 
-const sendSessionAck = (
-  sessionId: string,
-  deliveryId: number,
-  consumedBytes: number
-): void => {
-  runSessionAction(window.nextshell.session.ackData({
-    streamKind: "session",
-    streamId: sessionId,
-    deliveryId,
-    consumedBytes
-  }));
+const sendSessionAck = (sessionId: string, deliveryId: number, consumedBytes: number): void => {
+  runSessionAction(
+    window.nextshell.session.ackData({
+      streamKind: "session",
+      streamId: sessionId,
+      deliveryId,
+      consumedBytes
+    })
+  );
 };
 
 const statusMessage = (
@@ -225,8 +211,7 @@ const isAuthRetryInProgress = (
   session: SessionDescriptor | undefined,
   status: SessionDescriptor["status"],
   reason?: string
-): boolean =>
-  isRemoteSession(session) && status === "failed" && isAuthFailureReason(reason);
+): boolean => isRemoteSession(session) && status === "failed" && isAuthFailureReason(reason);
 
 const formatStatusOutput = (
   session: SessionDescriptor | undefined,
@@ -246,1034 +231,1077 @@ const formatStatusOutput = (
   return `${msg}\r\n`;
 };
 
-export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
-  connection,
-  session,
-  sessionIds,
-  onReconnectSession,
-  onRetrySessionAuth,
-  onRequestSearchMode
-}, ref) => {
-  const { message } = AntdApp.useApp();
-  const terminalPreferences = usePreferencesStore((state) => state.preferences.terminal);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
-  const searchTermRef = useRef<string>("");
-  const sessionIdRef = useRef<string | undefined>(undefined);
-  const bufferBySessionRef = useRef<Map<string, SessionOutputBuffer>>(new Map());
-  const lastStatusKeyBySessionRef = useRef<Map<string, string>>(new Map());
-  const knownSessionIdsRef = useRef<Set<string>>(new Set());
-  const frozenSessionIdRef = useRef<string | undefined>(undefined);
-  const osc7StateBySessionRef = useRef<Map<string, ReturnType<typeof createOsc7ParserState>>>(new Map());
-  const terminalQueryReplyStateBySessionRef = useRef<Map<string, ReturnType<typeof createTerminalQueryReplyFilterState>>>(new Map());
-  const terminalQuerySuppressionCountBySessionRef = useRef<Map<string, number>>(new Map());
-  const terminalCompatEnabledRef = useRef(false);
-  const terminalOptionsRef = useRef<FrozenTerminalOptions>(DEFAULT_TERMINAL_OPTIONS);
-  const onRequestSearchModeRef = useRef<TerminalPaneProps["onRequestSearchMode"]>(onRequestSearchMode);
-  const onReconnectSessionRef = useRef<TerminalPaneProps["onReconnectSession"]>(onReconnectSession);
-  const onRetrySessionAuthRef = useRef<TerminalPaneProps["onRetrySessionAuth"]>(onRetrySessionAuth);
-  const findNextRef = useRef<() => void>(() => {});
-  const findPreviousRef = useRef<() => void>(() => {});
-  const authStateBySessionRef = useRef<Map<string, TerminalAuthState>>(new Map());
-  const sessionStatusBySessionRef = useRef<Map<string, SessionDescriptor["status"]>>(new Map());
-  const reconnectPendingSessionIdsRef = useRef<Set<string>>(new Set());
-  const ackAccumulatorBySessionRef = useRef<Map<string, SessionAckAccumulator>>(new Map());
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const ctxMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const flushSessionAck = useCallback((targetSessionId: string) => {
-    const accumulator = ackAccumulatorBySessionRef.current.get(targetSessionId);
-    if (!accumulator) {
-      return;
-    }
-
-    if (accumulator.timer !== undefined) {
-      clearTimeout(accumulator.timer);
-    }
-    // Deleting the entry doubles as the accumulator reset: disconnect,
-    // session removal, and unmount all flush here, so a reconnected stream
-    // always starts from a clean delta.
-    ackAccumulatorBySessionRef.current.delete(targetSessionId);
-    if (accumulator.bytes <= 0 || accumulator.lastDeliveryId <= 0) {
-      return;
-    }
-
-    sendSessionAck(targetSessionId, accumulator.lastDeliveryId, accumulator.bytes);
-  }, []);
-
-  const flushAllSessionAcks = useCallback(() => {
-    for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
-      flushSessionAck(targetSessionId);
-    }
-  }, [flushSessionAck]);
-
-  const accumulateSessionAck = useCallback((
-    targetSessionId: string,
-    deliveryId: number,
-    byteLength: number
+export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
+  (
+    {
+      connection,
+      session,
+      sessionIds,
+      onReconnectSession,
+      onRetrySessionAuth,
+      onRequestSearchMode
+    },
+    ref
   ) => {
-    const accumulators = ackAccumulatorBySessionRef.current;
-    let accumulator = accumulators.get(targetSessionId);
-    if (!accumulator) {
-      accumulator = { bytes: 0, lastDeliveryId: 0, timer: undefined };
-      accumulators.set(targetSessionId, accumulator);
-    }
+    const { message } = AntdApp.useApp();
+    const terminalPreferences = usePreferencesStore((state) => state.preferences.terminal);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const terminalRef = useRef<Terminal | null>(null);
+    const fitRef = useRef<FitAddon | null>(null);
+    const searchAddonRef = useRef<SearchAddon | null>(null);
+    const searchTermRef = useRef<string>("");
+    const sessionIdRef = useRef<string | undefined>(undefined);
+    const bufferBySessionRef = useRef<Map<string, SessionOutputBuffer>>(new Map());
+    const lastStatusKeyBySessionRef = useRef<Map<string, string>>(new Map());
+    const knownSessionIdsRef = useRef<Set<string>>(new Set());
+    const frozenSessionIdRef = useRef<string | undefined>(undefined);
+    const osc7StateBySessionRef = useRef<Map<string, ReturnType<typeof createOsc7ParserState>>>(
+      new Map()
+    );
+    const terminalQueryReplyStateBySessionRef = useRef<
+      Map<string, ReturnType<typeof createTerminalQueryReplyFilterState>>
+    >(new Map());
+    const terminalQuerySuppressionCountBySessionRef = useRef<Map<string, number>>(new Map());
+    const terminalCompatEnabledRef = useRef(false);
+    const terminalOptionsRef = useRef<FrozenTerminalOptions>(DEFAULT_TERMINAL_OPTIONS);
+    const onRequestSearchModeRef =
+      useRef<TerminalPaneProps["onRequestSearchMode"]>(onRequestSearchMode);
+    const onReconnectSessionRef =
+      useRef<TerminalPaneProps["onReconnectSession"]>(onReconnectSession);
+    const onRetrySessionAuthRef =
+      useRef<TerminalPaneProps["onRetrySessionAuth"]>(onRetrySessionAuth);
+    const findNextRef = useRef<() => void>(() => {});
+    const findPreviousRef = useRef<() => void>(() => {});
+    const authStateBySessionRef = useRef<Map<string, TerminalAuthState>>(new Map());
+    const sessionStatusBySessionRef = useRef<Map<string, SessionDescriptor["status"]>>(new Map());
+    const reconnectPendingSessionIdsRef = useRef<Set<string>>(new Set());
+    const ackAccumulatorBySessionRef = useRef<Map<string, SessionAckAccumulator>>(new Map());
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const ctxMenuRef = useRef<HTMLDivElement | null>(null);
 
-    accumulator.bytes += byteLength;
-    if (deliveryId > accumulator.lastDeliveryId) {
-      accumulator.lastDeliveryId = deliveryId;
-    }
+    const flushSessionAck = useCallback((targetSessionId: string) => {
+      const accumulator = ackAccumulatorBySessionRef.current.get(targetSessionId);
+      if (!accumulator) {
+        return;
+      }
 
-    if (accumulator.bytes >= ACK_FLUSH_THRESHOLD_BYTES) {
-      // Synchronous flush: bulk throughput must never wait on a (possibly
-      // throttled) timer to reopen the dispatcher's send window.
-      flushSessionAck(targetSessionId);
-      return;
-    }
+      if (accumulator.timer !== undefined) {
+        clearTimeout(accumulator.timer);
+      }
+      // Deleting the entry doubles as the accumulator reset: disconnect,
+      // session removal, and unmount all flush here, so a reconnected stream
+      // always starts from a clean delta.
+      ackAccumulatorBySessionRef.current.delete(targetSessionId);
+      if (accumulator.bytes <= 0 || accumulator.lastDeliveryId <= 0) {
+        return;
+      }
 
-    if (accumulator.timer === undefined) {
-      accumulator.timer = setTimeout(() => {
-        const current = ackAccumulatorBySessionRef.current.get(targetSessionId);
-        if (current) {
-          current.timer = undefined;
-        }
+      sendSessionAck(targetSessionId, accumulator.lastDeliveryId, accumulator.bytes);
+    }, []);
+
+    const flushAllSessionAcks = useCallback(() => {
+      for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
         flushSessionAck(targetSessionId);
-      }, ACK_FLUSH_INTERVAL_MS);
-    }
-  }, [flushSessionAck]);
-
-  useEffect(() => {
-    onRequestSearchModeRef.current = onRequestSearchMode;
-  }, [onRequestSearchMode]);
-
-  useEffect(() => {
-    onReconnectSessionRef.current = onReconnectSession;
-  }, [onReconnectSession]);
-
-  useEffect(() => {
-    onRetrySessionAuthRef.current = onRetrySessionAuth;
-  }, [onRetrySessionAuth]);
-
-  const setSessionCwd = useWorkspaceStore((state) => state.setSessionCwd);
-  const sessionLookupCacheRef = useRef<SessionLookupCache>({
-    sessions: null,
-    connections: null,
-    entries: new Map()
-  });
-
-  const sanitizeSessionOutput = useCallback(
-    (targetSessionId: string, text: string): string => {
-      const storeState = useWorkspaceStore.getState();
-      const cache = sessionLookupCacheRef.current;
-      if (cache.sessions !== storeState.sessions || cache.connections !== storeState.connections) {
-        cache.sessions = storeState.sessions;
-        cache.connections = storeState.connections;
-        cache.entries.clear();
       }
+    }, [flushSessionAck]);
 
-      let resolved = cache.entries.get(targetSessionId);
-      if (!resolved) {
-        const session = storeState.sessions.find(
-          (item: SessionDescriptor) => item.id === targetSessionId
-        );
-        // The connection is only ever consulted for remote sessions with a
-        // connectionId; skip the scan otherwise, exactly like the uncached path.
-        const connection =
-          session && session.target === "remote" && session.connectionId
-            ? storeState.connections.find(
-                (item: ConnectionProfile) => item.id === session.connectionId
-              )
-            : undefined;
-        resolved = { session, connection };
-        cache.entries.set(targetSessionId, resolved);
-      }
+    const accumulateSessionAck = useCallback(
+      (targetSessionId: string, deliveryId: number, byteLength: number) => {
+        const accumulators = ackAccumulatorBySessionRef.current;
+        let accumulator = accumulators.get(targetSessionId);
+        if (!accumulator) {
+          accumulator = { bytes: 0, lastDeliveryId: 0, timer: undefined };
+          accumulators.set(targetSessionId, accumulator);
+        }
 
-      const targetSession = resolved.session;
-      if (!targetSession || targetSession.target !== "remote" || !targetSession.connectionId) {
-        return text;
-      }
+        accumulator.bytes += byteLength;
+        if (deliveryId > accumulator.lastDeliveryId) {
+          accumulator.lastDeliveryId = deliveryId;
+        }
 
-      const currentState =
-        osc7StateBySessionRef.current.get(targetSessionId) ?? createOsc7ParserState();
-      const parsed = consumeOsc7Chunk(currentState, text);
-      osc7StateBySessionRef.current.set(targetSessionId, parsed.state);
-
-      if (
-        shouldTrackTerminalSessionMetadata(targetSession, resolved.connection) &&
-        parsed.cwdPath
-      ) {
-        setSessionCwd(targetSessionId, parsed.cwdPath);
-      }
-
-      return parsed.visibleText;
-    },
-    [setSessionCwd]
-  );
-
-  const appendSessionOutput = useCallback((targetSessionId: string, text: string) => {
-    if (!knownSessionIdsRef.current.has(targetSessionId) || !text) {
-      return;
-    }
-
-    const existing = bufferBySessionRef.current.get(targetSessionId) ?? createEmptyBuffer();
-    const next = appendWithLimit(existing, text, MAX_SESSION_OUTPUT_BYTES);
-    setBoundedSessionMapEntry(
-      bufferBySessionRef.current,
-      targetSessionId,
-      next,
-      MAX_BUFFERED_SESSION_COUNT,
-      sessionIdRef.current ? [sessionIdRef.current] : []
-    );
-  }, []);
-
-  const writeLocalOutput = useCallback(
-    (
-      targetSessionId: string,
-      text: string,
-      options?: { persist?: boolean }
-    ) => {
-      if (!text) {
-        return;
-      }
-      if (options?.persist !== false) {
-        appendSessionOutput(targetSessionId, text);
-      }
-      if (sessionIdRef.current === targetSessionId) {
-        terminalRef.current?.write(text);
-      }
-    },
-    [appendSessionOutput]
-  );
-
-  const beginLocalAuthPrompt = useCallback(
-    (targetSessionId: string, reason?: string) => {
-      const existing = authStateBySessionRef.current.get(targetSessionId);
-      if (existing) {
-        return;
-      }
-      authStateBySessionRef.current.set(targetSessionId, createTerminalAuthState());
-      writeLocalOutput(targetSessionId, buildTerminalAuthIntro(reason));
-    },
-    [writeLocalOutput]
-  );
-
-  const handleLocalAuthInput = useCallback(
-    (targetSessionId: string, data: string) => {
-      const current = authStateBySessionRef.current.get(targetSessionId);
-      if (!current) {
-        return false;
-      }
-
-      const consumed = consumeTerminalAuthInput(current, data);
-      authStateBySessionRef.current.set(targetSessionId, consumed.nextState);
-      if (consumed.output) {
-        writeLocalOutput(targetSessionId, consumed.output);
-      }
-
-      if (!consumed.submit) {
-        return true;
-      }
-
-      const { username, password, nonce } = consumed.submit;
-      const authType = connection?.authType === "interactive" ? "interactive" : "password";
-      void onRetrySessionAuthRef.current(targetSessionId, {
-        username,
-        authType,
-        password
-      }).then((result) => {
-        const latest = authStateBySessionRef.current.get(targetSessionId);
-        if (!latest || latest.nonce !== nonce) {
+        if (accumulator.bytes >= ACK_FLUSH_THRESHOLD_BYTES) {
+          // Synchronous flush: bulk throughput must never wait on a (possibly
+          // throttled) timer to reopen the dispatcher's send window.
+          flushSessionAck(targetSessionId);
           return;
         }
 
-        if (result.ok) {
-          authStateBySessionRef.current.delete(targetSessionId);
-          return;
+        if (accumulator.timer === undefined) {
+          accumulator.timer = setTimeout(() => {
+            const current = ackAccumulatorBySessionRef.current.get(targetSessionId);
+            if (current) {
+              current.timer = undefined;
+            }
+            flushSessionAck(targetSessionId);
+          }, ACK_FLUSH_INTERVAL_MS);
         }
-
-        if (!result.authRequired) {
-          authStateBySessionRef.current.delete(targetSessionId);
-          return;
-        }
-
-        const retried = resetTerminalAuthForRetry(latest);
-        authStateBySessionRef.current.set(targetSessionId, retried);
-        writeLocalOutput(targetSessionId, buildTerminalAuthRetryNotice(result.reason));
-      }).finally(() => {
-        // Ensure no stale password remains if user closes before retry completes.
-        const latest = authStateBySessionRef.current.get(targetSessionId);
-        if (latest?.stage === "submitting") {
-          authStateBySessionRef.current.set(targetSessionId, {
-            ...latest,
-            passwordBuffer: ""
-          });
-        }
-      });
-
-      return true;
-    },
-    [connection?.authType, writeLocalOutput]
-  );
-
-  const tryReconnectOnEnter = useCallback((targetSessionId: string, data: string): boolean => {
-    const status = sessionStatusBySessionRef.current.get(targetSessionId);
-    if (!shouldReconnectOnInput(status, data)) {
-      return false;
-    }
-
-    if (reconnectPendingSessionIdsRef.current.has(targetSessionId)) {
-      return true;
-    }
-
-    reconnectPendingSessionIdsRef.current.add(targetSessionId);
-    Promise.resolve(onReconnectSessionRef.current(targetSessionId))
-      .catch(swallowSessionActionError)
-      .finally(() => {
-        reconnectPendingSessionIdsRef.current.delete(targetSessionId);
-      });
-    return true;
-  }, []);
-
-  const replaySessionOutput = useCallback((targetSessionId: string) => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      return;
-    }
-
-    terminal.reset();
-
-    const buffer = bufferBySessionRef.current.get(targetSessionId);
-    if (!buffer) {
-      return;
-    }
-
-    setBoundedSessionMapEntry(
-      bufferBySessionRef.current,
-      targetSessionId,
-      buffer,
-      MAX_BUFFERED_SESSION_COUNT,
-      [targetSessionId]
+      },
+      [flushSessionAck]
     );
 
-    const replay = toReplayChunks(buffer).join("");
-    if (replay) {
-      terminal.write(replay);
-    }
-  }, []);
+    useEffect(() => {
+      onRequestSearchModeRef.current = onRequestSearchMode;
+    }, [onRequestSearchMode]);
 
-  const findNext = useCallback(() => {
-    const nextTerm = searchTermRef.current.trim();
-    if (!nextTerm) {
-      return;
-    }
-    searchAddonRef.current?.findNext(nextTerm);
-  }, []);
+    useEffect(() => {
+      onReconnectSessionRef.current = onReconnectSession;
+    }, [onReconnectSession]);
 
-  const findPrevious = useCallback(() => {
-    const nextTerm = searchTermRef.current.trim();
-    if (!nextTerm) {
-      return;
-    }
-    searchAddonRef.current?.findPrevious(nextTerm);
-  }, []);
+    useEffect(() => {
+      onRetrySessionAuthRef.current = onRetrySessionAuth;
+    }, [onRetrySessionAuth]);
 
-  useEffect(() => {
-    findNextRef.current = findNext;
-    findPreviousRef.current = findPrevious;
-  }, [findNext, findPrevious]);
+    const setSessionCwd = useWorkspaceStore((state) => state.setSessionCwd);
+    const sessionLookupCacheRef = useRef<SessionLookupCache>({
+      sessions: null,
+      connections: null,
+      entries: new Map()
+    });
 
-  // Context menu outside-click and Escape dismissal
-  useEffect(() => {
-    if (!ctxMenu) {
-      return;
-    }
+    const sanitizeSessionOutput = useCallback(
+      (targetSessionId: string, text: string): string => {
+        const storeState = useWorkspaceStore.getState();
+        const cache = sessionLookupCacheRef.current;
+        if (
+          cache.sessions !== storeState.sessions ||
+          cache.connections !== storeState.connections
+        ) {
+          cache.sessions = storeState.sessions;
+          cache.connections = storeState.connections;
+          cache.entries.clear();
+        }
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
-        setCtxMenu(null);
+        let resolved = cache.entries.get(targetSessionId);
+        if (!resolved) {
+          const session = storeState.sessions.find(
+            (item: SessionDescriptor) => item.id === targetSessionId
+          );
+          // The connection is only ever consulted for remote sessions with a
+          // connectionId; skip the scan otherwise, exactly like the uncached path.
+          const connection =
+            session && session.target === "remote" && session.connectionId
+              ? storeState.connections.find(
+                  (item: ConnectionProfile) => item.id === session.connectionId
+                )
+              : undefined;
+          resolved = { session, connection };
+          cache.entries.set(targetSessionId, resolved);
+        }
+
+        const targetSession = resolved.session;
+        if (!targetSession || targetSession.target !== "remote" || !targetSession.connectionId) {
+          return text;
+        }
+
+        const currentState =
+          osc7StateBySessionRef.current.get(targetSessionId) ?? createOsc7ParserState();
+        const parsed = consumeOsc7Chunk(currentState, text);
+        osc7StateBySessionRef.current.set(targetSessionId, parsed.state);
+
+        if (
+          shouldTrackTerminalSessionMetadata(targetSession, resolved.connection) &&
+          parsed.cwdPath
+        ) {
+          setSessionCwd(targetSessionId, parsed.cwdPath);
+        }
+
+        return parsed.visibleText;
+      },
+      [setSessionCwd]
+    );
+
+    const appendSessionOutput = useCallback((targetSessionId: string, text: string) => {
+      if (!knownSessionIdsRef.current.has(targetSessionId) || !text) {
+        return;
       }
-    };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setCtxMenu(null);
-      }
-    };
+      const existing = bufferBySessionRef.current.get(targetSessionId) ?? createEmptyBuffer();
+      const next = appendWithLimit(existing, text, MAX_SESSION_OUTPUT_BYTES);
+      setBoundedSessionMapEntry(
+        bufferBySessionRef.current,
+        targetSessionId,
+        next,
+        MAX_BUFFERED_SESSION_COUNT,
+        sessionIdRef.current ? [sessionIdRef.current] : []
+      );
+    }, []);
 
-    document.addEventListener("mousedown", handleMouseDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleMouseDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [ctxMenu]);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const menuWidth = 200;
-    const menuHeight = 200;
-    const x = Math.min(e.clientX, window.innerWidth - menuWidth);
-    const y = Math.min(e.clientY, window.innerHeight - menuHeight);
-    setCtxMenu({ x, y });
-  }, []);
-
-  const handleCtxCopy = useCallback(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      return;
-    }
-    const selection = terminal.getSelection();
-    if (selection) {
-      void navigator.clipboard.writeText(selection)
-        .then(() => message.success("已复制"))
-        .catch(() => message.error("复制失败"));
-    }
-    setCtxMenu(null);
-  }, [message]);
-
-  const handleCtxPaste = useCallback(() => {
-    const sessionId = sessionIdRef.current;
-    if (!sessionId) {
-      return;
-    }
-    runSessionAction(
-      navigator.clipboard.readText().then((text) => {
+    const writeLocalOutput = useCallback(
+      (targetSessionId: string, text: string, options?: { persist?: boolean }) => {
         if (!text) {
           return;
         }
-        if (authStateBySessionRef.current.has(sessionId)) {
-          handleLocalAuthInput(sessionId, text);
-          return;
+        if (options?.persist !== false) {
+          appendSessionOutput(targetSessionId, text);
         }
-        return window.nextshell.session.write({ sessionId, data: text });
-      })
-    );
-    setCtxMenu(null);
-  }, [handleLocalAuthInput]);
-
-  const handleCtxPasteSelection = useCallback(() => {
-    const terminal = terminalRef.current;
-    const sessionId = sessionIdRef.current;
-    if (!terminal || !sessionId) {
-      return;
-    }
-    const selection = terminal.getSelection();
-    if (selection) {
-      void navigator.clipboard.writeText(selection);
-      if (authStateBySessionRef.current.has(sessionId)) {
-        handleLocalAuthInput(sessionId, selection);
-        setCtxMenu(null);
-        return;
-      }
-      runSessionAction(
-        window.nextshell.session.write({ sessionId, data: selection })
-      );
-    }
-    setCtxMenu(null);
-  }, [handleLocalAuthInput]);
-
-  const handleCtxClear = useCallback(() => {
-    const terminal = terminalRef.current;
-    const sessionId = sessionIdRef.current;
-    if (!terminal) {
-      return;
-    }
-    terminal.reset();
-    if (sessionId) {
-      setBoundedSessionMapEntry(
-        bufferBySessionRef.current,
-        sessionId,
-        createEmptyBuffer(),
-        MAX_BUFFERED_SESSION_COUNT,
-        [sessionId]
-      );
-    }
-    setCtxMenu(null);
-  }, []);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      setSearchTerm: (value: string) => {
-        searchTermRef.current = value;
-        const nextTerm = value.trim();
-        if (!nextTerm) {
-          return;
+        if (sessionIdRef.current === targetSessionId) {
+          terminalRef.current?.write(text);
         }
-        searchAddonRef.current?.findNext(nextTerm, { incremental: true });
       },
-      findNext,
-      findPrevious,
-      fit: () => {
-        fitRef.current?.fit();
-      }
-    }),
-    [findNext, findPrevious]
-  );
+      [appendSessionOutput]
+    );
 
-  useEffect(() => {
-    const knownSessionIds = new Set(sessionIds);
-    knownSessionIdsRef.current = knownSessionIds;
-
-    // Sessions that just left the workspace get their final cumulative ack
-    // now (flushing also clears the entry and its timer), mirroring the
-    // immediate acks the unknown-session data path performs.
-    for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
-      if (!knownSessionIds.has(targetSessionId)) {
-        flushSessionAck(targetSessionId);
-      }
-    }
-
-    retainSessionsInCollections(knownSessionIds, [
-      bufferBySessionRef.current,
-      lastStatusKeyBySessionRef.current,
-      authStateBySessionRef.current,
-      sessionStatusBySessionRef.current,
-      osc7StateBySessionRef.current,
-      terminalQueryReplyStateBySessionRef.current,
-      terminalQuerySuppressionCountBySessionRef.current,
-      reconnectPendingSessionIdsRef.current
-    ]);
-  }, [flushSessionAck, sessionIds]);
-
-  useEffect(() => {
-    if (!containerRef.current || terminalRef.current) {
-      return;
-    }
-
-    const terminalBg = terminalPreferences.backgroundColor;
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontSize: terminalPreferences.fontSize,
-      lineHeight: terminalPreferences.lineHeight,
-      fontFamily: terminalPreferences.fontFamily,
-      theme: {
-        background: terminalBg,
-        foreground: terminalPreferences.foregroundColor,
-        cursor: terminalPreferences.foregroundColor
-      }
-    });
-
-    const fitAddon = new FitAddon();
-    const searchAddon = new SearchAddon();
-    const webLinksAddon = new WebLinksAddon((_event, uri) => {
-      void window.nextshell.dialog.openPath({
-        path: uri,
-        revealInFolder: false
-      }).then((result) => {
-        if (!result.ok) {
-          void message.error(`打开链接失败：${formatErrorMessage(result.error, "请稍后重试")}`);
-        }
-      }).catch((error) => {
-        void message.error(`打开链接失败：${formatErrorMessage(error, "请稍后重试")}`);
-      });
-    });
-
-    terminal.loadAddon(fitAddon);
-    terminal.loadAddon(searchAddon);
-    terminal.loadAddon(webLinksAddon);
-
-    try {
-      const webglAddon = new WebglAddon();
-      terminal.loadAddon(webglAddon);
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
-      });
-    } catch {
-      // webgl acceleration is optional
-    }
-
-    const compatibilityGuard = installTerminalQueryCompatibilityGuards(terminal, {
-      isEnabled: () => terminalCompatEnabledRef.current,
-      onSuppressed: () => {
-        const sessionId = sessionIdRef.current;
-        if (!sessionId) {
+    const beginLocalAuthPrompt = useCallback(
+      (targetSessionId: string, reason?: string) => {
+        const existing = authStateBySessionRef.current.get(targetSessionId);
+        if (existing) {
           return;
         }
-        const currentCount = terminalQuerySuppressionCountBySessionRef.current.get(sessionId) ?? 0;
-        terminalQuerySuppressionCountBySessionRef.current.set(sessionId, currentCount + 1);
+        authStateBySessionRef.current.set(targetSessionId, createTerminalAuthState());
+        writeLocalOutput(targetSessionId, buildTerminalAuthIntro(reason));
+      },
+      [writeLocalOutput]
+    );
+
+    const handleLocalAuthInput = useCallback(
+      (targetSessionId: string, data: string) => {
+        const current = authStateBySessionRef.current.get(targetSessionId);
+        if (!current) {
+          return false;
+        }
+
+        const consumed = consumeTerminalAuthInput(current, data);
+        authStateBySessionRef.current.set(targetSessionId, consumed.nextState);
+        if (consumed.output) {
+          writeLocalOutput(targetSessionId, consumed.output);
+        }
+
+        if (!consumed.submit) {
+          return true;
+        }
+
+        const { username, password, nonce } = consumed.submit;
+        const authType = connection?.authType === "interactive" ? "interactive" : "password";
+        void onRetrySessionAuthRef
+          .current(targetSessionId, {
+            username,
+            authType,
+            password
+          })
+          .then((result) => {
+            const latest = authStateBySessionRef.current.get(targetSessionId);
+            if (!latest || latest.nonce !== nonce) {
+              return;
+            }
+
+            if (result.ok) {
+              authStateBySessionRef.current.delete(targetSessionId);
+              return;
+            }
+
+            if (!result.authRequired) {
+              authStateBySessionRef.current.delete(targetSessionId);
+              return;
+            }
+
+            const retried = resetTerminalAuthForRetry(latest);
+            authStateBySessionRef.current.set(targetSessionId, retried);
+            writeLocalOutput(targetSessionId, buildTerminalAuthRetryNotice(result.reason));
+          })
+          .finally(() => {
+            // Ensure no stale password remains if user closes before retry completes.
+            const latest = authStateBySessionRef.current.get(targetSessionId);
+            if (latest?.stage === "submitting") {
+              authStateBySessionRef.current.set(targetSessionId, {
+                ...latest,
+                passwordBuffer: ""
+              });
+            }
+          });
+
+        return true;
+      },
+      [connection?.authType, writeLocalOutput]
+    );
+
+    const tryReconnectOnEnter = useCallback((targetSessionId: string, data: string): boolean => {
+      const status = sessionStatusBySessionRef.current.get(targetSessionId);
+      if (!shouldReconnectOnInput(status, data)) {
+        return false;
       }
-    });
 
-    terminal.open(containerRef.current);
-    fitAddon.fit();
-
-    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-      if (event.type !== "keydown") {
+      if (reconnectPendingSessionIdsRef.current.has(targetSessionId)) {
         return true;
       }
 
-      const ctrlOrMeta = event.ctrlKey || event.metaKey;
-      const key = event.key.toLowerCase();
+      reconnectPendingSessionIdsRef.current.add(targetSessionId);
+      Promise.resolve(onReconnectSessionRef.current(targetSessionId))
+        .catch(swallowSessionActionError)
+        .finally(() => {
+          reconnectPendingSessionIdsRef.current.delete(targetSessionId);
+        });
+      return true;
+    }, []);
 
-      const searchPressed = ctrlOrMeta && event.shiftKey && key === "f";
-      if (searchPressed) {
-        onRequestSearchModeRef.current?.();
-        return false;
+    const replaySessionOutput = useCallback((targetSessionId: string) => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
       }
 
-      if (event.key === "F3") {
-        if (event.shiftKey) {
-          findPreviousRef.current();
-        } else {
-          findNextRef.current();
+      terminal.reset();
+
+      const buffer = bufferBySessionRef.current.get(targetSessionId);
+      if (!buffer) {
+        return;
+      }
+
+      setBoundedSessionMapEntry(
+        bufferBySessionRef.current,
+        targetSessionId,
+        buffer,
+        MAX_BUFFERED_SESSION_COUNT,
+        [targetSessionId]
+      );
+
+      const replay = toReplayChunks(buffer).join("");
+      if (replay) {
+        terminal.write(replay);
+      }
+    }, []);
+
+    const findNext = useCallback(() => {
+      const nextTerm = searchTermRef.current.trim();
+      if (!nextTerm) {
+        return;
+      }
+      searchAddonRef.current?.findNext(nextTerm);
+    }, []);
+
+    const findPrevious = useCallback(() => {
+      const nextTerm = searchTermRef.current.trim();
+      if (!nextTerm) {
+        return;
+      }
+      searchAddonRef.current?.findPrevious(nextTerm);
+    }, []);
+
+    useEffect(() => {
+      findNextRef.current = findNext;
+      findPreviousRef.current = findPrevious;
+    }, [findNext, findPrevious]);
+
+    // Context menu outside-click and Escape dismissal
+    useEffect(() => {
+      if (!ctxMenu) {
+        return;
+      }
+
+      const handleMouseDown = (e: MouseEvent) => {
+        if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
+          setCtxMenu(null);
         }
-        return false;
-      }
+      };
 
-      const copyPressed = ctrlOrMeta && event.shiftKey && key === "c";
-      if (copyPressed) {
-        const selection = terminal.getSelection();
-        if (selection) {
-          void navigator.clipboard.writeText(selection)
-            .then(() => message.success("已复制"))
-            .catch(() => message.error("复制失败"));
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          setCtxMenu(null);
         }
-        return false;
+      };
+
+      document.addEventListener("mousedown", handleMouseDown);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", handleMouseDown);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
+    }, [ctxMenu]);
+
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+      const menuWidth = 200;
+      const menuHeight = 200;
+      const x = Math.min(e.clientX, window.innerWidth - menuWidth);
+      const y = Math.min(e.clientY, window.innerHeight - menuHeight);
+      setCtxMenu({ x, y });
+    }, []);
+
+    const handleCtxCopy = useCallback(() => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
+      }
+      const selection = terminal.getSelection();
+      if (selection) {
+        void navigator.clipboard
+          .writeText(selection)
+          .then(() => message.success("已复制"))
+          .catch(() => message.error("复制失败"));
+      }
+      setCtxMenu(null);
+    }, [message]);
+
+    const handleCtxPaste = useCallback(() => {
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) {
+        return;
+      }
+      runSessionAction(
+        navigator.clipboard.readText().then((text) => {
+          if (!text) {
+            return;
+          }
+          if (authStateBySessionRef.current.has(sessionId)) {
+            handleLocalAuthInput(sessionId, text);
+            return;
+          }
+          return window.nextshell.session.write({ sessionId, data: text });
+        })
+      );
+      setCtxMenu(null);
+    }, [handleLocalAuthInput]);
+
+    const handleCtxPasteSelection = useCallback(() => {
+      const terminal = terminalRef.current;
+      const sessionId = sessionIdRef.current;
+      if (!terminal || !sessionId) {
+        return;
+      }
+      const selection = terminal.getSelection();
+      if (selection) {
+        void navigator.clipboard.writeText(selection);
+        if (authStateBySessionRef.current.has(sessionId)) {
+          handleLocalAuthInput(sessionId, selection);
+          setCtxMenu(null);
+          return;
+        }
+        runSessionAction(window.nextshell.session.write({ sessionId, data: selection }));
+      }
+      setCtxMenu(null);
+    }, [handleLocalAuthInput]);
+
+    const handleCtxClear = useCallback(() => {
+      const terminal = terminalRef.current;
+      const sessionId = sessionIdRef.current;
+      if (!terminal) {
+        return;
+      }
+      terminal.reset();
+      if (sessionId) {
+        setBoundedSessionMapEntry(
+          bufferBySessionRef.current,
+          sessionId,
+          createEmptyBuffer(),
+          MAX_BUFFERED_SESSION_COUNT,
+          [sessionId]
+        );
+      }
+      setCtxMenu(null);
+    }, []);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        setSearchTerm: (value: string) => {
+          searchTermRef.current = value;
+          const nextTerm = value.trim();
+          if (!nextTerm) {
+            return;
+          }
+          searchAddonRef.current?.findNext(nextTerm, { incremental: true });
+        },
+        findNext,
+        findPrevious,
+        fit: () => {
+          fitRef.current?.fit();
+        }
+      }),
+      [findNext, findPrevious]
+    );
+
+    useEffect(() => {
+      const knownSessionIds = new Set(sessionIds);
+      knownSessionIdsRef.current = knownSessionIds;
+
+      // Sessions that just left the workspace get their final cumulative ack
+      // now (flushing also clears the entry and its timer), mirroring the
+      // immediate acks the unknown-session data path performs.
+      for (const targetSessionId of Array.from(ackAccumulatorBySessionRef.current.keys())) {
+        if (!knownSessionIds.has(targetSessionId)) {
+          flushSessionAck(targetSessionId);
+        }
       }
 
-      const pastePressed = ctrlOrMeta && event.shiftKey && key === "v";
-      if (pastePressed) {
+      retainSessionsInCollections(knownSessionIds, [
+        bufferBySessionRef.current,
+        lastStatusKeyBySessionRef.current,
+        authStateBySessionRef.current,
+        sessionStatusBySessionRef.current,
+        osc7StateBySessionRef.current,
+        terminalQueryReplyStateBySessionRef.current,
+        terminalQuerySuppressionCountBySessionRef.current,
+        reconnectPendingSessionIdsRef.current
+      ]);
+    }, [flushSessionAck, sessionIds]);
+
+    useEffect(() => {
+      if (!containerRef.current || terminalRef.current) {
+        return;
+      }
+
+      const terminalBg = terminalPreferences.backgroundColor;
+      const terminal = new Terminal({
+        cursorBlink: true,
+        fontSize: terminalPreferences.fontSize,
+        lineHeight: terminalPreferences.lineHeight,
+        fontFamily: terminalPreferences.fontFamily,
+        theme: {
+          background: terminalBg,
+          foreground: terminalPreferences.foregroundColor,
+          cursor: terminalPreferences.foregroundColor
+        }
+      });
+
+      const fitAddon = new FitAddon();
+      const searchAddon = new SearchAddon();
+      const webLinksAddon = new WebLinksAddon((_event, uri) => {
+        void window.nextshell.dialog
+          .openPath({
+            path: uri,
+            revealInFolder: false
+          })
+          .then((result) => {
+            if (!result.ok) {
+              void message.error(`打开链接失败：${formatErrorMessage(result.error, "请稍后重试")}`);
+            }
+          })
+          .catch((error) => {
+            void message.error(`打开链接失败：${formatErrorMessage(error, "请稍后重试")}`);
+          });
+      });
+
+      terminal.loadAddon(fitAddon);
+      terminal.loadAddon(searchAddon);
+      terminal.loadAddon(webLinksAddon);
+
+      try {
+        const webglAddon = new WebglAddon();
+        terminal.loadAddon(webglAddon);
+        webglAddon.onContextLoss(() => {
+          webglAddon.dispose();
+        });
+      } catch {
+        // webgl acceleration is optional
+      }
+
+      const compatibilityGuard = installTerminalQueryCompatibilityGuards(terminal, {
+        isEnabled: () => terminalCompatEnabledRef.current,
+        onSuppressed: () => {
+          const sessionId = sessionIdRef.current;
+          if (!sessionId) {
+            return;
+          }
+          const currentCount =
+            terminalQuerySuppressionCountBySessionRef.current.get(sessionId) ?? 0;
+          terminalQuerySuppressionCountBySessionRef.current.set(sessionId, currentCount + 1);
+        }
+      });
+
+      terminal.open(containerRef.current);
+      fitAddon.fit();
+
+      terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+        if (event.type !== "keydown") {
+          return true;
+        }
+
+        const ctrlOrMeta = event.ctrlKey || event.metaKey;
+        const key = event.key.toLowerCase();
+
+        const searchPressed = ctrlOrMeta && event.shiftKey && key === "f";
+        if (searchPressed) {
+          onRequestSearchModeRef.current?.();
+          return false;
+        }
+
+        if (event.key === "F3") {
+          if (event.shiftKey) {
+            findPreviousRef.current();
+          } else {
+            findNextRef.current();
+          }
+          return false;
+        }
+
+        const copyPressed = ctrlOrMeta && event.shiftKey && key === "c";
+        if (copyPressed) {
+          const selection = terminal.getSelection();
+          if (selection) {
+            void navigator.clipboard
+              .writeText(selection)
+              .then(() => message.success("已复制"))
+              .catch(() => message.error("复制失败"));
+          }
+          return false;
+        }
+
+        const pastePressed = ctrlOrMeta && event.shiftKey && key === "v";
+        if (pastePressed) {
+          const sessionId = sessionIdRef.current;
+          if (!sessionId) {
+            return false;
+          }
+
+          runSessionAction(
+            navigator.clipboard.readText().then((text) => {
+              if (!text) {
+                return;
+              }
+
+              if (authStateBySessionRef.current.has(sessionId)) {
+                handleLocalAuthInput(sessionId, text);
+                return;
+              }
+
+              return window.nextshell.session.write({
+                sessionId,
+                data: text
+              });
+            })
+          );
+          return false;
+        }
+
+        if (event.key === "Backspace") {
+          const sessionId = sessionIdRef.current;
+          if (!sessionId) {
+            return false;
+          }
+
+          if (authStateBySessionRef.current.has(sessionId)) {
+            handleLocalAuthInput(sessionId, "\x7f");
+            return false;
+          }
+
+          runSessionAction(
+            window.nextshell.session.write({
+              sessionId,
+              data: sequenceByBackspaceMode(terminalOptionsRef.current.backspaceMode)
+            })
+          );
+          return false;
+        }
+
+        if (event.key === "Delete") {
+          const sessionId = sessionIdRef.current;
+          if (!sessionId) {
+            return false;
+          }
+
+          if (authStateBySessionRef.current.has(sessionId)) {
+            handleLocalAuthInput(sessionId, "\x7f");
+            return false;
+          }
+
+          runSessionAction(
+            window.nextshell.session.write({
+              sessionId,
+              data: sequenceByDeleteMode(terminalOptionsRef.current.deleteMode)
+            })
+          );
+          return false;
+        }
+
+        return true;
+      });
+
+      const dataSub = terminal.onData((data) => {
         const sessionId = sessionIdRef.current;
         if (!sessionId) {
-          return false;
+          return;
+        }
+
+        let nextData = data;
+        if (terminalCompatEnabledRef.current) {
+          const currentState =
+            terminalQueryReplyStateBySessionRef.current.get(sessionId) ??
+            createTerminalQueryReplyFilterState();
+          const filtered = consumeTerminalQueryReplyChunk(currentState, data);
+          terminalQueryReplyStateBySessionRef.current.set(sessionId, filtered.state);
+          if (!filtered.text) {
+            return;
+          }
+          nextData = filtered.text;
+        }
+
+        if (authStateBySessionRef.current.has(sessionId)) {
+          handleLocalAuthInput(sessionId, nextData);
+          return;
+        }
+
+        if (tryReconnectOnEnter(sessionId, nextData)) {
+          return;
         }
 
         runSessionAction(
-          navigator.clipboard.readText().then((text) => {
-            if (!text) {
-              return;
-            }
-
-            if (authStateBySessionRef.current.has(sessionId)) {
-              handleLocalAuthInput(sessionId, text);
-              return;
-            }
-
-            return window.nextshell.session.write({
-              sessionId,
-              data: text
-            });
+          window.nextshell.session.write({
+            sessionId,
+            data: nextData
           })
         );
-        return false;
-      }
+      });
 
-      if (event.key === "Backspace") {
-        const sessionId = sessionIdRef.current;
-        if (!sessionId) {
-          return false;
-        }
-
-        if (authStateBySessionRef.current.has(sessionId)) {
-          handleLocalAuthInput(sessionId, "\x7f");
-          return false;
-        }
-
-        runSessionAction(window.nextshell.session.write({
-          sessionId,
-          data: sequenceByBackspaceMode(terminalOptionsRef.current.backspaceMode)
-        }));
-        return false;
-      }
-
-      if (event.key === "Delete") {
-        const sessionId = sessionIdRef.current;
-        if (!sessionId) {
-          return false;
-        }
-
-        if (authStateBySessionRef.current.has(sessionId)) {
-          handleLocalAuthInput(sessionId, "\x7f");
-          return false;
-        }
-
-        runSessionAction(window.nextshell.session.write({
-          sessionId,
-          data: sequenceByDeleteMode(terminalOptionsRef.current.deleteMode)
-        }));
-        return false;
-      }
-
-      return true;
-    });
-
-    const dataSub = terminal.onData((data) => {
-      const sessionId = sessionIdRef.current;
-      if (!sessionId) {
-        return;
-      }
-
-      let nextData = data;
-      if (terminalCompatEnabledRef.current) {
-        const currentState =
-          terminalQueryReplyStateBySessionRef.current.get(sessionId)
-            ?? createTerminalQueryReplyFilterState();
-        const filtered = consumeTerminalQueryReplyChunk(currentState, data);
-        terminalQueryReplyStateBySessionRef.current.set(sessionId, filtered.state);
-        if (!filtered.text) {
-          return;
-        }
-        nextData = filtered.text;
-      }
-
-      if (authStateBySessionRef.current.has(sessionId)) {
-        handleLocalAuthInput(sessionId, nextData);
-        return;
-      }
-
-      if (tryReconnectOnEnter(sessionId, nextData)) {
-        return;
-      }
-
-      runSessionAction(window.nextshell.session.write({
-        sessionId,
-        data: nextData
-      }));
-    });
-
-    const resizeSub = terminal.onResize(({ cols, rows }) => {
-      const sessionId = sessionIdRef.current;
-      if (!sessionId) {
-        return;
-      }
-
-      runSessionAction(window.nextshell.session.resize({
-        sessionId,
-        cols,
-        rows
-      }));
-    });
-
-    let resizeRafId = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(resizeRafId);
-      resizeRafId = requestAnimationFrame(() => {
-        fitAddon.fit();
+      const resizeSub = terminal.onResize(({ cols, rows }) => {
         const sessionId = sessionIdRef.current;
         if (!sessionId) {
           return;
         }
 
-        runSessionAction(window.nextshell.session.resize({
+        runSessionAction(
+          window.nextshell.session.resize({
+            sessionId,
+            cols,
+            rows
+          })
+        );
+      });
+
+      let resizeRafId = 0;
+      const observer = new ResizeObserver(() => {
+        cancelAnimationFrame(resizeRafId);
+        resizeRafId = requestAnimationFrame(() => {
+          fitAddon.fit();
+          const sessionId = sessionIdRef.current;
+          if (!sessionId) {
+            return;
+          }
+
+          runSessionAction(
+            window.nextshell.session.resize({
+              sessionId,
+              cols: terminal.cols,
+              rows: terminal.rows
+            })
+          );
+        });
+      });
+
+      observer.observe(containerRef.current);
+
+      terminalRef.current = terminal;
+      fitRef.current = fitAddon;
+      searchAddonRef.current = searchAddon;
+
+      return () => {
+        cancelAnimationFrame(resizeRafId);
+        observer.disconnect();
+        dataSub.dispose();
+        resizeSub.dispose();
+        compatibilityGuard.dispose();
+        terminal.dispose();
+        terminalRef.current = null;
+        fitRef.current = null;
+        searchAddonRef.current = null;
+      };
+    }, [handleLocalAuthInput, message, tryReconnectOnEnter]);
+
+    useEffect(() => {
+      const terminal = terminalRef.current;
+      if (!terminal) {
+        return;
+      }
+
+      const terminalBg = terminalPreferences.backgroundColor;
+      terminal.options.theme = {
+        ...terminal.options.theme,
+        background: terminalBg,
+        foreground: terminalPreferences.foregroundColor,
+        cursor: terminalPreferences.foregroundColor
+      };
+      terminal.options.fontSize = terminalPreferences.fontSize;
+      terminal.options.lineHeight = terminalPreferences.lineHeight;
+      terminal.options.fontFamily = terminalPreferences.fontFamily;
+
+      fitRef.current?.fit();
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) {
+        return;
+      }
+
+      runSessionAction(
+        window.nextshell.session.resize({
           sessionId,
           cols: terminal.cols,
           rows: terminal.rows
-        }));
-      });
-    });
+        })
+      );
+    }, [
+      terminalPreferences.backgroundColor,
+      terminalPreferences.foregroundColor,
+      terminalPreferences.fontSize,
+      terminalPreferences.lineHeight,
+      terminalPreferences.fontFamily
+    ]);
 
-    observer.observe(containerRef.current);
-
-    terminalRef.current = terminal;
-    fitRef.current = fitAddon;
-    searchAddonRef.current = searchAddon;
-
-    return () => {
-      cancelAnimationFrame(resizeRafId);
-      observer.disconnect();
-      dataSub.dispose();
-      resizeSub.dispose();
-      compatibilityGuard.dispose();
-      terminal.dispose();
-      terminalRef.current = null;
-      fitRef.current = null;
-      searchAddonRef.current = null;
-    };
-  }, [handleLocalAuthInput, message, tryReconnectOnEnter]);
-
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) {
-      return;
-    }
-
-    const terminalBg = terminalPreferences.backgroundColor;
-    terminal.options.theme = {
-      ...terminal.options.theme,
-      background: terminalBg,
-      foreground: terminalPreferences.foregroundColor,
-      cursor: terminalPreferences.foregroundColor
-    };
-    terminal.options.fontSize = terminalPreferences.fontSize;
-    terminal.options.lineHeight = terminalPreferences.lineHeight;
-    terminal.options.fontFamily = terminalPreferences.fontFamily;
-
-    fitRef.current?.fit();
-    const sessionId = sessionIdRef.current;
-    if (!sessionId) {
-      return;
-    }
-
-    runSessionAction(window.nextshell.session.resize({
-      sessionId,
-      cols: terminal.cols,
-      rows: terminal.rows
-    }));
-  }, [
-    terminalPreferences.backgroundColor,
-    terminalPreferences.foregroundColor,
-    terminalPreferences.fontSize,
-    terminalPreferences.lineHeight,
-    terminalPreferences.fontFamily
-  ]);
-
-  useEffect(() => {
-    const offData = window.nextshell.session.onData((event) => {
-      if (!knownSessionIdsRef.current.has(event.sessionId)) {
-        // Unknown session: flush immediately (merging any leftover delta) so
-        // the dispatcher can drain the dying stream without waiting on the
-        // batching timer.
-        accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
-        flushSessionAck(event.sessionId);
-        return;
-      }
-
-      const sanitized = sanitizeSessionOutput(event.sessionId, event.data);
-      appendSessionOutput(event.sessionId, sanitized);
-      const terminal = terminalRef.current;
-      if (event.sessionId === sessionIdRef.current && terminal) {
-        terminal.write(sanitized, () => {
+    useEffect(() => {
+      const offData = window.nextshell.session.onData((event) => {
+        if (!knownSessionIdsRef.current.has(event.sessionId)) {
+          // Unknown session: flush immediately (merging any leftover delta) so
+          // the dispatcher can drain the dying stream without waiting on the
+          // batching timer.
           accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
-        });
-        return;
-      }
-
-      accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
-    });
-
-    const offStatus = window.nextshell.session.onStatus((event) => {
-      if (event.status === "disconnected" || event.status === "failed") {
-        // Push the final delta out right away so the main-process dispatcher
-        // can drain and finalize the stream without waiting on the batching
-        // timer; this also resets the accumulator before any reconnect.
-        flushSessionAck(event.sessionId);
-      }
-
-      if (!knownSessionIdsRef.current.has(event.sessionId)) {
-        return;
-      }
-
-      sessionStatusBySessionRef.current.set(event.sessionId, event.status);
-      if (event.status === "connected" || event.status === "disconnected") {
-        authStateBySessionRef.current.delete(event.sessionId);
-      }
-
-      const eventKey = `${event.sessionId}:${event.status}:${event.reason ?? ""}`;
-      const previousEventKey = lastStatusKeyBySessionRef.current.get(event.sessionId);
-      if (previousEventKey === eventKey) {
-        return;
-      }
-      lastStatusKeyBySessionRef.current.set(event.sessionId, eventKey);
-
-      if (event.status === "connected") {
-        const text = event.reason
-          ? `连接已建立，${event.reason}`
-          : "连接已建立。";
-        message.success(text);
-      }
-
-      const targetSession = useWorkspaceStore
-        .getState()
-        .sessions.find((session: SessionDescriptor) => session.id === event.sessionId);
-
-      if (isRemoteSession(targetSession) && event.status === "failed" && isAuthFailureReason(event.reason)) {
-        beginLocalAuthPrompt(event.sessionId, event.reason);
-        return;
-      }
-
-      const output = formatStatusOutput(targetSession, event.status, event.reason);
-      if (!output) {
-        return;
-      }
-
-      appendSessionOutput(event.sessionId, output);
-      if (event.sessionId === sessionIdRef.current) {
-        terminalRef.current?.write(output);
-      }
-    });
-
-    return () => {
-      offData();
-      offStatus();
-      // Final acks for everything already processed: without this, teardown
-      // (or an effect re-run) could strand a delta until the main-process
-      // stall timeout fires.
-      flushAllSessionAcks();
-    };
-  }, [
-    accumulateSessionAck,
-    appendSessionOutput,
-    beginLocalAuthPrompt,
-    flushAllSessionAcks,
-    flushSessionAck,
-    message,
-    sanitizeSessionOutput
-  ]);
-
-  useEffect(() => {
-    const previousSessionId = sessionIdRef.current;
-    const currentSessionId = session?.id;
-    terminalCompatEnabledRef.current = shouldTrackTerminalSessionMetadata(session, connection);
-    sessionIdRef.current = currentSessionId;
-    if (currentSessionId && session?.status) {
-      sessionStatusBySessionRef.current.set(currentSessionId, session.status);
-    }
-
-    if (previousSessionId !== currentSessionId) {
-      if (previousSessionId) {
-        // Don't leave the outgoing session's delta to the batching timer:
-        // its stream keeps flowing in the background and the dispatcher's
-        // window should reopen promptly.
-        flushSessionAck(previousSessionId);
-      }
-
-      if (!currentSessionId) {
-        terminalRef.current?.reset();
-      } else {
-        if (session?.status === "connecting") {
-          const connectingEventKey = `${currentSessionId}:connecting:`;
-          if (lastStatusKeyBySessionRef.current.get(currentSessionId) !== connectingEventKey) {
-            lastStatusKeyBySessionRef.current.set(currentSessionId, connectingEventKey);
-            const output = formatStatusOutput(session, "connecting");
-            if (output) {
-              appendSessionOutput(currentSessionId, output);
-            }
-          }
+          flushSessionAck(event.sessionId);
+          return;
         }
 
-        replaySessionOutput(currentSessionId);
-      }
-    }
+        const sanitized = sanitizeSessionOutput(event.sessionId, event.data);
+        appendSessionOutput(event.sessionId, sanitized);
+        const terminal = terminalRef.current;
+        if (event.sessionId === sessionIdRef.current && terminal) {
+          terminal.write(sanitized, () => {
+            accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
+          });
+          return;
+        }
 
-    if (
-      currentSessionId &&
-      isRemoteSession(session) &&
-      session?.status === "failed" &&
-      isAuthFailureReason(session.reason)
-    ) {
-      beginLocalAuthPrompt(currentSessionId, session.reason);
-    }
+        accumulateSessionAck(event.sessionId, event.deliveryId, event.byteLength);
+      });
 
-    if (currentSessionId && (session?.status === "connected" || session?.status === "disconnected")) {
-      authStateBySessionRef.current.delete(currentSessionId);
-    }
+      const offStatus = window.nextshell.session.onStatus((event) => {
+        if (event.status === "disconnected" || event.status === "failed") {
+          // Push the final delta out right away so the main-process dispatcher
+          // can drain and finalize the stream without waiting on the batching
+          // timer; this also resets the accumulator before any reconnect.
+          flushSessionAck(event.sessionId);
+        }
 
-    if (frozenSessionIdRef.current !== currentSessionId) {
-      frozenSessionIdRef.current = currentSessionId;
-      terminalOptionsRef.current = connection
-        ? {
-            backspaceMode: connection.backspaceMode,
-            deleteMode: connection.deleteMode
-          }
-        : DEFAULT_TERMINAL_OPTIONS;
-    }
+        if (!knownSessionIdsRef.current.has(event.sessionId)) {
+          return;
+        }
 
-    if (!terminalRef.current) {
-      return;
-    }
+        sessionStatusBySessionRef.current.set(event.sessionId, event.status);
+        if (event.status === "connected" || event.status === "disconnected") {
+          authStateBySessionRef.current.delete(event.sessionId);
+        }
 
-    if (session && connection && session.status === "connected") {
-      fitRef.current?.fit();
-      runSessionAction(window.nextshell.session.resize({
-        sessionId: session.id,
-        cols: terminalRef.current.cols,
-        rows: terminalRef.current.rows
-      }));
-    }
-  }, [appendSessionOutput, beginLocalAuthPrompt, connection, flushSessionAck, replaySessionOutput, session]);
+        const eventKey = `${event.sessionId}:${event.status}:${event.reason ?? ""}`;
+        const previousEventKey = lastStatusKeyBySessionRef.current.get(event.sessionId);
+        if (previousEventKey === eventKey) {
+          return;
+        }
+        lastStatusKeyBySessionRef.current.set(event.sessionId, eventKey);
 
-  const prevSessionStatusRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const currentSessionId = session?.id;
-    const currentStatus = session?.status;
-    const prevStatus = prevSessionStatusRef.current;
-    prevSessionStatusRef.current = currentStatus;
+        if (event.status === "connected") {
+          const text = event.reason ? `连接已建立，${event.reason}` : "连接已建立。";
+          message.success(text);
+        }
 
-    if (
-      currentSessionId &&
-      currentStatus === "failed" &&
-      prevStatus !== undefined &&
-      prevStatus !== "failed"
-    ) {
-      if (isRemoteSession(session) && isAuthFailureReason(session?.reason)) {
-        beginLocalAuthPrompt(currentSessionId, session.reason);
-        return;
-      }
+        const targetSession = useWorkspaceStore
+          .getState()
+          .sessions.find((session: SessionDescriptor) => session.id === event.sessionId);
 
-      // Skip if the IPC onStatus event already wrote this failure to the terminal
-      const lastKey = lastStatusKeyBySessionRef.current.get(currentSessionId);
-      if (lastKey?.includes(":failed:")) {
-        return;
-      }
-      const output = formatStatusOutput(session, "failed", session?.reason);
-      if (output) {
-        appendSessionOutput(currentSessionId, output);
-        if (currentSessionId === sessionIdRef.current) {
+        if (
+          isRemoteSession(targetSession) &&
+          event.status === "failed" &&
+          isAuthFailureReason(event.reason)
+        ) {
+          beginLocalAuthPrompt(event.sessionId, event.reason);
+          return;
+        }
+
+        const output = formatStatusOutput(targetSession, event.status, event.reason);
+        if (!output) {
+          return;
+        }
+
+        appendSessionOutput(event.sessionId, output);
+        if (event.sessionId === sessionIdRef.current) {
           terminalRef.current?.write(output);
         }
+      });
+
+      return () => {
+        offData();
+        offStatus();
+        // Final acks for everything already processed: without this, teardown
+        // (or an effect re-run) could strand a delta until the main-process
+        // stall timeout fires.
+        flushAllSessionAcks();
+      };
+    }, [
+      accumulateSessionAck,
+      appendSessionOutput,
+      beginLocalAuthPrompt,
+      flushAllSessionAcks,
+      flushSessionAck,
+      message,
+      sanitizeSessionOutput
+    ]);
+
+    useEffect(() => {
+      const previousSessionId = sessionIdRef.current;
+      const currentSessionId = session?.id;
+      terminalCompatEnabledRef.current = shouldTrackTerminalSessionMetadata(session, connection);
+      sessionIdRef.current = currentSessionId;
+      if (currentSessionId && session?.status) {
+        sessionStatusBySessionRef.current.set(currentSessionId, session.status);
       }
-    }
-  }, [appendSessionOutput, beginLocalAuthPrompt, session?.id, session?.reason, session?.status]);
 
-  const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
-  const hasSession = !!sessionIdRef.current;
+      if (previousSessionId !== currentSessionId) {
+        if (previousSessionId) {
+          // Don't leave the outgoing session's delta to the batching timer:
+          // its stream keeps flowing in the background and the dispatcher's
+          // window should reopen promptly.
+          flushSessionAck(previousSessionId);
+        }
 
-  return (
-    <div className="flex-1 min-h-0 flex flex-col pb-1">
-      <div
-        className="flex-1 min-h-0 box-border overflow-hidden py-1.5 px-1"
-        ref={containerRef}
-        onContextMenu={handleContextMenu}
-      />
-      {ctxMenu && (
+        if (!currentSessionId) {
+          terminalRef.current?.reset();
+        } else {
+          if (session?.status === "connecting") {
+            const connectingEventKey = `${currentSessionId}:connecting:`;
+            if (lastStatusKeyBySessionRef.current.get(currentSessionId) !== connectingEventKey) {
+              lastStatusKeyBySessionRef.current.set(currentSessionId, connectingEventKey);
+              const output = formatStatusOutput(session, "connecting");
+              if (output) {
+                appendSessionOutput(currentSessionId, output);
+              }
+            }
+          }
+
+          replaySessionOutput(currentSessionId);
+        }
+      }
+
+      if (
+        currentSessionId &&
+        isRemoteSession(session) &&
+        session?.status === "failed" &&
+        isAuthFailureReason(session.reason)
+      ) {
+        beginLocalAuthPrompt(currentSessionId, session.reason);
+      }
+
+      if (
+        currentSessionId &&
+        (session?.status === "connected" || session?.status === "disconnected")
+      ) {
+        authStateBySessionRef.current.delete(currentSessionId);
+      }
+
+      if (frozenSessionIdRef.current !== currentSessionId) {
+        frozenSessionIdRef.current = currentSessionId;
+        terminalOptionsRef.current = connection
+          ? {
+              backspaceMode: connection.backspaceMode,
+              deleteMode: connection.deleteMode
+            }
+          : DEFAULT_TERMINAL_OPTIONS;
+      }
+
+      if (!terminalRef.current) {
+        return;
+      }
+
+      if (session && connection && session.status === "connected") {
+        fitRef.current?.fit();
+        runSessionAction(
+          window.nextshell.session.resize({
+            sessionId: session.id,
+            cols: terminalRef.current.cols,
+            rows: terminalRef.current.rows
+          })
+        );
+      }
+    }, [
+      appendSessionOutput,
+      beginLocalAuthPrompt,
+      connection,
+      flushSessionAck,
+      replaySessionOutput,
+      session
+    ]);
+
+    const prevSessionStatusRef = useRef<string | undefined>(undefined);
+    useEffect(() => {
+      const currentSessionId = session?.id;
+      const currentStatus = session?.status;
+      const prevStatus = prevSessionStatusRef.current;
+      prevSessionStatusRef.current = currentStatus;
+
+      if (
+        currentSessionId &&
+        currentStatus === "failed" &&
+        prevStatus !== undefined &&
+        prevStatus !== "failed"
+      ) {
+        if (isRemoteSession(session) && isAuthFailureReason(session?.reason)) {
+          beginLocalAuthPrompt(currentSessionId, session.reason);
+          return;
+        }
+
+        // Skip if the IPC onStatus event already wrote this failure to the terminal
+        const lastKey = lastStatusKeyBySessionRef.current.get(currentSessionId);
+        if (lastKey?.includes(":failed:")) {
+          return;
+        }
+        const output = formatStatusOutput(session, "failed", session?.reason);
+        if (output) {
+          appendSessionOutput(currentSessionId, output);
+          if (currentSessionId === sessionIdRef.current) {
+            terminalRef.current?.write(output);
+          }
+        }
+      }
+    }, [appendSessionOutput, beginLocalAuthPrompt, session?.id, session?.reason, session?.status]);
+
+    const hasSelection = ctxMenu ? !!terminalRef.current?.getSelection() : false;
+    const hasSession = !!sessionIdRef.current;
+
+    return (
+      <div className="flex-1 min-h-0 flex flex-col pb-1">
         <div
-          ref={ctxMenuRef}
-          className="fe-ctx-menu"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-        >
-          <button
-            type="button"
-            className="fe-ctx-item"
-            disabled={!hasSelection}
-            onClick={handleCtxCopy}
-          >
-            <span className="fe-ctx-icon"><i className="ri-file-copy-line" /></span>
-            复制选中内容
-          </button>
-          <button
-            type="button"
-            className="fe-ctx-item"
-            disabled={!hasSession}
-            onClick={handleCtxPaste}
-          >
-            <span className="fe-ctx-icon"><i className="ri-clipboard-line" /></span>
-            粘贴
-          </button>
-          <button
-            type="button"
-            className="fe-ctx-item"
-            disabled={!hasSelection || !hasSession}
-            onClick={handleCtxPasteSelection}
-          >
-            <span className="fe-ctx-icon"><i className="ri-file-copy-2-line" /></span>
-            粘贴选中
-          </button>
-          <div className="fe-ctx-divider" />
-          <button
-            type="button"
-            className="fe-ctx-item fe-ctx-danger"
-            onClick={handleCtxClear}
-          >
-            <span className="fe-ctx-icon"><i className="ri-delete-bin-line" /></span>
-            清空界面
-          </button>
-        </div>
-      )}
-    </div>
-  );
-});
+          className="flex-1 min-h-0 box-border overflow-hidden py-1.5 px-1"
+          ref={containerRef}
+          onContextMenu={handleContextMenu}
+        />
+        {ctxMenu && (
+          <div ref={ctxMenuRef} className="fe-ctx-menu" style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+            <button
+              type="button"
+              className="fe-ctx-item"
+              disabled={!hasSelection}
+              onClick={handleCtxCopy}
+            >
+              <span className="fe-ctx-icon">
+                <i className="ri-file-copy-line" />
+              </span>
+              复制选中内容
+            </button>
+            <button
+              type="button"
+              className="fe-ctx-item"
+              disabled={!hasSession}
+              onClick={handleCtxPaste}
+            >
+              <span className="fe-ctx-icon">
+                <i className="ri-clipboard-line" />
+              </span>
+              粘贴
+            </button>
+            <button
+              type="button"
+              className="fe-ctx-item"
+              disabled={!hasSelection || !hasSession}
+              onClick={handleCtxPasteSelection}
+            >
+              <span className="fe-ctx-icon">
+                <i className="ri-file-copy-2-line" />
+              </span>
+              粘贴选中
+            </button>
+            <div className="fe-ctx-divider" />
+            <button type="button" className="fe-ctx-item fe-ctx-danger" onClick={handleCtxClear}>
+              <span className="fe-ctx-icon">
+                <i className="ri-delete-bin-line" />
+              </span>
+              清空界面
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
 
 TerminalPane.displayName = "TerminalPane";

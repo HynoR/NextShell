@@ -47,7 +47,9 @@ let monitorResumeTimer: ReturnType<typeof setTimeout> | undefined;
 
 const tryAutoReloadRenderer = (webContents: Electron.WebContents, reason: string): void => {
   const now = Date.now();
-  rendererReloadTimestamps = rendererReloadTimestamps.filter((t) => now - t < RENDERER_RELOAD_WINDOW_MS);
+  rendererReloadTimestamps = rendererReloadTimestamps.filter(
+    (t) => now - t < RENDERER_RELOAD_WINDOW_MS
+  );
   if (rendererReloadTimestamps.length >= RENDERER_MAX_AUTO_RELOADS) {
     logger.error("[Window] renderer auto-reload limit reached, not reloading", { reason });
     return;
@@ -87,7 +89,8 @@ const destroyTray = (): void => {
 
 const createTray = (mainWindow: BrowserWindow): Tray => {
   const t = new Tray(nativeImage.createEmpty());
-  void app.getFileIcon(process.execPath, { size: "small" })
+  void app
+    .getFileIcon(process.execPath, { size: "small" })
     .then((icon) => {
       if (!icon.isEmpty()) {
         t.setImage(icon);
@@ -103,23 +106,24 @@ const createTray = (mainWindow: BrowserWindow): Tray => {
   }
   t.setToolTip("NextShell");
 
-  const buildMenu = () => Menu.buildFromTemplate([
-    {
-      label: "显示 NextShell",
-      click: () => {
-        mainWindow.show();
-        mainWindow.focus();
+  const buildMenu = () =>
+    Menu.buildFromTemplate([
+      {
+        label: "显示 NextShell",
+        click: () => {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      },
+      { type: "separator" },
+      {
+        label: "退出",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        }
       }
-    },
-    { type: "separator" },
-    {
-      label: "退出",
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      }
-    }
-  ]);
+    ]);
 
   t.setContextMenu(buildMenu());
   t.on("click", () => {
@@ -212,7 +216,10 @@ const createMainWindow = (): BrowserWindow => {
   });
 
   mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    logger.error("[Window] render process gone", { reason: details.reason, exitCode: details.exitCode });
+    logger.error("[Window] render process gone", {
+      reason: details.reason,
+      exitCode: details.exitCode
+    });
     tryAutoReloadRenderer(mainWindow.webContents, `render-process-gone:${details.reason}`);
   });
 

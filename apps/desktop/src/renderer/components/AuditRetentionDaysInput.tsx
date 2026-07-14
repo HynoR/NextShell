@@ -9,7 +9,7 @@ interface AuditRetentionDaysInputProps {
 export const AuditRetentionDaysInput = ({
   value,
   disabled,
-  onChange,
+  onChange
 }: AuditRetentionDaysInputProps) => (
   <Space.Compact>
     <InputNumber

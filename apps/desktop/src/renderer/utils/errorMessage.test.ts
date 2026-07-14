@@ -11,8 +11,8 @@ describe("formatErrorMessage", () => {
   });
 
   test("removes the wrapper variant without a channel name", () => {
-    expect(
-      formatErrorMessage("Error invoking remote method: Error: 连接配置不存在")
-    ).toBe("连接配置不存在");
+    expect(formatErrorMessage("Error invoking remote method: Error: 连接配置不存在")).toBe(
+      "连接配置不存在"
+    );
   });
 });

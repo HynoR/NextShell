@@ -38,7 +38,12 @@ import {
   type SshKeyProfile
 } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
-import type { ConnectionRepository, AppendAuditLogInput, SshKeyRepository, ProxyRepository } from "./index";
+import type {
+  ConnectionRepository,
+  AppendAuditLogInput,
+  SshKeyRepository,
+  ProxyRepository
+} from "./index";
 
 interface CommandHistoryCache {
   entriesByCommand: Map<string, CommandHistoryEntry>;
@@ -46,9 +51,7 @@ interface CommandHistoryCache {
 }
 
 type CommandHistoryMutation =
-  | { type: "push"; command: string }
-  | { type: "remove"; command: string }
-  | { type: "clear" };
+  { type: "push"; command: string } | { type: "remove"; command: string } | { type: "clear" };
 
 interface BatchedCommandHistoryWriter {
   applyCommandHistoryBatch: (mutations: CommandHistoryMutation[]) => void;
@@ -86,7 +89,10 @@ const PREFS_WRITE_DEBOUNCE_MS = 5_000;
 const hasBatchedCommandHistoryWriter = (
   repository: ConnectionRepository
 ): repository is ConnectionRepository & BatchedCommandHistoryWriter => {
-  return typeof (repository as Partial<BatchedCommandHistoryWriter>).applyCommandHistoryBatch === "function";
+  return (
+    typeof (repository as Partial<BatchedCommandHistoryWriter>).applyCommandHistoryBatch ===
+    "function"
+  );
 };
 
 const hasBatchedAuditLogWriter = (
@@ -135,7 +141,10 @@ export class CachedConnectionRepository implements ConnectionRepository {
 
   constructor(inner: ConnectionRepository) {
     this.inner = inner;
-    this.auditTimer = setInterval(() => this.flushAuditLogsFromTimer("interval"), AUDIT_FLUSH_INTERVAL_MS);
+    this.auditTimer = setInterval(
+      () => this.flushAuditLogsFromTimer("interval"),
+      AUDIT_FLUSH_INTERVAL_MS
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -168,7 +177,8 @@ export class CachedConnectionRepository implements ConnectionRepository {
 
     if (keyword) {
       result = result.filter((c) => {
-        const searchable = `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`.toLowerCase();
+        const searchable =
+          `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`.toLowerCase();
         return searchable.includes(keyword);
       });
     }
@@ -259,7 +269,11 @@ export class CachedConnectionRepository implements ConnectionRepository {
   listResourceStatesV2(workspaceId: string): CloudSyncResourceStateV2[] {
     return this.inner.listResourceStatesV2(workspaceId);
   }
-  getResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): CloudSyncResourceStateV2 | undefined {
+  getResourceStateV2(
+    workspaceId: string,
+    resourceType: string,
+    resourceId: string
+  ): CloudSyncResourceStateV2 | undefined {
     return this.inner.getResourceStateV2(workspaceId, resourceType, resourceId);
   }
   saveResourceStateV2(state: CloudSyncResourceStateV2): void {

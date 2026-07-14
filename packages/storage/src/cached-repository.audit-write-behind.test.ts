@@ -104,7 +104,10 @@ const createRepositoryStub = (): ConnectionRepository & {
       });
     }
 
-    assert(inner.appendCalls.length === 0, "audit threshold should not synchronously write through");
+    assert(
+      inner.appendCalls.length === 0,
+      "audit threshold should not synchronously write through"
+    );
 
     repository.close();
 
@@ -193,7 +196,10 @@ const createRepositoryStub = (): ConnectionRepository & {
     failFlush = false;
     repository.flush();
 
-    assert(inner.batchCalls.length === 2, "bounded retry flush should retry the queued audit batch once");
+    assert(
+      inner.batchCalls.length === 2,
+      "bounded retry flush should retry the queued audit batch once"
+    );
     assert(
       inner.batchCalls[1]?.length === AUDIT_BUFFER_CAPACITY,
       "bounded retry flush should keep the queued audit batch bounded on retry"
@@ -295,8 +301,14 @@ await (async () => {
     await sleep(50);
     await sleep(50);
 
-    assert(uncaughtErrors.length === 0, "timer-based audit flush should not leak uncaught exceptions");
-    assert(inner.batchCalls.length === 2, "timer-based audit flush should retry after a transient failure");
+    assert(
+      uncaughtErrors.length === 0,
+      "timer-based audit flush should not leak uncaught exceptions"
+    );
+    assert(
+      inner.batchCalls.length === 2,
+      "timer-based audit flush should retry after a transient failure"
+    );
   } finally {
     process.off("uncaughtException", onUncaughtException);
     try {

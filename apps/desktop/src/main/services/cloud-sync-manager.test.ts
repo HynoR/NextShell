@@ -9,7 +9,7 @@ import type {
   WorkspaceCommandItem,
   WorkspaceRepoConflict,
   WorkspaceRepoLocalState,
-  WorkspaceRepoSnapshot,
+  WorkspaceRepoSnapshot
 } from "@nextshell/core";
 import { CloudSyncManager, type CloudSyncManagerDeps } from "./cloud-sync-manager";
 
@@ -24,12 +24,12 @@ const createWorkspace = (): CloudSyncWorkspaceProfile => ({
   createdAt: "2026-03-15T00:00:00.000Z",
   updatedAt: "2026-03-15T00:00:00.000Z",
   lastSyncAt: null,
-  lastError: null,
+  lastError: null
 });
 
 const createDeps = (
   workspace: CloudSyncWorkspaceProfile,
-  password: string | undefined,
+  password: string | undefined
 ): CloudSyncManagerDeps => ({
   listConnections: (): ConnectionProfile[] => [],
   saveConnection: (_conn): void => undefined,
@@ -46,14 +46,20 @@ const createDeps = (
   listWorkspaces: (): CloudSyncWorkspaceProfile[] => [workspace],
   saveWorkspace: (_ws): void => undefined,
   removeWorkspace: (_id): void => undefined,
-  getWorkspaceRepoLocalState: (_workspaceId: string): WorkspaceRepoLocalState | undefined => undefined,
+  getWorkspaceRepoLocalState: (_workspaceId: string): WorkspaceRepoLocalState | undefined =>
+    undefined,
   saveWorkspaceRepoLocalState: (_state: WorkspaceRepoLocalState): void => undefined,
   listWorkspaceRepoConflicts: (_workspaceId: string): WorkspaceRepoConflict[] => [],
   saveWorkspaceRepoConflict: (_conflict: WorkspaceRepoConflict): void => undefined,
-  removeWorkspaceRepoConflict: (_workspaceId: string, _resourceType: string, _resourceId: string): void => undefined,
+  removeWorkspaceRepoConflict: (
+    _workspaceId: string,
+    _resourceType: string,
+    _resourceId: string
+  ): void => undefined,
   clearWorkspaceRepoConflicts: (_workspaceId: string): void => undefined,
   listWorkspaceCommands: (_workspaceId: string): WorkspaceCommandItem[] => [],
-  replaceWorkspaceCommands: (_workspaceId: string, _commands: WorkspaceCommandItem[]): void => undefined,
+  replaceWorkspaceCommands: (_workspaceId: string, _commands: WorkspaceCommandItem[]): void =>
+    undefined,
   getWorkspaceCommandsVersion: (_workspaceId: string): string | undefined => undefined,
   saveWorkspaceCommandsVersion: (_workspaceId: string, _version: string): void => undefined,
   saveRecycleBinEntry: (_entry: RecycleBinEntry): void => undefined,
@@ -62,10 +68,10 @@ const createDeps = (
   storeWorkspacePassword: async (_workspaceId, _nextPassword): Promise<void> => undefined,
   getWorkspacePassword: async (_workspaceId): Promise<string | undefined> => password,
   deleteWorkspacePassword: async (_workspaceId): Promise<void> => undefined,
-  getJsonSetting: <T,>(_key: string): T | undefined => undefined,
+  getJsonSetting: <T>(_key: string): T | undefined => undefined,
   saveJsonSetting: (_key: string, _value: unknown): void => undefined,
   broadcastStatus: (_status): void => undefined,
-  broadcastApplied: (_workspaceId): void => undefined,
+  broadcastApplied: (_workspaceId): void => undefined
 });
 
 const now = "2026-03-15T00:00:00.000Z";
@@ -73,7 +79,7 @@ const now = "2026-03-15T00:00:00.000Z";
 const snapshotConnection = (
   uuid: string,
   name: string,
-  host: string,
+  host: string
 ): WorkspaceRepoSnapshot["connections"][number] => ({
   uuid,
   name,
@@ -89,20 +95,20 @@ const snapshotConnection = (
   tags: [],
   favorite: false,
   createdAt: now,
-  updatedAt: now,
+  updatedAt: now
 });
 
 const repoSnapshot = (
   workspaceId: string,
   snapshotId: string,
-  connections: WorkspaceRepoSnapshot["connections"][number][],
+  connections: WorkspaceRepoSnapshot["connections"][number][]
 ): WorkspaceRepoSnapshot => ({
   workspaceId,
   snapshotId,
   createdAt: now,
   connections,
   sshKeys: [],
-  proxies: [],
+  proxies: []
 });
 
 interface MutableCloudSyncState {
@@ -120,7 +126,7 @@ interface MutableCloudSyncState {
 
 const createMutableState = (
   workspace: CloudSyncWorkspaceProfile,
-  overrides: Partial<MutableCloudSyncState> = {},
+  overrides: Partial<MutableCloudSyncState> = {}
 ): MutableCloudSyncState => ({
   workspace,
   password: "workspace-password",
@@ -130,7 +136,7 @@ const createMutableState = (
   commands: [],
   conflicts: [],
   credentials: new Map(),
-  ...overrides,
+  ...overrides
 });
 
 const createMutableDeps = (state: MutableCloudSyncState): CloudSyncManagerDeps => ({
@@ -169,7 +175,8 @@ const createMutableDeps = (state: MutableCloudSyncState): CloudSyncManagerDeps =
     state.workspace = ws;
   },
   removeWorkspace: (_id): void => undefined,
-  getWorkspaceRepoLocalState: (_workspaceId: string): WorkspaceRepoLocalState | undefined => state.localState,
+  getWorkspaceRepoLocalState: (_workspaceId: string): WorkspaceRepoLocalState | undefined =>
+    state.localState,
   saveWorkspaceRepoLocalState: (nextState): void => {
     state.localState = nextState;
   },
@@ -177,14 +184,15 @@ const createMutableDeps = (state: MutableCloudSyncState): CloudSyncManagerDeps =
   saveWorkspaceRepoConflict: (conflict): void => {
     state.conflicts = [
       ...state.conflicts.filter(
-        (item) => item.resourceType !== conflict.resourceType || item.resourceId !== conflict.resourceId,
+        (item) =>
+          item.resourceType !== conflict.resourceType || item.resourceId !== conflict.resourceId
       ),
-      conflict,
+      conflict
     ];
   },
   removeWorkspaceRepoConflict: (_workspaceId, resourceType, resourceId): void => {
     state.conflicts = state.conflicts.filter(
-      (item) => item.resourceType !== resourceType || item.resourceId !== resourceId,
+      (item) => item.resourceType !== resourceType || item.resourceId !== resourceId
     );
   },
   clearWorkspaceRepoConflicts: (_workspaceId): void => {
@@ -209,10 +217,10 @@ const createMutableDeps = (state: MutableCloudSyncState): CloudSyncManagerDeps =
   deleteWorkspacePassword: async (_workspaceId): Promise<void> => {
     state.password = undefined;
   },
-  getJsonSetting: <T,>(_key: string): T | undefined => undefined,
+  getJsonSetting: <T>(_key: string): T | undefined => undefined,
   saveJsonSetting: (_key: string, _value: unknown): void => undefined,
   broadcastStatus: (_status): void => undefined,
-  broadcastApplied: (_workspaceId): void => undefined,
+  broadcastApplied: (_workspaceId): void => undefined
 });
 
 const testCredentials = (workspace: CloudSyncWorkspaceProfile) => ({
@@ -221,7 +229,7 @@ const testCredentials = (workspace: CloudSyncWorkspaceProfile) => ({
   workspacePassword: "workspace-password",
   ignoreTlsErrors: false,
   clientId: "test-client",
-  clientVersion: "test",
+  clientVersion: "test"
 });
 
 type MergeAndSettle = (
@@ -231,7 +239,7 @@ type MergeAndSettle = (
   base: WorkspaceRepoSnapshot,
   localSnapshot: WorkspaceRepoSnapshot,
   remoteSnapshot: WorkspaceRepoSnapshot,
-  remoteVersion: string | undefined,
+  remoteVersion: string | undefined
 ) => Promise<WorkspaceRepoLocalState>;
 
 describe("CloudSyncManager workspace token", () => {
@@ -239,26 +247,34 @@ describe("CloudSyncManager workspace token", () => {
     const workspace = createWorkspace();
     const manager = new CloudSyncManager(createDeps(workspace, "super-secret"));
 
-    expect(typeof (manager as unknown as { exportWorkspaceToken?: unknown }).exportWorkspaceToken).toBe("function");
-    expect(typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken).toBe("function");
+    expect(
+      typeof (manager as unknown as { exportWorkspaceToken?: unknown }).exportWorkspaceToken
+    ).toBe("function");
+    expect(
+      typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken
+    ).toBe("function");
 
-    const { token } = await (manager as unknown as {
-      exportWorkspaceToken: (workspaceId: string) => Promise<{ token: string }>;
-    }).exportWorkspaceToken(workspace.id);
+    const { token } = await (
+      manager as unknown as {
+        exportWorkspaceToken: (workspaceId: string) => Promise<{ token: string }>;
+      }
+    ).exportWorkspaceToken(workspace.id);
 
     expect(token.startsWith("nshell-csv1:")).toBe(true);
 
-    const draft = await (manager as unknown as {
-      parseWorkspaceToken: (token: string) => {
-        apiBaseUrl: string;
-        workspaceName: string;
-        displayName: string;
-        workspacePassword: string;
-        pullIntervalSec: number;
-        ignoreTlsErrors: boolean;
-        enabled: boolean;
-      };
-    }).parseWorkspaceToken(token);
+    const draft = await (
+      manager as unknown as {
+        parseWorkspaceToken: (token: string) => {
+          apiBaseUrl: string;
+          workspaceName: string;
+          displayName: string;
+          workspacePassword: string;
+          pullIntervalSec: number;
+          ignoreTlsErrors: boolean;
+          enabled: boolean;
+        };
+      }
+    ).parseWorkspaceToken(token);
 
     expect(draft).toEqual({
       apiBaseUrl: "https://sync.example.com",
@@ -267,47 +283,60 @@ describe("CloudSyncManager workspace token", () => {
       workspacePassword: "super-secret",
       pullIntervalSec: workspace.pullIntervalSec,
       ignoreTlsErrors: workspace.ignoreTlsErrors,
-      enabled: workspace.enabled,
+      enabled: workspace.enabled
     });
   });
 
   test("rejects tokens without the nshell-csv1 prefix", async () => {
     const manager = new CloudSyncManager(createDeps(createWorkspace(), "super-secret"));
 
-    expect(typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken).toBe("function");
+    expect(
+      typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken
+    ).toBe("function");
 
     await expect(
-      (manager as unknown as {
-        parseWorkspaceToken: (token: string) => Promise<unknown>;
-      }).parseWorkspaceToken("token=abc"),
+      (
+        manager as unknown as {
+          parseWorkspaceToken: (token: string) => Promise<unknown>;
+        }
+      ).parseWorkspaceToken("token=abc")
     ).rejects.toThrow("无效的云同步工作区 token");
   });
 
   test("rejects malformed token payloads", async () => {
     const manager = new CloudSyncManager(createDeps(createWorkspace(), "super-secret"));
 
-    expect(typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken).toBe("function");
+    expect(
+      typeof (manager as unknown as { parseWorkspaceToken?: unknown }).parseWorkspaceToken
+    ).toBe("function");
 
     const invalidJson = `nshell-csv1:${Buffer.from("{bad json", "utf8").toString("base64")}`;
-    const missingPassword = `nshell-csv1:${Buffer.from(JSON.stringify({
-      apiBaseUrl: "https://sync.example.com/",
-      workspaceName: "prod-team",
-      displayName: "生产环境",
-      pullIntervalSec: 120,
-      ignoreTlsErrors: false,
-      enabled: true,
-    }), "utf8").toString("base64")}`;
+    const missingPassword = `nshell-csv1:${Buffer.from(
+      JSON.stringify({
+        apiBaseUrl: "https://sync.example.com/",
+        workspaceName: "prod-team",
+        displayName: "生产环境",
+        pullIntervalSec: 120,
+        ignoreTlsErrors: false,
+        enabled: true
+      }),
+      "utf8"
+    ).toString("base64")}`;
 
     await expect(
-      (manager as unknown as {
-        parseWorkspaceToken: (token: string) => Promise<unknown>;
-      }).parseWorkspaceToken(invalidJson),
+      (
+        manager as unknown as {
+          parseWorkspaceToken: (token: string) => Promise<unknown>;
+        }
+      ).parseWorkspaceToken(invalidJson)
     ).rejects.toThrow("无效的云同步工作区 token");
 
     await expect(
-      (manager as unknown as {
-        parseWorkspaceToken: (token: string) => Promise<unknown>;
-      }).parseWorkspaceToken(missingPassword),
+      (
+        manager as unknown as {
+          parseWorkspaceToken: (token: string) => Promise<unknown>;
+        }
+      ).parseWorkspaceToken(missingPassword)
     ).rejects.toThrow("无效的云同步工作区 token");
   });
 
@@ -315,12 +344,16 @@ describe("CloudSyncManager workspace token", () => {
     const workspace = createWorkspace();
     const manager = new CloudSyncManager(createDeps(workspace, undefined));
 
-    expect(typeof (manager as unknown as { exportWorkspaceToken?: unknown }).exportWorkspaceToken).toBe("function");
+    expect(
+      typeof (manager as unknown as { exportWorkspaceToken?: unknown }).exportWorkspaceToken
+    ).toBe("function");
 
     await expect(
-      (manager as unknown as {
-        exportWorkspaceToken: (workspaceId: string) => Promise<{ token: string }>;
-      }).exportWorkspaceToken(workspace.id),
+      (
+        manager as unknown as {
+          exportWorkspaceToken: (workspaceId: string) => Promise<{ token: string }>;
+        }
+      ).exportWorkspaceToken(workspace.id)
     ).rejects.toThrow("该工作区缺少可导出的完整配置");
   });
 });
@@ -330,16 +363,16 @@ describe("CloudSyncManager workspace repo sync", () => {
     const workspace = { ...createWorkspace(), enabled: true };
     const base = repoSnapshot(workspace.id, "base-snapshot", []);
     const local = repoSnapshot(workspace.id, "local-snapshot", [
-      snapshotConnection("local-conn", "Local", "local.example.com"),
+      snapshotConnection("local-conn", "Local", "local.example.com")
     ]);
     const remote = repoSnapshot(workspace.id, "remote-snapshot", [
-      snapshotConnection("remote-conn", "Remote", "remote.example.com"),
+      snapshotConnection("remote-conn", "Remote", "remote.example.com")
     ]);
     const localState: WorkspaceRepoLocalState = {
       workspaceId: workspace.id,
       baseSnapshotJson: JSON.stringify(base),
       remoteVersion: "base-version",
-      syncState: "idle",
+      syncState: "idle"
     };
     const state = createMutableState(workspace, { localState });
 
@@ -349,7 +382,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       push: async (_credentials: unknown, payload: { baseHeadCommitId?: string | null }) => {
         pushedBaseHead = payload.baseHeadCommitId;
         return { status: "accepted" as const, headCommitId: "merged-version" };
-      },
+      }
     };
 
     const result = await (manager as unknown as { mergeAndSettle: MergeAndSettle }).mergeAndSettle(
@@ -359,7 +392,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       base,
       local,
       remote,
-      "remote-version",
+      "remote-version"
     );
 
     expect(pushedBaseHead).toBe("remote-version");
@@ -367,27 +400,27 @@ describe("CloudSyncManager workspace repo sync", () => {
     expect(result.remoteVersion).toBe("merged-version");
     expect(state.connections.map((connection) => connection.host).sort()).toEqual([
       "local.example.com",
-      "remote.example.com",
+      "remote.example.com"
     ]);
   });
 
   test("keeps non-conflicting remote resources while conflicts remain", async () => {
     const workspace = { ...createWorkspace(), enabled: true };
     const base = repoSnapshot(workspace.id, "base-snapshot", [
-      snapshotConnection("conflict-conn", "Conflict", "base.example.com"),
+      snapshotConnection("conflict-conn", "Conflict", "base.example.com")
     ]);
     const local = repoSnapshot(workspace.id, "local-snapshot", [
-      snapshotConnection("conflict-conn", "Conflict", "local.example.com"),
+      snapshotConnection("conflict-conn", "Conflict", "local.example.com")
     ]);
     const remote = repoSnapshot(workspace.id, "remote-snapshot", [
       snapshotConnection("conflict-conn", "Conflict", "remote.example.com"),
-      snapshotConnection("remote-conn", "Remote", "remote.example.com"),
+      snapshotConnection("remote-conn", "Remote", "remote.example.com")
     ]);
     const localState: WorkspaceRepoLocalState = {
       workspaceId: workspace.id,
       baseSnapshotJson: JSON.stringify(base),
       remoteVersion: "base-version",
-      syncState: "idle",
+      syncState: "idle"
     };
     const state = createMutableState(workspace, { localState });
 
@@ -396,7 +429,7 @@ describe("CloudSyncManager workspace repo sync", () => {
     (manager as unknown as { api: unknown }).api = {
       push: async () => {
         throw new Error("push should not be called while conflicts remain");
-      },
+      }
     };
 
     const result = await (manager as unknown as { mergeAndSettle: MergeAndSettle }).mergeAndSettle(
@@ -406,7 +439,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       base,
       local,
       remote,
-      "remote-version",
+      "remote-version"
     );
 
     expect(result.syncState).toBe("diverged");
@@ -414,7 +447,7 @@ describe("CloudSyncManager workspace repo sync", () => {
     expect(state.conflicts.length).toBe(1);
     expect(state.connections.map((connection) => connection.host).sort()).toEqual([
       "local.example.com",
-      "remote.example.com",
+      "remote.example.com"
     ]);
   });
 
@@ -424,37 +457,45 @@ describe("CloudSyncManager workspace repo sync", () => {
     const scopeKey = buildScopeKey({
       kind: "cloud",
       apiBaseUrl: firstWorkspace.apiBaseUrl,
-      workspaceName: firstWorkspace.workspaceName,
+      workspaceName: firstWorkspace.workspaceName
     });
 
     const buildSnapshotFor = async (workspace: CloudSyncWorkspaceProfile) => {
       const state = createMutableState(workspace);
       state.credentials.set("secret://ssh-key", "PRIVATE KEY");
-      state.sshKeys = [{
-        id: `key-${workspace.id}`,
-        name: "Deploy key",
-        keyContentRef: "secret://ssh-key",
-        createdAt: now,
-        updatedAt: now,
-        resourceId: `${scopeKey}-deploy-key`,
-        uuidInScope: "deploy-key",
-        originKind: "cloud",
-        originScopeKey: scopeKey,
-        originWorkspaceId: workspace.id,
-      }];
+      state.sshKeys = [
+        {
+          id: `key-${workspace.id}`,
+          name: "Deploy key",
+          keyContentRef: "secret://ssh-key",
+          createdAt: now,
+          updatedAt: now,
+          resourceId: `${scopeKey}-deploy-key`,
+          uuidInScope: "deploy-key",
+          originKind: "cloud",
+          originScopeKey: scopeKey,
+          originWorkspaceId: workspace.id
+        }
+      ];
       const manager = new CloudSyncManager(createMutableDeps(state));
-      return (manager as unknown as {
-        buildWorkspaceSnapshot: (
-          workspace: CloudSyncWorkspaceProfile,
-          workspacePassword: string,
-        ) => Promise<WorkspaceRepoSnapshot>;
-      }).buildWorkspaceSnapshot(workspace, "workspace-password");
+      return (
+        manager as unknown as {
+          buildWorkspaceSnapshot: (
+            workspace: CloudSyncWorkspaceProfile,
+            workspacePassword: string
+          ) => Promise<WorkspaceRepoSnapshot>;
+        }
+      ).buildWorkspaceSnapshot(workspace, "workspace-password");
     };
 
     const firstSnapshot = await buildSnapshotFor(firstWorkspace);
     const secondSnapshot = await buildSnapshotFor(secondWorkspace);
-    expect(firstSnapshot.sshKeys[0]?.privateKey.aad).toBe(`${scopeKey}:sshKey:deploy-key:privateKey`);
-    expect(secondSnapshot.sshKeys[0]?.privateKey.aad).toBe(firstSnapshot.sshKeys[0]?.privateKey.aad);
+    expect(firstSnapshot.sshKeys[0]?.privateKey.aad).toBe(
+      `${scopeKey}:sshKey:deploy-key:privateKey`
+    );
+    expect(secondSnapshot.sshKeys[0]?.privateKey.aad).toBe(
+      firstSnapshot.sshKeys[0]?.privateKey.aad
+    );
   });
 });
 
@@ -469,16 +510,16 @@ describe("CloudSyncManager workspace command sync", () => {
       command: "deploy local",
       isTemplate: false,
       createdAt: now,
-      updatedAt: "2026-03-15T01:00:00.000Z",
+      updatedAt: "2026-03-15T01:00:00.000Z"
     };
     const remoteCommand: WorkspaceCommandItem = {
       ...localCommand,
       command: "deploy remote",
-      updatedAt: "2026-03-15T02:00:00.000Z",
+      updatedAt: "2026-03-15T02:00:00.000Z"
     };
     const state = createMutableState(workspace, {
       commands: [localCommand],
-      commandsVersion: "base-version",
+      commandsVersion: "base-version"
     });
     const manager = new CloudSyncManager(createMutableDeps(state));
     let pushedCommands: WorkspaceCommandItem[] = [];
@@ -486,37 +527,39 @@ describe("CloudSyncManager workspace command sync", () => {
       pullCommands: async () => ({
         status: "changed" as const,
         version: "remote-version",
-        commands: [remoteCommand],
+        commands: [remoteCommand]
       }),
       pushCommands: async (_credentials: unknown, commands: WorkspaceCommandItem[]) => {
         pushedCommands = commands;
         return { version: "merged-version" };
-      },
+      }
     };
 
-    const result = await (manager as unknown as {
-      syncWorkspaceCommands: (
-        workspace: CloudSyncWorkspaceProfile,
-        credentials: ReturnType<typeof testCredentials>,
-        localState: WorkspaceRepoLocalState,
-        resolvedRemoteVersion?: string,
-      ) => Promise<WorkspaceRepoLocalState>;
-    }).syncWorkspaceCommands(
+    const result = await (
+      manager as unknown as {
+        syncWorkspaceCommands: (
+          workspace: CloudSyncWorkspaceProfile,
+          credentials: ReturnType<typeof testCredentials>,
+          localState: WorkspaceRepoLocalState,
+          resolvedRemoteVersion?: string
+        ) => Promise<WorkspaceRepoLocalState>;
+      }
+    ).syncWorkspaceCommands(
       workspace,
       testCredentials(workspace),
       {
         workspaceId: workspace.id,
         remoteCommandsVersion: "base-version",
-        syncState: "synced",
+        syncState: "synced"
       },
-      "remote-version",
+      "remote-version"
     );
 
     expect(result.remoteCommandsVersion).toBe("merged-version");
     expect(state.commandsVersion).toBe("merged-version");
     expect(pushedCommands.map((command) => command.command).sort()).toEqual([
       "deploy local",
-      "deploy remote",
+      "deploy remote"
     ]);
     expect(pushedCommands.some((command) => command.name === "Deploy (云端版本)")).toBe(true);
   });

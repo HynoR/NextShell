@@ -37,4 +37,3 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   assertEqual(formatDiskSize(795 * 1024), "795M", "format megabytes");
   assertEqual(formatDiskSize(5 * 1024 * 1024), "5.0G", "format gigabytes");
 })();
-

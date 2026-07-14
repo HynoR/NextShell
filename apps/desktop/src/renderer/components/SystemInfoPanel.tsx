@@ -17,10 +17,7 @@ const NETWORK_CHART_HEIGHT = 84;
 const NETWORK_HISTORY_CAP = 50;
 const NETWORK_CHART_WIDTH = NETWORK_HISTORY_CAP * 10 + 8;
 
-function getMetricFillClass(
-  percent: number,
-  normalFillClassName: string,
-): string {
+function getMetricFillClass(percent: number, normalFillClassName: string): string {
   if (percent > 90) {
     return "bg-red-500/60";
   }
@@ -69,7 +66,7 @@ export const SystemInfoPanel = ({
   onSelectNetworkInterface,
   onOpenProcessManager,
   onOpenNetworkMonitor,
-  monitorActionsDisabled,
+  monitorActionsDisabled
 }: SystemInfoPanelProps) => {
   const [collapsed, setCollapsed] = useState(false);
   const storeSnapshot = useWorkspaceStore((state) => state.monitor);
@@ -120,25 +117,23 @@ export const SystemInfoPanel = ({
       e.preventDefault();
       setCtxMenu({ x: e.clientX, y: e.clientY });
     },
-    [interfaceOptions],
+    [interfaceOptions]
   );
 
   const chartPoints =
     snapshot?.connectionId && snapshot?.networkInterface
-      ? (networkRateHistory[
-          `${snapshot.connectionId}:${snapshot.networkInterface}`
-        ] ?? [])
+      ? (networkRateHistory[`${snapshot.connectionId}:${snapshot.networkInterface}`] ?? [])
       : [];
   const chartMax = Math.max(
     1,
-    ...chartPoints.map((point) => Math.max(point.inMbps, point.outMbps)),
+    ...chartPoints.map((point) => Math.max(point.inMbps, point.outMbps))
   );
 
   // Fixed 50-slot queue: always render 50 columns, right-aligned (newest on right)
   type NetworkPoint = (typeof chartPoints)[number];
   const emptyPoint: NetworkPoint = { inMbps: 0, outMbps: 0, capturedAt: "" };
   const networkSlots: NetworkPoint[] = Array.from<NetworkPoint>({
-    length: NETWORK_HISTORY_CAP,
+    length: NETWORK_HISTORY_CAP
   }).fill(emptyPoint);
   const networkOffset = NETWORK_HISTORY_CAP - chartPoints.length;
   for (let i = 0; i < chartPoints.length; i++) {
@@ -149,16 +144,9 @@ export const SystemInfoPanel = ({
     return null;
   }
 
-  const showManagerActions = Boolean(
-    onOpenProcessManager || onOpenNetworkMonitor,
-  );
+  const showManagerActions = Boolean(onOpenProcessManager || onOpenNetworkMonitor);
 
-  const renderMetricRow = ({
-    label,
-    percent,
-    fillClassName,
-    detail,
-  }: MetricRowProps) => (
+  const renderMetricRow = ({ label, percent, fillClassName, detail }: MetricRowProps) => (
     <div className="grid grid-cols-[40px_1fr] items-center gap-2.5">
       <div className="text-[11px] font-semibold text-[var(--t2)] tracking-wide uppercase">
         {label}
@@ -167,7 +155,7 @@ export const SystemInfoPanel = ({
         <div
           className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ${fillClassName}`}
           style={{
-            width: `${Math.min(percent, 100)}%`,
+            width: `${Math.min(percent, 100)}%`
           }}
         />
         <div className="absolute inset-0 flex items-center justify-between gap-3 px-2.5 font-mono text-[11px] text-[var(--t1)] drop-shadow-sm">
@@ -190,9 +178,7 @@ export const SystemInfoPanel = ({
         onClick={() => setCollapsed((prev) => !prev)}
       >
         <i
-          className={
-            collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"
-          }
+          className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
           aria-hidden="true"
         />
         <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
@@ -206,9 +192,7 @@ export const SystemInfoPanel = ({
       {!collapsed ? (
         <div className="monitor-panel-body">
           {!hasVisibleTerminal ? (
-            <div className="monitor-placeholder">
-              请先连接 SSH 终端以启动监控会话
-            </div>
+            <div className="monitor-placeholder">请先连接 SSH 终端以启动监控会话</div>
           ) : snapshot ? (
             <div className="flex flex-col gap-3 py-1">
               <div className="flex flex-col gap-2 px-1 mb-1">
@@ -222,42 +206,30 @@ export const SystemInfoPanel = ({
                 {renderMetricRow({
                   label: "CPU",
                   percent: snapshot.cpuPercent,
-                  fillClassName: getMetricFillClass(
-                    snapshot.cpuPercent,
-                    "bg-blue-500/50",
-                  ),
+                  fillClassName: getMetricFillClass(snapshot.cpuPercent, "bg-blue-500/50")
                 })}
 
                 {renderMetricRow({
                   label: "内存",
                   percent: snapshot.memoryPercent,
-                  fillClassName: getMetricFillClass(
-                    snapshot.memoryPercent,
-                    "bg-emerald-500/50",
-                  ),
-                  detail: `${formatMemoryShort(snapshot.memoryUsedMb)} / ${formatMemoryShort(snapshot.memoryTotalMb)}`,
+                  fillClassName: getMetricFillClass(snapshot.memoryPercent, "bg-emerald-500/50"),
+                  detail: `${formatMemoryShort(snapshot.memoryUsedMb)} / ${formatMemoryShort(snapshot.memoryTotalMb)}`
                 })}
 
                 {snapshot.swapTotalMb > 0
                   ? renderMetricRow({
                       label: "交换",
                       percent: snapshot.swapPercent,
-                      fillClassName: getMetricFillClass(
-                        snapshot.swapPercent,
-                        "bg-indigo-500/50",
-                      ),
-                      detail: `${formatMemoryShort(snapshot.swapUsedMb)} / ${formatMemoryShort(snapshot.swapTotalMb)}`,
+                      fillClassName: getMetricFillClass(snapshot.swapPercent, "bg-indigo-500/50"),
+                      detail: `${formatMemoryShort(snapshot.swapUsedMb)} / ${formatMemoryShort(snapshot.swapTotalMb)}`
                     })
                   : null}
 
                 {renderMetricRow({
                   label: "磁盘",
                   percent: snapshot.diskPercent,
-                  fillClassName: getMetricFillClass(
-                    snapshot.diskPercent,
-                    "bg-teal-500/50",
-                  ),
-                  detail: `${snapshot.diskUsedGb.toFixed(1)}G / ${snapshot.diskTotalGb.toFixed(1)}G`,
+                  fillClassName: getMetricFillClass(snapshot.diskPercent, "bg-teal-500/50"),
+                  detail: `${snapshot.diskUsedGb.toFixed(1)}G / ${snapshot.diskTotalGb.toFixed(1)}G`
                 })}
               </div>
               <div className="flex items-center justify-between gap-1.5 px-1">
@@ -270,7 +242,7 @@ export const SystemInfoPanel = ({
                     onChange={(value) => onSelectNetworkInterface?.(value)}
                     options={interfaceOptions.map((iface) => ({
                       label: iface,
-                      value: iface,
+                      value: iface
                     }))}
                     size="small"
                     variant="borderless"
@@ -329,15 +301,10 @@ export const SystemInfoPanel = ({
                         />
                       ))}
                       {networkSlots.map((point, index) => {
-                        if (point.inMbps === 0 && point.outMbps === 0)
-                          return null;
+                        if (point.inMbps === 0 && point.outMbps === 0) return null;
                         const x = index * 10 + 4;
-                        const inHeight =
-                          (point.inMbps / chartMax) *
-                          (NETWORK_CHART_HEIGHT - 4);
-                        const outHeight =
-                          (point.outMbps / chartMax) *
-                          (NETWORK_CHART_HEIGHT - 4);
+                        const inHeight = (point.inMbps / chartMax) * (NETWORK_CHART_HEIGHT - 4);
+                        const outHeight = (point.outMbps / chartMax) * (NETWORK_CHART_HEIGHT - 4);
 
                         return (
                           <g
@@ -395,16 +362,12 @@ export const SystemInfoPanel = ({
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-500/10 text-orange-500 border border-orange-500/20">
                     <i className="ri-arrow-up-line" />
                     <span>上行</span>
-                    <span className="font-semibold">
-                      {formatRate(snapshot.networkOutMbps)}
-                    </span>
+                    <span className="font-semibold">{formatRate(snapshot.networkOutMbps)}</span>
                   </div>
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     <i className="ri-arrow-down-line" />
                     <span>下行</span>
-                    <span className="font-semibold">
-                      {formatRate(snapshot.networkInMbps)}
-                    </span>
+                    <span className="font-semibold">{formatRate(snapshot.networkInMbps)}</span>
                   </div>
                 </div>
               </div>

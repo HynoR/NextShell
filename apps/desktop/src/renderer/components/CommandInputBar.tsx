@@ -1,17 +1,7 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { App as AntdApp } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import type {
-  useCommandHistory,
-  CommandHistoryEntry
-} from "../hooks/useCommandHistory";
+import type { useCommandHistory, CommandHistoryEntry } from "../hooks/useCommandHistory";
 
 interface CommandInputBarProps {
   session?: SessionDescriptor;
@@ -37,16 +27,8 @@ export const CommandInputBar = ({
   onTerminalSearchPrevious
 }: CommandInputBarProps) => {
   const { message } = AntdApp.useApp();
-  const {
-    entries,
-    push,
-    remove,
-    clear,
-    search,
-    navigateUp,
-    navigateDown,
-    resetNavigation
-  } = commandHistory;
+  const { entries, push, remove, clear, search, navigateUp, navigateDown, resetNavigation } =
+    commandHistory;
 
   const [commandInput, setCommandInput] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
@@ -318,9 +300,7 @@ export const CommandInputBar = ({
                   </span>
                 </div>
               ))}
-              {filtered.length === 0 ? (
-                <div className="cib-empty-tip">暂无匹配命令</div>
-              ) : null}
+              {filtered.length === 0 ? <div className="cib-empty-tip">暂无匹配命令</div> : null}
             </div>
           ) : (
             <div className="cib-search-panel">
@@ -351,11 +331,7 @@ export const CommandInputBar = ({
                 >
                   清空关键词
                 </button>
-                <button
-                  type="button"
-                  className="cib-search-action-btn"
-                  onClick={closeSearchMode}
-                >
+                <button type="button" className="cib-search-action-btn" onClick={closeSearchMode}>
                   返回命令
                 </button>
               </div>
@@ -373,9 +349,7 @@ export const CommandInputBar = ({
           title="命令历史（↑/↓ 翻阅）"
         >
           <i className="ri-history-line" aria-hidden="true" style={{ fontSize: 15 }} />
-          {entries.length > 0 && (
-            <span className="cib-badge">{entries.length}</span>
-          )}
+          {entries.length > 0 && <span className="cib-badge">{entries.length}</span>}
         </button>
 
         <div className="cib-input-wrap">
@@ -422,7 +396,16 @@ export const CommandInputBar = ({
           aria-label="发送命令"
           title="发送命令"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <line x1="22" y1="2" x2="11" y2="13" />
             <polygon points="22 2 15 22 11 13 2 9 22 2" />
           </svg>

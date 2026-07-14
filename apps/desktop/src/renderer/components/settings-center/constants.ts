@@ -2,7 +2,7 @@ import type {
   LocalShellMode,
   LocalShellPreset,
   LocalShellPreference,
-  SettingsSection,
+  SettingsSection
 } from "./types";
 
 export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string }> = [
@@ -14,7 +14,7 @@ export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string
   { key: "network", label: "网络工具", icon: "ri-route-line" },
   { key: "backup", label: "数据备份", icon: "ri-cloud-line" },
   { key: "security", label: "安全与审计", icon: "ri-shield-keyhole-line" },
-  { key: "about", label: "关于", icon: "ri-information-line" },
+  { key: "about", label: "关于", icon: "ri-information-line" }
 ];
 
 export const EDITOR_PRESETS: Array<{ label: string; value: string }> = [
@@ -25,7 +25,7 @@ export const EDITOR_PRESETS: Array<{ label: string; value: string }> = [
   { label: "Nano", value: "nano" },
   { label: "Notepad++", value: "notepad++" },
   { label: "TextEdit", value: "open -t" },
-  { label: "Xcode", value: "open -a Xcode" },
+  { label: "Xcode", value: "open -a Xcode" }
 ];
 
 export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
@@ -34,9 +34,19 @@ export const CUSTOM_FONT_PRESET = "__terminal_font_custom__";
 export const TERMINAL_THEME_PRESETS = [
   { label: "默认", value: "default", backgroundColor: "#000000", foregroundColor: "#d8eaff" },
   { label: "Dracula", value: "dracula", backgroundColor: "#282a36", foregroundColor: "#f8f8f2" },
-  { label: "Solarized Dark", value: "solarized-dark", backgroundColor: "#002b36", foregroundColor: "#93a1a1" },
-  { label: "Gruvbox Dark", value: "gruvbox-dark", backgroundColor: "#282828", foregroundColor: "#ebdbb2" },
-  { label: "Nord", value: "nord", backgroundColor: "#2e3440", foregroundColor: "#d8dee9" },
+  {
+    label: "Solarized Dark",
+    value: "solarized-dark",
+    backgroundColor: "#002b36",
+    foregroundColor: "#93a1a1"
+  },
+  {
+    label: "Gruvbox Dark",
+    value: "gruvbox-dark",
+    backgroundColor: "#282828",
+    foregroundColor: "#ebdbb2"
+  },
+  { label: "Nord", value: "nord", backgroundColor: "#2e3440", foregroundColor: "#d8dee9" }
 ] as const;
 
 export const TERMINAL_DEBOUNCE_MS = 3000;
@@ -84,13 +94,8 @@ export const readLocalShellPreference = (
   const rawPreset = rawRecord["preset"];
   const rawCustomPath = rawRecord["customPath"];
 
-  const mode = isLocalShellMode(rawMode)
-    ? rawMode
-    : DEFAULT_LOCAL_SHELL.mode;
-  const customPath =
-    typeof rawCustomPath === "string"
-      ? String(rawCustomPath).trim()
-      : "";
+  const mode = isLocalShellMode(rawMode) ? rawMode : DEFAULT_LOCAL_SHELL.mode;
+  const customPath = typeof rawCustomPath === "string" ? String(rawCustomPath).trim() : "";
 
   if (mode === "custom") {
     return {
@@ -100,24 +105,12 @@ export const readLocalShellPreference = (
     };
   }
 
-  const preset = isLocalShellPreset(rawPreset)
-    ? rawPreset
-    : DEFAULT_LOCAL_SHELL.preset;
-  if (
-    platform === "win32" &&
-    preset !== "system" &&
-    preset !== "powershell" &&
-    preset !== "cmd"
-  ) {
+  const preset = isLocalShellPreset(rawPreset) ? rawPreset : DEFAULT_LOCAL_SHELL.preset;
+  if (platform === "win32" && preset !== "system" && preset !== "powershell" && preset !== "cmd") {
     return { ...DEFAULT_LOCAL_SHELL, customPath };
   }
 
-  if (
-    platform === "darwin" &&
-    preset !== "system" &&
-    preset !== "zsh" &&
-    preset !== "sh"
-  ) {
+  if (platform === "darwin" && preset !== "system" && preset !== "zsh" && preset !== "sh") {
     return { ...DEFAULT_LOCAL_SHELL, customPath };
   }
 
@@ -138,7 +131,9 @@ export const readLocalShellPreference = (
   };
 };
 
-export const getLocalShellOptions = (platform: string): Array<{ label: string; value: LocalShellPreset }> => {
+export const getLocalShellOptions = (
+  platform: string
+): Array<{ label: string; value: LocalShellPreset }> => {
   if (platform === "win32") {
     return [
       { label: "跟随系统（PowerShell）", value: "system" },

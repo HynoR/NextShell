@@ -14,7 +14,10 @@ const writeStderr = (message: string): void => {
 };
 
 const normalizeStartupError = (error: unknown): string => {
-  if (error instanceof NextShellDataNotFoundError || error instanceof CredentialStoreUnavailableError) {
+  if (
+    error instanceof NextShellDataNotFoundError ||
+    error instanceof CredentialStoreUnavailableError
+  ) {
     return error.message;
   }
   if (error instanceof Error && error.message.trim().length > 0) {

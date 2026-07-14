@@ -21,18 +21,26 @@ describe("isTransferCancelledError", () => {
 
 describe("runWithAbort", () => {
   test("runs the op directly when no signal is given", async () => {
-    const result = await runWithAbort(undefined, async () => 42, () => {
-      throw new Error("onAbort should not run");
-    });
+    const result = await runWithAbort(
+      undefined,
+      async () => 42,
+      () => {
+        throw new Error("onAbort should not run");
+      }
+    );
     expect(result).toBe(42);
   });
 
   test("returns the op result when it completes before any abort", async () => {
     const controller = new AbortController();
     let aborted = false;
-    const result = await runWithAbort(controller.signal, async () => "done", () => {
-      aborted = true;
-    });
+    const result = await runWithAbort(
+      controller.signal,
+      async () => "done",
+      () => {
+        aborted = true;
+      }
+    );
     expect(result).toBe("done");
     expect(aborted).toBe(false);
   });
@@ -43,9 +51,13 @@ describe("runWithAbort", () => {
     let aborted = false;
     let caught: unknown;
     try {
-      await runWithAbort(controller.signal, async () => "x", () => {
-        aborted = true;
-      });
+      await runWithAbort(
+        controller.signal,
+        async () => "x",
+        () => {
+          aborted = true;
+        }
+      );
     } catch (error) {
       caught = error;
     }
@@ -78,9 +90,13 @@ describe("runWithAbort", () => {
     const controller = new AbortController();
     let caught: unknown;
     try {
-      await runWithAbort(controller.signal, async () => {
-        throw new Error("real failure");
-      }, () => undefined);
+      await runWithAbort(
+        controller.signal,
+        async () => {
+          throw new Error("real failure");
+        },
+        () => undefined
+      );
     } catch (error) {
       caught = error;
     }

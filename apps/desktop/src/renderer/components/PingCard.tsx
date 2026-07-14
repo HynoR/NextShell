@@ -116,7 +116,9 @@ export const PingCard = ({ host }: PingCardProps) => {
 
   // Fixed 50-slot queue: always render 50 columns, right-aligned (newest on right)
   // null = 失败采样，渲染为缺口
-  const slots: (number | null)[] = Array.from<number | null>({ length: PING_HISTORY_CAP }).fill(null);
+  const slots: (number | null)[] = Array.from<number | null>({ length: PING_HISTORY_CAP }).fill(
+    null
+  );
   const offset = PING_HISTORY_CAP - pingHistory.length;
   for (let i = 0; i < pingHistory.length; i++) {
     slots[offset + i] = pingHistory[i] ?? null;
@@ -138,9 +140,7 @@ export const PingCard = ({ host }: PingCardProps) => {
         <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
           Ping 延迟
         </span>
-        {collapsed ? (
-          <span className="monitor-summary">{summaryLine(result, loading)}</span>
-        ) : null}
+        {collapsed ? <span className="monitor-summary">{summaryLine(result, loading)}</span> : null}
       </button>
 
       {!collapsed ? (
@@ -156,10 +156,7 @@ export const PingCard = ({ host }: PingCardProps) => {
                 <span className="text-[10px] text-[var(--t3)]">每 1 秒刷新</span>
               </>
             ) : result?.ok === false ? (
-              <span
-                className="font-mono font-semibold text-[var(--err)]"
-                title={result.error}
-              >
+              <span className="font-mono font-semibold text-[var(--err)]" title={result.error}>
                 不可达
               </span>
             ) : (
@@ -174,9 +171,24 @@ export const PingCard = ({ host }: PingCardProps) => {
               </div>
             ) : (
               <>
-                <span className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none" style={{ top: "8px" }}>{Math.round(chartMax)} ms</span>
-                <span className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none" style={{ top: "50%", transform: "translateY(-50%)" }}>{Math.round(chartMax / 2)}</span>
-                <span className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none" style={{ bottom: "8px" }}>0</span>
+                <span
+                  className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none"
+                  style={{ top: "8px" }}
+                >
+                  {Math.round(chartMax)} ms
+                </span>
+                <span
+                  className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none"
+                  style={{ top: "50%", transform: "translateY(-50%)" }}
+                >
+                  {Math.round(chartMax / 2)}
+                </span>
+                <span
+                  className="absolute left-1 text-[9px] font-mono text-[var(--t3)] leading-none"
+                  style={{ bottom: "8px" }}
+                >
+                  0
+                </span>
                 <svg
                   viewBox={`0 0 ${CHART_WIDTH} ${PING_CHART_HEIGHT}`}
                   preserveAspectRatio="none"

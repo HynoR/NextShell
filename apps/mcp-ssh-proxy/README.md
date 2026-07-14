@@ -33,9 +33,7 @@ node /absolute/path/to/apps/mcp-ssh-proxy/dist/index.js
   "mcpServers": {
     "nextshell-ssh": {
       "command": "node",
-      "args": [
-        "/absolute/path/to/apps/mcp-ssh-proxy/dist/index.js"
-      ]
+      "args": ["/absolute/path/to/apps/mcp-ssh-proxy/dist/index.js"]
     }
   }
 }

@@ -2,24 +2,24 @@ import type { WebContents } from "electron";
 import type {
   AppPreferences,
   ConnectionProfile,
-  TerminalEncoding,
+  TerminalEncoding
 } from "../../../../../packages/core/src/index";
-import type {
-  SshConnection,
-  SshConnectOptions,
-} from "../../../../../packages/ssh/src/index";
+import type { SshConnection, SshConnectOptions } from "../../../../../packages/ssh/src/index";
 import type {
   DebugLogEntry,
   SessionAuthOverrideInput,
   SessionStatusEvent,
   SftpTransferStatusEvent,
-  SettingsUpdateInput,
+  SettingsUpdateInput
 } from "../../../../../packages/shared/src/index";
-import type { EncryptedSecretVault, KeytarPasswordCache } from "../../../../../packages/security/src/index";
+import type {
+  EncryptedSecretVault,
+  KeytarPasswordCache
+} from "../../../../../packages/security/src/index";
 import type {
   CachedConnectionRepository,
   CachedSshKeyRepository,
-  CachedProxyRepository,
+  CachedProxyRepository
 } from "../../../../../packages/storage/src/index";
 import type { BackupService } from "./backup-service";
 import type { RemoteEditManager } from "./remote-edit-manager";
@@ -29,7 +29,7 @@ import type {
   MonitorState,
   SystemMonitorRuntime,
   ProcessMonitorRuntime,
-  NetworkMonitorRuntime,
+  NetworkMonitorRuntime
 } from "./container-types";
 import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import type { NetworkTool } from "./monitor/network-monitor-controller";
@@ -110,17 +110,12 @@ export interface ServiceContext {
     metadata?: Record<string, unknown>;
   }) => void;
   getAppPreferences: () => AppPreferences;
-  saveAppPreferencesPatch: (
-    patch: SettingsUpdateInput
-  ) => AppPreferences;
+  saveAppPreferencesPatch: (patch: SettingsUpdateInput) => AppPreferences;
 
   // ─── IPC Helpers ────────────────────────────────────────────────────────
   broadcastToAllWindows: (channel: string, payload: unknown) => void;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
-  sendTransferStatus: (
-    sender: WebContents | undefined,
-    payload: SftpTransferStatusEvent
-  ) => void;
+  sendTransferStatus: (sender: WebContents | undefined, payload: SftpTransferStatusEvent) => void;
 
   // ─── Stream Dispatchers ─────────────────────────────────────────────────
   // Only the ordered terminal byte stream is dispatched with the ack

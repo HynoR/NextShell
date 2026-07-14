@@ -75,10 +75,7 @@ export const mergePreferences = (
     return fallback;
   };
 
-  const normalizeLocalShellPath = (
-    value: string | undefined,
-    fallback: string
-  ): string => {
+  const normalizeLocalShellPath = (value: string | undefined, fallback: string): string => {
     if (typeof value !== "string") {
       return fallback;
     }
@@ -139,10 +136,7 @@ export const mergePreferences = (
         patch.terminal?.foregroundColor,
         current.terminal.foregroundColor
       ),
-      fontSize: normalizeTerminalFontSize(
-        patch.terminal?.fontSize,
-        current.terminal.fontSize
-      ),
+      fontSize: normalizeTerminalFontSize(patch.terminal?.fontSize, current.terminal.fontSize),
       lineHeight: normalizeTerminalLineHeight(
         patch.terminal?.lineHeight,
         current.terminal.lineHeight
@@ -179,20 +173,21 @@ export const mergePreferences = (
           ? patch.backup.remotePath
           : current.backup.remotePath,
       rclonePath:
-        patch.backup?.rclonePath !== undefined ? patch.backup.rclonePath : current.backup.rclonePath,
+        patch.backup?.rclonePath !== undefined
+          ? patch.backup.rclonePath
+          : current.backup.rclonePath,
       defaultBackupConflictPolicy:
         patch.backup?.defaultBackupConflictPolicy ?? current.backup.defaultBackupConflictPolicy,
       defaultRestoreConflictPolicy:
         patch.backup?.defaultRestoreConflictPolicy ?? current.backup.defaultRestoreConflictPolicy,
       rememberPassword: patch.backup?.rememberPassword ?? current.backup.rememberPassword,
       lastBackupAt:
-        patch.backup?.lastBackupAt !== undefined ? patch.backup.lastBackupAt : current.backup.lastBackupAt
+        patch.backup?.lastBackupAt !== undefined
+          ? patch.backup.lastBackupAt
+          : current.backup.lastBackupAt
     },
     window: {
-      appearance: normalizeWindowAppearance(
-        patch.window?.appearance,
-        current.window.appearance
-      ),
+      appearance: normalizeWindowAppearance(patch.window?.appearance, current.window.appearance),
       minimizeToTray: patch.window?.minimizeToTray ?? current.window.minimizeToTray,
       confirmBeforeClose: patch.window?.confirmBeforeClose ?? current.window.confirmBeforeClose,
       backgroundImagePath:
@@ -206,7 +201,8 @@ export const mergePreferences = (
       leftSidebarDefaultCollapsed:
         patch.window?.leftSidebarDefaultCollapsed ?? current.window.leftSidebarDefaultCollapsed,
       bottomWorkbenchDefaultCollapsed:
-        patch.window?.bottomWorkbenchDefaultCollapsed ?? current.window.bottomWorkbenchDefaultCollapsed
+        patch.window?.bottomWorkbenchDefaultCollapsed ??
+        current.window.bottomWorkbenchDefaultCollapsed
     },
     traceroute: {
       nexttracePath:
@@ -214,22 +210,34 @@ export const mergePreferences = (
           ? patch.traceroute.nexttracePath
           : current.traceroute.nexttracePath,
       protocol:
-        patch.traceroute?.protocol !== undefined ? patch.traceroute.protocol : current.traceroute.protocol,
+        patch.traceroute?.protocol !== undefined
+          ? patch.traceroute.protocol
+          : current.traceroute.protocol,
       port: patch.traceroute?.port !== undefined ? patch.traceroute.port : current.traceroute.port,
       queries:
-        patch.traceroute?.queries !== undefined ? patch.traceroute.queries : current.traceroute.queries,
+        patch.traceroute?.queries !== undefined
+          ? patch.traceroute.queries
+          : current.traceroute.queries,
       maxHops:
-        patch.traceroute?.maxHops !== undefined ? patch.traceroute.maxHops : current.traceroute.maxHops,
+        patch.traceroute?.maxHops !== undefined
+          ? patch.traceroute.maxHops
+          : current.traceroute.maxHops,
       ipVersion:
-        patch.traceroute?.ipVersion !== undefined ? patch.traceroute.ipVersion : current.traceroute.ipVersion,
+        patch.traceroute?.ipVersion !== undefined
+          ? patch.traceroute.ipVersion
+          : current.traceroute.ipVersion,
       dataProvider:
         patch.traceroute?.dataProvider !== undefined
           ? patch.traceroute.dataProvider
           : current.traceroute.dataProvider,
       noRdns:
-        patch.traceroute?.noRdns !== undefined ? patch.traceroute.noRdns : current.traceroute.noRdns,
+        patch.traceroute?.noRdns !== undefined
+          ? patch.traceroute.noRdns
+          : current.traceroute.noRdns,
       language:
-        patch.traceroute?.language !== undefined ? patch.traceroute.language : current.traceroute.language,
+        patch.traceroute?.language !== undefined
+          ? patch.traceroute.language
+          : current.traceroute.language,
       powProvider:
         patch.traceroute?.powProvider !== undefined
           ? patch.traceroute.powProvider
@@ -240,10 +248,7 @@ export const mergePreferences = (
           : current.traceroute.showTracerouteTab
     },
     audit: {
-      enabled:
-        patch.audit?.enabled !== undefined
-          ? patch.audit.enabled
-          : current.audit.enabled,
+      enabled: patch.audit?.enabled !== undefined ? patch.audit.enabled : current.audit.enabled,
       retentionDays:
         patch.audit?.retentionDays !== undefined &&
         Number.isInteger(patch.audit.retentionDays) &&

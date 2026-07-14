@@ -33,9 +33,5 @@ export const isTrustedRendererUrl = (
   if (candidate.protocol !== "file:") {
     return false;
   }
-  return pathsMatch(
-    fileURLToPath(candidate),
-    path.join(appPath, "dist/index.html"),
-    platform
-  );
+  return pathsMatch(fileURLToPath(candidate), path.join(appPath, "dist/index.html"), platform);
 };

@@ -57,7 +57,13 @@ export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyMana
   const selectedKey = sshKeys.find((k) => k.id === selectedKeyId);
   const scopeLocked = mode === "edit" && selectedKey?.originKind === "cloud";
   const workspaceNameById = useMemo(
-    () => new Map(workspaces.map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])),
+    () =>
+      new Map(
+        workspaces.map((workspace) => [
+          workspace.id,
+          workspace.displayName || workspace.workspaceName
+        ])
+      ),
     [workspaces]
   );
 
@@ -129,15 +135,21 @@ export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyMana
   }, [selectedKeyId, selectedKey, form, onReload]);
 
   return (
-    <div className={mode !== "idle" ? "grid grid-cols-[230px_1fr] h-[540px] overflow-hidden" : "h-[540px] overflow-hidden"}>
+    <div
+      className={
+        mode !== "idle"
+          ? "grid grid-cols-[230px_1fr] h-[540px] overflow-hidden"
+          : "h-[540px] overflow-hidden"
+      }
+    >
       {/* ── Sidebar ─────────────────────────── */}
-      <div className={`flex flex-col bg-[var(--bg-elevated)] overflow-hidden${mode !== "idle" ? " border-r border-[var(--border)]" : ""}`}>
+      <div
+        className={`flex flex-col bg-[var(--bg-elevated)] overflow-hidden${mode !== "idle" ? " border-r border-[var(--border)]" : ""}`}
+      >
         <div className="mgr-sidebar-head">
           <div className="mgr-sidebar-title-row">
             <span className="mgr-sidebar-title">SSH 密钥</span>
-            {sshKeys.length > 0 && (
-              <span className="mgr-count-badge">{sshKeys.length}</span>
-            )}
+            {sshKeys.length > 0 && <span className="mgr-count-badge">{sshKeys.length}</span>}
           </div>
           <button className="mgr-new-btn" onClick={handleNew} title="新建密钥">
             <i className="ri-add-line" aria-hidden="true" />
@@ -228,7 +240,10 @@ export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyMana
               <button
                 type="button"
                 className="mgr-form-close-btn"
-                onClick={() => { setMode("idle"); setSelectedKeyId(undefined); }}
+                onClick={() => {
+                  setMode("idle");
+                  setSelectedKeyId(undefined);
+                }}
                 aria-label="收起表单"
                 title="收起表单"
               >
@@ -322,7 +337,11 @@ export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyMana
               ) : null}
             </div>
 
-            <Form.Item label="名称" name="name" rules={[{ required: true, message: "请输入密钥名称" }]}>
+            <Form.Item
+              label="名称"
+              name="name"
+              rules={[{ required: true, message: "请输入密钥名称" }]}
+            >
               <Input placeholder="my-server-key" />
             </Form.Item>
 
@@ -343,19 +362,20 @@ export const SshKeyManagerPanel = ({ sshKeys, workspaces, onReload }: SshKeyMana
                 </span>
               }
               name="keyContent"
-              rules={mode === "new" ? [{ required: true, message: "请粘贴私钥内容或从文件导入" }] : []}
+              rules={
+                mode === "new" ? [{ required: true, message: "请粘贴私钥内容或从文件导入" }] : []
+              }
             >
               <Input.TextArea
                 rows={6}
-                placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                placeholder={
+                  "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+                }
                 className="mgr-mono-input"
               />
             </Form.Item>
 
-            <Form.Item
-              label="Passphrase（可选）"
-              name="passphrase"
-            >
+            <Form.Item label="Passphrase（可选）" name="passphrase">
               <Input.Password placeholder="留空表示无 Passphrase 或不更新" />
             </Form.Item>
           </Form>

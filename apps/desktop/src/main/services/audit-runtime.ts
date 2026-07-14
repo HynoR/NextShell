@@ -9,9 +9,7 @@ export interface AuditRuntimeState {
   runPeriodicPurge: boolean;
 }
 
-export const resolveAuditRuntime = (
-  options: AuditRuntimeOptions
-): AuditRuntimeState => {
+export const resolveAuditRuntime = (options: AuditRuntimeOptions): AuditRuntimeState => {
   const hasRetention = options.retentionDays > 0;
 
   return {

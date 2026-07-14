@@ -2,7 +2,7 @@ import type { SshConnection } from "../../../../../../packages/ssh/src/index";
 import {
   PROCESS_MONITOR_LINUX_CHECK_COMMAND,
   PROCESS_MONITOR_PS_COMMAND,
-  ProcessMonitorController,
+  ProcessMonitorController
 } from "./process-monitor-controller";
 
 const assertTrue = (value: unknown, message: string): void => {
@@ -24,7 +24,7 @@ const wait = async (ms: number): Promise<void> => {
 const buildPsOutput = (): string => {
   return [
     "1 0 root S 0 20 15.5 0.1 1024 2048 60 systemd",
-    "222 1 root S 0 20 3.2 0.0 768 1536 20 sshd",
+    "222 1 root S 0 20 3.2 0.0 768 1536 20 sshd"
   ].join("\n");
 };
 
@@ -51,7 +51,7 @@ await (async () => {
       }
 
       return { stdout: "", stderr: "", exitCode: 1 };
-    },
+    }
   } as unknown as SshConnection;
 
   const controller = new ProcessMonitorController({
@@ -68,13 +68,13 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
       pollIntervalMs: 10,
       startDelayMs: 0,
-      execTimeoutMs: 500,
-    },
+      execTimeoutMs: 500
+    }
   });
 
   await controller.start();
@@ -100,7 +100,7 @@ await (async () => {
         return { stdout: buildPsOutput(), stderr: "", exitCode: 0 };
       }
       return { stdout: "", stderr: "", exitCode: 1 };
-    },
+    }
   } as unknown as SshConnection;
 
   const controller = new ProcessMonitorController({
@@ -115,12 +115,12 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
       pollIntervalMs: 20,
-      startDelayMs: 0,
-    },
+      startDelayMs: 0
+    }
   });
 
   await controller.start();
@@ -128,8 +128,15 @@ await (async () => {
   receiverAlive = false;
   await wait(80);
 
-  assertEqual(controller.currentState, "STOPPED", "process monitor should stop after receiver is gone");
-  assertTrue(closeCalls > 0, "process monitor should close hidden connection after receiver is gone");
+  assertEqual(
+    controller.currentState,
+    "STOPPED",
+    "process monitor should stop after receiver is gone"
+  );
+  assertTrue(
+    closeCalls > 0,
+    "process monitor should close hidden connection after receiver is gone"
+  );
 })();
 
 await (async () => {
@@ -145,7 +152,7 @@ await (async () => {
         return { stdout: buildPsOutput(), stderr: "", exitCode: 0 };
       }
       return { stdout: "", stderr: "", exitCode: 1 };
-    },
+    }
   } as unknown as SshConnection;
 
   const controller = new ProcessMonitorController({
@@ -160,12 +167,12 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
       pollIntervalMs: 20,
-      startDelayMs: 0,
-    },
+      startDelayMs: 0
+    }
   });
 
   await controller.start();
@@ -178,7 +185,10 @@ await (async () => {
     "STOPPED",
     "process monitor should stop when no visible terminal remains"
   );
-  assertTrue(closeCalls > 0, "process monitor should close hidden connection when no terminal remains");
+  assertTrue(
+    closeCalls > 0,
+    "process monitor should close hidden connection when no terminal remains"
+  );
 })();
 
 await (async () => {
@@ -194,11 +204,11 @@ await (async () => {
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
     timing: {
-      startDelayMs: 0,
-    },
+      startDelayMs: 0
+    }
   });
 
   let thrown = false;

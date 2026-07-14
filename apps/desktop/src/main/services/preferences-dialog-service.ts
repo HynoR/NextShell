@@ -7,7 +7,7 @@ import type {
   DialogOpenDirectoryInput,
   DialogOpenFilesInput,
   DialogOpenPathInput,
-  SettingsUpdateInput,
+  SettingsUpdateInput
 } from "@nextshell/shared";
 import { IPCChannel } from "@nextshell/shared";
 import type { CachedConnectionRepository } from "@nextshell/storage";
@@ -45,9 +45,7 @@ export class PreferencesDialogService {
     return this.connections.getAppPreferences();
   }
 
-  saveAppPreferencesPatch(
-    patch: SettingsUpdateInput,
-  ): AppPreferences {
+  saveAppPreferencesPatch(patch: SettingsUpdateInput): AppPreferences {
     const current = this.connections.getAppPreferences();
     const merged = mergePreferences(current, patch);
     const saved = this.connections.saveAppPreferences(merged);
@@ -73,7 +71,7 @@ export class PreferencesDialogService {
 
   async openFilesDialog(
     sender: WebContents,
-    input: DialogOpenFilesInput,
+    input: DialogOpenFilesInput
   ): Promise<{ canceled: boolean; filePaths: string[] }> {
     const owner = BrowserWindow.fromWebContents(sender);
     const dialogOptions: OpenDialogOptions = {
@@ -81,7 +79,7 @@ export class PreferencesDialogService {
       defaultPath: input.defaultPath ? resolveLocalPath(input.defaultPath) : undefined,
       filters: input.filters,
       properties: input.multi ? ["openFile", "multiSelections"] : ["openFile"],
-      buttonLabel: "选择",
+      buttonLabel: "选择"
     };
 
     const result = owner
@@ -90,20 +88,20 @@ export class PreferencesDialogService {
 
     return {
       canceled: result.canceled,
-      filePaths: result.filePaths,
+      filePaths: result.filePaths
     };
   }
 
   async openDirectoryDialog(
     sender: WebContents,
-    input: DialogOpenDirectoryInput,
+    input: DialogOpenDirectoryInput
   ): Promise<{ canceled: boolean; filePath?: string }> {
     const owner = BrowserWindow.fromWebContents(sender);
     const dialogOptions: OpenDialogOptions = {
       title: input.title ?? "选择目录",
       defaultPath: input.defaultPath ? resolveLocalPath(input.defaultPath) : undefined,
       properties: ["openDirectory", "createDirectory"],
-      buttonLabel: "选择",
+      buttonLabel: "选择"
     };
 
     const result = owner
@@ -112,13 +110,13 @@ export class PreferencesDialogService {
 
     return {
       canceled: result.canceled,
-      filePath: result.filePaths[0],
+      filePath: result.filePaths[0]
     };
   }
 
   async openLocalPath(
     sender: WebContents,
-    input: DialogOpenPathInput,
+    input: DialogOpenPathInput
   ): Promise<{ ok: boolean; error?: string }> {
     const owner = BrowserWindow.fromWebContents(sender);
     const externalUrl = parseExternalUrl(input.path);
@@ -136,7 +134,7 @@ export class PreferencesDialogService {
           void dialog.showMessageBox(owner, {
             type: "error",
             title: "打开链接失败",
-            message,
+            message
           });
         }
         return { ok: false, error: message };
@@ -149,7 +147,7 @@ export class PreferencesDialogService {
         void dialog.showMessageBox(owner, {
           type: "error",
           title: "打开本地文件失败",
-          message: "文件不存在或路径无效。",
+          message: "文件不存在或路径无效。"
         });
       }
       return { ok: false, error: "文件不存在或路径无效。" };

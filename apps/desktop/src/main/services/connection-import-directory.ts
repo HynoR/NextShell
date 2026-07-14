@@ -85,20 +85,32 @@ export const scanConnectionImportDirectory = async (
       dirents = await fsp.readdir(currentPath, { withFileTypes: true });
     } catch (error) {
       const reason = error instanceof Error ? error.message : "未知错误";
-      appendWarning(warnings, truncatedWarnings, `${path.relative(rootPath, currentPath) || "."}：读取目录失败：${reason}`);
+      appendWarning(
+        warnings,
+        truncatedWarnings,
+        `${path.relative(rootPath, currentPath) || "."}：读取目录失败：${reason}`
+      );
       return;
     }
 
     dirents.sort((a, b) => a.name.localeCompare(b.name));
     for (const dirent of dirents) {
       if (files.length >= MAX_IMPORT_DIRECTORY_FILES) {
-        appendWarning(warnings, truncatedWarnings, `文件数量超过 ${MAX_IMPORT_DIRECTORY_FILES}，已停止继续扫描`);
+        appendWarning(
+          warnings,
+          truncatedWarnings,
+          `文件数量超过 ${MAX_IMPORT_DIRECTORY_FILES}，已停止继续扫描`
+        );
         return;
       }
 
       const entryPath = path.join(currentPath, dirent.name);
       if (dirent.isSymbolicLink()) {
-        appendWarning(warnings, truncatedWarnings, `${normalizeRelativePath(path.relative(rootPath, entryPath))}：已跳过符号链接`);
+        appendWarning(
+          warnings,
+          truncatedWarnings,
+          `${normalizeRelativePath(path.relative(rootPath, entryPath))}：已跳过符号链接`
+        );
         continue;
       }
 
@@ -116,7 +128,11 @@ export const scanConnectionImportDirectory = async (
         stat = await fsp.stat(entryPath);
       } catch (error) {
         const reason = error instanceof Error ? error.message : "未知错误";
-        appendWarning(warnings, truncatedWarnings, `${normalizeRelativePath(path.relative(rootPath, entryPath))}：读取文件失败：${reason}`);
+        appendWarning(
+          warnings,
+          truncatedWarnings,
+          `${normalizeRelativePath(path.relative(rootPath, entryPath))}：读取文件失败：${reason}`
+        );
         continue;
       }
 

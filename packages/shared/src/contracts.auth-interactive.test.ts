@@ -1,7 +1,4 @@
-import {
-  connectionUpsertSchema,
-  sessionAuthOverrideSchema
-} from "./contracts";
+import { connectionUpsertSchema, sessionAuthOverrideSchema } from "./contracts";
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {
@@ -34,12 +31,18 @@ const assert = (condition: boolean, message: string): void => {
     authType: "interactive"
   });
 
-  assert(missingPassword.success === false, "interactive auth override without password should fail");
+  assert(
+    missingPassword.success === false,
+    "interactive auth override without password should fail"
+  );
   if (missingPassword.success) {
     return;
   }
   const firstIssue = missingPassword.error.issues[0];
-  assert(firstIssue?.path?.[0] === "password", "missing password issue should point to password field");
+  assert(
+    firstIssue?.path?.[0] === "password",
+    "missing password issue should point to password field"
+  );
 })();
 
 (() => {

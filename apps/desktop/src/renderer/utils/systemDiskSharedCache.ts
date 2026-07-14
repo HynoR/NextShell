@@ -29,7 +29,9 @@ export const setSharedDiskSnapshot = (key: string, snapshot: SharedDiskSnapshot)
   });
 };
 
-export const systemFilesystemsToDiskRows = (filesystems: SystemFilesystemEntry[]): DiskUsageEntry[] => {
+export const systemFilesystemsToDiskRows = (
+  filesystems: SystemFilesystemEntry[]
+): DiskUsageEntry[] => {
   return filesystems
     .map((item) => {
       const usedPercent = item.totalKb > 0 ? (item.usedKb / item.totalKb) * 100 : 0;

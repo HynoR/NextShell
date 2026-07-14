@@ -4,8 +4,13 @@ import { EDITOR_PRESETS } from "./constants";
 import type { SaveFn } from "./types";
 
 export const EditorSection = ({
-  loading, editorMode, editorCommand,
-  setEditorMode, setEditorCommand, save, message: msg,
+  loading,
+  editorMode,
+  editorCommand,
+  setEditorMode,
+  setEditorCommand,
+  save,
+  message: msg
 }: {
   loading: boolean;
   editorMode: "builtin" | "external";
@@ -50,7 +55,7 @@ export const EditorSection = ({
                 try {
                   const result = await window.nextshell.dialog.openFiles({
                     title: "选择编辑器可执行文件",
-                    multi: false,
+                    multi: false
                   });
                   if (!result.canceled && result.filePaths[0]) {
                     const filePath = result.filePaths[0];
@@ -58,7 +63,9 @@ export const EditorSection = ({
                     setEditorCommand(cmd);
                     save({ remoteEdit: { defaultEditorCommand: cmd } });
                   }
-                } catch { msg.error("打开文件选择器失败"); }
+                } catch {
+                  msg.error("打开文件选择器失败");
+                }
               })()
             }
           >

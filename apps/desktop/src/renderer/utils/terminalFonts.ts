@@ -24,7 +24,8 @@ export const TERMINAL_FONT_PRESETS: TerminalFontPreset[] = [
   },
   {
     label: "Linux 优先（JetBrains Mono）",
-    value: "'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', monospace",
+    value:
+      "'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', monospace",
     platformPriority: { darwin: 3, win32: 3, linux: 0, other: 3 }
   },
   {
@@ -46,7 +47,9 @@ const platformKey = (platform: string): keyof TerminalFontPreset["platformPriori
   return "other";
 };
 
-export const getTerminalFontOptions = (platform: string): Array<{ label: string; value: string }> => {
+export const getTerminalFontOptions = (
+  platform: string
+): Array<{ label: string; value: string }> => {
   const key = platformKey(platform);
   return [...TERMINAL_FONT_PRESETS]
     .sort((a, b) => {

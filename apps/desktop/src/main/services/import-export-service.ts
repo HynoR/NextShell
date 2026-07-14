@@ -6,7 +6,7 @@ import type {
   ConnectionImportEntry,
   ConnectionImportResult,
   ConnectionProfile,
-  ExportedConnection,
+  ExportedConnection
 } from "@nextshell/core";
 import type {
   ConnectionExportInput,
@@ -17,7 +17,7 @@ import type {
   ConnectionImportPreviewInput,
   ConnectionImportFinalShellPreviewInput,
   ConnectionImportExecuteInput,
-  ConnectionUpsertInput,
+  ConnectionUpsertInput
 } from "@nextshell/shared";
 import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX } from "@nextshell/shared";
 import type { EncryptedSecretVault } from "@nextshell/security";
@@ -26,11 +26,11 @@ import {
   isFinalShellFormat,
   isNextShellFormat,
   parseFinalShellImport,
-  parseNextShellImport,
+  parseNextShellImport
 } from "./import-export";
 import {
   decryptConnectionExportPayload,
-  encryptConnectionExportPayload,
+  encryptConnectionExportPayload
 } from "./connection-export-crypto";
 import { exportConnectionsBatchToDirectory } from "./connection-export-batch";
 import { scanConnectionImportDirectory } from "./connection-import-directory";
@@ -71,13 +71,13 @@ export class ImportExportService {
 
   async exportConnections(
     sender: WebContents,
-    input: ConnectionExportInput,
+    input: ConnectionExportInput
   ): Promise<{ ok: true; filePath: string } | { ok: false; canceled: true }> {
     const owner = BrowserWindow.fromWebContents(sender);
     const saveOptions = {
       title: "导出连接",
       defaultPath: "nextshell-connections.json",
-      filters: [{ name: "JSON", extensions: ["json"] }],
+      filters: [{ name: "JSON", extensions: ["json"] }]
     };
     const result = owner
       ? await dialog.showSaveDialog(owner, saveOptions)
@@ -110,7 +110,7 @@ export class ImportExportService {
       version: 1,
       exportedAt: new Date().toISOString(),
       ...(encrypted ? {} : { passwordsOmitted: true }),
-      connections: exportedConnectionsFinal,
+      connections: exportedConnectionsFinal
     };
 
     const plainJson = JSON.stringify(exportFile, null, 2);
@@ -124,14 +124,14 @@ export class ImportExportService {
       action: "connection.export",
       level: "info",
       message: `Exported ${exportedConnections.length} connections`,
-      metadata: { filePath: result.filePath, count: exportedConnections.length, encrypted },
+      metadata: { filePath: result.filePath, count: exportedConnections.length, encrypted }
     });
 
     return { ok: true, filePath: result.filePath };
   }
 
   async exportConnectionsBatch(
-    input: ConnectionExportBatchInput,
+    input: ConnectionExportBatchInput
   ): Promise<ConnectionExportBatchResult> {
     const allConnections = this.connections.list({});
     const idSet = new Set(input.connectionIds);
@@ -142,21 +142,21 @@ export class ImportExportService {
       connections: filtered,
       directoryPath: input.directoryPath,
       encryptionPassword: input.encryptionPassword,
-      buildExportedConnection,
+      buildExportedConnection
     });
 
     this.appendAuditLogIfEnabled({
       action: "connection.export.batch",
       level: "info",
       message: `Batch exported ${result.exported}/${result.total} connections`,
-      metadata: { ...result },
+      metadata: { ...result }
     });
 
     return result;
   }
 
   async importConnectionsPreview(
-    input: ConnectionImportPreviewInput,
+    input: ConnectionImportPreviewInput
   ): Promise<ConnectionImportEntry[]> {
     const raw = fs.readFileSync(input.filePath, "utf-8");
     const data = await this.parseImportPayloadText(raw, input.decryptionPassword);
@@ -164,12 +164,12 @@ export class ImportExportService {
       return parseNextShellImport(data);
     }
     throw new Error(
-      "该文件不是 NextShell 导出格式，请使用\u201c导入 FinalShell 文件\u201d按钮导入 FinalShell 配置",
+      "该文件不是 NextShell 导出格式，请使用\u201c导入 FinalShell 文件\u201d按钮导入 FinalShell 配置"
     );
   }
 
   async importFinalShellConnectionsPreview(
-    input: ConnectionImportFinalShellPreviewInput,
+    input: ConnectionImportFinalShellPreviewInput
   ): Promise<ConnectionImportEntry[]> {
     const raw = fs.readFileSync(input.filePath, "utf-8");
     const data = parseJsonPayloadText(raw);
@@ -180,7 +180,7 @@ export class ImportExportService {
   }
 
   async importConnectionsDirectoryPreview(
-    input: ConnectionImportDirectoryPreviewInput,
+    input: ConnectionImportDirectoryPreviewInput
   ): Promise<ConnectionImportDirectoryPreviewResult> {
     const scan = await scanConnectionImportDirectory(input.directoryPath);
     const result: ConnectionImportDirectoryPreviewResult = {
@@ -191,15 +191,16 @@ export class ImportExportService {
       skippedFiles: 0,
       entries: [],
       files: [],
-      warnings: [...scan.warnings],
+      warnings: [...scan.warnings]
     };
 
     for (const file of scan.files) {
       try {
         const raw = await fs.promises.readFile(file.filePath, "utf-8");
-        const entries = input.source === "nextshell"
-          ? await this.parseNextShellDirectoryFile(raw, file.groupPath, input.decryptionPassword)
-          : this.parseFinalShellDirectoryFile(raw, file.groupPath);
+        const entries =
+          input.source === "nextshell"
+            ? await this.parseNextShellDirectoryFile(raw, file.groupPath, input.decryptionPassword)
+            : this.parseFinalShellDirectoryFile(raw, file.groupPath);
 
         if (entries.length === 0) {
           result.skippedFiles++;
@@ -210,7 +211,7 @@ export class ImportExportService {
         const entriesWithSource = entries.map((entry) => ({
           ...entry,
           sourceFileName: file.fileName,
-          sourceRelativePath: file.relativePath,
+          sourceRelativePath: file.relativePath
         }));
 
         result.importedFiles++;
@@ -220,7 +221,7 @@ export class ImportExportService {
           fileName: file.fileName,
           relativePath: file.relativePath,
           groupPath: file.groupPath,
-          entries: entriesWithSource,
+          entries: entriesWithSource
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : "未知错误";
@@ -240,7 +241,7 @@ export class ImportExportService {
   }
 
   async importConnectionsExecute(
-    input: ConnectionImportExecuteInput,
+    input: ConnectionImportExecuteInput
   ): Promise<ConnectionImportResult> {
     const result: ConnectionImportResult = {
       created: 0,
@@ -248,7 +249,7 @@ export class ImportExportService {
       overwritten: 0,
       failed: 0,
       passwordsUnavailable: 0,
-      errors: [],
+      errors: []
     };
 
     const allConnections = this.connections.list({});
@@ -256,7 +257,7 @@ export class ImportExportService {
     for (const entry of input.entries) {
       try {
         const existing = allConnections.find(
-          (c) => c.host === entry.host && c.port === entry.port && c.username === entry.username,
+          (c) => c.host === entry.host && c.port === entry.port && c.username === entry.username
         );
 
         if (existing) {
@@ -283,7 +284,7 @@ export class ImportExportService {
               terminalEncoding: entry.terminalEncoding,
               backspaceMode: entry.backspaceMode,
               deleteMode: entry.deleteMode,
-              monitorSession: entry.monitorSession,
+              monitorSession: entry.monitorSession
             });
             result.overwritten++;
             if (
@@ -313,7 +314,7 @@ export class ImportExportService {
           terminalEncoding: entry.terminalEncoding,
           backspaceMode: entry.backspaceMode,
           deleteMode: entry.deleteMode,
-          monitorSession: entry.monitorSession,
+          monitorSession: entry.monitorSession
         });
         result.created++;
         if (
@@ -333,7 +334,7 @@ export class ImportExportService {
       action: "connection.import",
       level: "info",
       message: `Imported connections: ${result.created} created, ${result.overwritten} overwritten, ${result.skipped} skipped, ${result.failed} failed`,
-      metadata: { ...result },
+      metadata: { ...result }
     });
 
     return result;
@@ -345,16 +346,14 @@ export class ImportExportService {
 
   private async parseImportPayloadText(
     rawText: string,
-    decryptionPassword?: string,
+    decryptionPassword?: string
   ): Promise<unknown> {
     const normalizedText = trimBomAndWhitespace(rawText);
     const encryptedPrefix = ENCRYPTED_EXPORT_PREFIX;
 
     if (normalizedText.startsWith(encryptedPrefix)) {
       if (!decryptionPassword) {
-        throw new Error(
-          `${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}该导入文件已加密，请输入密码`,
-        );
+        throw new Error(`${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}该导入文件已加密，请输入密码`);
       }
       const encryptedB64 = normalizedText.slice(encryptedPrefix.length).trim();
       if (!encryptedB64) {
@@ -365,9 +364,7 @@ export class ImportExportService {
       try {
         decryptedText = await decryptConnectionExportPayload(encryptedB64, decryptionPassword);
       } catch {
-        throw new Error(
-          `${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}密码错误或文件损坏，请重试`,
-        );
+        throw new Error(`${CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX}密码错误或文件损坏，请重试`);
       }
 
       try {
@@ -383,7 +380,7 @@ export class ImportExportService {
   private async parseNextShellDirectoryFile(
     rawText: string,
     groupPath: string,
-    decryptionPassword?: string,
+    decryptionPassword?: string
   ): Promise<ConnectionImportEntry[]> {
     const data = await this.parseImportPayloadText(rawText, decryptionPassword);
     if (!isNextShellFormat(data)) {
@@ -394,7 +391,7 @@ export class ImportExportService {
 
   private parseFinalShellDirectoryFile(
     rawText: string,
-    groupPath: string,
+    groupPath: string
   ): ConnectionImportEntry[] {
     const data = parseJsonPayloadText(rawText);
     if (!isFinalShellFormat(data)) {
@@ -405,10 +402,7 @@ export class ImportExportService {
 
   private async buildExportedConnection(conn: ConnectionProfile): Promise<ExportedConnection> {
     let password: string | undefined;
-    if (
-      (conn.authType === "password" || conn.authType === "interactive") &&
-      conn.credentialRef
-    ) {
+    if ((conn.authType === "password" || conn.authType === "interactive") && conn.credentialRef) {
       try {
         password = await this.vault.readCredential(conn.credentialRef);
       } catch {
@@ -431,7 +425,7 @@ export class ImportExportService {
       terminalEncoding: conn.terminalEncoding,
       backspaceMode: conn.backspaceMode,
       deleteMode: conn.deleteMode,
-      monitorSession: conn.monitorSession,
+      monitorSession: conn.monitorSession
     };
   }
 }

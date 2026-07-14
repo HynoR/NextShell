@@ -47,11 +47,7 @@ export const BasicTab = ({
       </div>
 
       <div className="flex gap-3 items-start">
-        <Form.Item
-          label="用户名"
-          name="username"
-          className="flex-1"
-        >
+        <Form.Item label="用户名" name="username" className="flex-1">
           <Input placeholder="root（可选，首次连接时输入）" />
         </Form.Item>
         <Form.Item
@@ -92,17 +88,12 @@ export const BasicTab = ({
 
       {authType === "password" || authType === "interactive" ? (
         <>
-          <Form.Item
-            label="密码"
-            name="password"
-            preserve={false}
-          >
+          <Form.Item label="密码" name="password" preserve={false}>
             <Input.Password placeholder="输入密码（留空则不更新）" />
           </Form.Item>
-          {mode === "edit" && (
-            selectedConnection?.authType === "password" ||
-            selectedConnection?.authType === "interactive"
-          ) ? (
+          {mode === "edit" &&
+          (selectedConnection?.authType === "password" ||
+            selectedConnection?.authType === "interactive") ? (
             <Form.Item label="已保存的登录密码" preserve={false}>
               <div style={{ display: "grid", gap: 8 }}>
                 <button
@@ -119,11 +110,7 @@ export const BasicTab = ({
                   {revealingLoginPassword ? "验证中..." : "输入主密码查看"}
                 </button>
                 {revealedLoginPassword ? (
-                  <Input.Password
-                    value={revealedLoginPassword}
-                    readOnly
-                    visibilityToggle
-                  />
+                  <Input.Password value={revealedLoginPassword} readOnly visibilityToggle />
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--t3)" }}>
                     仅在输入主密码后显示，30 秒自动隐藏。

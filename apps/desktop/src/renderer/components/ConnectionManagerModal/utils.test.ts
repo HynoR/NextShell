@@ -59,31 +59,30 @@ describe("ConnectionManagerModal tree helpers", () => {
       groupPath: "/workspace/team-a"
     });
 
-    const workspaces: CloudSyncWorkspaceProfile[] = [{
-      id: "workspace-1",
-      apiBaseUrl: "https://sync.example.com",
-      workspaceName: "team-a",
-      displayName: "Team A",
-      pullIntervalSec: 300,
-      ignoreTlsErrors: false,
-      enabled: true,
-      createdAt: "2026-03-15T00:00:00.000Z",
-      updatedAt: "2026-03-15T00:00:00.000Z",
-      lastSyncAt: null,
-      lastError: null
-    }];
+    const workspaces: CloudSyncWorkspaceProfile[] = [
+      {
+        id: "workspace-1",
+        apiBaseUrl: "https://sync.example.com",
+        workspaceName: "team-a",
+        displayName: "Team A",
+        pullIntervalSec: 300,
+        ignoreTlsErrors: false,
+        enabled: true,
+        createdAt: "2026-03-15T00:00:00.000Z",
+        updatedAt: "2026-03-15T00:00:00.000Z",
+        lastSyncAt: null,
+        lastError: null
+      }
+    ];
 
     const tree = sortMgrChildren(
       buildManagerTree([alpha, beta, gamma], "", workspaces, ["/import/archive"]),
       "name"
     );
 
-    expect(tree.children.map((child) => child.type === "group" ? child.key : child.connection.id))
-      .toEqual([
-        "mgr-group:server",
-        "mgr-group:workspace/team-a",
-        "mgr-group:import"
-      ]);
+    expect(
+      tree.children.map((child) => (child.type === "group" ? child.key : child.connection.id))
+    ).toEqual(["mgr-group:server", "mgr-group:workspace/team-a", "mgr-group:import"]);
 
     const serverZone = tree.children[0];
     if (serverZone?.type !== "group") {
@@ -98,11 +97,9 @@ describe("ConnectionManagerModal tree helpers", () => {
       "22222222-2222-4222-8222-222222222222",
       "11111111-1111-4111-8111-111111111111"
     ]);
-    expect(collectFlatLeafIds(tree, new Set(["root", "mgr-group:server", "mgr-group:server/prod"]), 0))
-      .toEqual([
-        "22222222-2222-4222-8222-222222222222",
-        "11111111-1111-4111-8111-111111111111"
-      ]);
+    expect(
+      collectFlatLeafIds(tree, new Set(["root", "mgr-group:server", "mgr-group:server/prod"]), 0)
+    ).toEqual(["22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111"]);
   });
 });
 

@@ -18,7 +18,7 @@ export const CommandItem = ({
   onRun,
   onRunBatch,
   onEdit,
-  onRemove,
+  onRemove
 }: CommandItemProps) => (
   <div className="cc-item">
     <div className="cc-item-body">
@@ -35,11 +35,7 @@ export const CommandItem = ({
 
     <span className="cc-item-actions">
       <Tooltip title="执行" mouseEnterDelay={0.3}>
-        <button
-          className="cc-act run"
-          disabled={!canExecuteSingle}
-          onClick={() => onRun(command)}
-        >
+        <button className="cc-act run" disabled={!canExecuteSingle} onClick={() => onRun(command)}>
           <i className="ri-play-line" aria-hidden="true" />
         </button>
       </Tooltip>

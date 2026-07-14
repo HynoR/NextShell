@@ -135,7 +135,12 @@ export const SessionAuthRetryModal = ({
             return;
           }
 
-          if (authTypeValue === "privateKey" && !hasExistingPrivateKey && !values.sshKeyId && !privateKeyContent) {
+          if (
+            authTypeValue === "privateKey" &&
+            !hasExistingPrivateKey &&
+            !values.sshKeyId &&
+            !privateKeyContent
+          ) {
             message.error("请选择密钥或粘贴私钥内容。");
             return;
           }
@@ -145,7 +150,10 @@ export const SessionAuthRetryModal = ({
             await onSubmit({
               username,
               authType: authTypeValue,
-              password: authTypeValue === "password" || authTypeValue === "interactive" ? password : undefined,
+              password:
+                authTypeValue === "password" || authTypeValue === "interactive"
+                  ? password
+                  : undefined,
               sshKeyId: authTypeValue === "privateKey" ? values.sshKeyId : undefined,
               privateKeyContent: authTypeValue === "privateKey" ? privateKeyContent : undefined,
               passphrase: authTypeValue === "privateKey" ? passphrase : undefined
@@ -160,7 +168,11 @@ export const SessionAuthRetryModal = ({
         }}
       >
         {needsUsername ? (
-          <Form.Item label="用户名" name="username" rules={[{ required: true, message: "请输入用户名" }]}>
+          <Form.Item
+            label="用户名"
+            name="username"
+            rules={[{ required: true, message: "请输入用户名" }]}
+          >
             <Input placeholder="root" autoFocus />
           </Form.Item>
         ) : null}
@@ -176,7 +188,11 @@ export const SessionAuthRetryModal = ({
         </Form.Item>
 
         {authType === "password" || authType === "interactive" ? (
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
+          <Form.Item
+            label="密码"
+            name="password"
+            rules={[{ required: true, message: "请输入密码" }]}
+          >
             <Input.Password placeholder="请输入密码" />
           </Form.Item>
         ) : null}
@@ -198,7 +214,9 @@ export const SessionAuthRetryModal = ({
             <Form.Item label="或直接粘贴私钥内容" name="privateKeyContent">
               <Input.TextArea
                 rows={4}
-                placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                placeholder={
+                  "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+                }
               />
             </Form.Item>
             <Form.Item label="私钥 Passphrase（可选）" name="passphrase">

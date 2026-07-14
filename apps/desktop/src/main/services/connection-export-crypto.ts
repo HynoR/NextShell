@@ -22,7 +22,10 @@ const deriveKey = (password: string, salt: Buffer): Promise<Buffer> => {
   });
 };
 
-export const encryptConnectionExportPayload = async (plainJson: string, password: string): Promise<string> => {
+export const encryptConnectionExportPayload = async (
+  plainJson: string,
+  password: string
+): Promise<string> => {
   const salt = randomBytes(SALT_LENGTH);
   const key = await deriveKey(password, salt);
   const iv = randomBytes(IV_LENGTH);
@@ -37,7 +40,10 @@ export const encryptConnectionExportPayload = async (plainJson: string, password
   return Buffer.concat([salt, iv, tag, ciphertext]).toString("base64");
 };
 
-export const decryptConnectionExportPayload = async (payloadB64: string, password: string): Promise<string> => {
+export const decryptConnectionExportPayload = async (
+  payloadB64: string,
+  password: string
+): Promise<string> => {
   const payload = Buffer.from(payloadB64, "base64");
   const minLength = SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH;
 
@@ -64,11 +70,14 @@ export const decryptConnectionExportPayload = async (payloadB64: string, passwor
 // XOR is self-inverse, so the same function both obfuscates and deobfuscates.
 
 const passwordObfuscationKey = (name: string, host: string, port: number): Buffer =>
-  createHash("sha256")
-    .update(`${name}\x00${host}\x00${port}`)
-    .digest();
+  createHash("sha256").update(`${name}\x00${host}\x00${port}`).digest();
 
-export const obfuscatePassword = (password: string, name: string, host: string, port: number): string => {
+export const obfuscatePassword = (
+  password: string,
+  name: string,
+  host: string,
+  port: number
+): string => {
   const key = passwordObfuscationKey(name, host, port);
   const input = Buffer.from(password, "utf8");
   const output = Buffer.alloc(input.length);
@@ -78,7 +87,12 @@ export const obfuscatePassword = (password: string, name: string, host: string, 
   return output.toString("base64");
 };
 
-export const deobfuscatePassword = (obfuscated: string, name: string, host: string, port: number): string => {
+export const deobfuscatePassword = (
+  obfuscated: string,
+  name: string,
+  host: string,
+  port: number
+): string => {
   const key = passwordObfuscationKey(name, host, port);
   const input = Buffer.from(obfuscated, "base64");
   const output = Buffer.alloc(input.length);

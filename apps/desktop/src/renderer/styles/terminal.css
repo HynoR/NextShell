@@ -12,4 +12,3 @@
 .app-shell--with-wallpaper .terminal-shell {
   background: color-mix(in srgb, #0b1829 calc(var(--app-background-opacity, 60) * 1%), transparent);
 }
-

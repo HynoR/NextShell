@@ -67,14 +67,19 @@ const normalizeSearchText = (value: string): string =>
     .trim();
 
 const tokenizeSearchQuery = (keyword: string): string[] =>
-  normalizeSearchText(keyword).split(" ").filter((token) => token.length > 0);
+  normalizeSearchText(keyword)
+    .split(" ")
+    .filter((token) => token.length > 0);
 
 const buildWorkspaceLabelBySlug = (
   workspaces: CloudSyncWorkspaceProfile[]
 ): Map<string, string> => {
   const labels = new Map<string, string>();
   for (const workspace of workspaces) {
-    labels.set(workspaceRootSlug(workspace.workspaceName), workspace.displayName || workspace.workspaceName);
+    labels.set(
+      workspaceRootSlug(workspace.workspaceName),
+      workspace.displayName || workspace.workspaceName
+    );
   }
   return labels;
 };
@@ -110,12 +115,14 @@ export const buildConnectionSearchIndex = (
   const workspaceLabelBySlug = buildWorkspaceLabelBySlug(workspaces);
   const index = new Map<string, ManagerConnectionSearchEntry>();
   for (const connection of connections) {
-    const text = normalizeSearchText([
-      connection.name,
-      connection.host,
-      ...getFolderSearchParts(connection.groupPath, workspaceLabelBySlug),
-      connection.notes ?? ""
-    ].join(" "));
+    const text = normalizeSearchText(
+      [
+        connection.name,
+        connection.host,
+        ...getFolderSearchParts(connection.groupPath, workspaceLabelBySlug),
+        connection.notes ?? ""
+      ].join(" ")
+    );
     index.set(connection.id, { connectionId: connection.id, text });
   }
   return index;
@@ -130,7 +137,8 @@ const matchesSearchTokens = (
     return true;
   }
   const entry = searchIndex?.get(connection.id);
-  const text = entry?.text ?? buildConnectionSearchIndex([connection]).get(connection.id)?.text ?? "";
+  const text =
+    entry?.text ?? buildConnectionSearchIndex([connection]).get(connection.id)?.text ?? "";
   return tokens.every((token) => text.includes(token));
 };
 
@@ -153,7 +161,8 @@ export const buildManagerTreeResult = (
 ): ManagerTreeBuildResult => {
   const tokens = tokenizeSearchQuery(keyword);
   const hasSearch = tokens.length > 0;
-  const effectiveSearchIndex = searchIndex ?? (hasSearch ? buildConnectionSearchIndex(connections, workspaces) : undefined);
+  const effectiveSearchIndex =
+    searchIndex ?? (hasSearch ? buildConnectionSearchIndex(connections, workspaces) : undefined);
   const root: MgrGroupNode = { type: "group", key: "root", label: "全部连接", children: [] };
 
   const zoneNodes = new Map<string, MgrGroupNode>();
@@ -177,7 +186,7 @@ export const buildManagerTreeResult = (
     workspaceMetas.set(slug, {
       slug,
       label: meta?.label ?? existing?.label ?? slug,
-      workspaceId: meta?.workspaceId ?? existing?.workspaceId,
+      workspaceId: meta?.workspaceId ?? existing?.workspaceId
     });
   };
 
@@ -185,7 +194,7 @@ export const buildManagerTreeResult = (
     const slug = workspaceRootSlug(workspace.workspaceName);
     rememberWorkspaceMeta(slug, {
       label: workspace.displayName || workspace.workspaceName,
-      workspaceId: workspace.id,
+      workspaceId: workspace.id
     });
   }
 
@@ -220,21 +229,24 @@ export const buildManagerTreeResult = (
       children: [],
       zone: CONNECTION_ZONES.WORKSPACE,
       icon: "ri-git-repository-line",
-      workspaceId: meta.workspaceId,
+      workspaceId: meta.workspaceId
     };
     workspaceRoots.set(slug, node);
     return node;
   };
 
-  for (const meta of Array.from(workspaceMetas.values()).sort((a, b) => a.label.localeCompare(b.label))) {
+  for (const meta of Array.from(workspaceMetas.values()).sort((a, b) =>
+    a.label.localeCompare(b.label)
+  )) {
     root.children.splice(root.children.length - 1, 0, ensureWorkspaceRoot(meta.slug));
   }
 
   const ensureGroup = (zoneNode: MgrGroupNode, subSegments: string[]): MgrGroupNode => {
     let pointer = zoneNode;
-    const segments: string[] = zoneNode.zone === CONNECTION_ZONES.WORKSPACE
-      ? [CONNECTION_ZONES.WORKSPACE, zoneNode.key.replace("mgr-group:workspace/", "")]
-      : [zoneNode.zone as ConnectionZone];
+    const segments: string[] =
+      zoneNode.zone === CONNECTION_ZONES.WORKSPACE
+        ? [CONNECTION_ZONES.WORKSPACE, zoneNode.key.replace("mgr-group:workspace/", "")]
+        : [zoneNode.zone as ConnectionZone];
     for (const part of subSegments) {
       segments.push(part);
       const key = `mgr-group:${segments.join("/")}`;
@@ -262,13 +274,17 @@ export const buildManagerTreeResult = (
     const segments = groupPathToSegments(connection.groupPath);
     const zoneName = segments[0] ?? CONNECTION_ZONES.SERVER;
     const zone = isValidZone(zoneName) ? zoneName : CONNECTION_ZONES.SERVER;
-    const zoneNode = zone === CONNECTION_ZONES.WORKSPACE
-      ? ensureWorkspaceRoot(segments[1] ?? "workspace")
-      : zoneNodes.get(zone);
+    const zoneNode =
+      zone === CONNECTION_ZONES.WORKSPACE
+        ? ensureWorkspaceRoot(segments[1] ?? "workspace")
+        : zoneNodes.get(zone);
     if (!zoneNode) continue;
-    const subSegments = zone === CONNECTION_ZONES.WORKSPACE
-      ? segments.slice(2)
-      : (isValidZone(zoneName) ? segments.slice(1) : segments);
+    const subSegments =
+      zone === CONNECTION_ZONES.WORKSPACE
+        ? segments.slice(2)
+        : isValidZone(zoneName)
+          ? segments.slice(1)
+          : segments;
 
     ensureGroup(zoneNode, subSegments).children.push({ type: "leaf", connection });
   }
@@ -278,13 +294,17 @@ export const buildManagerTreeResult = (
       const segments = groupPathToSegments(folderPath);
       const zoneName = segments[0] ?? CONNECTION_ZONES.SERVER;
       const zone = isValidZone(zoneName) ? zoneName : CONNECTION_ZONES.SERVER;
-      const zoneNode = zone === CONNECTION_ZONES.WORKSPACE
-        ? ensureWorkspaceRoot(segments[1] ?? "workspace")
-        : zoneNodes.get(zone);
+      const zoneNode =
+        zone === CONNECTION_ZONES.WORKSPACE
+          ? ensureWorkspaceRoot(segments[1] ?? "workspace")
+          : zoneNodes.get(zone);
       if (!zoneNode) continue;
-      const subSegments = zone === CONNECTION_ZONES.WORKSPACE
-        ? segments.slice(2)
-        : (isValidZone(zoneName) ? segments.slice(1) : segments);
+      const subSegments =
+        zone === CONNECTION_ZONES.WORKSPACE
+          ? segments.slice(2)
+          : isValidZone(zoneName)
+            ? segments.slice(1)
+            : segments;
       ensureGroup(zoneNode, subSegments);
     }
   }
@@ -339,7 +359,10 @@ export const collectGroupLeafIds = (node: MgrGroupNode): string[] => {
   return ids;
 };
 
-export const sortMgrChildren = (node: MgrGroupNode, mode: "name" | "host" | "createdAt"): MgrGroupNode => {
+export const sortMgrChildren = (
+  node: MgrGroupNode,
+  mode: "name" | "host" | "createdAt"
+): MgrGroupNode => {
   const groups: MgrGroupNode[] = [];
   const leaves: MgrLeafNode[] = [];
   for (const child of node.children) {
@@ -355,7 +378,9 @@ export const sortMgrChildren = (node: MgrGroupNode, mode: "name" | "host" | "cre
   leaves.sort((a, b) => {
     if (mode === "host") return a.connection.host.localeCompare(b.connection.host);
     if (mode === "createdAt") {
-      return new Date(a.connection.createdAt).getTime() - new Date(b.connection.createdAt).getTime();
+      return (
+        new Date(a.connection.createdAt).getTime() - new Date(b.connection.createdAt).getTime()
+      );
     }
     return a.connection.name.localeCompare(b.connection.name);
   });

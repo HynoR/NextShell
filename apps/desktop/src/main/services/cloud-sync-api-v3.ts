@@ -11,7 +11,7 @@ const workspaceSecretEnvelopeSchema = z.object({
   iv: z.string(),
   aad: z.string().optional(),
   ciphertext: z.string(),
-  tag: z.string(),
+  tag: z.string()
 });
 
 const repoConnectionSchema = z.object({
@@ -36,7 +36,7 @@ const repoConnectionSchema = z.object({
   notes: z.string().optional(),
   favorite: z.boolean(),
   createdAt: z.string(),
-  updatedAt: z.string(),
+  updatedAt: z.string()
 });
 
 const repoSshKeySchema = z.object({
@@ -45,7 +45,7 @@ const repoSshKeySchema = z.object({
   privateKey: workspaceSecretEnvelopeSchema,
   passphrase: workspaceSecretEnvelopeSchema.optional(),
   createdAt: z.string(),
-  updatedAt: z.string(),
+  updatedAt: z.string()
 });
 
 const repoProxySchema = z.object({
@@ -57,7 +57,7 @@ const repoProxySchema = z.object({
   username: z.string().optional(),
   password: workspaceSecretEnvelopeSchema.optional(),
   createdAt: z.string(),
-  updatedAt: z.string(),
+  updatedAt: z.string()
 });
 
 const repoSnapshotSchema = z.object({
@@ -66,7 +66,7 @@ const repoSnapshotSchema = z.object({
   createdAt: z.string(),
   connections: z.array(repoConnectionSchema).default([]),
   sshKeys: z.array(repoSshKeySchema).default([]),
-  proxies: z.array(repoProxySchema).default([]),
+  proxies: z.array(repoProxySchema).default([])
 });
 
 const workspaceCommandItemSchema = z.object({
@@ -78,7 +78,7 @@ const workspaceCommandItemSchema = z.object({
   command: z.string(),
   isTemplate: z.boolean(),
   createdAt: z.string(),
-  updatedAt: z.string(),
+  updatedAt: z.string()
 });
 
 const resolveResponseSchema = z.object({
@@ -86,40 +86,40 @@ const resolveResponseSchema = z.object({
   displayName: z.string().optional(),
   headCommitId: z.string().nullable().optional(),
   commandsVersion: z.string().nullable().optional(),
-  serverTime: z.string().optional(),
+  serverTime: z.string().optional()
 });
 
 const repoPullResponseSchema = z.object({
   unchanged: z.boolean().optional(),
   headCommitId: z.string().nullable().optional(),
   snapshot: repoSnapshotSchema.nullable().optional(),
-  serverTime: z.string().optional(),
+  serverTime: z.string().optional()
 });
 
 const repoPushAcceptedSchema = z.object({
   status: z.literal("accepted"),
-  headCommitId: z.string(),
+  headCommitId: z.string()
 });
 
 const repoPushDivergedSchema = z.object({
   status: z.literal("diverged"),
   headCommitId: z.string().nullable().optional(),
-  snapshot: repoSnapshotSchema,
+  snapshot: repoSnapshotSchema
 });
 
 const commandsPullUnchangedSchema = z.object({
   status: z.literal("unchanged"),
-  version: z.string(),
+  version: z.string()
 });
 
 const commandsPullChangedSchema = z.object({
   status: z.literal("changed"),
   version: z.string(),
-  commands: z.array(workspaceCommandItemSchema).default([]),
+  commands: z.array(workspaceCommandItemSchema).default([])
 });
 
 const commandsPushResponseSchema = z.object({
-  version: z.string(),
+  version: z.string()
 });
 
 export type RepoResolveResponse = z.infer<typeof resolveResponseSchema>;
@@ -128,8 +128,7 @@ export type RepoPushAcceptedResponse = z.infer<typeof repoPushAcceptedSchema>;
 export type RepoPushDivergedResponse = z.infer<typeof repoPushDivergedSchema>;
 export type RepoPushResponse = RepoPushAcceptedResponse | RepoPushDivergedResponse;
 export type CommandsPullResponse =
-  | z.infer<typeof commandsPullUnchangedSchema>
-  | z.infer<typeof commandsPullChangedSchema>;
+  z.infer<typeof commandsPullUnchangedSchema> | z.infer<typeof commandsPullChangedSchema>;
 export type CommandsPushResponse = z.infer<typeof commandsPushResponseSchema>;
 
 export interface CloudSyncApiV3Credentials {
@@ -148,13 +147,13 @@ export class CloudSyncApiV3Client {
 
   async pull(
     creds: CloudSyncApiV3Credentials,
-    knownHeadCommitId?: string | null,
+    knownHeadCommitId?: string | null
   ): Promise<RepoPullResponse> {
     return this.post(
       creds,
       "/api/v1/repo/pull",
       { knownHeadCommitId: knownHeadCommitId ?? null },
-      repoPullResponseSchema,
+      repoPullResponseSchema
     );
   }
 
@@ -163,7 +162,7 @@ export class CloudSyncApiV3Client {
     payload: {
       baseHeadCommitId?: string | null;
       snapshot: unknown;
-    },
+    }
   ): Promise<RepoPushResponse> {
     const raw = await this.postRaw(creds, "/api/v1/repo/push", payload);
     if (raw.status === "accepted") {
@@ -177,13 +176,11 @@ export class CloudSyncApiV3Client {
 
   async pullCommands(
     creds: CloudSyncApiV3Credentials,
-    knownVersion?: string | null,
+    knownVersion?: string | null
   ): Promise<CommandsPullResponse> {
-    const raw = await this.postRaw(
-      creds,
-      "/api/v1/commands/pull",
-      { knownVersion: knownVersion ?? null },
-    );
+    const raw = await this.postRaw(creds, "/api/v1/commands/pull", {
+      knownVersion: knownVersion ?? null
+    });
     if (raw.status === "unchanged") {
       return commandsPullUnchangedSchema.parse(raw);
     }
@@ -195,21 +192,16 @@ export class CloudSyncApiV3Client {
 
   async pushCommands(
     creds: CloudSyncApiV3Credentials,
-    commands: Array<Record<string, unknown>>,
+    commands: Array<Record<string, unknown>>
   ): Promise<CommandsPushResponse> {
-    return this.post(
-      creds,
-      "/api/v1/commands/push",
-      { commands },
-      commandsPushResponseSchema,
-    );
+    return this.post(creds, "/api/v1/commands/push", { commands }, commandsPushResponseSchema);
   }
 
   private async post<T>(
     creds: CloudSyncApiV3Credentials,
     pathname: string,
     payload: unknown,
-    schema: z.ZodType<T>,
+    schema: z.ZodType<T>
   ): Promise<T> {
     const raw = await this.postRaw(creds, pathname, payload);
     return schema.parse(raw);
@@ -218,7 +210,7 @@ export class CloudSyncApiV3Client {
   private async postRaw(
     creds: CloudSyncApiV3Credentials,
     pathname: string,
-    payload: unknown,
+    payload: unknown
   ): Promise<Record<string, unknown>> {
     const requestUrl = new URL(`${creds.apiBaseUrl}${pathname}`);
     const body = JSON.stringify(payload);
@@ -231,81 +223,83 @@ export class CloudSyncApiV3Client {
     const bearerPayload = Buffer.from(
       JSON.stringify({
         workspaceName: creds.workspaceName,
-        credential: creds.workspacePassword,
+        credential: creds.workspacePassword
       }),
-      "utf8",
+      "utf8"
     ).toString("base64url");
 
-    const { statusCode, bodyText } = await new Promise<{ statusCode: number; bodyText: string }>((resolve, reject) => {
-      let settled = false;
-      const abortController = new AbortController();
-      const timer = setTimeout(() => {
-        abortController.abort();
-        clientRequest.destroy();
-        if (!settled) {
-          settled = true;
-          reject(new Error("请求超时（30s）"));
-        }
-      }, TIMEOUT_MS);
-
-      const clientRequest = transport(
-        requestUrl,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${bearerPayload}`,
-            "Content-Length": Buffer.byteLength(body),
-            "Content-Type": "application/json",
-            "X-NextShell-Client-Id": creds.clientId,
-            "X-NextShell-Client-Version": creds.clientVersion,
-          },
-          rejectUnauthorized: isHttps ? !creds.ignoreTlsErrors : undefined,
-          signal: abortController.signal,
-        },
-        (response) => {
-          const chunks: Buffer[] = [];
-          let totalBytes = 0;
-          response.on("data", (chunk) => {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            totalBytes += buffer.length;
-            if (totalBytes > MAX_BODY_BYTES) {
-              clearTimeout(timer);
-              clientRequest.destroy();
-              if (!settled) {
-                settled = true;
-                reject(new Error("响应体超过 20MB 限制"));
-              }
-              return;
-            }
-            chunks.push(buffer);
-          });
-          response.on("end", () => {
-            clearTimeout(timer);
-            if (settled) {
-              return;
-            }
+    const { statusCode, bodyText } = await new Promise<{ statusCode: number; bodyText: string }>(
+      (resolve, reject) => {
+        let settled = false;
+        const abortController = new AbortController();
+        const timer = setTimeout(() => {
+          abortController.abort();
+          clientRequest.destroy();
+          if (!settled) {
             settled = true;
-            resolve({
-              statusCode: response.statusCode ?? 0,
-              bodyText: Buffer.concat(chunks).toString("utf8"),
+            reject(new Error("请求超时（30s）"));
+          }
+        }, TIMEOUT_MS);
+
+        const clientRequest = transport(
+          requestUrl,
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${bearerPayload}`,
+              "Content-Length": Buffer.byteLength(body),
+              "Content-Type": "application/json",
+              "X-NextShell-Client-Id": creds.clientId,
+              "X-NextShell-Client-Version": creds.clientVersion
+            },
+            rejectUnauthorized: isHttps ? !creds.ignoreTlsErrors : undefined,
+            signal: abortController.signal
+          },
+          (response) => {
+            const chunks: Buffer[] = [];
+            let totalBytes = 0;
+            response.on("data", (chunk) => {
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+              totalBytes += buffer.length;
+              if (totalBytes > MAX_BODY_BYTES) {
+                clearTimeout(timer);
+                clientRequest.destroy();
+                if (!settled) {
+                  settled = true;
+                  reject(new Error("响应体超过 20MB 限制"));
+                }
+                return;
+              }
+              chunks.push(buffer);
             });
-          });
-        },
-      );
+            response.on("end", () => {
+              clearTimeout(timer);
+              if (settled) {
+                return;
+              }
+              settled = true;
+              resolve({
+                statusCode: response.statusCode ?? 0,
+                bodyText: Buffer.concat(chunks).toString("utf8")
+              });
+            });
+          }
+        );
 
-      clientRequest.on("error", (error) => {
-        clearTimeout(timer);
-        if (settled) {
-          return;
-        }
-        settled = true;
-        reject(error);
-      });
+        clientRequest.on("error", (error) => {
+          clearTimeout(timer);
+          if (settled) {
+            return;
+          }
+          settled = true;
+          reject(error);
+        });
 
-      clientRequest.write(body);
-      clientRequest.end();
-    });
+        clientRequest.write(body);
+        clientRequest.end();
+      }
+    );
 
     if (statusCode < 200 || statusCode >= 300) {
       let message: string | undefined;

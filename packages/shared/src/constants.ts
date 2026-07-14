@@ -14,7 +14,7 @@ export const SUPPORTED_BACKGROUND_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif
 export const CONNECTION_ZONES = {
   SERVER: "server",
   WORKSPACE: "workspace",
-  IMPORT: "import",
+  IMPORT: "import"
 } as const;
 
 export type ConnectionZone = (typeof CONNECTION_ZONES)[keyof typeof CONNECTION_ZONES];
@@ -23,21 +23,21 @@ export type ConnectionZone = (typeof CONNECTION_ZONES)[keyof typeof CONNECTION_Z
 export const ZONE_ORDER: readonly ConnectionZone[] = [
   CONNECTION_ZONES.SERVER,
   CONNECTION_ZONES.WORKSPACE,
-  CONNECTION_ZONES.IMPORT,
+  CONNECTION_ZONES.IMPORT
 ] as const;
 
 /** Display names (Chinese) for each zone */
 export const ZONE_DISPLAY_NAMES: Record<ConnectionZone, string> = {
   [CONNECTION_ZONES.SERVER]: "我的服务器",
   [CONNECTION_ZONES.WORKSPACE]: "云同步",
-  [CONNECTION_ZONES.IMPORT]: "文件导入",
+  [CONNECTION_ZONES.IMPORT]: "文件导入"
 } as const;
 
 /** Icons for each zone (Remix Icon class names) */
 export const ZONE_ICONS: Record<ConnectionZone, string> = {
   [CONNECTION_ZONES.SERVER]: "ri-server-line",
   [CONNECTION_ZONES.WORKSPACE]: "ri-cloud-line",
-  [CONNECTION_ZONES.IMPORT]: "ri-import-line",
+  [CONNECTION_ZONES.IMPORT]: "ri-import-line"
 } as const;
 
 const VALID_ZONES = new Set<string>(ZONE_ORDER);

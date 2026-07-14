@@ -46,41 +46,46 @@ export const connectionListQuerySchema = z.object({
   favoriteOnly: z.boolean().optional().default(false)
 });
 
-export const connectionUpsertSchema = z.object({
-  id: z.string().uuid().optional(),
-  workspaceId: z.string().trim().min(1).optional(),
-  name: z.string().min(1),
-  host: z.string().min(1),
-  port: z.coerce.number().int().min(1).max(65535).default(22),
-  username: z.preprocess(trimToString, z.string()),
-  authType: authTypeSchema.default("password"),
-  password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  sshKeyId: z.string().uuid().optional(),
-  hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  strictHostKeyChecking: z.boolean().default(false),
-  proxyId: z.string().uuid().optional(),
-  keepAliveEnabled: z.boolean().optional(),
-  keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
-  terminalEncoding: terminalEncodingSchema.default("utf-8"),
-  backspaceMode: backspaceModeSchema.default("ascii-backspace"),
-  deleteMode: deleteModeSchema.default("vt220-delete"),
-  groupPath: z.preprocess(
-    (v) => typeof v === "string" ? v.trim() : v,
-    z.string().min(1).refine((s) => s.startsWith("/"), { message: "分组路径必须以 / 开头" })
-  ),
-  tags: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1)).default([])),
-  notes: z.preprocess(trimToOptionalString, z.string().optional()),
-  favorite: z.boolean().default(false),
-  monitorSession: z.boolean().default(false)
-}).superRefine((value, ctx) => {
-  if (value.authType === "privateKey" && !value.sshKeyId) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "sshKeyId is required when authType is privateKey",
-      path: ["sshKeyId"]
-    });
-  }
-});
+export const connectionUpsertSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    workspaceId: z.string().trim().min(1).optional(),
+    name: z.string().min(1),
+    host: z.string().min(1),
+    port: z.coerce.number().int().min(1).max(65535).default(22),
+    username: z.preprocess(trimToString, z.string()),
+    authType: authTypeSchema.default("password"),
+    password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    sshKeyId: z.string().uuid().optional(),
+    hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    strictHostKeyChecking: z.boolean().default(false),
+    proxyId: z.string().uuid().optional(),
+    keepAliveEnabled: z.boolean().optional(),
+    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
+    terminalEncoding: terminalEncodingSchema.default("utf-8"),
+    backspaceMode: backspaceModeSchema.default("ascii-backspace"),
+    deleteMode: deleteModeSchema.default("vt220-delete"),
+    groupPath: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim() : v),
+      z
+        .string()
+        .min(1)
+        .refine((s) => s.startsWith("/"), { message: "分组路径必须以 / 开头" })
+    ),
+    tags: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1)).default([])),
+    notes: z.preprocess(trimToOptionalString, z.string().optional()),
+    favorite: z.boolean().default(false),
+    monitorSession: z.boolean().default(false)
+  })
+  .superRefine((value, ctx) => {
+    if (value.authType === "privateKey" && !value.sshKeyId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "sshKeyId is required when authType is privateKey",
+        path: ["sshKeyId"]
+      });
+    }
+  });
 
 export const connectionRemoveSchema = z.object({
   id: z.string().uuid()
@@ -120,15 +125,17 @@ export const connectionBatchAuthUpdateSchema = z.object({
   ])
 });
 
-export const sessionAuthOverrideSchema = z.object({
-  username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  authType: z.enum(["password", "privateKey", "interactive"]),
-  password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  sshKeyId: z.string().uuid().optional(),
-  /** Temporary key content for retry (not persisted as entity) */
-  privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
-}).superRefine((value, ctx) => {
+export const sessionAuthOverrideSchema = z
+  .object({
+    username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    authType: z.enum(["password", "privateKey", "interactive"]),
+    password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    sshKeyId: z.string().uuid().optional(),
+    /** Temporary key content for retry (not persisted as entity) */
+    privateKeyContent: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+  })
+  .superRefine((value, ctx) => {
     if ((value.authType === "password" || value.authType === "interactive") && !value.password) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -145,10 +152,12 @@ const remoteSessionOpenSchema = z.object({
   authOverride: sessionAuthOverrideSchema.optional()
 });
 
-const localSessionOpenSchema = z.object({
-  target: z.literal("local"),
-  sessionId: z.string().uuid().optional()
-}).strict();
+const localSessionOpenSchema = z
+  .object({
+    target: z.literal("local"),
+    sessionId: z.string().uuid().optional()
+  })
+  .strict();
 
 export const sessionOpenSchema = z.discriminatedUnion("target", [
   remoteSessionOpenSchema,
@@ -406,154 +415,283 @@ export const sftpEditSessionInfoSchema = z.object({
   lastActivityAt: z.number()
 });
 
-const localShellSchema = z.object({
-  mode: localShellModeSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.mode),
-  preset: localShellPresetSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.preset),
-  customPath: z.string().default(DEFAULT_APP_PREFERENCES.terminal.localShell.customPath)
-}).superRefine((value, ctx) => {
-  if (value.mode === "custom" && value.customPath.trim().length === 0) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "customPath is required when localShell mode is custom",
-      path: ["customPath"]
-    });
-  }
-});
+const localShellSchema = z
+  .object({
+    mode: localShellModeSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.mode),
+    preset: localShellPresetSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell.preset),
+    customPath: z.string().default(DEFAULT_APP_PREFERENCES.terminal.localShell.customPath)
+  })
+  .superRefine((value, ctx) => {
+    if (value.mode === "custom" && value.customPath.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "customPath is required when localShell mode is custom",
+        path: ["customPath"]
+      });
+    }
+  });
 
-export const appPreferencesSchema = z.object({
-  transfer: z.object({
-    uploadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.uploadDefaultDir),
-    downloadDefaultDir: z.string().min(1).default(DEFAULT_APP_PREFERENCES.transfer.downloadDefaultDir)
-  }).default(DEFAULT_APP_PREFERENCES.transfer),
-  remoteEdit: z.object({
-    defaultEditorCommand: z.string().default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand),
-    editorMode: z.enum(["builtin", "external"]).default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
-  }).default(DEFAULT_APP_PREFERENCES.remoteEdit),
-  commandCenter: z.object({
-    rememberTemplateParams: z.boolean().default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams),
-    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).default(DEFAULT_APP_PREFERENCES.commandCenter.batchMaxConcurrency),
-    batchRetryCount: z.coerce.number().int().min(0).max(5).default(DEFAULT_APP_PREFERENCES.commandCenter.batchRetryCount)
-  }).default(DEFAULT_APP_PREFERENCES.commandCenter),
-  terminal: z.object({
-    backgroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.backgroundColor),
-    foregroundColor: terminalColorSchema.default(DEFAULT_APP_PREFERENCES.terminal.foregroundColor),
-    fontSize: z.coerce.number().int().min(10).max(24).default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
-    lineHeight: z.coerce.number().min(1).max(2).default(DEFAULT_APP_PREFERENCES.terminal.lineHeight),
-    fontFamily: z.string().trim().min(1).default(DEFAULT_APP_PREFERENCES.terminal.fontFamily),
-    localShell: localShellSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell)
-  }).default(DEFAULT_APP_PREFERENCES.terminal),
-  ssh: z.object({
-    keepAliveEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ssh.keepAliveEnabled),
-    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).default(DEFAULT_APP_PREFERENCES.ssh.keepAliveIntervalSec)
-  }).default(DEFAULT_APP_PREFERENCES.ssh),
-  backup: z.object({
-    remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
-    rclonePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.rclonePath),
-    defaultBackupConflictPolicy: backupConflictPolicySchema.default(DEFAULT_APP_PREFERENCES.backup.defaultBackupConflictPolicy),
-    defaultRestoreConflictPolicy: restoreConflictPolicySchema.default(DEFAULT_APP_PREFERENCES.backup.defaultRestoreConflictPolicy),
-    rememberPassword: z.boolean().default(DEFAULT_APP_PREFERENCES.backup.rememberPassword),
-    lastBackupAt: z.string().nullable().default(DEFAULT_APP_PREFERENCES.backup.lastBackupAt)
-  }).default(DEFAULT_APP_PREFERENCES.backup),
-  window: z.object({
-    appearance: windowAppearanceSchema.default(DEFAULT_APP_PREFERENCES.window.appearance),
-    minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
-    confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose),
-    backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.window.backgroundImagePath),
-    backgroundOpacity: z.coerce.number().int().min(30).max(80).default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity),
-    leftSidebarDefaultCollapsed: z.boolean().default(DEFAULT_APP_PREFERENCES.window.leftSidebarDefaultCollapsed),
-    bottomWorkbenchDefaultCollapsed: z.boolean().default(DEFAULT_APP_PREFERENCES.window.bottomWorkbenchDefaultCollapsed)
-  }).default(DEFAULT_APP_PREFERENCES.window),
-  traceroute: z.object({
-    nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
-    protocol: z.enum(["icmp", "tcp", "udp"]).default(DEFAULT_APP_PREFERENCES.traceroute.protocol),
-    port: z.coerce.number().int().min(0).max(65535).default(DEFAULT_APP_PREFERENCES.traceroute.port),
-    queries: z.coerce.number().int().min(1).max(10).default(DEFAULT_APP_PREFERENCES.traceroute.queries),
-    maxHops: z.coerce.number().int().min(1).max(64).default(DEFAULT_APP_PREFERENCES.traceroute.maxHops),
-    ipVersion: z.enum(["auto", "ipv4", "ipv6"]).default(DEFAULT_APP_PREFERENCES.traceroute.ipVersion),
-    dataProvider: z.enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"]).default(DEFAULT_APP_PREFERENCES.traceroute.dataProvider),
-    noRdns: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.noRdns),
-    language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
-    powProvider: z.enum(["api.nxtrace.org", "sakura"]).default(DEFAULT_APP_PREFERENCES.traceroute.powProvider),
-    showTracerouteTab: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.showTracerouteTab)
-  }).default(DEFAULT_APP_PREFERENCES.traceroute),
-  audit: z.object({
-    enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.audit.enabled),
-    retentionDays: z.coerce.number().int().min(0).max(365).default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
-  }).default(DEFAULT_APP_PREFERENCES.audit)
-}).default(DEFAULT_APP_PREFERENCES);
+export const appPreferencesSchema = z
+  .object({
+    transfer: z
+      .object({
+        uploadDefaultDir: z
+          .string()
+          .min(1)
+          .default(DEFAULT_APP_PREFERENCES.transfer.uploadDefaultDir),
+        downloadDefaultDir: z
+          .string()
+          .min(1)
+          .default(DEFAULT_APP_PREFERENCES.transfer.downloadDefaultDir)
+      })
+      .default(DEFAULT_APP_PREFERENCES.transfer),
+    remoteEdit: z
+      .object({
+        defaultEditorCommand: z
+          .string()
+          .default(DEFAULT_APP_PREFERENCES.remoteEdit.defaultEditorCommand),
+        editorMode: z
+          .enum(["builtin", "external"])
+          .default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
+      })
+      .default(DEFAULT_APP_PREFERENCES.remoteEdit),
+    commandCenter: z
+      .object({
+        rememberTemplateParams: z
+          .boolean()
+          .default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams),
+        batchMaxConcurrency: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .default(DEFAULT_APP_PREFERENCES.commandCenter.batchMaxConcurrency),
+        batchRetryCount: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(5)
+          .default(DEFAULT_APP_PREFERENCES.commandCenter.batchRetryCount)
+      })
+      .default(DEFAULT_APP_PREFERENCES.commandCenter),
+    terminal: z
+      .object({
+        backgroundColor: terminalColorSchema.default(
+          DEFAULT_APP_PREFERENCES.terminal.backgroundColor
+        ),
+        foregroundColor: terminalColorSchema.default(
+          DEFAULT_APP_PREFERENCES.terminal.foregroundColor
+        ),
+        fontSize: z.coerce
+          .number()
+          .int()
+          .min(10)
+          .max(24)
+          .default(DEFAULT_APP_PREFERENCES.terminal.fontSize),
+        lineHeight: z.coerce
+          .number()
+          .min(1)
+          .max(2)
+          .default(DEFAULT_APP_PREFERENCES.terminal.lineHeight),
+        fontFamily: z.string().trim().min(1).default(DEFAULT_APP_PREFERENCES.terminal.fontFamily),
+        localShell: localShellSchema.default(DEFAULT_APP_PREFERENCES.terminal.localShell)
+      })
+      .default(DEFAULT_APP_PREFERENCES.terminal),
+    ssh: z
+      .object({
+        keepAliveEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.ssh.keepAliveEnabled),
+        keepAliveIntervalSec: z.coerce
+          .number()
+          .int()
+          .min(5)
+          .max(600)
+          .default(DEFAULT_APP_PREFERENCES.ssh.keepAliveIntervalSec)
+      })
+      .default(DEFAULT_APP_PREFERENCES.ssh),
+    backup: z
+      .object({
+        remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
+        rclonePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.rclonePath),
+        defaultBackupConflictPolicy: backupConflictPolicySchema.default(
+          DEFAULT_APP_PREFERENCES.backup.defaultBackupConflictPolicy
+        ),
+        defaultRestoreConflictPolicy: restoreConflictPolicySchema.default(
+          DEFAULT_APP_PREFERENCES.backup.defaultRestoreConflictPolicy
+        ),
+        rememberPassword: z.boolean().default(DEFAULT_APP_PREFERENCES.backup.rememberPassword),
+        lastBackupAt: z.string().nullable().default(DEFAULT_APP_PREFERENCES.backup.lastBackupAt)
+      })
+      .default(DEFAULT_APP_PREFERENCES.backup),
+    window: z
+      .object({
+        appearance: windowAppearanceSchema.default(DEFAULT_APP_PREFERENCES.window.appearance),
+        minimizeToTray: z.boolean().default(DEFAULT_APP_PREFERENCES.window.minimizeToTray),
+        confirmBeforeClose: z.boolean().default(DEFAULT_APP_PREFERENCES.window.confirmBeforeClose),
+        backgroundImagePath: z.string().default(DEFAULT_APP_PREFERENCES.window.backgroundImagePath),
+        backgroundOpacity: z.coerce
+          .number()
+          .int()
+          .min(30)
+          .max(80)
+          .default(DEFAULT_APP_PREFERENCES.window.backgroundOpacity),
+        leftSidebarDefaultCollapsed: z
+          .boolean()
+          .default(DEFAULT_APP_PREFERENCES.window.leftSidebarDefaultCollapsed),
+        bottomWorkbenchDefaultCollapsed: z
+          .boolean()
+          .default(DEFAULT_APP_PREFERENCES.window.bottomWorkbenchDefaultCollapsed)
+      })
+      .default(DEFAULT_APP_PREFERENCES.window),
+    traceroute: z
+      .object({
+        nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
+        protocol: z
+          .enum(["icmp", "tcp", "udp"])
+          .default(DEFAULT_APP_PREFERENCES.traceroute.protocol),
+        port: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(65535)
+          .default(DEFAULT_APP_PREFERENCES.traceroute.port),
+        queries: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .default(DEFAULT_APP_PREFERENCES.traceroute.queries),
+        maxHops: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(64)
+          .default(DEFAULT_APP_PREFERENCES.traceroute.maxHops),
+        ipVersion: z
+          .enum(["auto", "ipv4", "ipv6"])
+          .default(DEFAULT_APP_PREFERENCES.traceroute.ipVersion),
+        dataProvider: z
+          .enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"])
+          .default(DEFAULT_APP_PREFERENCES.traceroute.dataProvider),
+        noRdns: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.noRdns),
+        language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
+        powProvider: z
+          .enum(["api.nxtrace.org", "sakura"])
+          .default(DEFAULT_APP_PREFERENCES.traceroute.powProvider),
+        showTracerouteTab: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.showTracerouteTab)
+      })
+      .default(DEFAULT_APP_PREFERENCES.traceroute),
+    audit: z
+      .object({
+        enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.audit.enabled),
+        retentionDays: z.coerce
+          .number()
+          .int()
+          .min(0)
+          .max(365)
+          .default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
+      })
+      .default(DEFAULT_APP_PREFERENCES.audit)
+  })
+  .default(DEFAULT_APP_PREFERENCES);
 
 export const appPreferencesPatchSchema = z.object({
-  transfer: z.object({
-    uploadDefaultDir: z.string().min(1).optional(),
-    downloadDefaultDir: z.string().min(1).optional()
-  }).optional(),
-  remoteEdit: z.object({
-    defaultEditorCommand: z.string().optional(),
-    editorMode: z.enum(["builtin", "external"]).optional()
-  }).optional(),
-  commandCenter: z.object({
-    rememberTemplateParams: z.boolean().optional(),
-    batchMaxConcurrency: z.coerce.number().int().min(1).max(50).optional(),
-    batchRetryCount: z.coerce.number().int().min(0).max(5).optional()
-  }).optional(),
-  terminal: z.object({
-    backgroundColor: terminalColorSchema.optional(),
-    foregroundColor: terminalColorSchema.optional(),
-    fontSize: z.coerce.number().int().min(10).max(24).optional(),
-    lineHeight: z.coerce.number().min(1).max(2).optional(),
-    fontFamily: z.string().trim().min(1).optional(),
-    localShell: z.object({
-      mode: localShellModeSchema.optional(),
-      preset: localShellPresetSchema.optional(),
-      customPath: z.string().optional()
-    }).superRefine((value, ctx) => {
-      if (value.mode === "custom" && (!value.customPath || value.customPath.trim().length === 0)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "customPath is required when localShell mode is custom",
-          path: ["customPath"]
-        });
-      }
-    }).optional()
-  }).optional(),
-  ssh: z.object({
-    keepAliveEnabled: z.boolean().optional(),
-    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional()
-  }).optional(),
-  backup: z.object({
-    remotePath: z.string().optional(),
-    rclonePath: z.string().optional(),
-    defaultBackupConflictPolicy: backupConflictPolicySchema.optional(),
-    defaultRestoreConflictPolicy: restoreConflictPolicySchema.optional(),
-    rememberPassword: z.boolean().optional(),
-    lastBackupAt: z.string().nullable().optional()
-  }).optional(),
-  window: z.object({
-    appearance: windowAppearanceSchema.optional(),
-    minimizeToTray: z.boolean().optional(),
-    confirmBeforeClose: z.boolean().optional(),
-    backgroundImagePath: z.string().optional(),
-    backgroundOpacity: z.coerce.number().int().min(30).max(80).optional(),
-    leftSidebarDefaultCollapsed: z.boolean().optional(),
-    bottomWorkbenchDefaultCollapsed: z.boolean().optional()
-  }).optional(),
-  traceroute: z.object({
-    nexttracePath: z.string().optional(),
-    protocol: z.enum(["icmp", "tcp", "udp"]).optional(),
-    port: z.coerce.number().int().min(0).max(65535).optional(),
-    queries: z.coerce.number().int().min(1).max(10).optional(),
-    maxHops: z.coerce.number().int().min(1).max(64).optional(),
-    ipVersion: z.enum(["auto", "ipv4", "ipv6"]).optional(),
-    dataProvider: z.enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"]).optional(),
-    noRdns: z.boolean().optional(),
-    language: z.enum(["cn", "en"]).optional(),
-    powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional(),
-    showTracerouteTab: z.boolean().optional()
-  }).optional(),
-  audit: z.object({
-    enabled: z.boolean().optional(),
-    retentionDays: z.coerce.number().int().min(0).max(365).optional()
-  }).optional()
+  transfer: z
+    .object({
+      uploadDefaultDir: z.string().min(1).optional(),
+      downloadDefaultDir: z.string().min(1).optional()
+    })
+    .optional(),
+  remoteEdit: z
+    .object({
+      defaultEditorCommand: z.string().optional(),
+      editorMode: z.enum(["builtin", "external"]).optional()
+    })
+    .optional(),
+  commandCenter: z
+    .object({
+      rememberTemplateParams: z.boolean().optional(),
+      batchMaxConcurrency: z.coerce.number().int().min(1).max(50).optional(),
+      batchRetryCount: z.coerce.number().int().min(0).max(5).optional()
+    })
+    .optional(),
+  terminal: z
+    .object({
+      backgroundColor: terminalColorSchema.optional(),
+      foregroundColor: terminalColorSchema.optional(),
+      fontSize: z.coerce.number().int().min(10).max(24).optional(),
+      lineHeight: z.coerce.number().min(1).max(2).optional(),
+      fontFamily: z.string().trim().min(1).optional(),
+      localShell: z
+        .object({
+          mode: localShellModeSchema.optional(),
+          preset: localShellPresetSchema.optional(),
+          customPath: z.string().optional()
+        })
+        .superRefine((value, ctx) => {
+          if (
+            value.mode === "custom" &&
+            (!value.customPath || value.customPath.trim().length === 0)
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "customPath is required when localShell mode is custom",
+              path: ["customPath"]
+            });
+          }
+        })
+        .optional()
+    })
+    .optional(),
+  ssh: z
+    .object({
+      keepAliveEnabled: z.boolean().optional(),
+      keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional()
+    })
+    .optional(),
+  backup: z
+    .object({
+      remotePath: z.string().optional(),
+      rclonePath: z.string().optional(),
+      defaultBackupConflictPolicy: backupConflictPolicySchema.optional(),
+      defaultRestoreConflictPolicy: restoreConflictPolicySchema.optional(),
+      rememberPassword: z.boolean().optional(),
+      lastBackupAt: z.string().nullable().optional()
+    })
+    .optional(),
+  window: z
+    .object({
+      appearance: windowAppearanceSchema.optional(),
+      minimizeToTray: z.boolean().optional(),
+      confirmBeforeClose: z.boolean().optional(),
+      backgroundImagePath: z.string().optional(),
+      backgroundOpacity: z.coerce.number().int().min(30).max(80).optional(),
+      leftSidebarDefaultCollapsed: z.boolean().optional(),
+      bottomWorkbenchDefaultCollapsed: z.boolean().optional()
+    })
+    .optional(),
+  traceroute: z
+    .object({
+      nexttracePath: z.string().optional(),
+      protocol: z.enum(["icmp", "tcp", "udp"]).optional(),
+      port: z.coerce.number().int().min(0).max(65535).optional(),
+      queries: z.coerce.number().int().min(1).max(10).optional(),
+      maxHops: z.coerce.number().int().min(1).max(64).optional(),
+      ipVersion: z.enum(["auto", "ipv4", "ipv6"]).optional(),
+      dataProvider: z
+        .enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"])
+        .optional(),
+      noRdns: z.boolean().optional(),
+      language: z.enum(["cn", "en"]).optional(),
+      powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional(),
+      showTracerouteTab: z.boolean().optional()
+    })
+    .optional(),
+  audit: z
+    .object({
+      enabled: z.boolean().optional(),
+      retentionDays: z.coerce.number().int().min(0).max(365).optional()
+    })
+    .optional()
 });
 
 export const settingsGetSchema = z.object({});
@@ -614,13 +752,15 @@ export const backupRestoreSchema = z.object({
   conflictPolicy: restoreConflictPolicySchema.default("skip_older")
 });
 
-export const masterPasswordSetSchema = z.object({
-  password: z.string().min(6, "数据备份密码至少6个字符"),
-  confirmPassword: z.string().min(1)
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "两次输入的密码不一致",
-  path: ["confirmPassword"]
-});
+export const masterPasswordSetSchema = z
+  .object({
+    password: z.string().min(6, "数据备份密码至少6个字符"),
+    confirmPassword: z.string().min(1)
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "两次输入的密码不一致",
+    path: ["confirmPassword"]
+  });
 
 export const masterPasswordUnlockSchema = z.object({
   password: z.string().min(1)
@@ -631,14 +771,16 @@ export const masterPasswordClearRememberedSchema = z.object({});
 export const masterPasswordStatusSchema = z.object({});
 
 export const masterPasswordGetCachedSchema = z.object({});
-export const masterPasswordChangeSchema = z.object({
-  oldPassword: z.string().min(1, "原密码不能为空"),
-  newPassword: z.string().min(6, "新密码至少6个字符"),
-  confirmPassword: z.string().min(1)
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "两次输入的新密码不一致",
-  path: ["confirmPassword"]
-});
+export const masterPasswordChangeSchema = z
+  .object({
+    oldPassword: z.string().min(1, "原密码不能为空"),
+    newPassword: z.string().min(6, "新密码至少6个字符"),
+    confirmPassword: z.string().min(1)
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "两次输入的新密码不一致",
+    path: ["confirmPassword"]
+  });
 
 // ─── SSH Key Management ─────────────────────────────────────────────────────
 
@@ -661,24 +803,26 @@ export const sshKeyRemoveSchema = z.object({
 
 export const proxyListSchema = z.object({});
 
-export const proxyUpsertSchema = z.object({
-  id: z.string().uuid().optional(),
-  workspaceId: z.string().trim().min(1).optional(),
-  name: z.string().trim().min(1),
-  proxyType: proxyTypeSchema,
-  host: z.string().trim().min(1),
-  port: z.coerce.number().int().min(1).max(65535),
-  username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
-  password: z.preprocess(trimToOptionalString, z.string().min(1).optional())
-}).superRefine((value, ctx) => {
-  if (value.proxyType === "socks4" && value.password) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "SOCKS4 does not support password authentication",
-      path: ["password"]
-    });
-  }
-});
+export const proxyUpsertSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    workspaceId: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1),
+    proxyType: proxyTypeSchema,
+    host: z.string().trim().min(1),
+    port: z.coerce.number().int().min(1).max(65535),
+    username: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+    password: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+  })
+  .superRefine((value, ctx) => {
+    if (value.proxyType === "socks4" && value.password) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "SOCKS4 does not support password authentication",
+        path: ["password"]
+      });
+    }
+  });
 
 export const proxyRemoveSchema = z.object({
   id: z.string().uuid(),
@@ -721,24 +865,26 @@ export const connectionImportDirectoryPreviewSchema = z.object({
 });
 
 export const connectionImportExecuteSchema = z.object({
-  entries: z.array(z.object({
-    name: z.string().min(1),
-    host: z.string().min(1),
-    port: z.coerce.number().int().min(1).max(65535),
-    username: z.string(),
-    authType: authTypeSchema,
-    password: z.string().optional(),
-    keepAliveEnabled: z.boolean().optional(),
-    keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
-    groupPath: z.string().min(1),
-    tags: z.array(z.string()).default([]),
-    notes: z.string().optional(),
-    favorite: z.boolean().default(false),
-    terminalEncoding: terminalEncodingSchema.default("utf-8"),
-    backspaceMode: backspaceModeSchema.default("ascii-backspace"),
-    deleteMode: deleteModeSchema.default("vt220-delete"),
-    monitorSession: z.boolean().default(false),
-  })),
+  entries: z.array(
+    z.object({
+      name: z.string().min(1),
+      host: z.string().min(1),
+      port: z.coerce.number().int().min(1).max(65535),
+      username: z.string(),
+      authType: authTypeSchema,
+      password: z.string().optional(),
+      keepAliveEnabled: z.boolean().optional(),
+      keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
+      groupPath: z.string().min(1),
+      tags: z.array(z.string()).default([]),
+      notes: z.string().optional(),
+      favorite: z.boolean().default(false),
+      terminalEncoding: terminalEncodingSchema.default("utf-8"),
+      backspaceMode: backspaceModeSchema.default("ascii-backspace"),
+      deleteMode: deleteModeSchema.default("vt220-delete"),
+      monitorSession: z.boolean().default(false)
+    })
+  ),
   conflictPolicy: z.enum(["skip", "overwrite", "duplicate"]).default("skip")
 });
 
@@ -806,7 +952,9 @@ export type BackupRunInput = z.infer<typeof backupRunSchema>;
 export type BackupRestoreInput = z.infer<typeof backupRestoreSchema>;
 export type MasterPasswordSetInput = z.infer<typeof masterPasswordSetSchema>;
 export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchema>;
-export type MasterPasswordClearRememberedInput = z.infer<typeof masterPasswordClearRememberedSchema>;
+export type MasterPasswordClearRememberedInput = z.infer<
+  typeof masterPasswordClearRememberedSchema
+>;
 export type MasterPasswordStatusInput = z.infer<typeof masterPasswordStatusSchema>;
 export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
 export type MasterPasswordChangeInput = z.infer<typeof masterPasswordChangeSchema>;
@@ -820,9 +968,13 @@ export type ConnectionExportInput = z.infer<typeof connectionExportSchema>;
 export type ConnectionExportBatchInput = z.infer<typeof connectionExportBatchSchema>;
 export type ConnectionRevealPasswordInput = z.infer<typeof connectionRevealPasswordSchema>;
 export type ConnectionImportPreviewInput = z.infer<typeof connectionImportPreviewSchema>;
-export type ConnectionImportFinalShellPreviewInput = z.infer<typeof connectionImportFinalShellPreviewSchema>;
+export type ConnectionImportFinalShellPreviewInput = z.infer<
+  typeof connectionImportFinalShellPreviewSchema
+>;
 export type ConnectionImportSource = z.infer<typeof connectionImportSourceSchema>;
-export type ConnectionImportDirectoryPreviewInput = z.infer<typeof connectionImportDirectoryPreviewSchema>;
+export type ConnectionImportDirectoryPreviewInput = z.infer<
+  typeof connectionImportDirectoryPreviewSchema
+>;
 export type ConnectionImportExecuteInput = z.infer<typeof connectionImportExecuteSchema>;
 
 export interface ConnectionExportBatchFileItem {
@@ -909,9 +1061,7 @@ export const pingRequestSchema = z.object({
 });
 export type PingRequestInput = z.infer<typeof pingRequestSchema>;
 
-export type PingResult =
-  | { ok: true; avgMs: number }
-  | { ok: false; error: string };
+export type PingResult = { ok: true; avgMs: number } | { ok: false; error: string };
 
 // ─── Traceroute ──────────────────────────────────────────────────────────
 
@@ -936,7 +1086,7 @@ export const cloudSyncWorkspaceAddSchema = z.object({
   workspacePassword: z.string().min(1).max(200),
   pullIntervalSec: z.number().int().min(10).max(86400).optional(),
   ignoreTlsErrors: z.boolean().optional(),
-  enabled: z.boolean().optional(),
+  enabled: z.boolean().optional()
 });
 
 export const cloudSyncWorkspaceUpdateSchema = z.object({
@@ -947,35 +1097,40 @@ export const cloudSyncWorkspaceUpdateSchema = z.object({
   workspacePassword: z.string().min(1).max(200).optional(),
   pullIntervalSec: z.number().int().min(10).max(86400).optional(),
   ignoreTlsErrors: z.boolean().optional(),
-  enabled: z.boolean().optional(),
+  enabled: z.boolean().optional()
 });
 
 export const cloudSyncWorkspaceRemoveSchema = z.object({
-  id: z.string().trim().min(1),
+  id: z.string().trim().min(1)
 });
 
 export const cloudSyncWorkspaceTokenDraftSchema = z.object({
-  apiBaseUrl: z.string().trim().min(1).max(500).transform((value) => value.replace(/\/+$/, "")),
+  apiBaseUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .max(500)
+    .transform((value) => value.replace(/\/+$/, "")),
   workspaceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().max(200),
   workspacePassword: z.string().min(1).max(200),
   pullIntervalSec: z.number().int().min(10).max(86400),
   ignoreTlsErrors: z.boolean(),
-  enabled: z.boolean(),
+  enabled: z.boolean()
 });
 
 export const cloudSyncWorkspaceExportTokenSchema = z.object({
-  id: z.string().trim().min(1),
+  id: z.string().trim().min(1)
 });
 
 export const cloudSyncWorkspaceParseTokenSchema = z.object({
-  token: z.string().trim().min(1),
+  token: z.string().trim().min(1)
 });
 
 export const cloudSyncStatusSchema = z.object({});
 
 export const cloudSyncSyncNowSchema = z.object({
-  workspaceId: z.string().trim().min(1).optional(),
+  workspaceId: z.string().trim().min(1).optional()
 });
 
 export const cloudSyncListConflictsSchema = z.object({});
@@ -984,14 +1139,14 @@ export const cloudSyncTestConnectionSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
   workspacePassword: z.string().min(1).max(200),
-  ignoreTlsErrors: z.boolean().optional(),
+  ignoreTlsErrors: z.boolean().optional()
 });
 
 export const cloudSyncResolveConflictSchema = z.object({
   workspaceId: z.string().trim().min(1),
   resourceType: z.enum(["connection", "sshKey", "proxy"]),
   resourceId: z.string().trim().min(1),
-  strategy: z.enum(["keep_local", "accept_remote"]),
+  strategy: z.enum(["keep_local", "accept_remote"])
 });
 
 export type CloudSyncWorkspaceListInput = z.infer<typeof cloudSyncWorkspaceListSchema>;
@@ -999,7 +1154,9 @@ export type CloudSyncWorkspaceAddInput = z.infer<typeof cloudSyncWorkspaceAddSch
 export type CloudSyncWorkspaceUpdateInput = z.infer<typeof cloudSyncWorkspaceUpdateSchema>;
 export type CloudSyncWorkspaceRemoveInput = z.infer<typeof cloudSyncWorkspaceRemoveSchema>;
 export type CloudSyncWorkspaceTokenDraft = z.infer<typeof cloudSyncWorkspaceTokenDraftSchema>;
-export type CloudSyncWorkspaceExportTokenInput = z.infer<typeof cloudSyncWorkspaceExportTokenSchema>;
+export type CloudSyncWorkspaceExportTokenInput = z.infer<
+  typeof cloudSyncWorkspaceExportTokenSchema
+>;
 export type CloudSyncWorkspaceParseTokenInput = z.infer<typeof cloudSyncWorkspaceParseTokenSchema>;
 export type CloudSyncStatusInput = z.infer<typeof cloudSyncStatusSchema>;
 export type CloudSyncSyncNowInput = z.infer<typeof cloudSyncSyncNowSchema>;
@@ -1013,7 +1170,7 @@ export const resourceCopyConnectionSchema = z.object({
   sourceId: z.string().trim().min(1),
   targetOriginKind: z.enum(["local", "cloud"]),
   targetWorkspaceId: z.string().trim().min(1).optional(),
-  targetGroupSubPath: z.string().trim().max(500).optional(),
+  targetGroupSubPath: z.string().trim().max(500).optional()
 });
 
 export type ResourceCopyConnectionInput = z.infer<typeof resourceCopyConnectionSchema>;
@@ -1025,11 +1182,11 @@ export const recycleBinListSchema = z.object({});
 export const recycleBinRestoreSchema = z.object({
   recycleBinEntryId: z.string().trim().min(1),
   targetOriginKind: z.enum(["local", "cloud"]),
-  targetWorkspaceId: z.string().trim().min(1).optional(),
+  targetWorkspaceId: z.string().trim().min(1).optional()
 });
 
 export const recycleBinPurgeSchema = z.object({
-  id: z.string().trim().min(1),
+  id: z.string().trim().min(1)
 });
 
 export const recycleBinClearSchema = z.object({});

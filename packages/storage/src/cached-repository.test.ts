@@ -129,7 +129,10 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
 
   const cached = repository.listCommandHistory();
 
-  assert(cached.length === 500, `command history cache should stay capped at 500, got ${cached.length}`);
+  assert(
+    cached.length === 500,
+    `command history cache should stay capped at 500, got ${cached.length}`
+  );
   assert(cached[0]?.command === "brand-new", "new command should be moved to the top of the cache");
   assert(
     !cached.some((entry) => entry.command === "cmd-499"),

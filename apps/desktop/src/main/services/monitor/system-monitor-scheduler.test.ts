@@ -82,7 +82,7 @@ const createController = (
   }
 ): SystemMonitorController => {
   const fakeConnection = {
-    exec: (command: string) => execImpl(command),
+    exec: (command: string) => execImpl(command)
   } as unknown as SshConnection;
 
   return new SystemMonitorController({
@@ -97,9 +97,9 @@ const createController = (
     logger: {
       info: () => undefined,
       warn: () => undefined,
-      debug: () => undefined,
+      debug: () => undefined
     },
-    timing,
+    timing
   });
 };
 
@@ -114,14 +114,14 @@ await (async () => {
       return {
         stdout: buildProbeOutput(command, sample),
         stderr: "",
-        exitCode: 0,
+        exitCode: 0
       };
     },
     () => undefined,
     {
       pollIntervalMs: 10,
       startDelayMs: 0,
-      interfaceMetaIntervalTicks: 1000,
+      interfaceMetaIntervalTicks: 1000
     }
   );
 
@@ -155,14 +155,14 @@ await (async () => {
       return {
         stdout: buildProbeOutput(command, sample),
         stderr: "",
-        exitCode: 0,
+        exitCode: 0
       };
     },
     () => undefined,
     {
       pollIntervalMs: 10,
       startDelayMs: 0,
-      interfaceMetaIntervalTicks: 1000,
+      interfaceMetaIntervalTicks: 1000
     }
   );
 
@@ -171,7 +171,10 @@ await (async () => {
   await controller.stop();
 
   assertEqual(maxConcurrentExec, 1, "probe execution should never overlap");
-  assertTrue(commands.length < 8, "scheduler should drop ticks when previous probe is still running");
+  assertTrue(
+    commands.length < 8,
+    "scheduler should drop ticks when previous probe is still running"
+  );
 })();
 
 await (async () => {
@@ -186,14 +189,14 @@ await (async () => {
         return {
           stdout: buildProbeOutput(command, sample, { missingNetCounters: true }),
           stderr: "",
-          exitCode: 0,
+          exitCode: 0
         };
       }
 
       return {
         stdout: buildProbeOutput(command, sample),
         stderr: "",
-        exitCode: 0,
+        exitCode: 0
       };
     },
     (snapshot) => {
@@ -204,7 +207,7 @@ await (async () => {
       cpuMemSwapIntervalTicks: 1,
       diskIntervalTicks: 1000,
       interfaceMetaIntervalTicks: 1000,
-      startDelayMs: 0,
+      startDelayMs: 0
     }
   );
 

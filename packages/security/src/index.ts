@@ -44,7 +44,13 @@ type ScryptImplementation = (
   options: { N: number; r: number; p: number }
 ) => Promise<Buffer>;
 
-const createCacheKey = (password: string, salt: Buffer, n: number, r: number, p: number): string => {
+const createCacheKey = (
+  password: string,
+  salt: Buffer,
+  n: number,
+  r: number,
+  p: number
+): string => {
   const passwordDigest = createHash("sha256").update(password, "utf8").digest("hex");
   return `${passwordDigest}:${salt.toString("hex")}:${n}:${r}:${p}`;
 };
@@ -130,19 +136,24 @@ export const deriveKey = async (
   }
 
   const currentGeneration = cacheGeneration;
-  const derivationPromise = scryptImplementation(password, salt, KEY_LENGTH, { N: n, r, p }).then((derivedKey) => {
-    const normalized = cloneBuffer(derivedKey);
-    if (currentGeneration === cacheGeneration && inFlightDerivedKeys.get(cacheKey) === derivationPromise) {
-      touchResolvedKey(cacheKey, normalized);
-      inFlightDerivedKeys.delete(cacheKey);
-    }
-    return normalized;
-  }).catch((error) => {
-    if (inFlightDerivedKeys.get(cacheKey) === derivationPromise) {
-      inFlightDerivedKeys.delete(cacheKey);
-    }
-    throw error;
-  });
+  const derivationPromise = scryptImplementation(password, salt, KEY_LENGTH, { N: n, r, p })
+    .then((derivedKey) => {
+      const normalized = cloneBuffer(derivedKey);
+      if (
+        currentGeneration === cacheGeneration &&
+        inFlightDerivedKeys.get(cacheKey) === derivationPromise
+      ) {
+        touchResolvedKey(cacheKey, normalized);
+        inFlightDerivedKeys.delete(cacheKey);
+      }
+      return normalized;
+    })
+    .catch((error) => {
+      if (inFlightDerivedKeys.get(cacheKey) === derivationPromise) {
+        inFlightDerivedKeys.delete(cacheKey);
+      }
+      throw error;
+    });
 
   inFlightDerivedKeys.set(cacheKey, derivationPromise);
   return cloneBuffer(await derivationPromise);
@@ -162,7 +173,10 @@ export const createMasterKeyMeta = async (password: string): Promise<MasterKeyMe
   };
 };
 
-export const verifyMasterPassword = async (password: string, meta: MasterKeyMeta): Promise<boolean> => {
+export const verifyMasterPassword = async (
+  password: string,
+  meta: MasterKeyMeta
+): Promise<boolean> => {
   const salt = Buffer.from(meta.salt, "hex");
   const key = await deriveKey(password, salt, meta.n, meta.r, meta.p);
   const computedVerifier = createHash("sha256").update(key).digest("hex");
@@ -191,11 +205,7 @@ export interface WorkspaceSecretEnvelope {
   tag: string;
 }
 
-export const encryptAesGcm = (
-  plaintext: string,
-  key: Buffer,
-  aad?: string
-): EncryptResult => {
+export const encryptAesGcm = (plaintext: string, key: Buffer, aad?: string): EncryptResult => {
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
   if (aad) {
@@ -310,10 +320,26 @@ export interface CredentialVault {
 // ─── SecretStore DB Interface ───────────────────────────────────────────────
 
 export interface SecretStoreDB {
-  putSecret: (id: string, purpose: string, ciphertextB64: string, ivB64: string, tagB64: string, aad: string) => void;
-  getSecret: (id: string) => { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined;
+  putSecret: (
+    id: string,
+    purpose: string,
+    ciphertextB64: string,
+    ivB64: string,
+    tagB64: string,
+    aad: string
+  ) => void;
+  getSecret: (
+    id: string
+  ) => { ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string } | undefined;
   deleteSecret: (id: string) => void;
-  listSecrets: () => Array<{ id: string; purpose: string; ciphertext_b64: string; iv_b64: string; tag_b64: string; aad: string }>;
+  listSecrets: () => Array<{
+    id: string;
+    purpose: string;
+    ciphertext_b64: string;
+    iv_b64: string;
+    tag_b64: string;
+    aad: string;
+  }>;
 }
 
 // ─── EncryptedSecretVault ───────────────────────────────────────────────────
@@ -362,7 +388,7 @@ export interface ResolveDeviceKeyResult {
 export const resolveDeviceKey = async (
   store: DeviceKeyStore,
   db: DeviceKeyDbAccess,
-  generate: () => string = generateDeviceKey,
+  generate: () => string = generateDeviceKey
 ): Promise<ResolveDeviceKeyResult> => {
   const legacy = db.getLegacy();
 

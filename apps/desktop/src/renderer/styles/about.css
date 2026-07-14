@@ -172,7 +172,9 @@
   color: var(--t3);
   cursor: pointer;
   font-size: 14px;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
   padding: 0;
 }
 
@@ -319,4 +321,3 @@
   word-break: break-all;
   border-radius: 0 4px 4px 0;
 }
-

@@ -5,7 +5,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import type { WebContents } from "electron";
 import type { SshConnection } from "../../../../../packages/ssh/src/index";
-import type { SftpEditStatusEvent, SftpEditSessionInfo } from "../../../../../packages/shared/src/index";
+import type {
+  SftpEditStatusEvent,
+  SftpEditSessionInfo
+} from "../../../../../packages/shared/src/index";
 import { IPCChannel } from "../../../../../packages/shared/src/index";
 import { logger } from "../logger";
 
@@ -57,13 +60,13 @@ function tokenizeCommand(command: string): string[] {
   return tokens;
 }
 
-const MAX_BUILTIN_EDIT_BYTES = 10 * 1024 * 1024;   // 10MB — 内置编辑器（内存 + IPC）
-const MAX_EXTERNAL_EDIT_BYTES = 50 * 1024 * 1024;  // 50MB — 外部编辑器（磁盘下载）
+const MAX_BUILTIN_EDIT_BYTES = 10 * 1024 * 1024; // 10MB — 内置编辑器（内存 + IPC）
+const MAX_EXTERNAL_EDIT_BYTES = 50 * 1024 * 1024; // 50MB — 外部编辑器（磁盘下载）
 const MAX_UPLOAD_RETRIES = 3;
 const RETRY_BASE_MS = 300;
 const TEMP_ROOT = path.join(os.tmpdir(), "nextshell-edit");
 const IDLE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 min
-const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;    // 2 hours
+const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours
 const EDITOR_LAUNCH_PROBE_TIMEOUT_MS = 1200;
 
 type EditorCommandSource = "settings" | "visual" | "editor" | "platform-default";
@@ -166,7 +169,12 @@ export class RemoteEditManager {
 
     await fsp.mkdir(path.dirname(localPath), { recursive: true });
     const connection = await this.deps.getConnection(connectionId);
-    await this.assertFileSizeWithin(connection, remotePath, MAX_EXTERNAL_EDIT_BYTES, "使用外部编辑器打开");
+    await this.assertFileSizeWithin(
+      connection,
+      remotePath,
+      MAX_EXTERNAL_EDIT_BYTES,
+      "使用外部编辑器打开"
+    );
     await connection.download(remotePath, localPath);
 
     // Compute initial hash of downloaded file
@@ -250,9 +258,7 @@ export class RemoteEditManager {
   }
 
   async stopAll(): Promise<void> {
-    await Promise.all(
-      Array.from(this.sessions.values()).map((s) => this.cleanup(s, true))
-    );
+    await Promise.all(Array.from(this.sessions.values()).map((s) => this.cleanup(s, true)));
   }
 
   async openBuiltin(
@@ -264,7 +270,12 @@ export class RemoteEditManager {
     const existingExternal = this.findByRemotePath(connectionId, remotePath);
     if (existingExternal) {
       const connection = await this.deps.getConnection(connectionId);
-      await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
+      await this.assertFileSizeWithin(
+        connection,
+        remotePath,
+        MAX_BUILTIN_EDIT_BYTES,
+        "使用内置编辑器打开"
+      );
       const buf = await connection.readFileContent(remotePath);
       return { editId: existingExternal.editId, content: buf.toString("utf-8") };
     }
@@ -273,7 +284,12 @@ export class RemoteEditManager {
     for (const session of this.builtinSessions.values()) {
       if (session.connectionId === connectionId && session.remotePath === remotePath) {
         const connection = await this.deps.getConnection(connectionId);
-        await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
+        await this.assertFileSizeWithin(
+          connection,
+          remotePath,
+          MAX_BUILTIN_EDIT_BYTES,
+          "使用内置编辑器打开"
+        );
         const buf = await connection.readFileContent(remotePath);
         return { editId: session.editId, content: buf.toString("utf-8") };
       }
@@ -289,7 +305,12 @@ export class RemoteEditManager {
     });
 
     const connection = await this.deps.getConnection(connectionId);
-    await this.assertFileSizeWithin(connection, remotePath, MAX_BUILTIN_EDIT_BYTES, "使用内置编辑器打开");
+    await this.assertFileSizeWithin(
+      connection,
+      remotePath,
+      MAX_BUILTIN_EDIT_BYTES,
+      "使用内置编辑器打开"
+    );
     const buf = await connection.readFileContent(remotePath);
     const content = buf.toString("utf-8");
 
@@ -318,7 +339,12 @@ export class RemoteEditManager {
     return { editId, content };
   }
 
-  async saveBuiltin(editId: string, connectionId: string, remotePath: string, content: string): Promise<void> {
+  async saveBuiltin(
+    editId: string,
+    connectionId: string,
+    remotePath: string,
+    content: string
+  ): Promise<void> {
     const session = this.builtinSessions.get(editId);
 
     if (session) {
@@ -352,7 +378,7 @@ export class RemoteEditManager {
       connectionId: s.connectionId,
       remotePath: s.remotePath,
       localPath: s.localPath,
-      status: s.uploading ? "uploading" as const : "editing" as const,
+      status: s.uploading ? ("uploading" as const) : ("editing" as const),
       lastActivityAt: s.lastActivityAt
     }));
 
@@ -379,7 +405,9 @@ export class RemoteEditManager {
       if (session.connectionId === connectionId) {
         try {
           session.sender.removeListener("destroyed", session.senderDestroyedHandler);
-        } catch { /* sender may already be destroyed */ }
+        } catch {
+          /* sender may already be destroyed */
+        }
         this.builtinSessions.delete(id);
       }
     }
@@ -391,14 +419,14 @@ export class RemoteEditManager {
       this.idleTimer = undefined;
     }
 
-    await Promise.all(
-      Array.from(this.sessions.values()).map((s) => this.cleanup(s, false))
-    );
+    await Promise.all(Array.from(this.sessions.values()).map((s) => this.cleanup(s, false)));
 
     for (const [id, session] of this.builtinSessions) {
       try {
         session.sender.removeListener("destroyed", session.senderDestroyedHandler);
-      } catch { /* sender may already be destroyed */ }
+      } catch {
+        /* sender may already be destroyed */
+      }
       this.builtinSessions.delete(id);
     }
 
@@ -432,7 +460,10 @@ export class RemoteEditManager {
     }, IDLE_CHECK_INTERVAL_MS);
   }
 
-  private findByRemotePath(connectionId: string, remotePath: string): ActiveEditSession | undefined {
+  private findByRemotePath(
+    connectionId: string,
+    remotePath: string
+  ): ActiveEditSession | undefined {
     for (const session of this.sessions.values()) {
       if (session.connectionId === connectionId && session.remotePath === remotePath) {
         return session;
@@ -825,7 +856,10 @@ export class RemoteEditManager {
     });
   }
 
-  private sendStatus(sender: WebContents, payload: Omit<SftpEditStatusEvent, "message"> & { message?: string }): void {
+  private sendStatus(
+    sender: WebContents,
+    payload: Omit<SftpEditStatusEvent, "message"> & { message?: string }
+  ): void {
     try {
       if (!sender.isDestroyed()) {
         sender.send(IPCChannel.SftpEditStatus, payload);

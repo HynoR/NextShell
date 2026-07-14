@@ -50,9 +50,7 @@ export const sanitizeOptionalText = (value: string | undefined): string | undefi
 };
 
 export const sanitizeTextArray = (values: string[] | undefined): string[] => {
-  return (values ?? [])
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+  return (values ?? []).map((item) => item.trim()).filter((item) => item.length > 0);
 };
 
 export const toQuickUpsertInput = (
@@ -92,7 +90,8 @@ export const toConnectionPayload = (
     values.groupZone && isValidZone(values.groupZone) ? values.groupZone : CONNECTION_ZONES.SERVER
   ) as ConnectionZone;
   const subPath = values.groupSubPath ?? "";
-  const workspaceId = zone === CONNECTION_ZONES.WORKSPACE ? sanitizeOptionalText(values.workspaceId) : undefined;
+  const workspaceId =
+    zone === CONNECTION_ZONES.WORKSPACE ? sanitizeOptionalText(values.workspaceId) : undefined;
   const workspace = workspaceId
     ? options.workspaces?.find((item) => item.id === workspaceId)
     : undefined;
@@ -111,7 +110,8 @@ export const toConnectionPayload = (
   const backspaceMode = values.backspaceMode ?? "ascii-backspace";
   const deleteMode = values.deleteMode ?? "vt220-delete";
   const rawKeepAliveInterval = values.keepAliveIntervalSec as unknown as number | null | undefined;
-  const keepAliveIntervalSec = rawKeepAliveInterval == null ? undefined : Number(rawKeepAliveInterval);
+  const keepAliveIntervalSec =
+    rawKeepAliveInterval == null ? undefined : Number(rawKeepAliveInterval);
   const keepAliveEnabled = values.keepAliveEnabled ?? undefined;
   const username = (values.username ?? "").trim();
 

@@ -49,7 +49,10 @@ export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveE
           message.error({ content: event.message ?? "同步失败", duration: 4 });
           break;
         case "closed":
-          message.info({ content: `编辑已关闭: ${event.remotePath.split("/").pop()}`, duration: 2 });
+          message.info({
+            content: `编辑已关闭: ${event.remotePath.split("/").pop()}`,
+            duration: 2
+          });
           break;
       }
     });
@@ -89,7 +92,10 @@ export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveE
   return (
     <section className="live-edit-panel">
       <div className="live-edit-panel-header" onClick={onToggle}>
-        <i className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"} aria-hidden="true" />
+        <i
+          className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
+          aria-hidden="true"
+        />
         <span className="live-edit-panel-title">实时编辑</span>
         <div className="live-edit-header-right" onClick={(e) => e.stopPropagation()}>
           {collapsed && sessions.length > 0 ? (
@@ -123,7 +129,8 @@ export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveE
             sessions.map((session) => {
               const conn = connMap.get(session.connectionId);
               const fileName = session.remotePath.split("/").pop() || session.remotePath;
-              const dirPath = session.remotePath.slice(0, session.remotePath.lastIndexOf("/")) || "/";
+              const dirPath =
+                session.remotePath.slice(0, session.remotePath.lastIndexOf("/")) || "/";
               const tag = statusTag(session.status);
 
               return (

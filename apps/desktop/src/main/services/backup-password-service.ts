@@ -1,13 +1,13 @@
 import type {
   BackupArchiveMeta,
   BackupConflictPolicy,
-  RestoreConflictPolicy,
+  RestoreConflictPolicy
 } from "@nextshell/core";
 import type { EncryptedSecretVault, KeytarPasswordCache } from "@nextshell/security";
 import {
   createMasterKeyMeta,
   clearDerivedKeyCache,
-  verifyMasterPassword,
+  verifyMasterPassword
 } from "@nextshell/security";
 import type { CachedConnectionRepository } from "@nextshell/storage";
 
@@ -40,22 +40,20 @@ export class BackupPasswordService {
     return this.options.backupService.list();
   }
 
-  async backupRun(
-    conflictPolicy: BackupConflictPolicy,
-  ): Promise<{ ok: true; fileName?: string }> {
+  async backupRun(conflictPolicy: BackupConflictPolicy): Promise<{ ok: true; fileName?: string }> {
     return this.options.backupService.run(conflictPolicy);
   }
 
   async backupRestore(
     archiveId: string,
-    conflictPolicy: RestoreConflictPolicy,
+    conflictPolicy: RestoreConflictPolicy
   ): Promise<{ ok: true }> {
     return this.options.backupService.restore(archiveId, conflictPolicy);
   }
 
   private async rememberPasswordBestEffort(
     password: string,
-    phase: "set" | "unlock" | "change",
+    phase: "set" | "unlock" | "change"
   ): Promise<void> {
     const prefs = this.options.connections.getAppPreferences();
     if (!prefs.backup.rememberPassword) {
@@ -67,13 +65,13 @@ export class BackupPasswordService {
       const reason = normalizeError(error);
       logger.warn("[Security] failed to cache master password in keytar", {
         phase,
-        reason,
+        reason
       });
       this.options.appendAuditLogIfEnabled({
         action: "master_password.cache_failed",
         level: "warn",
         message: "Failed to cache master password in keytar",
-        metadata: { phase, reason },
+        metadata: { phase, reason }
       });
     }
   }
@@ -94,7 +92,7 @@ export class BackupPasswordService {
     this.options.appendAuditLogIfEnabled({
       action: "master_password.set",
       level: "info",
-      message: "Master password configured",
+      message: "Master password configured"
     });
     return { ok: true };
   }
@@ -109,16 +107,12 @@ export class BackupPasswordService {
     return { ok: true };
   }
 
-  async masterPasswordChange(
-    oldPassword: string,
-    newPassword: string,
-  ): Promise<{ ok: true }> {
+  async masterPasswordChange(oldPassword: string, newPassword: string): Promise<{ ok: true }> {
     return changeMasterPassword({
       oldPassword,
       newPassword,
       getMasterKeyMeta: () => this.options.connections.getMasterKeyMeta(),
-      saveMasterKeyMeta: (meta) =>
-        this.options.connections.saveMasterKeyMeta(meta),
+      saveMasterKeyMeta: (meta) => this.options.connections.saveMasterKeyMeta(meta),
       setMasterPassword: (password) => {
         this.options.setMasterPassword(password);
       },
@@ -126,7 +120,7 @@ export class BackupPasswordService {
         this.rememberPasswordBestEffort(password, phase),
       appendAuditLog: (payload) => {
         this.options.appendAuditLogIfEnabled(payload);
-      },
+      }
     });
   }
 
@@ -145,7 +139,7 @@ export class BackupPasswordService {
     return {
       isSet: meta !== undefined,
       isUnlocked: this.options.getMasterPassword() !== undefined,
-      keytarAvailable: this.options.keytarCache.isAvailable(),
+      keytarAvailable: this.options.keytarCache.isAvailable()
     };
   }
 
@@ -181,25 +175,20 @@ export class BackupPasswordService {
 
   async revealConnectionPassword(
     connectionId: string,
-    providedMasterPassword?: string,
+    providedMasterPassword?: string
   ): Promise<{ password: string }> {
     const connection = this.options.connections.getById(connectionId);
     if (!connection) {
       throw new Error("连接不存在。");
     }
-    if (
-      connection.authType !== "password" &&
-      connection.authType !== "interactive"
-    ) {
+    if (connection.authType !== "password" && connection.authType !== "interactive") {
       throw new Error("该连接未使用密码或交互式认证。");
     }
     if (!connection.credentialRef) {
       throw new Error("该连接未保存登录密码。");
     }
     await this.resolveMasterPassword(providedMasterPassword);
-    const password = await this.options.vault.readCredential(
-      connection.credentialRef,
-    );
+    const password = await this.options.vault.readCredential(connection.credentialRef);
     if (!password) {
       throw new Error("该连接未保存登录密码。");
     }
@@ -209,10 +198,8 @@ export class BackupPasswordService {
       connectionId,
       message: "Revealed saved connection password",
       metadata: {
-        via: providedMasterPassword?.trim()
-          ? "master-password-input"
-          : "master-password-cache",
-      },
+        via: providedMasterPassword?.trim() ? "master-password-input" : "master-password-cache"
+      }
     });
     return { password };
   }

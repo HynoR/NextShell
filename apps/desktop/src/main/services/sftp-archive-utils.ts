@@ -82,9 +82,7 @@ export const normalizeArchiveName = (
 };
 
 export const normalizeRemoteEntryNames = (entryNames: string[]): string[] => {
-  const normalized = entryNames
-    .map((name) => name.trim())
-    .filter((name) => name.length > 0);
+  const normalized = entryNames.map((name) => name.trim()).filter((name) => name.length > 0);
 
   if (normalized.length === 0) {
     throw new Error("打包下载失败：未选择远端文件");
@@ -153,7 +151,9 @@ export const createLocalTarGzArchive = async (
   }
 
   const commonDirectory = findCommonDirectory(resolvedLocalPaths);
-  const relativePaths = resolvedLocalPaths.map((localPath) => path.relative(commonDirectory, localPath));
+  const relativePaths = resolvedLocalPaths.map((localPath) =>
+    path.relative(commonDirectory, localPath)
+  );
 
   await fs.mkdir(path.dirname(archivePath), { recursive: true });
   try {

@@ -13,10 +13,7 @@ export function extractPlaceholderKeys(command: string): string[] {
   return [...new Set(keys)];
 }
 
-export function substituteTemplate(
-  command: string,
-  params: Record<string, string>
-): string {
+export function substituteTemplate(command: string, params: Record<string, string>): string {
   return command.replace(TEMPLATE_PLACEHOLDER_REGEX, (_, key: string) =>
     params[key] !== undefined && params[key] !== "" ? params[key] : ""
   );
@@ -47,15 +44,9 @@ export function loadParamsFromStorage(storageKey: string): Record<string, string
   return {};
 }
 
-export function saveParamsToStorage(
-  storageKey: string,
-  params: Record<string, string>
-): void {
+export function saveParamsToStorage(storageKey: string, params: Record<string, string>): void {
   try {
-    localStorage.setItem(
-      CMD_PARAMS_STORAGE_PREFIX + storageKey,
-      JSON.stringify(params)
-    );
+    localStorage.setItem(CMD_PARAMS_STORAGE_PREFIX + storageKey, JSON.stringify(params));
   } catch {
     // ignore
   }

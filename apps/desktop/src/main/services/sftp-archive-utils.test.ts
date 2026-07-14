@@ -62,5 +62,8 @@ const assert = (condition: boolean, message: string): void => {
 
 (() => {
   const command = buildRemoteRemoveFileCommand("/tmp/u.tar.gz");
-  assert(command === "rm -f '/tmp/u.tar.gz'", "buildRemoteRemoveFileCommand should match expected command");
+  assert(
+    command === "rm -f '/tmp/u.tar.gz'",
+    "buildRemoteRemoveFileCommand should match expected command"
+  );
 })();

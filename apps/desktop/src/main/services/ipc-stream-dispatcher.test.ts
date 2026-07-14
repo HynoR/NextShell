@@ -29,11 +29,7 @@ function wait(ms: number): Promise<void> {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitUntil(
-  predicate: () => boolean,
-  timeoutMs: number,
-  stepMs = 5
-): Promise<void> {
+async function waitUntil(predicate: () => boolean, timeoutMs: number, stepMs = 5): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (predicate()) {
@@ -58,7 +54,7 @@ function createSender(records: SentRecord[]): {
     },
     destroy() {
       destroyed = true;
-    },
+    }
   };
 }
 
@@ -83,8 +79,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -92,7 +88,7 @@ await (async () => {
     sender,
     chunk: "abcdefghijklmnopqrstuvwx",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   await wait(10);
@@ -109,7 +105,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-1",
     deliveryId: framePayload(sent[1]).deliveryId,
-    consumedBytes: 8,
+    consumedBytes: 8
   });
 
   await wait(10);
@@ -127,7 +123,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-1",
     deliveryId: framePayload(sent[4]).deliveryId,
-    consumedBytes: 12,
+    consumedBytes: 12
   });
 
   await wait(10);
@@ -138,7 +134,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-1",
     deliveryId: framePayload(sent[5]).deliveryId,
-    consumedBytes: 4,
+    consumedBytes: 4
   });
 
   assertEqual(drainedCalls, 1, "cumulative acks equal to total bytes must drain the stream");
@@ -166,8 +162,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -180,7 +176,7 @@ await (async () => {
       },
       onResume: () => {
         resumed += 1;
-      },
+      }
     });
   };
 
@@ -197,7 +193,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-2",
     deliveryId: framePayload(sent[0]).deliveryId,
-    consumedBytes: 4,
+    consumedBytes: 4
   });
   await waitUntil(() => sent.length >= 3, 100);
   assertEqual(sent.length, 3, "ack progress should release the queued frame");
@@ -206,7 +202,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-2",
     deliveryId: framePayload(sent[2]).deliveryId,
-    consumedBytes: 8,
+    consumedBytes: 8
   });
 
   await wait(10);
@@ -233,8 +229,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -243,7 +239,7 @@ await (async () => {
       sender,
       chunk,
       onPause: () => undefined,
-      onResume: () => undefined,
+      onResume: () => undefined
     });
   };
 
@@ -304,8 +300,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -316,7 +312,7 @@ await (async () => {
       onPause: () => undefined,
       onResume: () => {
         resumed += 1;
-      },
+      }
     });
   };
 
@@ -343,7 +339,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-reincarnated",
     deliveryId: framePayload(sent[1]).deliveryId,
-    consumedBytes: 8,
+    consumedBytes: 8
   });
 
   dispatcher.closeWhenDrained("session-reincarnated", () => {
@@ -359,7 +355,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-reincarnated",
     deliveryId: framePayload(sent[3]).deliveryId,
-    consumedBytes: 8,
+    consumedBytes: 8
   });
   await waitUntil(() => sent.length >= 5, 100);
   assertEqual(sent.length, 5, "real ack progress should release the queued frame");
@@ -368,7 +364,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-reincarnated",
     deliveryId: framePayload(sent[4]).deliveryId,
-    consumedBytes: 4,
+    consumedBytes: 4
   });
   assertEqual(drainedCalls, 1, "only the new incarnation's own acks may drain it");
 })();
@@ -387,8 +383,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -396,7 +392,7 @@ await (async () => {
     sender,
     chunk: "abc",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
   sender.destroy();
   dispatcher.push({
@@ -404,7 +400,7 @@ await (async () => {
     sender,
     chunk: "def",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   await wait(10);
@@ -433,8 +429,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -445,7 +441,7 @@ await (async () => {
       onPause: () => undefined,
       onResume: () => {
         resumed += 1;
-      },
+      }
     });
   };
 
@@ -490,8 +486,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -499,7 +495,7 @@ await (async () => {
     sender,
     chunk: "abcd",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   await waitUntil(() => sent.length >= 1, 100);
@@ -533,8 +529,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -542,14 +538,14 @@ await (async () => {
     sender,
     chunk: "abcd",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
   dispatcher.push({
     streamId: "session-7",
     sender,
     chunk: "efgh",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   await waitUntil(() => sent.length >= 2, 100);
@@ -562,7 +558,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-7",
     deliveryId: framePayload(sent[1]).deliveryId,
-    consumedBytes: 8,
+    consumedBytes: 8
   });
 
   await waitUntil(() => drainedCalls > 0, 100);
@@ -591,8 +587,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -601,7 +597,7 @@ await (async () => {
       sender,
       chunk,
       onPause: () => undefined,
-      onResume: () => undefined,
+      onResume: () => undefined
     });
   };
 
@@ -611,7 +607,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-overack",
     deliveryId: framePayload(sent[0]).deliveryId,
-    consumedBytes: 999,
+    consumedBytes: 999
   });
 
   pushChunk("efgh");
@@ -627,7 +623,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-overack",
     deliveryId: framePayload(sent[1]).deliveryId,
-    consumedBytes: 4,
+    consumedBytes: 4
   });
   assertEqual(drainedCalls, 1, "a clamped over-ack must not break subsequent drain accounting");
 })();
@@ -648,8 +644,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.ack({ streamId: "never-existed", deliveryId: 1, consumedBytes: 4 });
@@ -659,7 +655,7 @@ await (async () => {
     sender,
     chunk: "abcd",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
   dispatcher.ack({ streamId: "still-unknown", deliveryId: 1, consumedBytes: 4 });
 
@@ -674,7 +670,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-known",
     deliveryId: framePayload(sent[0]).deliveryId,
-    consumedBytes: 4,
+    consumedBytes: 4
   });
   assertEqual(drainedCalls, 1, "the known stream must drain from its own ack only");
 })();
@@ -698,8 +694,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -707,7 +703,7 @@ await (async () => {
     sender,
     chunk: input,
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   let drained = false;
@@ -736,7 +732,7 @@ await (async () => {
       dispatcher.ack({
         streamId: "session-multibyte",
         deliveryId: batchDeliveryId,
-        consumedBytes: batchBytes,
+        consumedBytes: batchBytes
       });
       batchBytes = 0;
     }
@@ -745,9 +741,7 @@ await (async () => {
   await waitUntil(() => drained, 200);
   assert(drained, "cumulative delta acks summing every frame's byteLength must drain exactly");
   assertEqual(sent.length, frames.length, "batched acks must not trigger duplicate sends");
-  const reassembled = sent
-    .map((record) => framePayload(record).data)
-    .join("");
+  const reassembled = sent.map((record) => framePayload(record).data).join("");
   assertEqual(reassembled, input, "reassembled multibyte frames must equal the original input");
 })();
 
@@ -770,8 +764,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   dispatcher.push({
@@ -779,7 +773,7 @@ await (async () => {
     sender,
     chunk: "😀",
     onPause: () => undefined,
-    onResume: () => undefined,
+    onResume: () => undefined
   });
 
   let drained = false;
@@ -798,7 +792,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-surrogate",
     deliveryId: first.deliveryId,
-    consumedBytes: first.byteLength,
+    consumedBytes: first.byteLength
   });
 
   await waitUntil(() => sent.length >= 2, 100);
@@ -812,12 +806,16 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-surrogate",
     deliveryId: second.deliveryId,
-    consumedBytes: second.byteLength,
+    consumedBytes: second.byteLength
   });
 
   await waitUntil(() => drained, 100);
   assert(drained, "surrogate-split stream must drain after both halves are acked");
-  assertEqual(first.data + second.data, "😀", "joining the split frames must restore the surrogate pair");
+  assertEqual(
+    first.data + second.data,
+    "😀",
+    "joining the split frames must restore the surrogate pair"
+  );
 })();
 
 await (async () => {
@@ -837,8 +835,8 @@ await (async () => {
       sessionId: streamId,
       data: chunk,
       deliveryId,
-      byteLength,
-    }),
+      byteLength
+    })
   });
 
   const pushChunk = (chunk: string) => {
@@ -847,7 +845,7 @@ await (async () => {
       sender,
       chunk,
       onPause: () => undefined,
-      onResume: () => undefined,
+      onResume: () => undefined
     });
   };
 
@@ -866,7 +864,7 @@ await (async () => {
   dispatcher.ack({
     streamId: "session-joined",
     deliveryId: payload.deliveryId,
-    consumedBytes: payload.byteLength,
+    consumedBytes: payload.byteLength
   });
 
   await waitUntil(() => drained, 100);

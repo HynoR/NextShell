@@ -17,11 +17,7 @@ const formatValidationError = (error: ZodError): string => {
     .join("; ");
 };
 
-const parsePayload = <T>(
-  schema: z.ZodType<T>,
-  payload: unknown,
-  actionLabel: string
-): T => {
+const parsePayload = <T>(schema: z.ZodType<T>, payload: unknown, actionLabel: string): T => {
   try {
     return schema.parse(payload);
   } catch (error) {
@@ -57,7 +53,11 @@ export const registerIpcHandlers = (
         throw new Error("IPC 调用来源不可信");
       }
       const input = entry.schema
-        ? parsePayload(entry.schema, entry.coerceEmptyPayload ? (payload ?? {}) : payload, entry.label)
+        ? parsePayload(
+            entry.schema,
+            entry.coerceEmptyPayload ? (payload ?? {}) : payload,
+            entry.label
+          )
         : undefined;
       try {
         const services = await servicesPromise;

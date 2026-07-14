@@ -1,6 +1,11 @@
 import { Form, Tooltip } from "antd";
 import type { FormInstance } from "antd";
-import type { CloudSyncWorkspaceProfile, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type {
+  CloudSyncWorkspaceProfile,
+  ConnectionProfile,
+  ProxyProfile,
+  SshKeyProfile
+} from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { formatDateTime, formatRelativeTime } from "../../../utils/formatTime";
 import { FIELD_TAB_MAP } from "../constants";
@@ -101,9 +106,11 @@ export const ConnectionFormPanel = ({
                 <span className="mgr-form-meta-sep">·</span>
                 <span
                   className="mgr-form-meta-item"
-                  title={selectedConnection.lastConnectedAt
-                    ? `上次连接：${formatDateTime(selectedConnection.lastConnectedAt)}`
-                    : "从未连接"}
+                  title={
+                    selectedConnection.lastConnectedAt
+                      ? `上次连接：${formatDateTime(selectedConnection.lastConnectedAt)}`
+                      : "从未连接"
+                  }
                 >
                   <i className="ri-plug-line" aria-hidden="true" />
                   {selectedConnection.lastConnectedAt
@@ -260,10 +267,7 @@ export const ConnectionFormPanel = ({
           </div>
 
           <div style={{ display: formTab === "property" ? "" : "none" }}>
-            <PropertyTab
-              workspaces={workspaces}
-              scopeLocked={scopeLocked}
-            />
+            <PropertyTab workspaces={workspaces} scopeLocked={scopeLocked} />
           </div>
 
           <div style={{ display: formTab === "network" ? "" : "none" }}>

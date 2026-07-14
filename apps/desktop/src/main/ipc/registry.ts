@@ -119,12 +119,11 @@ export interface IpcInvokeEntry {
   dispatch(services: ServiceContainer, input: unknown, event: IpcMainInvokeEvent): unknown;
 }
 
-type SchemaForChannel<C extends IpcInvokeChannel, S extends z.ZodType | null> =
-  S extends z.ZodType
-    ? Exclude<IpcInvokePayload<C>, Record<string, never>> extends z.output<S> | z.input<S>
-      ? S
-      : never
-    : S;
+type SchemaForChannel<C extends IpcInvokeChannel, S extends z.ZodType | null> = S extends z.ZodType
+  ? Exclude<IpcInvokePayload<C>, Record<string, never>> extends z.output<S> | z.input<S>
+    ? S
+    : never
+  : S;
 
 type ParsedInput<S extends z.ZodType | null> = S extends z.ZodType ? z.output<S> : undefined;
 
@@ -180,7 +179,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.ConnectionExport,
     schema: connectionExportSchema,
     label: "连接导出",
-    dispatch: (services, input, event) => services.importExport.exportConnections(event.sender, input)
+    dispatch: (services, input, event) =>
+      services.importExport.exportConnections(event.sender, input)
   }),
   define({
     channel: IPCChannel.ConnectionExportBatch,
@@ -246,7 +246,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: dialogOpenDirectorySchema,
     label: "打开目录选择器",
     coerceEmptyPayload: true,
-    dispatch: (services, input, event) => services.preferences.openDirectoryDialog(event.sender, input)
+    dispatch: (services, input, event) =>
+      services.preferences.openDirectoryDialog(event.sender, input)
   }),
   define({
     channel: IPCChannel.DialogOpenPath,
@@ -272,7 +273,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.SessionResize,
     schema: sessionResizeSchema,
     label: "会话尺寸调整",
-    dispatch: (services, input) => services.sessions.resizeSession(input.sessionId, input.cols, input.rows)
+    dispatch: (services, input) =>
+      services.sessions.resizeSession(input.sessionId, input.cols, input.rows)
   }),
   define({
     channel: IPCChannel.SessionClose,
@@ -304,7 +306,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.MonitorSystemStart,
     schema: monitorSystemStartSchema,
     label: "系统监控启动",
-    dispatch: (services, input, event) => services.monitors.startSystemMonitor(input.connectionId, event.sender)
+    dispatch: (services, input, event) =>
+      services.monitors.startSystemMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorSystemStop,
@@ -435,19 +438,22 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.SftpMkdir,
     schema: sftpMkdirSchema,
     label: "创建目录",
-    dispatch: (services, input) => services.sftp.createRemoteDirectory(input.connectionId, input.path)
+    dispatch: (services, input) =>
+      services.sftp.createRemoteDirectory(input.connectionId, input.path)
   }),
   define({
     channel: IPCChannel.SftpRename,
     schema: sftpRenameSchema,
     label: "重命名",
-    dispatch: (services, input) => services.sftp.renameRemoteFile(input.connectionId, input.fromPath, input.toPath)
+    dispatch: (services, input) =>
+      services.sftp.renameRemoteFile(input.connectionId, input.fromPath, input.toPath)
   }),
   define({
     channel: IPCChannel.SftpDelete,
     schema: sftpDeleteSchema,
     label: "文件删除",
-    dispatch: (services, input) => services.sftp.deleteRemoteFile(input.connectionId, input.path, input.type)
+    dispatch: (services, input) =>
+      services.sftp.deleteRemoteFile(input.connectionId, input.path, input.type)
   }),
 
   // ─── Command History & Saved Commands ─────────────────────────────────────
@@ -503,7 +509,12 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: sftpEditOpenSchema,
     label: "远端编辑",
     dispatch: (services, input, event) =>
-      services.sftp.openRemoteEdit(input.connectionId, input.remotePath, input.editorCommand, event.sender)
+      services.sftp.openRemoteEdit(
+        input.connectionId,
+        input.remotePath,
+        input.editorCommand,
+        event.sender
+      )
   }),
   define({
     channel: IPCChannel.SftpEditStop,
@@ -537,7 +548,12 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: sftpEditSaveBuiltinSchema,
     label: "内置编辑保存",
     dispatch: (services, input) =>
-      services.sftp.saveBuiltinEdit(input.editId, input.connectionId, input.remotePath, input.content)
+      services.sftp.saveBuiltinEdit(
+        input.editId,
+        input.connectionId,
+        input.remotePath,
+        input.content
+      )
   }),
 
   // ─── Process & Network Monitor ────────────────────────────────────────────
@@ -545,7 +561,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.MonitorProcessStart,
     schema: monitorProcessStartSchema,
     label: "进程监控启动",
-    dispatch: (services, input, event) => services.monitors.startProcessMonitor(input.connectionId, event.sender)
+    dispatch: (services, input, event) =>
+      services.monitors.startProcessMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorProcessStop,
@@ -563,13 +580,15 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.MonitorProcessKill,
     schema: monitorProcessKillSchema,
     label: "终止进程",
-    dispatch: (services, input) => services.monitors.killRemoteProcess(input.connectionId, input.pid, input.signal)
+    dispatch: (services, input) =>
+      services.monitors.killRemoteProcess(input.connectionId, input.pid, input.signal)
   }),
   define({
     channel: IPCChannel.MonitorNetworkStart,
     schema: monitorNetworkStartSchema,
     label: "网络监控启动",
-    dispatch: (services, input, event) => services.monitors.startNetworkMonitor(input.connectionId, event.sender)
+    dispatch: (services, input, event) =>
+      services.monitors.startNetworkMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorNetworkStop,
@@ -581,7 +600,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.MonitorNetworkConnections,
     schema: monitorNetworkConnectionsSchema,
     label: "网络连接查询",
-    dispatch: (services, input) => services.monitors.getNetworkConnections(input.connectionId, input.port)
+    dispatch: (services, input) =>
+      services.monitors.getNetworkConnections(input.connectionId, input.port)
   }),
 
   // ─── Backup & Master Password ─────────────────────────────────────────────
@@ -603,7 +623,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.BackupRestore,
     schema: backupRestoreSchema,
     label: "还原存档",
-    dispatch: (services, input) => services.backupPassword.backupRestore(input.archiveId, input.conflictPolicy)
+    dispatch: (services, input) =>
+      services.backupPassword.backupRestore(input.archiveId, input.conflictPolicy)
   }),
   define({
     channel: IPCChannel.MasterPasswordSet,
@@ -796,7 +817,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.TracerouteRun,
     schema: tracerouteRunSchema,
     label: "路由追踪",
-    dispatch: (services, input, event) => services.networkTools.tracerouteRun(input.host, event.sender)
+    dispatch: (services, input, event) =>
+      services.networkTools.tracerouteRun(input.host, event.sender)
   }),
   define({
     channel: IPCChannel.TracerouteStop,

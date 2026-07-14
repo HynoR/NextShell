@@ -3,12 +3,7 @@ import { Tooltip } from "antd";
 import type { ConnectionProfile } from "@nextshell/core";
 import { ManagerContextMenu } from "./ManagerContextMenu";
 import { ManagerTree } from "./ManagerTree";
-import type {
-  MgrClipboard,
-  MgrContextMenuState,
-  MgrGroupNode,
-  SortMode
-} from "../types";
+import type { MgrClipboard, MgrContextMenuState, MgrGroupNode, SortMode } from "../types";
 
 interface ConnectionSidebarProps {
   connections: ConnectionProfile[];
@@ -132,18 +127,10 @@ export const ConnectionSidebar = ({
           ) : null}
         </div>
         <div className="mgr-sidebar-title-row">
-          <button
-            className="mgr-new-btn"
-            onClick={onOpenLocalTerminal}
-            title="本地终端"
-          >
+          <button className="mgr-new-btn" onClick={onOpenLocalTerminal} title="本地终端">
             <i className="ri-terminal-box-line" aria-hidden="true" />
           </button>
-          <button
-            className="mgr-new-btn"
-            onClick={() => onNewConnection()}
-            title="新建连接"
-          >
+          <button className="mgr-new-btn" onClick={() => onNewConnection()} title="新建连接">
             <i className="ri-add-line" aria-hidden="true" />
           </button>
         </div>
@@ -158,11 +145,7 @@ export const ConnectionSidebar = ({
           onChange={(event) => onKeywordChange(event.target.value)}
         />
         {keyword ? (
-          <button
-            className="mgr-search-clear"
-            onClick={onClearKeyword}
-            title="清除"
-          >
+          <button className="mgr-search-clear" onClick={onClearKeyword} title="清除">
             <i className="ri-close-line" aria-hidden="true" />
           </button>
         ) : null}
@@ -175,7 +158,9 @@ export const ConnectionSidebar = ({
               <span>正在搜索...</span>
             </>
           ) : searchLimited ? (
-            <span>显示前 {searchVisibleMatches} / {searchTotalMatches} 个匹配，请继续输入缩小范围</span>
+            <span>
+              显示前 {searchVisibleMatches} / {searchTotalMatches} 个匹配，请继续输入缩小范围
+            </span>
           ) : hasAppliedKeyword ? (
             <span>{searchTotalMatches} 个匹配</span>
           ) : null}
@@ -238,7 +223,8 @@ export const ConnectionSidebar = ({
       {clipboard ? (
         <div className="mgr-clipboard-bar">
           <span>
-            {clipboard.mode === "copy" ? "已复制" : "已剪切"} {clipboard.connectionIds.length} 个连接
+            {clipboard.mode === "copy" ? "已复制" : "已剪切"} {clipboard.connectionIds.length}{" "}
+            个连接
           </span>
           <button
             type="button"

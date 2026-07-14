@@ -103,21 +103,46 @@ export const FileExplorerContextMenu = ({
 
   const downloadMenu: MenuProps = {
     items: [
-      { key: "download", icon: icon("ri-download-line"), label: "逐个下载", onClick: () => run(() => onDownload(entries)) },
-      { key: "packed-download", icon: icon("ri-file-zip-line"), label: "打包下载", onClick: () => run(() => onPackedDownload(entries)) }
+      {
+        key: "download",
+        icon: icon("ri-download-line"),
+        label: "逐个下载",
+        onClick: () => run(() => onDownload(entries))
+      },
+      {
+        key: "packed-download",
+        icon: icon("ri-file-zip-line"),
+        label: "打包下载",
+        onClick: () => run(() => onPackedDownload(entries))
+      }
     ]
   };
 
   const uploadMenu: MenuProps = {
     items: [
-      { key: "upload", icon: icon("ri-upload-line"), label: "上传文件", onClick: () => run(onUpload) },
-      { key: "packed-upload", icon: icon("ri-inbox-archive-line"), label: "上传并解压", onClick: () => run(onPackedUpload) }
+      {
+        key: "upload",
+        icon: icon("ri-upload-line"),
+        label: "上传文件",
+        onClick: () => run(onUpload)
+      },
+      {
+        key: "packed-upload",
+        icon: icon("ri-inbox-archive-line"),
+        label: "上传并解压",
+        onClick: () => run(onPackedUpload)
+      }
     ]
   };
 
   const newMenu: MenuProps = {
     items: [
-      { key: "new-folder", icon: icon("ri-folder-3-line"), label: "文件夹", onClick: () => run(onNewFolder) },
+      {
+        key: "new-folder",
+        icon: icon("ri-folder-3-line"),
+        label: "文件夹",
+        onClick: () => run(onNewFolder)
+      },
       { key: "new-file", icon: icon("ri-file-line"), label: "文件", onClick: () => run(onNewFile) }
     ]
   };
@@ -176,7 +201,10 @@ export const FileExplorerContextMenu = ({
 
           <div className="fe-ctx-divider" />
 
-          <button className="fe-ctx-item fe-ctx-danger" onClick={() => run(() => onDelete(entries))}>
+          <button
+            className="fe-ctx-item fe-ctx-danger"
+            onClick={() => run(() => onDelete(entries))}
+          >
             <span className="fe-ctx-icon">{icon("ri-delete-bin-6-line")}</span> 删除
           </button>
         </>

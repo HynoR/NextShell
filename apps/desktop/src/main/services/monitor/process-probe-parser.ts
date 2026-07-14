@@ -1,7 +1,7 @@
 import type {
   MonitorProcess,
   ProcessDetailSnapshot,
-  ProcessSnapshot,
+  ProcessSnapshot
 } from "../../../../../../packages/core/src/index";
 
 const parseFloatSafe = (value: string | undefined): number => {
@@ -77,14 +77,14 @@ export const parseProcessSnapshot = (connectionId: string, stdout: string): Proc
       memoryMb: Number((rssKb / 1024).toFixed(1)),
       vszMb: Number((vszKb / 1024).toFixed(1)),
       elapsedSeconds,
-      command,
+      command
     });
   }
 
   return {
     connectionId,
     processes,
-    capturedAt: new Date().toISOString(),
+    capturedAt: new Date().toISOString()
   };
 };
 
@@ -126,6 +126,6 @@ export const parseProcessDetailPrimary = (
     memoryPercent: Number(memoryPercent.toFixed(2)),
     rssMb: Number((rssKb / 1024).toFixed(2)),
     elapsed,
-    command,
+    command
   };
 };

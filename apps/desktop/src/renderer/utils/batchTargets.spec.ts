@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ConnectionProfile } from "@nextshell/core";
-import { buildBatchTargetTree, getBatchTargetConnectionIds, type BatchTargetTreeNode } from "./batchTargets";
+import {
+  buildBatchTargetTree,
+  getBatchTargetConnectionIds,
+  type BatchTargetTreeNode
+} from "./batchTargets";
 
 const conn = (id: string, name: string, host: string, groupPath: string): ConnectionProfile =>
   ({
@@ -17,7 +21,7 @@ const conn = (id: string, name: string, host: string, groupPath: string): Connec
     deleteMode: "vt220-delete",
     favorite: false,
     createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
   }) as unknown as ConnectionProfile;
 
 const leafValues = (nodes: BatchTargetTreeNode[]): string[] =>
@@ -32,7 +36,7 @@ describe("getBatchTargetConnectionIds", () => {
       { connectionId: "a" },
       { connectionId: "b" },
       { connectionId: "a" },
-      { connectionId: undefined },
+      { connectionId: undefined }
     ] as never);
     expect(ids).toEqual(["a", "b"]);
   });
@@ -43,7 +47,7 @@ describe("buildBatchTargetTree", () => {
     const tree = buildBatchTargetTree([
       conn("c1", "web-1", "10.0.0.1", "/server/prod"),
       conn("c2", "web-2", "10.0.0.2", "/server/prod"),
-      conn("c3", "db-1", "10.0.0.3", "/server/staging"),
+      conn("c3", "db-1", "10.0.0.3", "/server/staging")
     ]);
 
     expect(tree.length).toBe(1);
@@ -72,7 +76,7 @@ describe("buildBatchTargetTree", () => {
   test("leaf titles show name and host; connections are sorted by name", () => {
     const tree = buildBatchTargetTree([
       conn("c2", "zeta", "10.0.0.9", "/g"),
-      conn("c1", "alpha", "10.0.0.1", "/g"),
+      conn("c1", "alpha", "10.0.0.1", "/g")
     ]);
     const leaves = tree[0]?.children ?? [];
     expect(leaves.map((n) => n.title)).toEqual(["alpha (10.0.0.1)", "zeta (10.0.0.9)"]);

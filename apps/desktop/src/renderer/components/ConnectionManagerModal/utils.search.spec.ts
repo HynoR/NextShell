@@ -50,7 +50,9 @@ describe("ConnectionManagerModal search helpers", () => {
     const connections = [alpha, beta];
     const searchIndex = buildConnectionSearchIndex(connections);
     const search = (keyword: string) =>
-      collectGroupLeafIds(buildManagerTreeResult(connections, keyword, [], undefined, searchIndex).tree);
+      collectGroupLeafIds(
+        buildManagerTreeResult(connections, keyword, [], undefined, searchIndex).tree
+      );
 
     expect(search("10.20")).toEqual([alpha.id]);
     expect(search("gateway")).toEqual([alpha.id]);
@@ -62,12 +64,14 @@ describe("ConnectionManagerModal search helpers", () => {
   });
 
   test("caps broad search results while retaining total match count", () => {
-    const connections = Array.from({ length: 5 }, (_, index) => makeConnection({
-      id: `connection-${index}`,
-      name: `prod-${index}`,
-      host: `10.0.0.${index}`,
-      groupPath: "/server/prod"
-    }));
+    const connections = Array.from({ length: 5 }, (_, index) =>
+      makeConnection({
+        id: `connection-${index}`,
+        name: `prod-${index}`,
+        host: `10.0.0.${index}`,
+        groupPath: "/server/prod"
+      })
+    );
     const result = buildManagerTreeResult(
       connections,
       "prod",

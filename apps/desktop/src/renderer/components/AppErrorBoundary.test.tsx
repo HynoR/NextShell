@@ -33,7 +33,10 @@ const findButtons = (node: React.ReactNode): Array<React.ReactElement<Record<str
 
   const nonErrorState = AppErrorBoundary.getDerivedStateFromError("plain failure");
   assert(nonErrorState.hasError, "boundary should flag hasError on non-Error throw");
-  assert(nonErrorState.errorMessage === "plain failure", "boundary should stringify non-Error values");
+  assert(
+    nonErrorState.errorMessage === "plain failure",
+    "boundary should stringify non-Error values"
+  );
 })();
 
 // Normal path: renders children untouched
@@ -55,6 +58,12 @@ const findButtons = (node: React.ReactNode): Array<React.ReactElement<Record<str
   assert(buttons.length === 2, "fallback should render exactly two buttons");
   assert(buttons[0]?.props.children === "恢复界面", "first button should recover the UI");
   assert(buttons[1]?.props.children === "重新加载", "second button should reload the window");
-  assert(buttons[0]?.props.onClick === boundary.handleReset, "recover button should reset boundary state");
-  assert(buttons[1]?.props.onClick === boundary.handleReload, "reload button should trigger window reload");
+  assert(
+    buttons[0]?.props.onClick === boundary.handleReset,
+    "recover button should reset boundary state"
+  );
+  assert(
+    buttons[1]?.props.onClick === boundary.handleReload,
+    "reload button should trigger window reload"
+  );
 })();

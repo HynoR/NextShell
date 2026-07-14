@@ -17,7 +17,9 @@ const assert = (condition: boolean, message: string): void => {
 
   assert(element.type === Space.Compact, "audit retention input should use Space.Compact");
 
-  const children = React.Children.toArray(element.props.children) as Array<React.ReactElement<Record<string, unknown>>>;
+  const children = React.Children.toArray(element.props.children) as Array<
+    React.ReactElement<Record<string, unknown>>
+  >;
   assert(children.length === 2, "audit retention input should render number input and unit suffix");
 
   const [numberInput, unitInput] = children;

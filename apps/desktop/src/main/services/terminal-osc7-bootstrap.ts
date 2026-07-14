@@ -10,14 +10,14 @@ const quotePosix = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)
 const BASH_INIT_FILE = [
   "[ -f ~/.bashrc ] && . ~/.bashrc",
   "__nextshell_osc7_emit() {",
-  "  printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST}\" \"$PWD\"",
+  '  printf \'\\033]7;file://%s%s\\007\' "${NEXTSHELL_OSC7_HOST}" "$PWD"',
   "}",
-  "case \";${PROMPT_COMMAND:-};\" in",
-  "  *\";__nextshell_osc7_emit;\"*) ;;",
-  "  *) PROMPT_COMMAND=\"__nextshell_osc7_emit${PROMPT_COMMAND:+;$PROMPT_COMMAND}\" ;;",
+  'case ";${PROMPT_COMMAND:-};" in',
+  '  *";__nextshell_osc7_emit;"*) ;;',
+  '  *) PROMPT_COMMAND="__nextshell_osc7_emit${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;',
   "esac",
   "__nextshell_osc7_cleanup() {",
-  "  [ -n \"${NEXTSHELL_OSC7_RCFILE:-}\" ] && rm -f -- \"$NEXTSHELL_OSC7_RCFILE\"",
+  '  [ -n "${NEXTSHELL_OSC7_RCFILE:-}" ] && rm -f -- "$NEXTSHELL_OSC7_RCFILE"',
   "}",
   "trap __nextshell_osc7_cleanup EXIT",
   "__nextshell_osc7_emit"
@@ -30,15 +30,15 @@ const ZSH_RC_FILE = [
   "autoload -Uz add-zsh-hook >/dev/null 2>&1 || true",
   "if ! typeset -f __nextshell_osc7_emit >/dev/null 2>&1; then",
   "  __nextshell_osc7_emit() {",
-  "    printf '\\033]7;file://%s%s\\007' \"${NEXTSHELL_OSC7_HOST}\" \"$PWD\"",
+  '    printf \'\\033]7;file://%s%s\\007\' "${NEXTSHELL_OSC7_HOST}" "$PWD"',
   "  }",
   "fi",
-  "if [[ -z \"${NEXTSHELL_OSC7_INSTALLED:-}\" ]]; then",
+  'if [[ -z "${NEXTSHELL_OSC7_INSTALLED:-}" ]]; then',
   "  typeset -g NEXTSHELL_OSC7_INSTALLED=1",
   "  add-zsh-hook precmd __nextshell_osc7_emit >/dev/null 2>&1 || true",
   "  add-zsh-hook chpwd __nextshell_osc7_emit >/dev/null 2>&1 || true",
   "  __nextshell_osc7_cleanup() {",
-  "    [[ -n \"${NEXTSHELL_OSC7_ZDOTDIR:-}\" ]] && rm -rf -- \"$NEXTSHELL_OSC7_ZDOTDIR\"",
+  '    [[ -n "${NEXTSHELL_OSC7_ZDOTDIR:-}" ]] && rm -rf -- "$NEXTSHELL_OSC7_ZDOTDIR"',
   "  }",
   "  add-zsh-hook zshexit __nextshell_osc7_cleanup >/dev/null 2>&1 || true",
   "fi",
@@ -47,7 +47,7 @@ const ZSH_RC_FILE = [
 
 const buildBashLaunchCommand = (shellPath: string, osc7Host: string): string =>
   [
-    "__ns_osc7_rc=$(mktemp \"${TMPDIR:-/tmp}/nextshell-osc7-bash.XXXXXX\") || exit 1",
+    '__ns_osc7_rc=$(mktemp "${TMPDIR:-/tmp}/nextshell-osc7-bash.XXXXXX") || exit 1',
     "cat > \"$__ns_osc7_rc\" <<'__NEXTSHELL_OSC7_BASH__'",
     BASH_INIT_FILE,
     "__NEXTSHELL_OSC7_BASH__",
@@ -56,7 +56,7 @@ const buildBashLaunchCommand = (shellPath: string, osc7Host: string): string =>
 
 const buildZshLaunchCommand = (shellPath: string, osc7Host: string): string =>
   [
-    "__ns_osc7_zdotdir=$(mktemp -d \"${TMPDIR:-/tmp}/nextshell-osc7-zsh.XXXXXX\") || exit 1",
+    '__ns_osc7_zdotdir=$(mktemp -d "${TMPDIR:-/tmp}/nextshell-osc7-zsh.XXXXXX") || exit 1',
     "cat > \"$__ns_osc7_zdotdir/.zshenv\" <<'__NEXTSHELL_OSC7_ZSHENV__'",
     ZSH_ENV_FILE,
     "__NEXTSHELL_OSC7_ZSHENV__",
@@ -66,9 +66,7 @@ const buildZshLaunchCommand = (shellPath: string, osc7Host: string): string =>
     `ZDOTDIR="$__ns_osc7_zdotdir" NEXTSHELL_OSC7_HOST=${quotePosix(osc7Host)} NEXTSHELL_OSC7_ZDOTDIR="$__ns_osc7_zdotdir" exec ${quotePosix(shellPath)} -i`
   ].join("\n");
 
-export const resolveOsc7ShellFamily = (
-  shellPath?: string | null
-): Osc7ShellFamily | undefined => {
+export const resolveOsc7ShellFamily = (shellPath?: string | null): Osc7ShellFamily | undefined => {
   const normalized = shellPath?.trim().toLowerCase();
   if (!normalized) {
     return undefined;

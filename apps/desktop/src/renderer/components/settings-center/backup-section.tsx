@@ -5,15 +5,30 @@ import { SettingsCard, SettingsRow } from "./shared-components";
 import type { SaveFn } from "./types";
 
 export const BackupSection = ({
-  loading, backupRemotePath, rclonePath,
-  backupConflictPolicy, restoreConflictPolicy, pwdStatus, pwdStatusKnown,
-  backupRunning, archiveList, archiveListVisible, archiveListLoading,
-  restoring, lastBackupAt,
-  setBackupRemotePath, setRclonePath,
-  setBackupConflictPolicy, setRestoreConflictPolicy,
-  setArchiveListVisible, onOpenSecurity,
-  onRunBackup, onListArchives, onRestore,
-  save, message: msg,
+  loading,
+  backupRemotePath,
+  rclonePath,
+  backupConflictPolicy,
+  restoreConflictPolicy,
+  pwdStatus,
+  pwdStatusKnown,
+  backupRunning,
+  archiveList,
+  archiveListVisible,
+  archiveListLoading,
+  restoring,
+  lastBackupAt,
+  setBackupRemotePath,
+  setRclonePath,
+  setBackupConflictPolicy,
+  setRestoreConflictPolicy,
+  setArchiveListVisible,
+  onOpenSecurity,
+  onRunBackup,
+  onListArchives,
+  onRestore,
+  save,
+  message: msg
 }: {
   loading: boolean;
   backupRemotePath: string;
@@ -51,7 +66,12 @@ export const BackupSection = ({
           message={
             <span style={{ fontSize: 12 }}>
               请先设置主密码，
-              <Button type="link" size="small" style={{ paddingInline: 0, height: "auto" }} onClick={onOpenSecurity}>
+              <Button
+                type="link"
+                size="small"
+                style={{ paddingInline: 0, height: "auto" }}
+                onClick={onOpenSecurity}
+              >
                 点击前往「安全与审计」
               </Button>
               。
@@ -66,7 +86,12 @@ export const BackupSection = ({
           message={
             <span style={{ fontSize: 12 }}>
               请先解锁主密码，
-              <Button type="link" size="small" style={{ paddingInline: 0, height: "auto" }} onClick={onOpenSecurity}>
+              <Button
+                type="link"
+                size="small"
+                style={{ paddingInline: 0, height: "auto" }}
+                onClick={onOpenSecurity}
+              >
                 点击前往「安全与审计」
               </Button>
               。
@@ -103,12 +128,17 @@ export const BackupSection = ({
                   onClick={() =>
                     void (async () => {
                       try {
-                        const result = await window.nextshell.dialog.openFiles({ title: "选择 rclone 可执行文件", multi: false });
+                        const result = await window.nextshell.dialog.openFiles({
+                          title: "选择 rclone 可执行文件",
+                          multi: false
+                        });
                         if (!result.canceled && result.filePaths[0]) {
                           setRclonePath(result.filePaths[0]);
                           save({ backup: { rclonePath: result.filePaths[0] } });
                         }
-                      } catch { msg.error("打开文件选择器失败"); }
+                      } catch {
+                        msg.error("打开文件选择器失败");
+                      }
                     })()
                   }
                 >
@@ -129,7 +159,7 @@ export const BackupSection = ({
                   }}
                   options={[
                     { label: "跳过已存在", value: "skip" },
-                    { label: "强制覆盖", value: "force" },
+                    { label: "强制覆盖", value: "force" }
                   ]}
                 />
               </SettingsRow>
@@ -144,7 +174,7 @@ export const BackupSection = ({
                   }}
                   options={[
                     { label: "跳过较旧存档", value: "skip_older" },
-                    { label: "强制覆盖", value: "force" },
+                    { label: "强制覆盖", value: "force" }
                   ]}
                 />
               </SettingsRow>
@@ -182,7 +212,9 @@ export const BackupSection = ({
               width={600}
             >
               {archiveListLoading ? (
-                <div style={{ textAlign: "center", padding: 24 }}><Spin /></div>
+                <div style={{ textAlign: "center", padding: 24 }}>
+                  <Spin />
+                </div>
               ) : (
                 <List
                   dataSource={archiveList}
@@ -198,7 +230,7 @@ export const BackupSection = ({
                           onClick={() => onRestore(item.id)}
                         >
                           还原
-                        </Button>,
+                        </Button>
                       ]}
                     >
                       <List.Item.Meta

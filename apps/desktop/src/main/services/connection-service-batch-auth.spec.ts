@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   LOCAL_DEFAULT_SCOPE_KEY,
   type ConnectionProfile,
-  type SshKeyProfile,
+  type SshKeyProfile
 } from "@nextshell/core";
 import type {
   CachedConnectionRepository,
   CachedProxyRepository,
-  CachedSshKeyRepository,
+  CachedSshKeyRepository
 } from "@nextshell/storage";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import { ConnectionService } from "./connection-service";
@@ -16,7 +16,7 @@ const now = "2026-06-15T00:00:00.000Z";
 
 const createConnection = (
   id: string,
-  patch: Partial<ConnectionProfile> = {},
+  patch: Partial<ConnectionProfile> = {}
 ): ConnectionProfile => ({
   id,
   name: `conn-${id}`,
@@ -37,13 +37,10 @@ const createConnection = (
   updatedAt: now,
   originKind: "local",
   originScopeKey: LOCAL_DEFAULT_SCOPE_KEY,
-  ...patch,
+  ...patch
 });
 
-const createSshKey = (
-  id: string,
-  patch: Partial<SshKeyProfile> = {},
-): SshKeyProfile => ({
+const createSshKey = (id: string, patch: Partial<SshKeyProfile> = {}): SshKeyProfile => ({
   id,
   name: `key-${id}`,
   keyContentRef: `secret://sshkey-${id}`,
@@ -51,13 +48,10 @@ const createSshKey = (
   updatedAt: now,
   originKind: "local",
   originScopeKey: LOCAL_DEFAULT_SCOPE_KEY,
-  ...patch,
+  ...patch
 });
 
-const createService = (
-  connections: ConnectionProfile[],
-  sshKeys: SshKeyProfile[] = [],
-) => {
+const createService = (connections: ConnectionProfile[], sshKeys: SshKeyProfile[] = []) => {
   const connectionMap = new Map(connections.map((connection) => [connection.id, connection]));
   const sshKeyMap = new Map(sshKeys.map((key) => [key.id, key]));
   const secrets = new Map<string, string>();
@@ -81,13 +75,13 @@ const createService = (
       save: (connection: ConnectionProfile) => {
         connectionMap.set(connection.id, connection);
         return connection;
-      },
+      }
     } as unknown as CachedConnectionRepository,
     sshKeyRepo: {
-      getById: (id: string) => sshKeyMap.get(id),
+      getById: (id: string) => sshKeyMap.get(id)
     } as unknown as CachedSshKeyRepository,
     proxyRepo: {
-      getById: () => undefined,
+      getById: () => undefined
     } as unknown as CachedProxyRepository,
     vault: {
       storeCredential: async (key: string, secret: string) => {
@@ -98,7 +92,7 @@ const createService = (
       readCredential: async (ref: string) => secrets.get(ref),
       deleteCredential: async (ref: string) => {
         secrets.delete(ref);
-      },
+      }
     } as unknown as EncryptedSecretVault,
     activeSessions: new Map(),
     disposeAllMonitorSessions: async () => undefined,
@@ -108,7 +102,7 @@ const createService = (
     appendAuditLogIfEnabled: (payload) => {
       audit.push(payload);
     },
-    sendSessionStatus: () => undefined,
+    sendSessionStatus: () => undefined
   });
 
   return { service, connectionMap, secrets, audit };
@@ -119,43 +113,50 @@ describe("ConnectionService batch auth update", () => {
     const { service, connectionMap, secrets } = createService([
       createConnection("00000000-0000-4000-8000-000000000001"),
       createConnection("00000000-0000-4000-8000-000000000002", {
-        groupPath: "/import/finalshell/prod",
+        groupPath: "/import/finalshell/prod"
       }),
       createConnection("00000000-0000-4000-8000-000000000003", {
-        groupPath: "/server/manual",
-      }),
+        groupPath: "/server/manual"
+      })
     ]);
 
     const result = await service.batchUpdateConnectionAuth({
       target: { type: "group", groupPath: "/import/finalshell" },
-      auth: { authType: "password", password: "shared-password" },
+      auth: { authType: "password", password: "shared-password" }
     });
 
     expect(result.total).toBe(2);
     expect(result.updated).toBe(2);
     expect(result.failed).toBe(0);
     expect(connectionMap.get("00000000-0000-4000-8000-000000000001")?.authType).toBe("password");
-    expect(secrets.get("secret://conn-00000000-0000-4000-8000-000000000001")).toBe("shared-password");
-    expect(secrets.get("secret://conn-00000000-0000-4000-8000-000000000002")).toBe("shared-password");
+    expect(secrets.get("secret://conn-00000000-0000-4000-8000-000000000001")).toBe(
+      "shared-password"
+    );
+    expect(secrets.get("secret://conn-00000000-0000-4000-8000-000000000002")).toBe(
+      "shared-password"
+    );
     expect(secrets.get("secret://conn-00000000-0000-4000-8000-000000000003")).toBe("old-secret");
   });
 
   test("updates selected connections to private key auth", async () => {
     const key = createSshKey("10000000-0000-4000-8000-000000000001");
-    const { service, connectionMap, secrets } = createService([
-      createConnection("00000000-0000-4000-8000-000000000001"),
-      createConnection("00000000-0000-4000-8000-000000000002"),
-    ], [key]);
+    const { service, connectionMap, secrets } = createService(
+      [
+        createConnection("00000000-0000-4000-8000-000000000001"),
+        createConnection("00000000-0000-4000-8000-000000000002")
+      ],
+      [key]
+    );
 
     const result = await service.batchUpdateConnectionAuth({
       target: {
         type: "connections",
         connectionIds: [
           "00000000-0000-4000-8000-000000000001",
-          "00000000-0000-4000-8000-000000000002",
-        ],
+          "00000000-0000-4000-8000-000000000002"
+        ]
       },
-      auth: { authType: "privateKey", sshKeyId: key.id },
+      auth: { authType: "privateKey", sshKeyId: key.id }
     });
 
     expect(result.total).toBe(2);
@@ -173,14 +174,16 @@ describe("ConnectionService batch auth update", () => {
     const cloud = createConnection("00000000-0000-4000-8000-000000000002", {
       originKind: "cloud",
       originScopeKey: "cloud-scope-a",
-      originWorkspaceId: "workspace-a",
+      originWorkspaceId: "workspace-a"
     });
     const { service, connectionMap } = createService([local, cloud]);
 
-    await expect(service.batchUpdateConnectionAuth({
-      target: { type: "connections", connectionIds: [local.id, cloud.id] },
-      auth: { authType: "password", password: "shared-password" },
-    })).rejects.toThrow("同一来源范围");
+    await expect(
+      service.batchUpdateConnectionAuth({
+        target: { type: "connections", connectionIds: [local.id, cloud.id] },
+        auth: { authType: "password", password: "shared-password" }
+      })
+    ).rejects.toThrow("同一来源范围");
 
     expect(connectionMap.get(local.id)?.updatedAt).toBe(now);
     expect(connectionMap.get(cloud.id)?.updatedAt).toBe(now);
@@ -191,14 +194,16 @@ describe("ConnectionService batch auth update", () => {
     const cloudKey = createSshKey("10000000-0000-4000-8000-000000000001", {
       originKind: "cloud",
       originScopeKey: "cloud-scope-a",
-      originWorkspaceId: "workspace-a",
+      originWorkspaceId: "workspace-a"
     });
     const { service, connectionMap } = createService([connection], [cloudKey]);
 
-    await expect(service.batchUpdateConnectionAuth({
-      target: { type: "connections", connectionIds: [connection.id] },
-      auth: { authType: "privateKey", sshKeyId: cloudKey.id },
-    })).rejects.toThrow("不属于同一来源范围");
+    await expect(
+      service.batchUpdateConnectionAuth({
+        target: { type: "connections", connectionIds: [connection.id] },
+        auth: { authType: "privateKey", sshKeyId: cloudKey.id }
+      })
+    ).rejects.toThrow("不属于同一来源范围");
 
     expect(connectionMap.get(connection.id)?.authType).toBe("password");
   });

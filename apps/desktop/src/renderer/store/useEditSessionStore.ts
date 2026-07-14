@@ -46,15 +46,15 @@ export const useEditSessionStore = create<EditSessionState>((set, get) => ({
       if (existing) {
         // Update status
         const updatedStatus =
-          status === "uploading" ? "uploading" as const :
-            status === "synced" || status === "editing" ? "editing" as const :
-              existing.status;
+          status === "uploading"
+            ? ("uploading" as const)
+            : status === "synced" || status === "editing"
+              ? ("editing" as const)
+              : existing.status;
 
         return {
           sessions: state.sessions.map((s) =>
-            s.editId === editId
-              ? { ...s, status: updatedStatus, lastActivityAt: Date.now() }
-              : s
+            s.editId === editId ? { ...s, status: updatedStatus, lastActivityAt: Date.now() } : s
           )
         };
       }

@@ -17,7 +17,7 @@ import {
   NetworkSection,
   BackupSection,
   SecuritySection,
-  AboutSection,
+  AboutSection
 } from "./settings-center";
 
 interface SettingsCenterModalProps {
@@ -36,20 +36,34 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
 
   // ─── Local state mirrors (synced from store) ────────────────────────
   const [uploadDefaultDir, setUploadDefaultDir] = useState(preferences.transfer.uploadDefaultDir);
-  const [downloadDefaultDir, setDownloadDefaultDir] = useState(preferences.transfer.downloadDefaultDir);
+  const [downloadDefaultDir, setDownloadDefaultDir] = useState(
+    preferences.transfer.downloadDefaultDir
+  );
   const [editorCommand, setEditorCommand] = useState(preferences.remoteEdit.defaultEditorCommand);
   const [editorMode, setEditorMode] = useState<"builtin" | "external">(
     preferences.remoteEdit.editorMode ?? "builtin"
   );
-  const [terminalBackgroundColor, setTerminalBackgroundColor] = useState(preferences.terminal.backgroundColor);
-  const [terminalForegroundColor, setTerminalForegroundColor] = useState(preferences.terminal.foregroundColor);
+  const [terminalBackgroundColor, setTerminalBackgroundColor] = useState(
+    preferences.terminal.backgroundColor
+  );
+  const [terminalForegroundColor, setTerminalForegroundColor] = useState(
+    preferences.terminal.foregroundColor
+  );
   const [terminalThemePreset, setTerminalThemePreset] = useState<string>(
-    resolvePresetByColors(preferences.terminal.backgroundColor, preferences.terminal.foregroundColor)
+    resolvePresetByColors(
+      preferences.terminal.backgroundColor,
+      preferences.terminal.foregroundColor
+    )
   );
 
-  const [appBackgroundImagePath, setAppBackgroundImagePath] = useState(preferences.window.backgroundImagePath);
+  const [appBackgroundImagePath, setAppBackgroundImagePath] = useState(
+    preferences.window.backgroundImagePath
+  );
   const [localShell, setLocalShell] = useState<LocalShellPreference>(() =>
-    readLocalShellPreference(preferences.terminal as unknown as Record<string, unknown>, window.nextshell.platform)
+    readLocalShellPreference(
+      preferences.terminal as unknown as Record<string, unknown>,
+      window.nextshell.platform
+    )
   );
 
   // ─── Backup state ───────────────────────────────────────────────────
@@ -68,7 +82,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const [clearingAuditLogs, setClearingAuditLogs] = useState(false);
 
   const [pwdStatus, setPwdStatus] = useState<{
-    isSet: boolean; isUnlocked: boolean; keytarAvailable: boolean;
+    isSet: boolean;
+    isUnlocked: boolean;
+    keytarAvailable: boolean;
   }>({ isSet: false, isUnlocked: false, keytarAvailable: false });
   const [pwdStatusLoading, setPwdStatusLoading] = useState(false);
   const [pwdStatusKnown, setPwdStatusKnown] = useState(false);
@@ -102,7 +118,10 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     setTerminalBackgroundColor(preferences.terminal.backgroundColor);
     setTerminalForegroundColor(preferences.terminal.foregroundColor);
     setTerminalThemePreset(
-      resolvePresetByColors(preferences.terminal.backgroundColor, preferences.terminal.foregroundColor)
+      resolvePresetByColors(
+        preferences.terminal.backgroundColor,
+        preferences.terminal.foregroundColor
+      )
     );
     setLocalShell(
       readLocalShellPreference(
@@ -138,7 +157,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
         const status = await window.nextshell.masterPassword.passwordStatus();
         setPwdStatus(status);
         setPwdStatusKnown(true);
-      } catch { /* ignore */ } finally {
+      } catch {
+        /* ignore */
+      } finally {
         setPwdStatusLoading(false);
       }
     })();
@@ -149,7 +170,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       const status = await window.nextshell.masterPassword.passwordStatus();
       setPwdStatus(status);
       setPwdStatusKnown(true);
-    } catch { /* noop */ }
+    } catch {
+      /* noop */
+    }
   }, []);
 
   // ─── Immediate-save helpers ─────────────────────────────────────────
@@ -163,9 +186,17 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   );
 
   const pickDirectory = useCallback(
-    async (title: string, currentPath: string, setter: (v: string) => void, field: "uploadDefaultDir" | "downloadDefaultDir") => {
+    async (
+      title: string,
+      currentPath: string,
+      setter: (v: string) => void,
+      field: "uploadDefaultDir" | "downloadDefaultDir"
+    ) => {
       try {
-        const result = await window.nextshell.dialog.openDirectory({ title, defaultPath: currentPath });
+        const result = await window.nextshell.dialog.openDirectory({
+          title,
+          defaultPath: currentPath
+        });
         if (!result.canceled && result.filePath) {
           setter(result.filePath);
           save({ transfer: { [field]: result.filePath } });
@@ -189,26 +220,38 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     }
     setPwdBusy(true);
     try {
-      await window.nextshell.masterPassword.setPassword({ password: pwdInput, confirmPassword: pwdConfirm });
+      await window.nextshell.masterPassword.setPassword({
+        password: pwdInput,
+        confirmPassword: pwdConfirm
+      });
       message.success("主密码已设置");
-      setPwdInput(""); setPwdConfirm("");
+      setPwdInput("");
+      setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
       message.error(`设置密码失败：${formatErrorMessage(error, "请检查输入内容")}`);
-    } finally { setPwdBusy(false); }
+    } finally {
+      setPwdBusy(false);
+    }
   };
 
   const handleUnlockPassword = async (): Promise<void> => {
-    if (!pwdInput) { message.warning("请输入主密码。"); return; }
+    if (!pwdInput) {
+      message.warning("请输入主密码。");
+      return;
+    }
     setPwdBusy(true);
     try {
       await window.nextshell.masterPassword.unlockPassword({ password: pwdInput });
       message.success("主密码已解锁");
-      setPwdInput(""); setPwdConfirm("");
+      setPwdInput("");
+      setPwdConfirm("");
       await refreshPasswordStatus();
     } catch (error) {
       message.error(`解锁密码失败：${formatErrorMessage(error, "请检查密码是否正确")}`);
-    } finally { setPwdBusy(false); }
+    } finally {
+      setPwdBusy(false);
+    }
   };
 
   const handleClearRemembered = async (): Promise<void> => {
@@ -275,7 +318,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       message.success(result.fileName ? `备份完成: ${result.fileName}` : "备份完成");
     } catch (error) {
       message.error(`备份失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-    } finally { setBackupRunning(false); }
+    } finally {
+      setBackupRunning(false);
+    }
   };
 
   const handleListArchives = async (): Promise<void> => {
@@ -286,7 +331,9 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       setArchiveList(list);
     } catch (error) {
       message.error(`获取备份列表失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-    } finally { setArchiveListLoading(false); }
+    } finally {
+      setArchiveListLoading(false);
+    }
   };
 
   const handleRestore = async (archiveId: string): Promise<void> => {
@@ -299,12 +346,17 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       onOk: async () => {
         setRestoring(archiveId);
         try {
-          await window.nextshell.backup.restore({ archiveId, conflictPolicy: restoreConflictPolicy });
+          await window.nextshell.backup.restore({
+            archiveId,
+            conflictPolicy: restoreConflictPolicy
+          });
           message.success("还原文件已准备，重启应用后生效。");
         } catch (error) {
           message.error(`还原失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-        } finally { setRestoring(null); }
-      },
+        } finally {
+          setRestoring(null);
+        }
+      }
     });
   };
 
@@ -337,152 +389,196 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   const sectionContent = useMemo(() => {
     switch (activeSection) {
       case "security":
-        return <SecuritySection
-          pwdStatus={pwdStatus}
-          pwdStatusLoading={pwdStatusLoading}
-          pwdInput={pwdInput}
-          pwdConfirm={pwdConfirm}
-          pwdBusy={pwdBusy}
-          changeOldPwd={changeOldPwd}
-          changeNewPwd={changeNewPwd}
-          changeConfirmPwd={changeConfirmPwd}
-          changeAckRisk={changeAckRisk}
-          changeBusy={changeBusy}
-          backupRememberPassword={preferences.backup.rememberPassword}
-          loading={loading}
-          auditEnabled={auditEnabled}
-          auditRetentionDays={auditRetentionDays}
-          clearingAuditLogs={clearingAuditLogs}
-          setAuditEnabled={setAuditEnabled}
-          setAuditRetentionDays={setAuditRetentionDays}
-          setPwdInput={setPwdInput}
-          setPwdConfirm={setPwdConfirm}
-          setChangeOldPwd={setChangeOldPwd}
-          setChangeNewPwd={setChangeNewPwd}
-          setChangeConfirmPwd={setChangeConfirmPwd}
-          setChangeAckRisk={setChangeAckRisk}
-          onSetPassword={() => void handleSetPassword()}
-          onUnlockPassword={() => void handleUnlockPassword()}
-          onChangePassword={() => void handleChangePassword()}
-          onClearRemembered={() => void handleClearRemembered()}
-          onClearAuditLogs={handleClearAuditLogs}
-          save={save}
-        />;
+        return (
+          <SecuritySection
+            pwdStatus={pwdStatus}
+            pwdStatusLoading={pwdStatusLoading}
+            pwdInput={pwdInput}
+            pwdConfirm={pwdConfirm}
+            pwdBusy={pwdBusy}
+            changeOldPwd={changeOldPwd}
+            changeNewPwd={changeNewPwd}
+            changeConfirmPwd={changeConfirmPwd}
+            changeAckRisk={changeAckRisk}
+            changeBusy={changeBusy}
+            backupRememberPassword={preferences.backup.rememberPassword}
+            loading={loading}
+            auditEnabled={auditEnabled}
+            auditRetentionDays={auditRetentionDays}
+            clearingAuditLogs={clearingAuditLogs}
+            setAuditEnabled={setAuditEnabled}
+            setAuditRetentionDays={setAuditRetentionDays}
+            setPwdInput={setPwdInput}
+            setPwdConfirm={setPwdConfirm}
+            setChangeOldPwd={setChangeOldPwd}
+            setChangeNewPwd={setChangeNewPwd}
+            setChangeConfirmPwd={setChangeConfirmPwd}
+            setChangeAckRisk={setChangeAckRisk}
+            onSetPassword={() => void handleSetPassword()}
+            onUnlockPassword={() => void handleUnlockPassword()}
+            onChangePassword={() => void handleChangePassword()}
+            onClearRemembered={() => void handleClearRemembered()}
+            onClearAuditLogs={handleClearAuditLogs}
+            save={save}
+          />
+        );
       case "window":
-        return <WindowSection
-          loading={loading}
-          appearance={preferences.window.appearance}
-          minimizeToTray={preferences.window.minimizeToTray}
-          confirmBeforeClose={preferences.window.confirmBeforeClose}
-          leftSidebarDefaultCollapsed={preferences.window.leftSidebarDefaultCollapsed}
-          bottomWorkbenchDefaultCollapsed={preferences.window.bottomWorkbenchDefaultCollapsed}
-          save={save}
-        />;
+        return (
+          <WindowSection
+            loading={loading}
+            appearance={preferences.window.appearance}
+            minimizeToTray={preferences.window.minimizeToTray}
+            confirmBeforeClose={preferences.window.confirmBeforeClose}
+            leftSidebarDefaultCollapsed={preferences.window.leftSidebarDefaultCollapsed}
+            bottomWorkbenchDefaultCollapsed={preferences.window.bottomWorkbenchDefaultCollapsed}
+            save={save}
+          />
+        );
 
       case "transfer":
-        return <TransferSection
-          loading={loading}
-          uploadDefaultDir={uploadDefaultDir}
-          downloadDefaultDir={downloadDefaultDir}
-          setUploadDefaultDir={setUploadDefaultDir}
-          setDownloadDefaultDir={setDownloadDefaultDir}
-          save={save}
-          pickDirectory={pickDirectory}
-        />;
+        return (
+          <TransferSection
+            loading={loading}
+            uploadDefaultDir={uploadDefaultDir}
+            downloadDefaultDir={downloadDefaultDir}
+            setUploadDefaultDir={setUploadDefaultDir}
+            setDownloadDefaultDir={setDownloadDefaultDir}
+            save={save}
+            pickDirectory={pickDirectory}
+          />
+        );
 
       case "editor":
-        return <EditorSection
-          loading={loading}
-          editorMode={editorMode}
-          editorCommand={editorCommand}
-          setEditorMode={setEditorMode}
-          setEditorCommand={setEditorCommand}
-          save={save}
-          message={message}
-        />;
+        return (
+          <EditorSection
+            loading={loading}
+            editorMode={editorMode}
+            editorCommand={editorCommand}
+            setEditorMode={setEditorMode}
+            setEditorCommand={setEditorCommand}
+            save={save}
+            message={message}
+          />
+        );
 
       case "command":
-        return <CommandSection
-          loading={loading}
-          rememberTemplateParams={preferences.commandCenter.rememberTemplateParams}
-          batchMaxConcurrency={preferences.commandCenter.batchMaxConcurrency}
-          batchRetryCount={preferences.commandCenter.batchRetryCount}
-          save={save}
-        />;
+        return (
+          <CommandSection
+            loading={loading}
+            rememberTemplateParams={preferences.commandCenter.rememberTemplateParams}
+            batchMaxConcurrency={preferences.commandCenter.batchMaxConcurrency}
+            batchRetryCount={preferences.commandCenter.batchRetryCount}
+            save={save}
+          />
+        );
 
       case "terminal":
-        return <TerminalSection
-          loading={loading}
-          terminalBackgroundColor={terminalBackgroundColor}
-          terminalForegroundColor={terminalForegroundColor}
-          terminalThemePreset={terminalThemePreset}
-          terminalFontSize={preferences.terminal.fontSize}
-          terminalLineHeight={preferences.terminal.lineHeight}
-          terminalFontFamily={preferences.terminal.fontFamily}
-          localShell={localShell}
-          appBackgroundImagePath={appBackgroundImagePath}
-          appBackgroundOpacity={preferences.window.backgroundOpacity}
-          setTerminalBackgroundColor={setTerminalBackgroundColor}
-          setTerminalForegroundColor={setTerminalForegroundColor}
-          setTerminalThemePreset={setTerminalThemePreset}
-          setLocalShell={setLocalShell}
-          setAppBackgroundImagePath={setAppBackgroundImagePath}
-          save={save}
-          message={message}
-        />;
+        return (
+          <TerminalSection
+            loading={loading}
+            terminalBackgroundColor={terminalBackgroundColor}
+            terminalForegroundColor={terminalForegroundColor}
+            terminalThemePreset={terminalThemePreset}
+            terminalFontSize={preferences.terminal.fontSize}
+            terminalLineHeight={preferences.terminal.lineHeight}
+            terminalFontFamily={preferences.terminal.fontFamily}
+            localShell={localShell}
+            appBackgroundImagePath={appBackgroundImagePath}
+            appBackgroundOpacity={preferences.window.backgroundOpacity}
+            setTerminalBackgroundColor={setTerminalBackgroundColor}
+            setTerminalForegroundColor={setTerminalForegroundColor}
+            setTerminalThemePreset={setTerminalThemePreset}
+            setLocalShell={setLocalShell}
+            setAppBackgroundImagePath={setAppBackgroundImagePath}
+            save={save}
+            message={message}
+          />
+        );
 
       case "network":
-        return <NetworkSection
-          loading={loading}
-          nexttracePath={nexttracePath}
-          setNexttracePath={setNexttracePath}
-          ssh={preferences.ssh}
-          traceroute={preferences.traceroute}
-          save={save}
-          message={message}
-        />;
+        return (
+          <NetworkSection
+            loading={loading}
+            nexttracePath={nexttracePath}
+            setNexttracePath={setNexttracePath}
+            ssh={preferences.ssh}
+            traceroute={preferences.traceroute}
+            save={save}
+            message={message}
+          />
+        );
 
       case "backup":
-        return <BackupSection
-          loading={loading}
-          backupRemotePath={backupRemotePath}
-          rclonePath={rclonePath}
-          backupConflictPolicy={backupConflictPolicy}
-          restoreConflictPolicy={restoreConflictPolicy}
-          pwdStatus={pwdStatus}
-          pwdStatusKnown={pwdStatusKnown}
-          backupRunning={backupRunning}
-          archiveList={archiveList}
-          archiveListVisible={archiveListVisible}
-          archiveListLoading={archiveListLoading}
-          restoring={restoring}
-          lastBackupAt={preferences.backup.lastBackupAt ?? undefined}
-          setBackupRemotePath={setBackupRemotePath}
-          setRclonePath={setRclonePath}
-          setBackupConflictPolicy={setBackupConflictPolicy}
-          setRestoreConflictPolicy={setRestoreConflictPolicy}
-          setArchiveListVisible={setArchiveListVisible}
-          onOpenSecurity={() => setActiveSection("security")}
-          onRunBackup={() => void handleRunBackup()}
-          onListArchives={() => void handleListArchives()}
-          onRestore={(id) => void handleRestore(id)}
-          save={save}
-          message={message}
-        />;
+        return (
+          <BackupSection
+            loading={loading}
+            backupRemotePath={backupRemotePath}
+            rclonePath={rclonePath}
+            backupConflictPolicy={backupConflictPolicy}
+            restoreConflictPolicy={restoreConflictPolicy}
+            pwdStatus={pwdStatus}
+            pwdStatusKnown={pwdStatusKnown}
+            backupRunning={backupRunning}
+            archiveList={archiveList}
+            archiveListVisible={archiveListVisible}
+            archiveListLoading={archiveListLoading}
+            restoring={restoring}
+            lastBackupAt={preferences.backup.lastBackupAt ?? undefined}
+            setBackupRemotePath={setBackupRemotePath}
+            setRclonePath={setRclonePath}
+            setBackupConflictPolicy={setBackupConflictPolicy}
+            setRestoreConflictPolicy={setRestoreConflictPolicy}
+            setArchiveListVisible={setArchiveListVisible}
+            onOpenSecurity={() => setActiveSection("security")}
+            onRunBackup={() => void handleRunBackup()}
+            onListArchives={() => void handleListArchives()}
+            onRestore={(id) => void handleRestore(id)}
+            save={save}
+            message={message}
+          />
+        );
 
       case "about":
         return <AboutSection message={message} />;
     }
   }, [
-    activeSection, loading, preferences,
-    uploadDefaultDir, downloadDefaultDir, editorMode, editorCommand,
-    terminalBackgroundColor, terminalForegroundColor, terminalThemePreset, localShell,
-    appBackgroundImagePath, nexttracePath,
-    backupRemotePath, rclonePath, backupConflictPolicy, restoreConflictPolicy,
-    pwdStatus, pwdStatusKnown, pwdStatusLoading, pwdInput, pwdConfirm, pwdBusy,
-    changeOldPwd, changeNewPwd, changeConfirmPwd, changeAckRisk, changeBusy,
-    backupRunning, archiveList, archiveListVisible, archiveListLoading, restoring,
-    save, pickDirectory, message, modal
+    activeSection,
+    loading,
+    preferences,
+    uploadDefaultDir,
+    downloadDefaultDir,
+    editorMode,
+    editorCommand,
+    terminalBackgroundColor,
+    terminalForegroundColor,
+    terminalThemePreset,
+    localShell,
+    appBackgroundImagePath,
+    nexttracePath,
+    backupRemotePath,
+    rclonePath,
+    backupConflictPolicy,
+    restoreConflictPolicy,
+    pwdStatus,
+    pwdStatusKnown,
+    pwdStatusLoading,
+    pwdInput,
+    pwdConfirm,
+    pwdBusy,
+    changeOldPwd,
+    changeNewPwd,
+    changeConfirmPwd,
+    changeAckRisk,
+    changeBusy,
+    backupRunning,
+    archiveList,
+    archiveListVisible,
+    archiveListLoading,
+    restoring,
+    save,
+    pickDirectory,
+    message,
+    modal
   ]);
 
   return (
@@ -494,7 +590,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
       style={{ top: 48 }}
       styles={{
         header: { padding: "13px 18px", marginBottom: 0, borderBottom: "1px solid var(--border)" },
-        body: { padding: 0, overflow: "hidden" },
+        body: { padding: 0, overflow: "hidden" }
       }}
       title={<span className="mgr-modal-title">设置中心</span>}
       destroyOnHidden
@@ -516,11 +612,8 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
         </div>
 
         {/* ── Content ──────────────────────────── */}
-        <div className="stg-content">
-          {sectionContent}
-        </div>
+        <div className="stg-content">{sectionContent}</div>
       </div>
-
     </Modal>
   );
 };

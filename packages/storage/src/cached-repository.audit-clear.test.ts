@@ -95,7 +95,10 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
     const deleted = repository.clearAuditLogs();
 
     assert(deleted === 2, "clearAuditLogs should return deleted row count");
-    assert(repository.clearAuditLogs() === 0, "clearAuditLogs should have removed all audit records");
+    assert(
+      repository.clearAuditLogs() === 0,
+      "clearAuditLogs should have removed all audit records"
+    );
   } finally {
     repository.close();
   }

@@ -182,7 +182,14 @@ export const SystemStaticInfoPane = ({
   );
 
   useEffect(() => {
-    if (!active || !connectionId || !monitorEnabled || !connected || !connectedTerminalSessionId || !cacheKey) {
+    if (
+      !active ||
+      !connectionId ||
+      !monitorEnabled ||
+      !connected ||
+      !connectedTerminalSessionId ||
+      !cacheKey
+    ) {
       requestIdRef.current += 1;
       setLoading(false);
       setRefreshing(false);
@@ -190,14 +197,17 @@ export const SystemStaticInfoPane = ({
     }
 
     const lastUpdatedTime = lastUpdatedAt ? Date.parse(lastUpdatedAt) : Number.NaN;
-    const elapsedMs = Number.isFinite(lastUpdatedTime) ? Date.now() - lastUpdatedTime : Number.POSITIVE_INFINITY;
+    const elapsedMs = Number.isFinite(lastUpdatedTime)
+      ? Date.now() - lastUpdatedTime
+      : Number.POSITIVE_INFINITY;
     if (!cacheRef.current[cacheKey] || elapsedMs >= AUTO_REFRESH_INTERVAL_MS) {
       void fetchSystemInfo(false, true);
     }
 
-    const delayMs = elapsedMs >= AUTO_REFRESH_INTERVAL_MS
-      ? AUTO_REFRESH_INTERVAL_MS
-      : Math.max(1, AUTO_REFRESH_INTERVAL_MS - elapsedMs);
+    const delayMs =
+      elapsedMs >= AUTO_REFRESH_INTERVAL_MS
+        ? AUTO_REFRESH_INTERVAL_MS
+        : Math.max(1, AUTO_REFRESH_INTERVAL_MS - elapsedMs);
     // Delay the first scheduled refresh so cached data keeps its original
     // cadence, then hand off to the visibility-aware polling scheduler so
     // background refreshes pause while the window is hidden.
@@ -216,7 +226,7 @@ export const SystemStaticInfoPane = ({
       unsubscribe?.();
       requestIdRef.current += 1;
       setRefreshing(false);
-    }
+    };
   }, [
     active,
     cacheKey,
@@ -291,9 +301,7 @@ export const SystemStaticInfoPane = ({
   );
 
   if (!connection) {
-    return (
-      <ConnectionPrompt message="先选择一个连接再查看系统信息。" icon="ri-information-line" />
-    );
+    return <ConnectionPrompt message="先选择一个连接再查看系统信息。" icon="ri-information-line" />;
   }
 
   if (!monitorEnabled) {
@@ -329,7 +337,10 @@ export const SystemStaticInfoPane = ({
           disabled={loading || refreshing}
           title="刷新系统信息"
         >
-          <i className={refreshing ? "ri-loader-4-line disk-refresh-spin" : "ri-refresh-line"} aria-hidden="true" />
+          <i
+            className={refreshing ? "ri-loader-4-line disk-refresh-spin" : "ri-refresh-line"}
+            aria-hidden="true"
+          />
         </button>
         <span className="disk-summary">{snapshot?.networkInterfaces.length ?? 0} 个网卡</span>
         <span className="disk-summary">{snapshot?.filesystems.length ?? 0} 个挂载点</span>
@@ -370,7 +381,9 @@ export const SystemStaticInfoPane = ({
                 <div className="system-static-basic-grid">
                   <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
                     <div className="text-[var(--t3)]">运行时长</div>
-                    <div className="font-medium text-[var(--t1)]">{formatUptimeSeconds(snapshot.uptimeSeconds)}</div>
+                    <div className="font-medium text-[var(--t1)]">
+                      {formatUptimeSeconds(snapshot.uptimeSeconds)}
+                    </div>
                   </div>
                   <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
                     <div className="text-[var(--t3)]">主机名</div>
@@ -408,11 +421,15 @@ export const SystemStaticInfoPane = ({
                   </div>
                   <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
                     <div className="text-[var(--t3)]">内存总量</div>
-                    <div className="font-medium text-[var(--t1)]">{formatDiskSize(snapshot.memoryTotalKb)}</div>
+                    <div className="font-medium text-[var(--t1)]">
+                      {formatDiskSize(snapshot.memoryTotalKb)}
+                    </div>
                   </div>
                   <div className="rounded-md border border-[var(--border-dim)] bg-[var(--bg-elevated)] px-3 py-2">
                     <div className="text-[var(--t3)]">交换总量</div>
-                    <div className="font-medium text-[var(--t1)]">{formatDiskSize(snapshot.swapTotalKb)}</div>
+                    <div className="font-medium text-[var(--t1)]">
+                      {formatDiskSize(snapshot.swapTotalKb)}
+                    </div>
                   </div>
                 </div>
               ) : null}

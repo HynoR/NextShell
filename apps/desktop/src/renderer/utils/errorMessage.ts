@@ -7,7 +7,7 @@ const ERROR_CODE_MAP: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\bETIMEDOUT\b|timed out|timeout/i, label: "请求超时" },
   { pattern: /\bECONNREFUSED\b|connection refused/i, label: "连接被拒绝" },
   { pattern: /\bENETUNREACH\b|network is unreachable/i, label: "网络不可达" },
-  { pattern: /\bEHOSTUNREACH\b|host is unreachable/i, label: "主机不可达" },
+  { pattern: /\bEHOSTUNREACH\b|host is unreachable/i, label: "主机不可达" }
 ];
 
 const pickRawMessage = (error: unknown): string => {
@@ -40,10 +40,7 @@ const sanitizeMessage = (value: string): string => {
   return merged;
 };
 
-export const formatErrorMessage = (
-  error: unknown,
-  fallback = "操作失败",
-): string => {
+export const formatErrorMessage = (error: unknown, fallback = "操作失败"): string => {
   const sanitized = sanitizeMessage(pickRawMessage(error));
   if (!sanitized) return fallback;
 

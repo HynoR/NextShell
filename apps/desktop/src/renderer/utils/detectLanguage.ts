@@ -47,7 +47,7 @@ const EXTENSION_MAP: Record<string, LangFactory> = {
   sh: () => StreamLanguage.define(shell as any) as unknown as Extension,
   bash: () => StreamLanguage.define(shell as any) as unknown as Extension,
   zsh: () => StreamLanguage.define(shell as any) as unknown as Extension,
-  php: () => php(),
+  php: () => php()
 };
 
 const SYNTAX_MODE_MAP: Record<Exclude<EditorSyntaxMode, "auto" | "plain">, LangFactory> = {
@@ -60,7 +60,7 @@ const SYNTAX_MODE_MAP: Record<Exclude<EditorSyntaxMode, "auto" | "plain">, LangF
   toml: () => StreamLanguage.define(toml as any) as unknown as Extension,
   python: () => python(),
   shell: () => StreamLanguage.define(shell as any) as unknown as Extension,
-  php: () => php(),
+  php: () => php()
 };
 
 const resolveByExtension = (filePath: string): Extension | undefined => {

@@ -6,7 +6,11 @@
 }
 
 :root[data-theme="light"] .app-shell--with-wallpaper .session-tabs {
-  background: color-mix(in srgb, var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%), transparent);
+  background: color-mix(
+    in srgb,
+    var(--bg-surface-solid) calc(var(--app-background-opacity, 60) * 1%),
+    transparent
+  );
 }
 
 :root[data-theme="light"] .session-tab {
@@ -129,4 +133,3 @@
   background: var(--bg-hover);
   color: var(--t1);
 }
-

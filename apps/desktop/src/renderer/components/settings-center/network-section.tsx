@@ -3,7 +3,13 @@ import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-component
 import type { SaveFn } from "./types";
 
 export const NetworkSection = ({
-  loading, nexttracePath, setNexttracePath, ssh, traceroute, save, message: msg,
+  loading,
+  nexttracePath,
+  setNexttracePath,
+  ssh,
+  traceroute,
+  save,
+  message: msg
 }: {
   loading: boolean;
   nexttracePath: string;
@@ -36,12 +42,17 @@ export const NetworkSection = ({
             onClick={() =>
               void (async () => {
                 try {
-                  const result = await window.nextshell.dialog.openFiles({ title: "选择 nexttrace 可执行文件", multi: false });
+                  const result = await window.nextshell.dialog.openFiles({
+                    title: "选择 nexttrace 可执行文件",
+                    multi: false
+                  });
                   if (!result.canceled && result.filePaths[0]) {
                     setNexttracePath(result.filePaths[0]);
                     save({ traceroute: { nexttracePath: result.filePaths[0] } });
                   }
-                } catch { msg.error("打开文件选择器失败"); }
+                } catch {
+                  msg.error("打开文件选择器失败");
+                }
               })()
             }
           >
@@ -57,8 +68,8 @@ export const NetworkSection = ({
           style={{ fontSize: "inherit" }}
         >
           github.com/nxtrace/NTrace-core
-        </Typography.Link>
-        {" "}下载安装。
+        </Typography.Link>{" "}
+        下载安装。
       </div>
     </SettingsCard>
 
@@ -73,7 +84,9 @@ export const NetworkSection = ({
       <SettingsRow label="保活间隔（秒）" hint="范围 5–600">
         <InputNumber
           style={{ width: "100%" }}
-          min={5} max={600} precision={0}
+          min={5}
+          max={600}
+          precision={0}
           value={ssh.keepAliveIntervalSec}
           disabled={loading || !ssh.keepAliveEnabled}
           onChange={(v) => {
@@ -106,7 +119,9 @@ export const NetworkSection = ({
         >
           <InputNumber
             style={{ width: "100%" }}
-            min={0} max={65535} precision={0}
+            min={0}
+            max={65535}
+            precision={0}
             value={traceroute.port}
             disabled={loading}
             placeholder="0 = 使用协议默认值"
@@ -124,7 +139,7 @@ export const NetworkSection = ({
           options={[
             { label: "自动", value: "auto" },
             { label: "仅 IPv4", value: "ipv4" },
-            { label: "仅 IPv6", value: "ipv6" },
+            { label: "仅 IPv6", value: "ipv6" }
           ]}
         />
       </SettingsRow>
@@ -132,7 +147,9 @@ export const NetworkSection = ({
       <SettingsRow label="每跳探测次数" hint="默认 3，范围 1–10">
         <InputNumber
           style={{ width: "100%" }}
-          min={1} max={10} precision={0}
+          min={1}
+          max={10}
+          precision={0}
           value={traceroute.queries}
           disabled={loading}
           onChange={(v) => {
@@ -146,7 +163,9 @@ export const NetworkSection = ({
       <SettingsRow label="最大跳数（TTL）" hint="默认 30">
         <InputNumber
           style={{ width: "100%" }}
-          min={1} max={64} precision={0}
+          min={1}
+          max={64}
+          precision={0}
           value={traceroute.maxHops}
           disabled={loading}
           onChange={(v) => {
@@ -171,7 +190,7 @@ export const NetworkSection = ({
             { label: "IPInfo", value: "IPInfo" },
             { label: "IPInsight", value: "IPInsight" },
             { label: "IP.SB", value: "IP.SB" },
-            { label: "禁用 GeoIP", value: "disable-geoip" },
+            { label: "禁用 GeoIP", value: "disable-geoip" }
           ]}
         />
       </SettingsRow>
@@ -184,7 +203,7 @@ export const NetworkSection = ({
           onChange={(v) => save({ traceroute: { powProvider: v } })}
           options={[
             { label: "api.nxtrace.org（默认）", value: "api.nxtrace.org" },
-            { label: "sakura（国内推荐）", value: "sakura" },
+            { label: "sakura（国内推荐）", value: "sakura" }
           ]}
         />
       </SettingsRow>

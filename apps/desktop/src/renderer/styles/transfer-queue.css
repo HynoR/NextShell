@@ -81,7 +81,9 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 0.2s, background-color 0.2s;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
 }
 
 .transfer-task-item.openable {
@@ -191,4 +193,3 @@
   justify-content: flex-end;
   margin-top: 4px;
 }
-

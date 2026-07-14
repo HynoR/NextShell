@@ -67,14 +67,24 @@ export const FileExplorerToolbar = ({
   const uploadMenu: MenuProps = {
     items: [
       { key: "upload", icon: icon("ri-upload-line"), label: "上传文件", onClick: onUpload },
-      { key: "packed-upload", icon: icon("ri-inbox-archive-line"), label: "上传并解压", onClick: onPackedUpload }
+      {
+        key: "packed-upload",
+        icon: icon("ri-inbox-archive-line"),
+        label: "上传并解压",
+        onClick: onPackedUpload
+      }
     ]
   };
 
   const downloadMenu: MenuProps = {
     items: [
       { key: "download", icon: icon("ri-download-line"), label: "逐个下载", onClick: onDownload },
-      { key: "packed-download", icon: icon("ri-file-zip-line"), label: "打包下载", onClick: onPackedDownload }
+      {
+        key: "packed-download",
+        icon: icon("ri-file-zip-line"),
+        label: "打包下载",
+        onClick: onPackedDownload
+      }
     ]
   };
 
@@ -90,7 +100,12 @@ export const FileExplorerToolbar = ({
       <div className="fe-actions">
         {visibleToolbarActions.has("back") && (
           <Tooltip title="后退">
-            <button className="fe-icon-btn" onClick={onBack} disabled={historyIndex <= 0} aria-label="后退">
+            <button
+              className="fe-icon-btn"
+              onClick={onBack}
+              disabled={historyIndex <= 0}
+              aria-label="后退"
+            >
               {icon("ri-arrow-left-s-line")}
             </button>
           </Tooltip>
@@ -109,7 +124,12 @@ export const FileExplorerToolbar = ({
         )}
         {visibleToolbarActions.has("parent") && (
           <Tooltip title="上级目录">
-            <button className="fe-icon-btn" onClick={onParent} disabled={pathName === "/" || busy} aria-label="上级目录">
+            <button
+              className="fe-icon-btn"
+              onClick={onParent}
+              disabled={pathName === "/" || busy}
+              aria-label="上级目录"
+            >
               {icon("ri-arrow-up-s-line")}
             </button>
           </Tooltip>
@@ -165,7 +185,11 @@ export const FileExplorerToolbar = ({
           </Dropdown>
         )}
         {visibleToolbarActions.has("download") && (
-          <Dropdown menu={downloadMenu} trigger={["click"]} disabled={selectedEntryCount === 0 || busy}>
+          <Dropdown
+            menu={downloadMenu}
+            trigger={["click"]}
+            disabled={selectedEntryCount === 0 || busy}
+          >
             <span className="inline-flex">
               <button
                 className="fe-icon-btn fe-icon-btn--menu"
@@ -194,7 +218,12 @@ export const FileExplorerToolbar = ({
         {visibleToolbarActions.has("rename") && (
           <Tooltip title="重命名">
             <span className="inline-flex">
-              <button className="fe-icon-btn" onClick={onRename} disabled={!hasSingleSelection || busy} aria-label="重命名">
+              <button
+                className="fe-icon-btn"
+                onClick={onRename}
+                disabled={!hasSingleSelection || busy}
+                aria-label="重命名"
+              >
                 {icon("ri-edit-line")}
               </button>
             </span>
@@ -215,7 +244,9 @@ export const FileExplorerToolbar = ({
           </Tooltip>
         )}
         {visibleToolbarActions.has("paste") && clipboard && (
-          <Tooltip title={`粘贴（${clipboard.mode === "copy" ? "复制" : "移动"} ${clipboard.entries.length} 项）`}>
+          <Tooltip
+            title={`粘贴（${clipboard.mode === "copy" ? "复制" : "移动"} ${clipboard.entries.length} 项）`}
+          >
             <span className="inline-flex">
               <button className="fe-icon-btn" aria-label="粘贴" onClick={onPaste} disabled={busy}>
                 {icon("ri-clipboard-line")}

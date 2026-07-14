@@ -30,7 +30,8 @@ export const ImportManagerPanel = ({
       key: "nextshell-file",
       label: "NextShell 文件",
       icon: "ri-upload-2-line",
-      description: "从 NextShell 导出的 .json 文件导入连接。支持明文或加密文件，加密文件会提示输入密码。",
+      description:
+        "从 NextShell 导出的 .json 文件导入连接。支持明文或加密文件，加密文件会提示输入密码。",
       buttonText: "选择文件...",
       handler: onImportNextShell
     },
@@ -94,7 +95,12 @@ export const ImportManagerPanel = ({
           <p className="mgr-import-detail-desc">{selectedSource.description}</p>
           <Button
             type="primary"
-            icon={<i className={importingPreview ? "ri-loader-4-line ri-spin" : selectedSource.icon} aria-hidden="true" />}
+            icon={
+              <i
+                className={importingPreview ? "ri-loader-4-line ri-spin" : selectedSource.icon}
+                aria-hidden="true"
+              />
+            }
             loading={importingPreview}
             onClick={() => void selectedSource.handler()}
             className="mgr-import-action-btn"

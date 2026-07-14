@@ -55,9 +55,13 @@ export const DeleteConfirmDialog = ({
       destroyOnHidden
     >
       <p style={{ marginTop: 0 }}>
-        {single
-          ? <>确认删除 <code>{single.path}</code> ?</>
-          : `确认删除选中的 ${targets.length} 项?`}
+        {single ? (
+          <>
+            确认删除 <code>{single.path}</code> ?
+          </>
+        ) : (
+          `确认删除选中的 ${targets.length} 项?`
+        )}
       </p>
 
       <Checkbox checked={force} onChange={(event) => setForce(event.target.checked)}>

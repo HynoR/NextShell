@@ -29,7 +29,9 @@ export const PropertyTab = ({ workspaces, scopeLocked }: PropertyTabProps) => {
           <Form.Item name="groupSubPath" noStyle>
             <Input
               placeholder="/production"
-              prefix={<i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />}
+              prefix={
+                <i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />
+              }
               style={{ fontFamily: "var(--mono)" }}
             />
           </Form.Item>
@@ -40,7 +42,11 @@ export const PropertyTab = ({ workspaces, scopeLocked }: PropertyTabProps) => {
         <Form.Item
           label="所属 Workspace"
           name="workspaceId"
-          extra={scopeLocked ? "共享连接的 workspace 根节点已锁定，可调整子路径但不能改到其他作用域。" : undefined}
+          extra={
+            scopeLocked
+              ? "共享连接的 workspace 根节点已锁定，可调整子路径但不能改到其他作用域。"
+              : undefined
+          }
         >
           <Select
             placeholder="选择 workspace"
@@ -60,18 +66,9 @@ export const PropertyTab = ({ workspaces, scopeLocked }: PropertyTabProps) => {
 
       <div className="flex gap-3 items-start">
         <Form.Item label="标签" name="tags" className="flex-1">
-          <Select
-            mode="tags"
-            tokenSeparators={[","]}
-            placeholder="web, linux, prod"
-          />
+          <Select mode="tags" tokenSeparators={[","]} placeholder="web, linux, prod" />
         </Form.Item>
-        <Form.Item
-          label="收藏"
-          name="favorite"
-          valuePropName="checked"
-          className="shrink-0 !mb-0"
-        >
+        <Form.Item label="收藏" name="favorite" valuePropName="checked" className="shrink-0 !mb-0">
           <Switch size="small" />
         </Form.Item>
       </div>

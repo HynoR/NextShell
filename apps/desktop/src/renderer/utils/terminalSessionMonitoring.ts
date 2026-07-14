@@ -6,10 +6,10 @@ export const shouldTrackTerminalSessionMetadata = (
 ): boolean => {
   return Boolean(
     session &&
-      session.target === "remote" &&
-      session.type === "terminal" &&
-      session.connectionId &&
-      connection?.id === session.connectionId &&
-      connection.monitorSession
+    session.target === "remote" &&
+    session.type === "terminal" &&
+    session.connectionId &&
+    connection?.id === session.connectionId &&
+    connection.monitorSession
   );
 };

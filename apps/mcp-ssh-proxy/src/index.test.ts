@@ -13,7 +13,14 @@ import type { ConnectionProfile } from "@nextshell/core";
 import { DEFAULT_APP_PREFERENCES } from "@nextshell/core";
 import { EncryptedSecretVault, generateDeviceKey } from "@nextshell/security";
 import { SQLiteConnectionRepository } from "@nextshell/storage";
-import type { Connection, AuthContext, ExecInfo, Server as Ssh2Server, ServerChannel, Session } from "ssh2";
+import type {
+  Connection,
+  AuthContext,
+  ExecInfo,
+  Server as Ssh2Server,
+  ServerChannel,
+  Session
+} from "ssh2";
 
 const require = createRequire(import.meta.url);
 const { Server } = require("ssh2") as { Server: typeof Ssh2Server };
@@ -36,7 +43,9 @@ const now = () => new Date().toISOString();
 
 const buildEnv = (overrides: Record<string, string>): Record<string, string> => {
   const env = Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string"
+    )
   );
   return {
     ...env,
@@ -45,7 +54,8 @@ const buildEnv = (overrides: Record<string, string>): Record<string, string> => 
 };
 
 const createConnectionProfile = (
-  overrides: Partial<ConnectionProfile> & Pick<ConnectionProfile, "name" | "host" | "username" | "authType">
+  overrides: Partial<ConnectionProfile> &
+    Pick<ConnectionProfile, "name" | "host" | "username" | "authType">
 ): ConnectionProfile => ({
   id: overrides.id ?? randomUUID(),
   name: overrides.name,
@@ -99,30 +109,33 @@ const startTestSshServer = async (): Promise<TestSshServer> => {
     client.on("ready", () => {
       client.on("session", (accept: () => Session) => {
         const session = accept();
-        session.on("exec", (acceptStream: () => ServerChannel, _reject: () => void, info: ExecInfo) => {
-          const stream = acceptStream();
-          if (info.command === "pwd") {
-            stream.write("/home/root\n");
+        session.on(
+          "exec",
+          (acceptStream: () => ServerChannel, _reject: () => void, info: ExecInfo) => {
+            const stream = acceptStream();
+            if (info.command === "pwd") {
+              stream.write("/home/root\n");
+              stream.exit(0);
+              stream.end();
+              return;
+            }
+            if (info.command === "whoami") {
+              stream.write("root\n");
+              stream.exit(0);
+              stream.end();
+              return;
+            }
+            if (info.command === "fail") {
+              stream.stderr.write("boom\n");
+              stream.exit(2);
+              stream.end();
+              return;
+            }
+            stream.write(`ran:${info.command}\n`);
             stream.exit(0);
             stream.end();
-            return;
           }
-          if (info.command === "whoami") {
-            stream.write("root\n");
-            stream.exit(0);
-            stream.end();
-            return;
-          }
-          if (info.command === "fail") {
-            stream.stderr.write("boom\n");
-            stream.exit(2);
-            stream.end();
-            return;
-          }
-          stream.write(`ran:${info.command}\n`);
-          stream.exit(0);
-          stream.end();
-        });
+        );
       });
     });
   });
@@ -178,18 +191,20 @@ const createFixture = async (port: number): Promise<TestFixture> => {
   const vault = new EncryptedSecretVault(repo.getSecretStore(), Buffer.from(deviceKeyHex, "hex"));
   const credentialRef = await vault.storeCredential("conn-server1", "super-secret");
 
-  repo.save(createConnectionProfile({
-    name: "server1",
-    host: "127.0.0.1",
-    port,
-    username: "root",
-    authType: "password",
-    credentialRef,
-    groupPath: "/server/test",
-    tags: ["fixture"],
-    favorite: true,
-    resourceId: "local-default-11111111-1111-1111-1111-111111111111"
-  }));
+  repo.save(
+    createConnectionProfile({
+      name: "server1",
+      host: "127.0.0.1",
+      port,
+      username: "root",
+      authType: "password",
+      credentialRef,
+      groupPath: "/server/test",
+      tags: ["fixture"],
+      favorite: true,
+      resourceId: "local-default-11111111-1111-1111-1111-111111111111"
+    })
+  );
 
   repo.close();
 
@@ -232,7 +247,8 @@ describe("nextshell mcp ssh proxy", () => {
         name: "nextshell/list",
         arguments: {}
       });
-      const listedServers = (listResult.structuredContent as { servers: Array<{ nameId: string }> }).servers;
+      const listedServers = (listResult.structuredContent as { servers: Array<{ nameId: string }> })
+        .servers;
       assert.equal(listedServers.length, 1);
       assert.equal(listedServers[0]?.nameId, "server1--11111111");
 

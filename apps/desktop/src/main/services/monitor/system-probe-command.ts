@@ -1,5 +1,5 @@
 export const MONITOR_LOADAVG_COMMAND =
-  "cat /proc/loadavg 2>/dev/null | awk '{print $1\" \"$2\" \"$3}' || uptime 2>/dev/null";
+  'cat /proc/loadavg 2>/dev/null | awk \'{print $1" "$2" "$3}\' || uptime 2>/dev/null';
 export const MONITOR_CPU_STAT_COMMAND = "grep '^cpu ' /proc/stat 2>/dev/null";
 export const MONITOR_MEMINFO_COMMAND = "cat /proc/meminfo 2>/dev/null";
 export const MONITOR_FREE_COMMAND = "free -k 2>/dev/null";
@@ -45,11 +45,11 @@ const buildSafeInterfaceCounterCommand = (networkInterface: string): string[] =>
   return [
     `__NS_MON_IF='${networkInterface}'`,
     `if [ ! -r "/sys/class/net/${networkInterface}/statistics/rx_bytes" ] || [ ! -r "/sys/class/net/${networkInterface}/statistics/tx_bytes" ]; then __NS_MON_IF="$(${MONITOR_NET_DEFAULT_INTERFACE_COMMAND})"; fi`,
-    "if [ -z \"$__NS_MON_IF\" ] || [ ! -r \"/sys/class/net/$__NS_MON_IF/statistics/rx_bytes\" ] || [ ! -r \"/sys/class/net/$__NS_MON_IF/statistics/tx_bytes\" ]; then __NS_MON_IF=\"$(ls -1 /sys/class/net 2>/dev/null | grep -v '^lo$' | head -n 1)\"; fi",
+    'if [ -z "$__NS_MON_IF" ] || [ ! -r "/sys/class/net/$__NS_MON_IF/statistics/rx_bytes" ] || [ ! -r "/sys/class/net/$__NS_MON_IF/statistics/tx_bytes" ]; then __NS_MON_IF="$(ls -1 /sys/class/net 2>/dev/null | grep -v \'^lo$\' | head -n 1)"; fi',
     "echo '---NS_NETCOUNTER_IFACE---'",
     "printf '%s\\n' \"$__NS_MON_IF\"",
     "echo '---NS_NETCOUNTERS---'",
-    "cat \"/sys/class/net/$__NS_MON_IF/statistics/rx_bytes\" 2>/dev/null; cat \"/sys/class/net/$__NS_MON_IF/statistics/tx_bytes\" 2>/dev/null"
+    'cat "/sys/class/net/$__NS_MON_IF/statistics/rx_bytes" 2>/dev/null; cat "/sys/class/net/$__NS_MON_IF/statistics/tx_bytes" 2>/dev/null'
   ];
 };
 
@@ -88,15 +88,10 @@ export const buildDynamicSystemProbeCommand = (
       ...buildSafeInterfaceCounterCommand(normalized)
     );
   } else {
-    parts.push(
-      "echo '---NS_NETCOUNTERS---'",
-      buildNetCountersCommand(normalized)
-    );
+    parts.push("echo '---NS_NETCOUNTERS---'", buildNetCountersCommand(normalized));
   }
 
-  parts.push(
-    "echo '---NS_PROBE_END---'"
-  );
+  parts.push("echo '---NS_PROBE_END---'");
 
   return parts.join("; ");
 };

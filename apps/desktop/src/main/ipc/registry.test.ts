@@ -39,7 +39,10 @@ function assert(condition: boolean, message: string): void {
 //    user-facing validation error prefix).
 for (const entry of ipcInvokeRegistry) {
   if (entry.schema !== null) {
-    assert(entry.label.trim().length > 0, `entry for channel "${entry.channel}" has an empty label`);
+    assert(
+      entry.label.trim().length > 0,
+      `entry for channel "${entry.channel}" has an empty label`
+    );
   }
 }
 
@@ -56,7 +59,11 @@ const collectTypeScriptFiles = (directory: string): string[] => {
   return files;
 };
 
-const assertSameNames = (actual: Set<string>, expected: ReadonlySet<string>, label: string): void => {
+const assertSameNames = (
+  actual: Set<string>,
+  expected: ReadonlySet<string>,
+  label: string
+): void => {
   const missing = [...expected].filter((name) => !actual.has(name));
   const extra = [...actual].filter((name) => !expected.has(name));
   assert(
@@ -72,13 +79,20 @@ const assertSameNames = (actual: Set<string>, expected: ReadonlySet<string>, lab
   const preloadSource = fs.readFileSync(preloadPath, "utf8");
   const invokePattern = /\binvoke\(\s*IPCChannel\.(\w+)/g;
   const invokedNames = new Set<string>();
-  for (let match = invokePattern.exec(preloadSource); match; match = invokePattern.exec(preloadSource)) {
+  for (
+    let match = invokePattern.exec(preloadSource);
+    match;
+    match = invokePattern.exec(preloadSource)
+  ) {
     const name = match[1];
     if (name) {
       invokedNames.add(name);
     }
   }
-  assert(invokedNames.size > 0, "no typed invoke(IPCChannel.*) calls found in preload — scan pattern broken?");
+  assert(
+    invokedNames.size > 0,
+    "no typed invoke(IPCChannel.*) calls found in preload — scan pattern broken?"
+  );
 
   const registered = new Set<string>(ipcInvokeRegistry.map((entry) => entry.channel));
   const registeredNames = new Set<string>();
@@ -141,7 +155,9 @@ const assertSameNames = (actual: Set<string>, expected: ReadonlySet<string>, lab
     }
   }
 
-  const missingMainReferences = expectedEventChannelNames.filter((name) => !mainChannelNames.has(name));
+  const missingMainReferences = expectedEventChannelNames.filter(
+    (name) => !mainChannelNames.has(name)
+  );
   assert(
     missingMainReferences.length === 0,
     `event channels missing from main-process code: ${missingMainReferences.join(", ")}`

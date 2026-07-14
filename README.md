@@ -51,16 +51,16 @@ bun run dev
 
 ## 常用命令
 
-| 命令 | 说明 |
-| --- | --- |
-| `bun run setup` | 安装依赖并执行原生模块重建 |
-| `bun run dev` | 启动桌面应用开发模式 |
-| `bun run build` | 类型检查并构建 renderer/main |
-| `bun run typecheck` | 仅执行 TypeScript `--noEmit` |
-| `bun test` | 运行工作区 `*.test.ts` |
-| `bun run rebuild:native` | 仅重建原生模块 |
-| `bun run --cwd apps/desktop dist -- --mac --publish never` | 本地打 macOS 包 |
-| `bun run --cwd apps/desktop dist -- --win --publish never` | 本地打 Windows 包 |
+| 命令                                                       | 说明                         |
+| ---------------------------------------------------------- | ---------------------------- |
+| `bun run setup`                                            | 安装依赖并执行原生模块重建   |
+| `bun run dev`                                              | 启动桌面应用开发模式         |
+| `bun run build`                                            | 类型检查并构建 renderer/main |
+| `bun run typecheck`                                        | 仅执行 TypeScript `--noEmit` |
+| `bun test`                                                 | 运行工作区 `*.test.ts`       |
+| `bun run rebuild:native`                                   | 仅重建原生模块               |
+| `bun run --cwd apps/desktop dist -- --mac --publish never` | 本地打 macOS 包              |
+| `bun run --cwd apps/desktop dist -- --win --publish never` | 本地打 Windows 包            |
 
 ## 原生模块与 ABI 排错
 

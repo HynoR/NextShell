@@ -3,10 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
-import type {
-  ConnectionProfile,
-  RemoteFileEntry
-} from "../../../../../packages/core/src/index";
+import type { ConnectionProfile, RemoteFileEntry } from "../../../../../packages/core/src/index";
 import {
   SshConnection,
   isTransferCancelledError,
@@ -53,10 +50,7 @@ export interface SftpServiceOptions {
     message: string;
     metadata?: Record<string, unknown>;
   }) => void;
-  sendTransferStatus: (
-    sender: WebContents | undefined,
-    payload: SftpTransferStatusEvent
-  ) => void;
+  sendTransferStatus: (sender: WebContents | undefined, payload: SftpTransferStatusEvent) => void;
 }
 
 export class SftpService {
@@ -103,7 +97,8 @@ export class SftpService {
         return;
       }
       const windowSec = (now - lastTime) / 1000;
-      const speedBytesPerSec = windowSec > 0 ? Math.max(0, Math.round((transferred - lastBytes) / windowSec)) : 0;
+      const speedBytesPerSec =
+        windowSec > 0 ? Math.max(0, Math.round((transferred - lastBytes) / windowSec)) : 0;
       lastEmit = now;
       lastBytes = transferred;
       lastTime = now;
@@ -133,10 +128,7 @@ export class SftpService {
 
   // ─── Public Methods ───────────────────────────────────────────────────────
 
-  async warmupSftp(
-    connectionId: string,
-    connection: SshConnection
-  ): Promise<string | undefined> {
+  async warmupSftp(connectionId: string, connection: SshConnection): Promise<string | undefined> {
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -173,10 +165,7 @@ export class SftpService {
     }
   }
 
-  async listRemoteFiles(
-    connectionId: string,
-    pathName: string
-  ): Promise<RemoteFileEntry[]> {
+  async listRemoteFiles(connectionId: string, pathName: string): Promise<RemoteFileEntry[]> {
     this.getConnectionOrThrow(connectionId);
 
     const connection = await this.ensureConnection(connectionId);
@@ -270,7 +259,13 @@ export class SftpService {
       await connection.upload(
         localPath,
         remotePath,
-        this.createProgressEmitter(sender, { taskId, direction: "upload", connectionId, localPath, remotePath }),
+        this.createProgressEmitter(sender, {
+          taskId,
+          direction: "upload",
+          connectionId,
+          localPath,
+          remotePath
+        }),
         controller?.signal
       );
       this.sendTransferStatus(sender, {
@@ -337,7 +332,13 @@ export class SftpService {
       await connection.download(
         remotePath,
         localPath,
-        this.createProgressEmitter(sender, { taskId, direction: "download", connectionId, localPath, remotePath }),
+        this.createProgressEmitter(sender, {
+          taskId,
+          direction: "download",
+          connectionId,
+          localPath,
+          remotePath
+        }),
         controller?.signal
       );
       this.sendTransferStatus(sender, {
@@ -388,16 +389,21 @@ export class SftpService {
   ): Promise<{ ok: true }> {
     this.getConnectionOrThrow(connectionId);
     const resolvedLocalPaths = localPaths.map((localPath) => resolveLocalPath(localPath));
-    const defaultArchiveBase = resolvedLocalPaths.length === 1
-      ? path.basename(resolvedLocalPaths[0]!)
-      : `upload-bundle-${Date.now()}`;
+    const defaultArchiveBase =
+      resolvedLocalPaths.length === 1
+        ? path.basename(resolvedLocalPaths[0]!)
+        : `upload-bundle-${Date.now()}`;
     const finalArchiveName = normalizeArchiveName(archiveName, defaultArchiveBase);
     const normalizedRemoteDir = remoteDir.trim() || "/";
     const remoteDisplayPath = joinRemotePath(normalizedRemoteDir, finalArchiveName);
-    const localDisplayPath = resolvedLocalPaths.length === 1
-      ? resolvedLocalPaths[0]!
-      : `${resolvedLocalPaths[0] ?? ""} (+${resolvedLocalPaths.length - 1} files)`;
-    const localArchivePath = path.join(os.tmpdir(), `nextshell-upload-${randomUUID()}-${finalArchiveName}`);
+    const localDisplayPath =
+      resolvedLocalPaths.length === 1
+        ? resolvedLocalPaths[0]!
+        : `${resolvedLocalPaths[0] ?? ""} (+${resolvedLocalPaths.length - 1} files)`;
+    const localArchivePath = path.join(
+      os.tmpdir(),
+      `nextshell-upload-${randomUUID()}-${finalArchiveName}`
+    );
     const remoteArchivePath = `/tmp/nextshell-upload-${randomUUID()}.tar.gz`;
     let localArchiveCreated = false;
     let remoteArchiveCleaned = false;
@@ -475,11 +481,13 @@ export class SftpService {
         buildRemoteTarExtractCommand(remoteArchivePath, normalizedRemoteDir)
       );
       if (extractResult.exitCode !== 0) {
-        throw new Error(`远端解包失败：${this.pickRemoteCommandError(
-          extractResult.stdout,
-          extractResult.stderr,
-          extractResult.exitCode
-        )}`);
+        throw new Error(
+          `远端解包失败：${this.pickRemoteCommandError(
+            extractResult.stdout,
+            extractResult.stderr,
+            extractResult.exitCode
+          )}`
+        );
       }
 
       await cleanupRemoteArchive();
@@ -554,9 +562,10 @@ export class SftpService {
     this.getConnectionOrThrow(connectionId);
     const normalizedRemoteDir = remoteDir.trim() || "/";
     const normalizedEntryNames = normalizeRemoteEntryNames(entryNames);
-    const defaultArchiveBase = normalizedEntryNames.length === 1
-      ? normalizedEntryNames[0]!
-      : `download-bundle-${Date.now()}`;
+    const defaultArchiveBase =
+      normalizedEntryNames.length === 1
+        ? normalizedEntryNames[0]!
+        : `download-bundle-${Date.now()}`;
     const finalArchiveName = normalizeArchiveName(archiveName, defaultArchiveBase);
     const resolvedLocalDir = resolveLocalPath(localDir);
     const localArchivePath = path.join(resolvedLocalDir, finalArchiveName);
@@ -611,11 +620,13 @@ export class SftpService {
         buildRemoteTarCreateCommand(normalizedRemoteDir, remoteArchivePath, normalizedEntryNames)
       );
       if (packResult.exitCode !== 0) {
-        throw new Error(`远端打包失败：${this.pickRemoteCommandError(
-          packResult.stdout,
-          packResult.stderr,
-          packResult.exitCode
-        )}`);
+        throw new Error(
+          `远端打包失败：${this.pickRemoteCommandError(
+            packResult.stdout,
+            packResult.stderr,
+            packResult.exitCode
+          )}`
+        );
       }
       this.sendTransferStatus(sender, {
         taskId,
@@ -707,9 +718,10 @@ export class SftpService {
     const normalizedSourceDir = sourceDir.trim() || "/";
     const normalizedTargetDir = targetDir.trim() || "/";
     const normalizedEntryNames = normalizeRemoteEntryNames(entryNames);
-    const defaultArchiveBase = normalizedEntryNames.length === 1
-      ? normalizedEntryNames[0]!
-      : `transfer-bundle-${Date.now()}`;
+    const defaultArchiveBase =
+      normalizedEntryNames.length === 1
+        ? normalizedEntryNames[0]!
+        : `transfer-bundle-${Date.now()}`;
     const finalArchiveName = normalizeArchiveName(archiveName, defaultArchiveBase);
     const sourceRemoteArchivePath = `/tmp/nextshell-transfer-src-${randomUUID()}.tar.gz`;
     const targetRemoteArchivePath = `/tmp/nextshell-transfer-target-${randomUUID()}.tar.gz`;
@@ -794,11 +806,13 @@ export class SftpService {
         )
       );
       if (packResult.exitCode !== 0) {
-        throw new Error(`源服务器打包失败：${this.pickRemoteCommandError(
-          packResult.stdout,
-          packResult.stderr,
-          packResult.exitCode
-        )}`);
+        throw new Error(
+          `源服务器打包失败：${this.pickRemoteCommandError(
+            packResult.stdout,
+            packResult.stderr,
+            packResult.exitCode
+          )}`
+        );
       }
       this.sendTransferStatus(sender, {
         taskId,
@@ -841,11 +855,13 @@ export class SftpService {
         buildRemoteTarExtractCommand(targetRemoteArchivePath, normalizedTargetDir)
       );
       if (extractResult.exitCode !== 0) {
-        throw new Error(`目标服务器解包失败：${this.pickRemoteCommandError(
-          extractResult.stdout,
-          extractResult.stderr,
-          extractResult.exitCode
-        )}`);
+        throw new Error(
+          `目标服务器解包失败：${this.pickRemoteCommandError(
+            extractResult.stdout,
+            extractResult.stderr,
+            extractResult.exitCode
+          )}`
+        );
       }
 
       await cleanupSourceRemoteArchive();
@@ -912,10 +928,7 @@ export class SftpService {
     }
   }
 
-  async createRemoteDirectory(
-    connectionId: string,
-    pathName: string
-  ): Promise<{ ok: true }> {
+  async createRemoteDirectory(connectionId: string, pathName: string): Promise<{ ok: true }> {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
     await connection.mkdir(pathName, true);
@@ -977,7 +990,12 @@ export class SftpService {
   ): Promise<{ editId: string; localPath: string }> {
     this.getConnectionOrThrow(connectionId);
     try {
-      const result = await this.remoteEditManager.open(connectionId, remotePath, editorCommand, sender);
+      const result = await this.remoteEditManager.open(
+        connectionId,
+        remotePath,
+        editorCommand,
+        sender
+      );
       this.appendAuditLogIfEnabled({
         action: "sftp.edit_open",
         level: "info",

@@ -7,40 +7,32 @@ import type {
   NetworkSnapshot,
   ProcessDetailSnapshot,
   ProcessSnapshot,
-  SystemInfoSnapshot,
+  SystemInfoSnapshot
 } from "../../../../../packages/core/src/index";
-import {
-  SshConnection,
-  type SshConnectOptions,
-} from "../../../../../packages/ssh/src/index";
-import type {
-  DebugLogEntry,
-} from "../../../../../packages/shared/src/index";
+import { SshConnection, type SshConnectOptions } from "../../../../../packages/ssh/src/index";
+import type { DebugLogEntry } from "../../../../../packages/shared/src/index";
 import type { CachedConnectionRepository } from "../../../../../packages/storage/src/index";
 import {
   SystemMonitorController,
   type MonitorSelectionState,
-  type ProbeExecutionLog,
+  type ProbeExecutionLog
 } from "./monitor/system-monitor-controller";
 import {
   ProcessMonitorController,
-  type ProcessProbeExecutionLog,
+  type ProcessProbeExecutionLog
 } from "./monitor/process-monitor-controller";
-import {
-  firstNonEmptyLine,
-  parseProcessDetailPrimary,
-} from "./monitor/process-probe-parser";
+import { firstNonEmptyLine, parseProcessDetailPrimary } from "./monitor/process-probe-parser";
 import {
   NetworkMonitorController,
   type NetworkProbeExecutionLog,
-  type NetworkTool,
+  type NetworkTool
 } from "./monitor/network-monitor-controller";
 import {
   parseCpuInfo,
   parseFilesystemEntries,
   parseMeminfoTotals,
   parseNetworkInterfaceTotals,
-  parseOsReleaseName,
+  parseOsReleaseName
 } from "./system-info-parser";
 import {
   MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND,
@@ -52,7 +44,7 @@ import {
   normalizeError,
   parseUptimeSeconds,
   parseCompoundOutput,
-  buildSystemInfoCommand,
+  buildSystemInfoCommand
 } from "./container-utils";
 import type {
   ActiveSession,
@@ -60,7 +52,7 @@ import type {
   MonitorState,
   SystemMonitorRuntime,
   ProcessMonitorRuntime,
-  NetworkMonitorRuntime,
+  NetworkMonitorRuntime
 } from "./container-types";
 import { MonitorBackoff } from "./monitor/monitor-runner";
 import { logger } from "../logger";
@@ -128,7 +120,9 @@ export class MonitorService {
   // ─── Injected dependencies ──────────────────────────────────────────────
   private readonly connections: CachedConnectionRepository;
   private readonly getConnectionOrThrow: (id: string) => ConnectionProfile;
-  private readonly resolveConnectOptions: (profile: ConnectionProfile) => Promise<SshConnectOptions>;
+  private readonly resolveConnectOptions: (
+    profile: ConnectionProfile
+  ) => Promise<SshConnectOptions>;
   private readonly activeSessions: Map<string, ActiveSession>;
   private readonly appendAuditLogIfEnabled: MonitorServiceOptions["appendAuditLogIfEnabled"];
   private readonly debugSenders: Set<WebContents>;
@@ -231,8 +225,13 @@ export class MonitorService {
       }
       this.adhocSessionRuntimes.delete(connectionId);
 
-      try { await runtime.connection.close(); } catch (error) {
-        logger.warn("[AdhocSession] failed to close connection", { connectionId, reason: normalizeError(error) });
+      try {
+        await runtime.connection.close();
+      } catch (error) {
+        logger.warn("[AdhocSession] failed to close connection", {
+          connectionId,
+          reason: normalizeError(error)
+        });
       }
     }
     this.adhocSessionPromises.delete(connectionId);
@@ -304,7 +303,7 @@ export class MonitorService {
       backoff = new MonitorBackoff(
         HIDDEN_CONNECT_BACKOFF_BASE_MS,
         HIDDEN_CONNECT_BACKOFF_MAX_MS,
-        Number.POSITIVE_INFINITY,
+        Number.POSITIVE_INFINITY
       );
       this.hiddenConnectionBackoffs.set(key, backoff);
     }
@@ -316,17 +315,18 @@ export class MonitorService {
     tag: string,
     options?: { backoff?: boolean }
   ): Promise<SshConnection> {
-    const backoff = (options?.backoff ?? true)
-      ? this.getHiddenConnectionBackoff(connectionId, tag)
-      : undefined;
+    const backoff =
+      (options?.backoff ?? true) ? this.getHiddenConnectionBackoff(connectionId, tag) : undefined;
     if (backoff?.isActive()) {
-      throw new Error(
-        `${tag} 重连退避中，${Math.ceil(backoff.remainingMs() / 1000)}s 后重试`
-      );
+      throw new Error(`${tag} 重连退避中，${Math.ceil(backoff.remainingMs() / 1000)}s 后重试`);
     }
 
     const profile = this.assertMonitorEnabled(connectionId);
-    logger.info(`[${tag}] connecting hidden SSH`, { connectionId, host: profile.host, port: profile.port });
+    logger.info(`[${tag}] connecting hidden SSH`, {
+      connectionId,
+      host: profile.host,
+      port: profile.port
+    });
     try {
       const ssh = await SshConnection.connect(await this.resolveConnectOptions(profile));
       backoff?.reset();
@@ -338,7 +338,7 @@ export class MonitorService {
         logger.warn(`[${tag}] hidden SSH connect failed, backing off`, {
           connectionId,
           delayMs,
-          reason: normalizeError(error),
+          reason: normalizeError(error)
         });
       }
       throw error;
@@ -370,7 +370,7 @@ export class MonitorService {
     } catch (error) {
       logger.warn("[SystemMonitor] failed to close connection", {
         connectionId,
-        reason: normalizeError(error),
+        reason: normalizeError(error)
       });
     }
   }
@@ -391,7 +391,11 @@ export class MonitorService {
       const connection = await this.establishHiddenConnection(connectionId, "SystemMonitor");
       if (this.cancelledSystemMonitorConnections.has(connectionId)) {
         this.cancelledSystemMonitorConnections.delete(connectionId);
-        try { await connection.close(); } catch { /* ignore */ }
+        try {
+          await connection.close();
+        } catch {
+          /* ignore */
+        }
         throw new Error("SystemMonitor connection discarded");
       }
 
@@ -432,7 +436,7 @@ export class MonitorService {
     } catch (error) {
       logger.warn("[ProcessMonitor] failed to close connection", {
         connectionId,
-        reason: normalizeError(error),
+        reason: normalizeError(error)
       });
     }
   }
@@ -453,7 +457,11 @@ export class MonitorService {
       const connection = await this.establishHiddenConnection(connectionId, "ProcessMonitor");
       if (this.cancelledProcessMonitorConnections.has(connectionId)) {
         this.cancelledProcessMonitorConnections.delete(connectionId);
-        try { await connection.close(); } catch { /* ignore */ }
+        try {
+          await connection.close();
+        } catch {
+          /* ignore */
+        }
         throw new Error("ProcessMonitor connection discarded");
       }
 
@@ -494,7 +502,7 @@ export class MonitorService {
     } catch (error) {
       logger.warn("[NetworkMonitor] failed to close connection", {
         connectionId,
-        reason: normalizeError(error),
+        reason: normalizeError(error)
       });
     }
   }
@@ -515,7 +523,11 @@ export class MonitorService {
       const connection = await this.establishHiddenConnection(connectionId, "NetworkMonitor");
       if (this.cancelledNetworkMonitorConnections.has(connectionId)) {
         this.cancelledNetworkMonitorConnections.delete(connectionId);
-        try { await connection.close(); } catch { /* ignore */ }
+        try {
+          await connection.close();
+        } catch {
+          /* ignore */
+        }
         throw new Error("NetworkMonitor connection discarded");
       }
 
@@ -561,7 +573,7 @@ export class MonitorService {
           exitCode: entry.exitCode,
           durationMs: entry.durationMs,
           ok: entry.ok,
-          error: entry.error,
+          error: entry.error
         });
       }
 
@@ -570,7 +582,7 @@ export class MonitorService {
           connectionId,
           command: entry.command,
           exitCode: entry.exitCode,
-          output: entry.stdout.slice(0, 200),
+          output: entry.stdout.slice(0, 200)
         });
       }
     };
@@ -592,13 +604,13 @@ export class MonitorService {
         this.monitorStates.set(connectionId, { ...previous, ...state });
       },
       logger,
-      onProbeExecution,
+      onProbeExecution
     });
 
     runtime = {
       disposed: false,
       controller,
-      sender: undefined,
+      sender: undefined
     };
 
     this.systemMonitorRuntimes.set(connectionId, runtime);
@@ -632,7 +644,7 @@ export class MonitorService {
             exitCode: entry.exitCode,
             durationMs: entry.durationMs,
             ok: entry.ok,
-            error: entry.error,
+            error: entry.error
           });
         }
       };
@@ -653,14 +665,14 @@ export class MonitorService {
         timing: {
           pollIntervalMs: MONITOR_PROCESS_INTERVAL_MS,
           execTimeoutMs: MONITOR_COMMAND_TIMEOUT_MS,
-          maxConsecutiveFailures: MONITOR_MAX_CONSECUTIVE_FAILURES,
-        },
+          maxConsecutiveFailures: MONITOR_MAX_CONSECUTIVE_FAILURES
+        }
       });
 
       runtime = {
         controller,
         sender: undefined,
-        disposed: false,
+        disposed: false
       };
 
       this.processMonitorRuntimes.set(connectionId, runtime);
@@ -711,7 +723,7 @@ export class MonitorService {
             exitCode: entry.exitCode,
             durationMs: entry.durationMs,
             ok: entry.ok,
-            error: entry.error,
+            error: entry.error
           });
         }
       };
@@ -740,14 +752,14 @@ export class MonitorService {
         timing: {
           pollIntervalMs: MONITOR_NETWORK_INTERVAL_MS,
           execTimeoutMs: MONITOR_COMMAND_TIMEOUT_MS,
-          maxConsecutiveFailures: MONITOR_MAX_CONSECUTIVE_FAILURES,
-        },
+          maxConsecutiveFailures: MONITOR_MAX_CONSECUTIVE_FAILURES
+        }
       });
 
       runtime = {
         controller,
         sender: undefined,
-        disposed: false,
+        disposed: false
       };
 
       this.networkMonitorRuntimes.set(connectionId, runtime);
@@ -798,7 +810,9 @@ export class MonitorService {
     }
 
     const promise = (async () => {
-      const connection = await this.establishHiddenConnection(connectionId, "AdhocSession", { backoff: false });
+      const connection = await this.establishHiddenConnection(connectionId, "AdhocSession", {
+        backoff: false
+      });
 
       const runtime: AdhocSessionRuntime = {
         connection,
@@ -809,7 +823,10 @@ export class MonitorService {
       connection.onClose(() => {
         if (runtime.disposed) return;
         runtime.disposed = true;
-        if (runtime.idleTimer) { clearTimeout(runtime.idleTimer); runtime.idleTimer = undefined; }
+        if (runtime.idleTimer) {
+          clearTimeout(runtime.idleTimer);
+          runtime.idleTimer = undefined;
+        }
         this.adhocSessionRuntimes.delete(connectionId);
         this.adhocSessionPromises.delete(connectionId);
         logger.info("[AdhocSession] hidden SSH disconnected", { connectionId });
@@ -835,10 +852,7 @@ export class MonitorService {
 
   // ─── Public API: System Monitor ─────────────────────────────────────────
 
-  async startSystemMonitor(
-    connectionId: string,
-    sender: WebContents
-  ): Promise<{ ok: true }> {
+  async startSystemMonitor(connectionId: string, sender: WebContents): Promise<{ ok: true }> {
     this.assertMonitorEnabled(connectionId);
     this.assertVisibleTerminalAlive(connectionId);
     const runtime = await this.ensureSystemMonitorRuntime(connectionId);
@@ -909,10 +923,7 @@ export class MonitorService {
 
   // ─── Public API: Process Monitor ────────────────────────────────────────
 
-  async startProcessMonitor(
-    connectionId: string,
-    sender: WebContents
-  ): Promise<{ ok: true }> {
+  async startProcessMonitor(connectionId: string, sender: WebContents): Promise<{ ok: true }> {
     this.assertMonitorEnabled(connectionId);
     this.assertVisibleTerminalAlive(connectionId);
 
@@ -930,10 +941,7 @@ export class MonitorService {
     return { ok: true };
   }
 
-  async getProcessDetail(
-    connectionId: string,
-    pid: number
-  ): Promise<ProcessDetailSnapshot> {
+  async getProcessDetail(connectionId: string, pid: number): Promise<ProcessDetailSnapshot> {
     this.assertMonitorEnabled(connectionId);
     this.assertVisibleTerminalAlive(connectionId);
 
@@ -945,8 +953,7 @@ export class MonitorService {
       throw new Error("无效进程 PID");
     }
 
-    const primaryCommand =
-      `ps -p ${normalizedPid} -o pid=,ppid=,user=,state=,%cpu=,%mem=,rss=,etime=,comm=`;
+    const primaryCommand = `ps -p ${normalizedPid} -o pid=,ppid=,user=,state=,%cpu=,%mem=,rss=,etime=,comm=`;
     const argsCommand = `ps -p ${normalizedPid} -o args=`;
 
     const primary = await adhoc.connection.exec(primaryCommand);
@@ -960,9 +967,8 @@ export class MonitorService {
     }
 
     const args = await adhoc.connection.exec(argsCommand);
-    const commandLine = args.exitCode === 0
-      ? firstNonEmptyLine(args.stdout) ?? parsed.command
-      : parsed.command;
+    const commandLine =
+      args.exitCode === 0 ? (firstNonEmptyLine(args.stdout) ?? parsed.command) : parsed.command;
 
     return {
       ...parsed,
@@ -986,7 +992,9 @@ export class MonitorService {
     }
     const result = await adhoc.connection.exec(`kill -${signal} ${pid} 2>&1`);
     if (result.exitCode !== 0) {
-      throw new Error(`kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`);
+      throw new Error(
+        `kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`
+      );
     }
     this.appendAuditLogIfEnabled({
       action: "monitor.process_kill",
@@ -1000,10 +1008,7 @@ export class MonitorService {
 
   // ─── Public API: Network Monitor ────────────────────────────────────────
 
-  async startNetworkMonitor(
-    connectionId: string,
-    sender: WebContents
-  ): Promise<{ ok: true }> {
+  async startNetworkMonitor(connectionId: string, sender: WebContents): Promise<{ ok: true }> {
     this.assertMonitorEnabled(connectionId);
     this.assertVisibleTerminalAlive(connectionId);
 
@@ -1021,10 +1026,7 @@ export class MonitorService {
     return { ok: true };
   }
 
-  async getNetworkConnections(
-    connectionId: string,
-    port: number
-  ): Promise<NetworkConnection[]> {
+  async getNetworkConnections(connectionId: string, port: number): Promise<NetworkConnection[]> {
     this.assertMonitorEnabled(connectionId);
     this.assertVisibleTerminalAlive(connectionId);
 

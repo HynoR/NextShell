@@ -5,7 +5,7 @@ import type {
   DeleteMode,
   RecycleBinEntry,
   SessionDescriptor,
-  TerminalEncoding,
+  TerminalEncoding
 } from "../../../../../packages/core/src/index";
 import type { SshShellChannel, SshConnection } from "../../../../../packages/ssh/src/index";
 import type { IPty } from "node-pty";

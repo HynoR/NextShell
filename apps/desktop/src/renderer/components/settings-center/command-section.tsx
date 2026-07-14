@@ -3,7 +3,11 @@ import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-component
 import type { SaveFn } from "./types";
 
 export const CommandSection = ({
-  loading, rememberTemplateParams, batchMaxConcurrency, batchRetryCount, save,
+  loading,
+  rememberTemplateParams,
+  batchMaxConcurrency,
+  batchRetryCount,
+  save
 }: {
   loading: boolean;
   rememberTemplateParams: boolean;

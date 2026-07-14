@@ -28,7 +28,7 @@ export const CommandList = ({
   onRun,
   onRunBatch,
   onEdit,
-  onRemove,
+  onRemove
 }: CommandListProps) => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -62,11 +62,7 @@ export const CommandList = ({
               onClick={() => toggle(group.name)}
             >
               <i
-                className={
-                  isCollapsed
-                    ? "ri-arrow-right-s-line"
-                    : "ri-arrow-down-s-line"
-                }
+                className={isCollapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
                 aria-hidden="true"
               />
               <i className="ri-folder-3-line" aria-hidden="true" />

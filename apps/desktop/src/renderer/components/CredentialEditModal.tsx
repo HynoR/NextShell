@@ -131,7 +131,10 @@ export const CredentialEditModal = ({
         toConnectionUpsertInput(connection, {
           username,
           authType: values.authType,
-          password: values.authType === "password" || values.authType === "interactive" ? password : undefined,
+          password:
+            values.authType === "password" || values.authType === "interactive"
+              ? password
+              : undefined,
           sshKeyId: values.authType === "privateKey" ? values.sshKeyId : undefined
         })
       );
@@ -157,7 +160,9 @@ export const CredentialEditModal = ({
         if (saving) return;
         onClose();
       }}
-      onOk={() => { void handleSave(); }}
+      onOk={() => {
+        void handleSave();
+      }}
       destroyOnHidden
     >
       {failureReason ? (
@@ -170,9 +175,15 @@ export const CredentialEditModal = ({
         form={form}
         layout="vertical"
         requiredMark={false}
-        onFinish={() => { void handleSave(); }}
+        onFinish={() => {
+          void handleSave();
+        }}
       >
-        <Form.Item label="用户名" name="username" rules={[{ required: true, message: "请输入用户名" }]}>
+        <Form.Item
+          label="用户名"
+          name="username"
+          rules={[{ required: true, message: "请输入用户名" }]}
+        >
           <Input placeholder="root" autoFocus />
         </Form.Item>
 

@@ -8,7 +8,12 @@ import type {
 } from "../../../../../packages/core/src/index";
 import { deobfuscatePassword } from "./connection-export-crypto";
 import { decryptFinalShellPassword } from "./finalshell/decrypt-password";
-import { CONNECTION_ZONES, extractZone, isValidZone, getSubPath } from "../../../../../packages/shared/src/constants";
+import {
+  CONNECTION_ZONES,
+  extractZone,
+  isValidZone,
+  getSubPath
+} from "../../../../../packages/shared/src/constants";
 
 /**
  * Remap an imported connection's groupPath into the /import zone.

@@ -27,7 +27,11 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
     "darwin"
   );
 
-  assertEqual(resolved.command, "/bin/sh", "resolveLocalShellLaunch should prefer custom shell path");
+  assertEqual(
+    resolved.command,
+    "/bin/sh",
+    "resolveLocalShellLaunch should prefer custom shell path"
+  );
   assertEqual(resolved.label, "sh", "resolveLocalShellLaunch should derive custom shell label");
 })();
 
@@ -69,7 +73,10 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
   );
 
   if (resolved.command === "/bin/bash") {
-    assert(existsSync("/bin/bash"), "resolveLocalShellLaunch should only pick /bin/bash when it exists");
+    assert(
+      existsSync("/bin/bash"),
+      "resolveLocalShellLaunch should only pick /bin/bash when it exists"
+    );
   }
 })();
 

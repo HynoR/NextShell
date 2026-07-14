@@ -68,7 +68,10 @@ const primaryButtonStyle: React.CSSProperties = {
   color: "#ffffff"
 };
 
-export class AppErrorBoundary extends React.Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+export class AppErrorBoundary extends React.Component<
+  AppErrorBoundaryProps,
+  AppErrorBoundaryState
+> {
   state: AppErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: unknown): AppErrorBoundaryState {

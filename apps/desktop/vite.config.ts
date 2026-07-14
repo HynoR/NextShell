@@ -22,7 +22,9 @@ const resolveGitShortSha = (): string | undefined => {
     const shortSha = execSync("git rev-parse --short HEAD", {
       cwd: __dirname,
       stdio: ["ignore", "pipe", "ignore"]
-    }).toString("utf-8").trim();
+    })
+      .toString("utf-8")
+      .trim();
     return shortSha.length > 0 ? shortSha : undefined;
   } catch {
     return undefined;
@@ -40,7 +42,11 @@ const resolveBuildVersion = (): string => {
 };
 
 const appVersion = resolveBuildVersion();
-const githubRepo = (process.env["NEXTSHELL_GITHUB_REPO"] ?? process.env["VITE_GITHUB_REPO"] ?? "HynoR/NextShell").trim();
+const githubRepo = (
+  process.env["NEXTSHELL_GITHUB_REPO"] ??
+  process.env["VITE_GITHUB_REPO"] ??
+  "HynoR/NextShell"
+).trim();
 const pkg = (name: string) => path.resolve(__dirname, "../../packages", name, "src");
 const aliases = {
   "@nextshell/core": path.join(pkg("core"), "index.ts"),

@@ -1,6 +1,10 @@
 import { useState, useMemo } from "react";
 import { App as AntdApp, Modal, Radio, Table, Tag } from "antd";
-import type { ConnectionImportEntry, ConnectionProfile, ImportConflictPolicy } from "@nextshell/core";
+import type {
+  ConnectionImportEntry,
+  ConnectionProfile,
+  ImportConflictPolicy
+} from "@nextshell/core";
 import { formatErrorMessage } from "../utils/errorMessage";
 
 interface ConnectionImportModalProps {
@@ -84,16 +88,32 @@ export const ConnectionImportModal = ({
         const tags: React.ReactNode[] = [];
         const key = `${record.host}:${record.port}:${record.username}`;
         if (existingSet.has(key)) {
-          tags.push(<Tag key="conflict" color="orange">已存在</Tag>);
+          tags.push(
+            <Tag key="conflict" color="orange">
+              已存在
+            </Tag>
+          );
         }
         if (record.passwordUnavailable) {
-          tags.push(<Tag key="pw" color="red">密码缺失</Tag>);
+          tags.push(
+            <Tag key="pw" color="red">
+              密码缺失
+            </Tag>
+          );
         }
         if (record.sourceFormat === "finalshell") {
-          tags.push(<Tag key="src" color="blue">FinalShell</Tag>);
+          tags.push(
+            <Tag key="src" color="blue">
+              FinalShell
+            </Tag>
+          );
         }
         if (tags.length === 0) {
-          tags.push(<Tag key="new" color="green">新建</Tag>);
+          tags.push(
+            <Tag key="new" color="green">
+              新建
+            </Tag>
+          );
         }
         return <>{tags}</>;
       }
@@ -130,7 +150,8 @@ export const ConnectionImportModal = ({
       if (result.overwritten > 0) parts.push(`覆盖 ${result.overwritten}`);
       if (result.skipped > 0) parts.push(`跳过 ${result.skipped}`);
       if (result.failed > 0) parts.push(`失败 ${result.failed}`);
-      if (result.passwordsUnavailable > 0) parts.push(`${result.passwordsUnavailable} 个密码需手动填写`);
+      if (result.passwordsUnavailable > 0)
+        parts.push(`${result.passwordsUnavailable} 个密码需手动填写`);
 
       message.success(`导入完成：${parts.join("，")}`);
 
@@ -161,7 +182,9 @@ export const ConnectionImportModal = ({
       destroyOnHidden
     >
       {sourceName ? (
-        <div style={{ marginBottom: 8, color: "var(--t3)", fontSize: 12, fontFamily: "var(--mono)" }}>
+        <div
+          style={{ marginBottom: 8, color: "var(--t3)", fontSize: 12, fontFamily: "var(--mono)" }}
+        >
           来源：{sourceName}
         </div>
       ) : null}
@@ -181,7 +204,9 @@ export const ConnectionImportModal = ({
       <Table
         dataSource={entries}
         columns={columns}
-        rowKey={(record, index) => `${record.sourceRelativePath ?? ""}:${record.host}:${record.port}:${record.username}:${index}`}
+        rowKey={(record, index) =>
+          `${record.sourceRelativePath ?? ""}:${record.host}:${record.port}:${record.username}:${index}`
+        }
         size="small"
         pagination={false}
         scroll={{ y: 360 }}

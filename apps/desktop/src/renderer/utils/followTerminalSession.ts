@@ -1,9 +1,6 @@
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
 
-const isConnectedRemoteTerminal = (
-  session: SessionDescriptor,
-  connectionId: string
-): boolean =>
+const isConnectedRemoteTerminal = (session: SessionDescriptor, connectionId: string): boolean =>
   session.target === "remote" &&
   session.type === "terminal" &&
   session.status === "connected" &&

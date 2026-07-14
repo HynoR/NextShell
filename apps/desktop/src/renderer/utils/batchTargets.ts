@@ -1,8 +1,6 @@
 import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
 
-export const getBatchTargetConnectionIds = (
-  sessions: SessionDescriptor[]
-): string[] => {
+export const getBatchTargetConnectionIds = (sessions: SessionDescriptor[]): string[] => {
   const seen = new Set<string>();
   const targetIds: string[] = [];
   for (const session of sessions) {
@@ -68,7 +66,7 @@ export const buildBatchTargetTree = (connections: ConnectionProfile[]): BatchTar
     const group = ensureGroup(connection.groupPath);
     (group.children as BatchTargetTreeNode[]).push({
       title: `${connection.name} (${connection.host})`,
-      value: connection.id,
+      value: connection.id
     });
   }
 

@@ -30,9 +30,9 @@ describe("resolveAllowedAssetPath", () => {
   });
 
   test("rejects empty configuration and untrusted hosts", () => {
-    expect(
-      resolveAllowedAssetPath("nextshell-asset://local/tmp/wallpaper.png", "", "linux")
-    ).toBe(undefined);
+    expect(resolveAllowedAssetPath("nextshell-asset://local/tmp/wallpaper.png", "", "linux")).toBe(
+      undefined
+    );
     expect(
       resolveAllowedAssetPath(
         "nextshell-asset://remote/tmp/wallpaper.png",

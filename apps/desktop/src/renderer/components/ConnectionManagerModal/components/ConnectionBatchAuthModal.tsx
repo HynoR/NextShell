@@ -5,7 +5,7 @@ import {
   LOCAL_DEFAULT_SCOPE_KEY,
   type AuthType,
   type ConnectionProfile,
-  type SshKeyProfile,
+  type SshKeyProfile
 } from "@nextshell/core";
 import type { ConnectionBatchAuthUpdateInput } from "@nextshell/shared";
 import { formatErrorMessage } from "../../../utils/errorMessage";
@@ -39,7 +39,7 @@ const authTypeLabel: Record<AuthType, string> = {
   password: "密码",
   interactive: "交互式",
   privateKey: "私钥",
-  agent: "Agent",
+  agent: "Agent"
 };
 
 export const ConnectionBatchAuthModal = ({
@@ -48,7 +48,7 @@ export const ConnectionBatchAuthModal = ({
   connections,
   sshKeys,
   onClose,
-  onUpdated,
+  onUpdated
 }: ConnectionBatchAuthModalProps) => {
   const { message } = AntdApp.useApp();
   const [form] = Form.useForm<BatchAuthFormValues>();
@@ -85,34 +85,34 @@ export const ConnectionBatchAuthModal = ({
       dataIndex: "name",
       key: "name",
       width: 160,
-      ellipsis: true,
+      ellipsis: true
     },
     {
       title: "主机",
       key: "host",
       width: 170,
-      render: (_value, record) => `${record.host}:${record.port}`,
+      render: (_value, record) => `${record.host}:${record.port}`
     },
     {
       title: "用户",
       dataIndex: "username",
       key: "username",
       width: 100,
-      ellipsis: true,
+      ellipsis: true
     },
     {
       title: "当前认证",
       dataIndex: "authType",
       key: "authType",
       width: 100,
-      render: (value: AuthType) => <Tag>{authTypeLabel[value]}</Tag>,
+      render: (value: AuthType) => <Tag>{authTypeLabel[value]}</Tag>
     },
     {
       title: "分组",
       dataIndex: "groupPath",
       key: "groupPath",
-      ellipsis: true,
-    },
+      ellipsis: true
+    }
   ];
 
   const handleSubmit = async (values: BatchAuthFormValues) => {
@@ -133,10 +133,11 @@ export const ConnectionBatchAuthModal = ({
           : { authType: "agent" };
 
     const payload: ConnectionBatchAuthUpdateInput = {
-      target: target.type === "connections"
-        ? { type: "connections", connectionIds: target.connectionIds }
-        : { type: "group", groupPath: target.groupPath },
-      auth,
+      target:
+        target.type === "connections"
+          ? { type: "connections", connectionIds: target.connectionIds }
+          : { type: "group", groupPath: target.groupPath },
+      auth
     };
 
     setSaving(true);
@@ -203,7 +204,7 @@ export const ConnectionBatchAuthModal = ({
                 { label: "密码", value: "password" },
                 { label: "交互式", value: "interactive" },
                 { label: "私钥", value: "privateKey" },
-                { label: "SSH Agent", value: "agent" },
+                { label: "SSH Agent", value: "agent" }
               ]}
             />
           </Form.Item>

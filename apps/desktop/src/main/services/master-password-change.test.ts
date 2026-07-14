@@ -1,4 +1,7 @@
-import { createMasterKeyMeta, verifyMasterPassword } from "../../../../../packages/security/src/index";
+import {
+  createMasterKeyMeta,
+  verifyMasterPassword
+} from "../../../../../packages/security/src/index";
 import { changeMasterPassword } from "./master-password-change";
 
 const assert = (condition: boolean, message: string): void => {
@@ -7,12 +10,18 @@ const assert = (condition: boolean, message: string): void => {
   }
 };
 
-const assertRejects = async (run: () => Promise<unknown>, expectedMessage: string): Promise<void> => {
+const assertRejects = async (
+  run: () => Promise<unknown>,
+  expectedMessage: string
+): Promise<void> => {
   try {
     await run();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    assert(message.includes(expectedMessage), `should include "${expectedMessage}", got "${message}"`);
+    assert(
+      message.includes(expectedMessage),
+      `should include "${expectedMessage}", got "${message}"`
+    );
     return;
   }
   throw new Error("expected promise to reject");
@@ -24,14 +33,19 @@ await (async () => {
   let currentMeta = await createMasterKeyMeta(original);
   let unlockedPassword = original;
   const rememberCalls: string[] = [];
-  const auditRecords: Array<{ action: string; level: string; metadata?: Record<string, unknown> }> = [];
+  const auditRecords: Array<{ action: string; level: string; metadata?: Record<string, unknown> }> =
+    [];
 
   await changeMasterPassword({
     oldPassword: original,
     newPassword: next,
     getMasterKeyMeta: () => currentMeta,
-    saveMasterKeyMeta: (meta) => { currentMeta = meta; },
-    setMasterPassword: (password) => { unlockedPassword = password; },
+    saveMasterKeyMeta: (meta) => {
+      currentMeta = meta;
+    },
+    setMasterPassword: (password) => {
+      unlockedPassword = password;
+    },
     rememberPasswordBestEffort: async (password, phase) => {
       rememberCalls.push(`${phase}:${password}`);
     },
@@ -42,7 +56,10 @@ await (async () => {
 
   assert(unlockedPassword === next, "should keep runtime unlocked password as new password");
   assert(await verifyMasterPassword(next, currentMeta), "new password should verify updated meta");
-  assert(!(await verifyMasterPassword(original, currentMeta)), "old password should not verify updated meta");
+  assert(
+    !(await verifyMasterPassword(original, currentMeta)),
+    "old password should not verify updated meta"
+  );
   assert(rememberCalls[0] === `change:${next}`, "should remember new password with change phase");
   assert(auditRecords[0]?.action === "master_password.change", "should append change audit log");
   assert(auditRecords[0]?.metadata?.["sameAsOld"] === false, "audit should mark sameAsOld=false");
@@ -58,8 +75,12 @@ await (async () => {
     oldPassword: password,
     newPassword: password,
     getMasterKeyMeta: () => currentMeta,
-    saveMasterKeyMeta: (meta) => { currentMeta = meta; },
-    setMasterPassword: (value) => { unlockedPassword = value; },
+    saveMasterKeyMeta: (meta) => {
+      currentMeta = meta;
+    },
+    setMasterPassword: (value) => {
+      unlockedPassword = value;
+    },
     rememberPasswordBestEffort: async () => {},
     appendAuditLog: (record) => {
       auditRecords.push(record);
@@ -74,15 +95,16 @@ await (async () => {
   const original = "correct-password";
   const currentMeta = await createMasterKeyMeta(original);
   await assertRejects(
-    () => changeMasterPassword({
-      oldPassword: "wrong-password",
-      newPassword: "next-password",
-      getMasterKeyMeta: () => currentMeta,
-      saveMasterKeyMeta: () => {},
-      setMasterPassword: () => {},
-      rememberPasswordBestEffort: async () => {},
-      appendAuditLog: () => {}
-    }),
+    () =>
+      changeMasterPassword({
+        oldPassword: "wrong-password",
+        newPassword: "next-password",
+        getMasterKeyMeta: () => currentMeta,
+        saveMasterKeyMeta: () => {},
+        setMasterPassword: () => {},
+        rememberPasswordBestEffort: async () => {},
+        appendAuditLog: () => {}
+      }),
     "原密码错误"
   );
 })();

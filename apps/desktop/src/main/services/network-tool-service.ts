@@ -7,7 +7,7 @@ import {
   normalizeGithubRepo,
   parseComparableVersion,
   compareCoreSegments,
-  comparePrerelease,
+  comparePrerelease
 } from "./container-utils";
 import { logger } from "../logger";
 
@@ -40,33 +40,60 @@ export class NetworkToolService {
     const githubRepo = normalizeGithubRepo(process.env["VITE_GITHUB_REPO"] ?? "");
     const currentVersion = process.env["VITE_APP_VERSION"] ?? "0.0.0";
     if (!githubRepo) {
-      return { currentVersion, latestVersion: null, hasUpdate: false, releaseUrl: null, error: "未配置或配置了无效的 GitHub 仓库" };
+      return {
+        currentVersion,
+        latestVersion: null,
+        hasUpdate: false,
+        releaseUrl: null,
+        error: "未配置或配置了无效的 GitHub 仓库"
+      };
     }
     try {
       const response = await fetch(`https://api.github.com/repos/${githubRepo}/releases/latest`, {
-        headers: { Accept: "application/vnd.github.v3+json", "User-Agent": "NextShell-UpdateChecker" },
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "NextShell-UpdateChecker"
+        }
       });
       if (!response.ok) {
         if (response.status === 404) {
-          return { currentVersion, latestVersion: null, hasUpdate: false, releaseUrl: `https://github.com/${githubRepo}/releases`, error: "未找到任何 Release" };
+          return {
+            currentVersion,
+            latestVersion: null,
+            hasUpdate: false,
+            releaseUrl: `https://github.com/${githubRepo}/releases`,
+            error: "未找到任何 Release"
+          };
         }
         throw new Error(`GitHub API 返回 ${response.status}`);
       }
       const data = (await response.json()) as { tag_name?: string; html_url?: string };
       const latestVersion = data.tag_name ?? null;
       if (!latestVersion) {
-        return { currentVersion, latestVersion: null, hasUpdate: false, releaseUrl: `https://github.com/${githubRepo}/releases`, error: "Release 缺少 tag" };
+        return {
+          currentVersion,
+          latestVersion: null,
+          hasUpdate: false,
+          releaseUrl: `https://github.com/${githubRepo}/releases`,
+          error: "Release 缺少 tag"
+        };
       }
       return {
         currentVersion,
         latestVersion,
         hasUpdate: this.compareVersions(latestVersion, currentVersion) > 0,
         releaseUrl: data.html_url ?? `https://github.com/${githubRepo}/releases`,
-        error: null,
+        error: null
       };
     } catch (error) {
       logger.error("[UpdateCheck]", error);
-      return { currentVersion, latestVersion: null, hasUpdate: false, releaseUrl: null, error: error instanceof Error ? error.message : "检查更新失败" };
+      return {
+        currentVersion,
+        latestVersion: null,
+        hasUpdate: false,
+        releaseUrl: null,
+        error: error instanceof Error ? error.message : "检查更新失败"
+      };
     }
   }
 
@@ -94,7 +121,9 @@ export class NetworkToolService {
     try {
       return execFileSync(cmd, ["nexttrace"], { encoding: "utf-8" }).trim().split(/\r?\n/)[0]!;
     } catch {
-      throw new Error("未找到 nexttrace，请在设置 > 网络工具中配置路径，或确保 nexttrace 已安装到 PATH。");
+      throw new Error(
+        "未找到 nexttrace，请在设置 > 网络工具中配置路径，或确保 nexttrace 已安装到 PATH。"
+      );
     }
   }
 

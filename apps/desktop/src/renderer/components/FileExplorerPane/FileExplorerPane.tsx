@@ -28,10 +28,7 @@ export const FileExplorerPane = ({
   void onOpenSettings;
 
   const { message, modal } = AntdApp.useApp();
-  const visibleToolbarActions = useMemo(
-    () => new Set(getVisibleFileExplorerToolbarActions()),
-    []
-  );
+  const visibleToolbarActions = useMemo(() => new Set(getVisibleFileExplorerToolbarActions()), []);
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const enqueueTask = useTransferQueueStore((state) => state.enqueueTask);
@@ -91,10 +88,7 @@ export const FileExplorerPane = ({
 
   if (!connected) {
     return (
-      <ConnectionPrompt
-        message="当前连接未建立会话，请先连接 SSH 终端。"
-        icon="ri-links-line"
-      />
+      <ConnectionPrompt message="当前连接未建立会话，请先连接 SSH 终端。" icon="ri-links-line" />
     );
   }
 
@@ -172,7 +166,8 @@ export const FileExplorerPane = ({
               />
             </span>
             <span>
-              已{actions.clipboard.mode === "copy" ? "复制" : "剪切"} {actions.clipboard.entries.length} 项——在目标目录右键粘贴或点击工具栏粘贴
+              已{actions.clipboard.mode === "copy" ? "复制" : "剪切"}{" "}
+              {actions.clipboard.entries.length} 项——在目标目录右键粘贴或点击工具栏粘贴
             </span>
             <button className="fe-clipboard-clear" onClick={actions.clearClipboard}>
               清空

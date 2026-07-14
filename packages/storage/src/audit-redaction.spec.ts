@@ -34,7 +34,7 @@ describe("redactAuditMetadata", () => {
 
   test("masks an entire PEM private key block", () => {
     const masked = redactCommand(
-      "echo '-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEvbody\n-----END OPENSSH PRIVATE KEY-----'",
+      "echo '-----BEGIN OPENSSH PRIVATE KEY-----\nMIIEvbody\n-----END OPENSSH PRIVATE KEY-----'"
     );
     expect(masked).not.toContain("MIIEvbody");
     expect(masked).toContain("«redacted»");
@@ -49,7 +49,7 @@ describe("redactAuditMetadata", () => {
   test("recurses into nested objects and arrays", () => {
     const out = redactAuditMetadata({
       steps: [{ command: "mysql -pNESTED" }],
-      ctx: { token: "deep-secret" },
+      ctx: { token: "deep-secret" }
     });
     expect(JSON.stringify(out)).not.toContain("NESTED");
     expect(JSON.stringify(out)).not.toContain("deep-secret");

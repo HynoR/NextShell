@@ -26,7 +26,7 @@ const SYNTAX_MODE_OPTIONS: Array<{ value: EditorSyntaxMode; label: string }> = [
   { value: "toml", label: "TOML" },
   { value: "python", label: "Python" },
   { value: "shell", label: "Shell" },
-  { value: "php", label: "PHP" },
+  { value: "php", label: "PHP" }
 ];
 
 export const EditorPane = ({ session }: EditorPaneProps) => {
@@ -79,19 +79,21 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
           setSaveStatus("unsaved");
         }
       }),
-      keymap.of([{
-        key: "Mod-s",
-        preventDefault: true,
-        run: () => {
-          void handleSave();
-          return true;
-        },
-      }]),
+      keymap.of([
+        {
+          key: "Mod-s",
+          preventDefault: true,
+          run: () => {
+            void handleSave();
+            return true;
+          }
+        }
+      ])
     ];
 
     const state = EditorState.create({
       doc: tab.initialContent,
-      extensions,
+      extensions
     });
 
     const view = new EditorView({ state, parent: containerRef.current });
@@ -101,7 +103,7 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
       view.destroy();
       viewRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab?.sessionId]);
 
   useEffect(() => {
@@ -113,7 +115,11 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
   }, [tab?.remotePath, tab?.syntaxMode]);
 
   if (!tab) {
-    return <div className="flex-1 flex items-center justify-center text-[var(--t3)]">编辑器数据加载中...</div>;
+    return (
+      <div className="flex-1 flex items-center justify-center text-[var(--t3)]">
+        编辑器数据加载中...
+      </div>
+    );
   }
 
   const fileName = tab.remotePath.split("/").pop() ?? tab.remotePath;
@@ -126,9 +132,21 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
           {fileName}
         </span>
         <span className="editor-toolbar-status">
-          {saveStatus === "saving" && <><i className="ri-loader-4-line ri-spin" aria-hidden="true" /> 保存中...</>}
-          {saveStatus === "saved" && <><i className="ri-check-line" aria-hidden="true" /> 已保存</>}
-          {saveStatus === "unsaved" && <><i className="ri-edit-circle-line" aria-hidden="true" /> 未保存</>}
+          {saveStatus === "saving" && (
+            <>
+              <i className="ri-loader-4-line ri-spin" aria-hidden="true" /> 保存中...
+            </>
+          )}
+          {saveStatus === "saved" && (
+            <>
+              <i className="ri-check-line" aria-hidden="true" /> 已保存
+            </>
+          )}
+          {saveStatus === "unsaved" && (
+            <>
+              <i className="ri-edit-circle-line" aria-hidden="true" /> 未保存
+            </>
+          )}
         </span>
         <label className="editor-toolbar-lang">
           <i className="ri-code-box-line" aria-hidden="true" />
@@ -139,7 +157,9 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
             title="强制指定语法高亮类型"
           >
             {SYNTAX_MODE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
         </label>

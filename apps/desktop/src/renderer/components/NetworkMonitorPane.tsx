@@ -233,9 +233,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
       dataIndex: "state",
       width: 120,
       render: (state: string) => (
-        <span className={`conn-state conn-state-${state.toLowerCase()}`}>
-          {state}
-        </span>
+        <span className={`conn-state conn-state-${state.toLowerCase()}`}>{state}</span>
       )
     },
     {
@@ -283,7 +281,9 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
             pagination={false}
             scroll={{ y: listenerTableScrollY }}
             className="nm-table"
-            locale={{ emptyText: initialLoading ? <TableSkeleton rows={5} columns={4} /> : "暂无监听数据" }}
+            locale={{
+              emptyText: initialLoading ? <TableSkeleton rows={5} columns={4} /> : "暂无监听数据"
+            }}
             onRow={(record) => ({
               className: getListenerKey(record) === selectedListenerKey ? "nm-row-selected" : "",
               onClick: () => handleOpenListenerDetail(record)
@@ -313,13 +313,13 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
               </span>
             </div>
 
-            {detailError ? (
-              <div className="nm-detail-error">{detailError}</div>
-            ) : null}
+            {detailError ? <div className="nm-detail-error">{detailError}</div> : null}
 
             <div ref={connectionTableRef} className="flex-1 overflow-hidden">
               <Table<NetworkConnection>
-                rowKey={(row) => `${row.remoteIp}-${row.remotePort}-${row.localPort}-${row.pid}-${row.state}`}
+                rowKey={(row) =>
+                  `${row.remoteIp}-${row.remotePort}-${row.localPort}-${row.pid}-${row.state}`
+                }
                 columns={connectionColumns}
                 dataSource={portConnections}
                 size="small"
@@ -332,7 +332,9 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
                       <Spin size="small" />
                       读取端口连接中...
                     </span>
-                  ) : "该端口暂无活跃连接"
+                  ) : (
+                    "该端口暂无活跃连接"
+                  )
                 }}
               />
             </div>

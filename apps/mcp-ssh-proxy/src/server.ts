@@ -57,7 +57,8 @@ class SessionManager {
 
   constructor(options: NextShellMcpServerOptions) {
     this.context = options.context;
-    this.createConnection = options.createConnection ?? ((connectOptions) => SshConnection.connect(connectOptions));
+    this.createConnection =
+      options.createConnection ?? ((connectOptions) => SshConnection.connect(connectOptions));
     this.idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.timer = setInterval(() => {
       void this.reapExpiredSessions();
@@ -65,7 +66,9 @@ class SessionManager {
     this.timer.unref?.();
   }
 
-  async connect(target: string): Promise<
+  async connect(
+    target: string
+  ): Promise<
     | { ok: true; sessionId: string; server: ServerSummary; connectedAt: string }
     | { ok: false; reason: "not_found" | "ambiguous"; message: string; candidates: ServerSummary[] }
   > {
@@ -113,7 +116,10 @@ class SessionManager {
     }
   }
 
-  async exec(sessionId: string, command: string): Promise<
+  async exec(
+    sessionId: string,
+    command: string
+  ): Promise<
     | ({ ok: true; sessionId: string; command: string; executedAt: string } & ExecResult)
     | { ok: false; reason: "session_not_found"; message: string }
   > {
@@ -139,7 +145,9 @@ class SessionManager {
     };
   }
 
-  async disconnect(sessionId: string): Promise<{ ok: true; disconnected: boolean; sessionId: string }> {
+  async disconnect(
+    sessionId: string
+  ): Promise<{ ok: true; disconnected: boolean; sessionId: string }> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return {
@@ -180,7 +188,9 @@ export interface NextShellMcpRuntime {
   close: () => Promise<void>;
 }
 
-export const createNextShellMcpServer = (options: NextShellMcpServerOptions): NextShellMcpRuntime => {
+export const createNextShellMcpServer = (
+  options: NextShellMcpServerOptions
+): NextShellMcpRuntime => {
   const server = new McpServer({
     name: "nextshell-mcp-ssh-proxy",
     version: "0.1.0"
@@ -230,7 +240,8 @@ export const createNextShellMcpServer = (options: NextShellMcpServerOptions): Ne
     "nextshell/connect",
     {
       title: "Connect To A NextShell Server",
-      description: "Resolve a target using NextShell data, then create a reusable SSH exec session.",
+      description:
+        "Resolve a target using NextShell data, then create a reusable SSH exec session.",
       inputSchema: {
         target: z.string().trim().min(1)
       }
@@ -264,10 +275,7 @@ export const createNextShellMcpServer = (options: NextShellMcpServerOptions): Ne
         return textResult(result.message, result);
       }
 
-      return textResult(
-        `Command finished with exit code ${result.exitCode}.`,
-        result
-      );
+      return textResult(`Command finished with exit code ${result.exitCode}.`, result);
     }
   );
 
@@ -283,7 +291,9 @@ export const createNextShellMcpServer = (options: NextShellMcpServerOptions): Ne
     async ({ sessionId }) => {
       const result = await sessions.disconnect(sessionId);
       return textResult(
-        result.disconnected ? `Disconnected session ${sessionId}.` : `Session ${sessionId} was not active.`,
+        result.disconnected
+          ? `Disconnected session ${sessionId}.`
+          : `Session ${sessionId} was not active.`,
         result
       );
     }

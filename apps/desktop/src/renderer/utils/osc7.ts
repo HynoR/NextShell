@@ -41,7 +41,10 @@ const parseOsc7Path = (payload: string): string | undefined => {
   }
 };
 
-const findTerminator = (input: string, from: number): { end: number; length: number } | undefined => {
+const findTerminator = (
+  input: string,
+  from: number
+): { end: number; length: number } | undefined => {
   const belIndex = input.indexOf(BEL, from);
   const stIndex = input.indexOf(ST, from);
 
@@ -73,10 +76,7 @@ export const createOsc7ParserState = (): Osc7ParserState => ({
   pending: ""
 });
 
-export const consumeOsc7Chunk = (
-  state: Osc7ParserState,
-  chunk: string
-): Osc7ChunkResult => {
+export const consumeOsc7Chunk = (state: Osc7ParserState, chunk: string): Osc7ChunkResult => {
   if (!chunk) {
     return {
       state,

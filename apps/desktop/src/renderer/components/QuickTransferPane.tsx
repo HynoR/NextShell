@@ -115,7 +115,7 @@ const createInitialSide = (mode: SideMode, localDefault: string): SideState => (
   files: [],
   selectedPaths: [],
   loading: false,
-  remotePathReady: false,
+  remotePathReady: false
 });
 
 const shallowEqualSide = (a: SideState, b: SideState): boolean => {
@@ -131,10 +131,7 @@ const shallowEqualSide = (a: SideState, b: SideState): boolean => {
   );
 };
 
-export const QuickTransferPane = ({
-  connections,
-  sessions
-}: QuickTransferPaneProps) => {
+export const QuickTransferPane = ({ connections, sessions }: QuickTransferPaneProps) => {
   const { message } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences);
   const enqueueTask = useTransferQueueStore((state) => state.enqueueTask);
@@ -214,7 +211,11 @@ export const QuickTransferPane = ({
         render: (_v: string, row: RemoteFileEntry) => (
           <span className="inline-flex items-center gap-1.5">
             <i
-              className={row.type === "directory" ? "ri-folder-3-fill text-sm shrink-0 leading-none" : "ri-file-text-line text-sm shrink-0 leading-none"}
+              className={
+                row.type === "directory"
+                  ? "ri-folder-3-fill text-sm shrink-0 leading-none"
+                  : "ri-file-text-line text-sm shrink-0 leading-none"
+              }
               aria-hidden="true"
             />
             {row.name}
@@ -298,7 +299,9 @@ export const QuickTransferPane = ({
           updateSide(id, { files: list, selectedPaths: [], path: normalizedPath });
         }
       } catch (error) {
-        message.error(`读取${id === "left" ? "左侧" : "右侧"}目录失败：${formatErrorMessage(error, "请检查路径或连接状态")}`);
+        message.error(
+          `读取${id === "left" ? "左侧" : "右侧"}目录失败：${formatErrorMessage(error, "请检查路径或连接状态")}`
+        );
         if (side.files.length > 0) {
           updateSide(id, { files: [] });
         }
@@ -521,29 +524,33 @@ export const QuickTransferPane = ({
       localDir: string
     ): Promise<void> => {
       let successCount = 0;
-      await pMap(sourceEntries, async (entry) => {
-        const targetPath = joinLocalPath(localDir, entry.name);
-        const task = enqueueTask({
-          direction: "download",
-          connectionId,
-          localPath: targetPath,
-          remotePath: entry.path
-        });
-        try {
-          await window.nextshell.sftp.download({
+      await pMap(
+        sourceEntries,
+        async (entry) => {
+          const targetPath = joinLocalPath(localDir, entry.name);
+          const task = enqueueTask({
+            direction: "download",
             connectionId,
-            remotePath: entry.path,
             localPath: targetPath,
-            taskId: task.id
+            remotePath: entry.path
           });
-          markSuccess(task.id);
-          successCount += 1;
-        } catch (error) {
-          const reason = formatErrorMessage(error, "下载失败");
-          markFailed(task.id, reason);
-          message.error(`下载失败：${entry.name}（${reason}）`);
-        }
-      }, 4);
+          try {
+            await window.nextshell.sftp.download({
+              connectionId,
+              remotePath: entry.path,
+              localPath: targetPath,
+              taskId: task.id
+            });
+            markSuccess(task.id);
+            successCount += 1;
+          } catch (error) {
+            const reason = formatErrorMessage(error, "下载失败");
+            markFailed(task.id, reason);
+            message.error(`下载失败：${entry.name}（${reason}）`);
+          }
+        },
+        4
+      );
       if (successCount > 0) {
         message.success(`快传完成 (${successCount}/${sourceEntries.length})`);
       }
@@ -563,29 +570,33 @@ export const QuickTransferPane = ({
         return;
       }
       let successCount = 0;
-      await pMap(localFiles, async (entry) => {
-        const remotePath = normalizeRemotePath(joinRemotePath(remoteDir, entry.name));
-        const task = enqueueTask({
-          direction: "upload",
-          connectionId,
-          localPath: entry.path,
-          remotePath
-        });
-        try {
-          await window.nextshell.sftp.upload({
+      await pMap(
+        localFiles,
+        async (entry) => {
+          const remotePath = normalizeRemotePath(joinRemotePath(remoteDir, entry.name));
+          const task = enqueueTask({
+            direction: "upload",
             connectionId,
             localPath: entry.path,
-            remotePath,
-            taskId: task.id
+            remotePath
           });
-          markSuccess(task.id);
-          successCount += 1;
-        } catch (error) {
-          const reason = formatErrorMessage(error, "上传失败");
-          markFailed(task.id, reason);
-          message.error(`上传失败：${entry.name}（${reason}）`);
-        }
-      }, 4);
+          try {
+            await window.nextshell.sftp.upload({
+              connectionId,
+              localPath: entry.path,
+              remotePath,
+              taskId: task.id
+            });
+            markSuccess(task.id);
+            successCount += 1;
+          } catch (error) {
+            const reason = formatErrorMessage(error, "上传失败");
+            markFailed(task.id, reason);
+            message.error(`上传失败：${entry.name}（${reason}）`);
+          }
+        },
+        4
+      );
       if (successCount > 0) {
         message.success(`快传完成 (${successCount}/${localFiles.length})`);
       }
@@ -602,15 +613,17 @@ export const QuickTransferPane = ({
     ): Promise<void> => {
       if (sourceEntries.length === 0) return;
       const normalizedSourceDir = normalizeRemotePath(sourceDir);
-      const pathSegment = normalizedSourceDir === "/"
-        ? "root"
-        : normalizedSourceDir.split("/").filter(Boolean).at(-1) ?? "bundle";
-      const archiveBase = sourceEntries.length === 1
-        ? sourceEntries[0]!.name
-        : `${pathSegment}-bundle-${Date.now()}`;
+      const pathSegment =
+        normalizedSourceDir === "/"
+          ? "root"
+          : (normalizedSourceDir.split("/").filter(Boolean).at(-1) ?? "bundle");
+      const archiveBase =
+        sourceEntries.length === 1 ? sourceEntries[0]!.name : `${pathSegment}-bundle-${Date.now()}`;
       const archiveName = ensureTarGzName(archiveBase);
       const localArchivePath = joinLocalPath(localDir, archiveName);
-      const remoteArchivePath = normalizeRemotePath(joinRemotePath(normalizedSourceDir, archiveName));
+      const remoteArchivePath = normalizeRemotePath(
+        joinRemotePath(normalizedSourceDir, archiveName)
+      );
 
       const task = enqueueTask({
         direction: "download",
@@ -651,14 +664,14 @@ export const QuickTransferPane = ({
         message.warning("仅支持选择本机文件打包上传");
         return;
       }
-      const archiveBase = localFiles.length === 1
-        ? localFiles[0]!.name
-        : `upload-bundle-${Date.now()}`;
+      const archiveBase =
+        localFiles.length === 1 ? localFiles[0]!.name : `upload-bundle-${Date.now()}`;
       const archiveName = ensureTarGzName(archiveBase);
       const remoteArchivePath = normalizeRemotePath(joinRemotePath(remoteDir, archiveName));
-      const localDisplayPath = localFiles.length === 1
-        ? localFiles[0]!.path
-        : `${localFiles[0]!.path} (+${localFiles.length - 1} files)`;
+      const localDisplayPath =
+        localFiles.length === 1
+          ? localFiles[0]!.path
+          : `${localFiles[0]!.path} (+${localFiles.length - 1} files)`;
 
       const task = enqueueTask({
         direction: "upload",
@@ -734,34 +747,38 @@ export const QuickTransferPane = ({
     ): Promise<number> => {
       if (sourceEntries.length === 0) return 0;
       let successCount = 0;
-      await pMap(sourceEntries, async (entry) => {
-        const normalizedSourceDir = normalizeRemotePath(sourceDir);
-        const normalizedTargetDir = normalizeRemotePath(targetDir);
-        const task = enqueueTask({
-          direction,
-          connectionId: sourceId,
-          localPath: `${sourceId}:${joinRemotePath(normalizedSourceDir, entry.name)}`,
-          remotePath: `${targetId}:${joinRemotePath(normalizedTargetDir, entry.name)}`,
-          retryable: false
-        });
-        try {
-          await window.nextshell.sftp.transferPacked({
-            sourceConnectionId: sourceId,
-            sourceDir: normalizedSourceDir,
-            entryNames: [entry.name],
-            targetConnectionId: targetId,
-            targetDir: normalizedTargetDir,
-            archiveName: ensureTarGzName(entry.name),
-            taskId: task.id
+      await pMap(
+        sourceEntries,
+        async (entry) => {
+          const normalizedSourceDir = normalizeRemotePath(sourceDir);
+          const normalizedTargetDir = normalizeRemotePath(targetDir);
+          const task = enqueueTask({
+            direction,
+            connectionId: sourceId,
+            localPath: `${sourceId}:${joinRemotePath(normalizedSourceDir, entry.name)}`,
+            remotePath: `${targetId}:${joinRemotePath(normalizedTargetDir, entry.name)}`,
+            retryable: false
           });
-          markSuccess(task.id);
-          successCount += 1;
-        } catch (error) {
-          const reason = formatErrorMessage(error, "跨服务器逐个快传失败");
-          markFailed(task.id, reason);
-          message.error(`逐个快传失败：${entry.name}（${reason}）`);
-        }
-      }, 2);
+          try {
+            await window.nextshell.sftp.transferPacked({
+              sourceConnectionId: sourceId,
+              sourceDir: normalizedSourceDir,
+              entryNames: [entry.name],
+              targetConnectionId: targetId,
+              targetDir: normalizedTargetDir,
+              archiveName: ensureTarGzName(entry.name),
+              taskId: task.id
+            });
+            markSuccess(task.id);
+            successCount += 1;
+          } catch (error) {
+            const reason = formatErrorMessage(error, "跨服务器逐个快传失败");
+            markFailed(task.id, reason);
+            message.error(`逐个快传失败：${entry.name}（${reason}）`);
+          }
+        },
+        2
+      );
       return successCount;
     },
     [enqueueTask, markFailed, markSuccess, message]
@@ -802,7 +819,9 @@ export const QuickTransferPane = ({
               dst.path,
               direction
             );
-            message.success(`快传完成（${from === "left" ? "左侧" : "右侧"}服务器 -> ${from === "left" ? "右侧" : "左侧"}服务器）`);
+            message.success(
+              `快传完成（${from === "left" ? "左侧" : "右侧"}服务器 -> ${from === "left" ? "右侧" : "左侧"}服务器）`
+            );
           } else {
             const successCount = await transferBetweenServersIndividual(
               src.connectionId,
@@ -889,16 +908,17 @@ export const QuickTransferPane = ({
     const side = id === "left" ? left : right;
     const connection = id === "left" ? leftConnection : rightConnection;
     const sideLabel = id === "left" ? "左侧" : "右侧";
-    const titleConnectionName = side.mode === "server"
-      ? (connection ? connection.name : "未选服务器")
-      : "本机";
+    const titleConnectionName =
+      side.mode === "server" ? (connection ? connection.name : "未选服务器") : "本机";
 
     const needsServerPick = side.mode === "server" && !side.connectionId;
 
     return (
       <section className="qtp-pane" key={id}>
         <div className={`qtp-pane-header${id === "right" ? " qtp-pane-header-right" : ""}`}>
-          <span className="qtp-pane-title">{sideLabel}：{titleConnectionName}</span>
+          <span className="qtp-pane-title">
+            {sideLabel}：{titleConnectionName}
+          </span>
           <div className="qtp-mode-switch">
             <button
               className={`qtp-mode-btn${side.mode === "local" ? " active" : ""}`}
@@ -917,7 +937,9 @@ export const QuickTransferPane = ({
         {side.mode === "server" ? (
           <div className="qtp-target-row">
             <button className="qtp-pick-btn" onClick={() => openPicker(id)}>
-              {connection ? `${sideLabel}服务器：${connection.name}` : `选择${sideLabel}服务器（仅连接中标签页）`}
+              {connection
+                ? `${sideLabel}服务器：${connection.name}`
+                : `选择${sideLabel}服务器（仅连接中标签页）`}
             </button>
           </div>
         ) : (
@@ -929,12 +951,20 @@ export const QuickTransferPane = ({
         )}
         <div className="qtp-path-row">
           <Tooltip title="上级目录">
-            <button className="fe-icon-btn" onClick={() => handleParent(id)} disabled={side.loading}>
+            <button
+              className="fe-icon-btn"
+              onClick={() => handleParent(id)}
+              disabled={side.loading}
+            >
               <i className="ri-arrow-up-s-line" aria-hidden="true" />
             </button>
           </Tooltip>
           <Tooltip title="刷新">
-            <button className="fe-icon-btn" onClick={() => void loadSideFiles(id)} disabled={side.loading}>
+            <button
+              className="fe-icon-btn"
+              onClick={() => void loadSideFiles(id)}
+              disabled={side.loading}
+            >
               <i className="ri-refresh-line" aria-hidden="true" />
             </button>
           </Tooltip>
@@ -947,7 +977,11 @@ export const QuickTransferPane = ({
                 navigateSide(id, side.pathInput);
               }
             }}
-            placeholder={side.mode === "local" ? `输入${sideLabel}本机路径后回车` : `输入${sideLabel}远端路径后回车`}
+            placeholder={
+              side.mode === "local"
+                ? `输入${sideLabel}本机路径后回车`
+                : `输入${sideLabel}远端路径后回车`
+            }
           />
         </div>
         <div className="qtp-table">
@@ -960,9 +994,7 @@ export const QuickTransferPane = ({
             loading={side.loading}
             scroll={{ y: "100%" }}
             locale={{
-              emptyText: needsServerPick
-                ? `请先选择${sideLabel}服务器`
-                : "暂无文件"
+              emptyText: needsServerPick ? `请先选择${sideLabel}服务器` : "暂无文件"
             }}
             rowSelection={{
               selectedRowKeys: side.selectedPaths,

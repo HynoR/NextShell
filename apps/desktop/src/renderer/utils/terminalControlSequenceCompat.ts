@@ -49,7 +49,8 @@ const ST = `${ESC}\\`;
 const CSI_SECONDARY_DEVICE_ATTRIBUTES_REPLY = /^\u001b\[\>\d+(?:;\d+)*c/;
 const CSI_MODE_REPLY = /^\u001b\[\??\d+(?:;\d+)*\$y/;
 const OSC_COLOR_REPLY_PREFIX = /^\u001b\](10|11|12);/;
-const OSC_COLOR_REPLY_PAYLOAD = /^(rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}|#[0-9a-fA-F]{3,12})$/;
+const OSC_COLOR_REPLY_PAYLOAD =
+  /^(rgb:[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}\/[0-9a-fA-F]{1,4}|#[0-9a-fA-F]{3,12})$/;
 const DCS_STATUS_REPLY_PREFIX = /^\u001bP([01])\$r/;
 
 const isOscColorQuery = (data: string): boolean =>

@@ -16,7 +16,7 @@ const makeDb = (initial?: string): DeviceKeyDbAccess & { value: string | undefin
     },
     clearLegacy: () => {
       value = undefined;
-    },
+    }
   };
 };
 
@@ -30,7 +30,7 @@ describe("resolveDeviceKey", () => {
       recall: async () => undefined,
       remember: async (key) => {
         remembered = key;
-      },
+      }
     };
 
     const result = await resolveDeviceKey(store, db, generate);
@@ -51,7 +51,7 @@ describe("resolveDeviceKey", () => {
       recall: async () => keychainKey,
       remember: async () => {
         throw new Error("should not be called");
-      },
+      }
     };
 
     const result = await resolveDeviceKey(store, db, generate);
@@ -70,7 +70,7 @@ describe("resolveDeviceKey", () => {
       recall: async () => undefined,
       remember: async (key) => {
         remembered = key;
-      },
+      }
     };
 
     const result = await resolveDeviceKey(store, db, generate);
@@ -89,7 +89,7 @@ describe("resolveDeviceKey", () => {
       recall: async () => undefined,
       remember: async () => {
         throw new Error("should not be called");
-      },
+      }
     };
 
     const result = await resolveDeviceKey(store, db, generate);
@@ -109,7 +109,7 @@ describe("resolveDeviceKey", () => {
       },
       remember: async () => {
         throw new Error("keychain access denied");
-      },
+      }
     };
 
     const result = await resolveDeviceKey(store, db, generate);

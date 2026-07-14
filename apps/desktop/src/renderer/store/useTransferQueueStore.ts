@@ -105,13 +105,15 @@ export const useTransferQueueStore = create<TransferQueueState>((set, get) => ({
         ? state.tasks.find((item) => item.id === event.taskId)
         : matchTaskByPayload(state.tasks, event);
 
-      const fallback = current ?? createTask({
-        id: event.taskId,
-        direction: event.direction,
-        connectionId: event.connectionId,
-        localPath: event.localPath,
-        remotePath: event.remotePath
-      });
+      const fallback =
+        current ??
+        createTask({
+          id: event.taskId,
+          direction: event.direction,
+          connectionId: event.connectionId,
+          localPath: event.localPath,
+          remotePath: event.remotePath
+        });
 
       const next: TransferTask = {
         ...fallback,

@@ -3,7 +3,7 @@ import type { SshConnection } from "../../../../../../packages/ssh/src/index";
 import {
   buildDynamicSystemProbeCommand,
   MONITOR_NET_INTERFACES_COMMAND,
-  normalizeNetworkInterfaceName,
+  normalizeNetworkInterfaceName
 } from "./system-probe-command";
 import {
   parseCompoundOutput,
@@ -12,7 +12,7 @@ import {
   type ParsedDiskTotals,
   type ParsedMemoryTotals,
   type ParsedNetworkCounters,
-  type ParsedSystemProbeFrame,
+  type ParsedSystemProbeFrame
 } from "./system-probe-parser";
 import { MonitorBackoff, MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
 
@@ -78,12 +78,12 @@ const emptyMemory = (): ParsedMemoryTotals => ({
   memTotalKb: 0,
   memAvailableKb: 0,
   swapTotalKb: 0,
-  swapFreeKb: 0,
+  swapFreeKb: 0
 });
 
 const emptyDisk = (): ParsedDiskTotals => ({
   diskTotalKb: 0,
-  diskUsedKb: 0,
+  diskUsedKb: 0
 });
 
 const toSnapshot = (
@@ -123,7 +123,7 @@ const toSnapshot = (
     networkInterface,
     networkInterfaceOptions,
     processes,
-    capturedAt: new Date().toISOString(),
+    capturedAt: new Date().toISOString()
   };
 };
 
@@ -227,7 +227,7 @@ export class SystemMonitorController {
   async start(): Promise<{ ok: true }> {
     if (this.suspended) {
       this.options.logger.info("[SystemMonitor] start refused: suspended until reconnection", {
-        connectionId: this.options.connectionId,
+        connectionId: this.options.connectionId
       });
       return { ok: true };
     }
@@ -263,16 +263,19 @@ export class SystemMonitorController {
       }
 
       this.state = "RUNNING";
-      await this.runProbe({
-        collectCpuMemSwap: true,
-        collectDisk: true,
-        includeInterfaceMeta: true,
-      }, generation);
+      await this.runProbe(
+        {
+          collectCpuMemSwap: true,
+          collectDisk: true,
+          includeInterfaceMeta: true
+        },
+        generation
+      );
 
       if (this.isGenerationActive(generation)) {
         this.startTicker(generation);
         this.options.logger.info("[SystemMonitor] started (net 1s, cpu/mem/swap 3s, disk 10s)", {
-          connectionId: this.options.connectionId,
+          connectionId: this.options.connectionId
         });
       }
 
@@ -316,7 +319,9 @@ export class SystemMonitorController {
       this.inFlight = false;
       this.state = "STOPPED";
     }
-    this.options.logger.info("[SystemMonitor] stopped", { connectionId: this.options.connectionId });
+    this.options.logger.info("[SystemMonitor] stopped", {
+      connectionId: this.options.connectionId
+    });
 
     return { ok: true };
   }
@@ -332,7 +337,11 @@ export class SystemMonitorController {
     }
 
     const connection = await this.options.getConnection();
-    const result = await runTimedExec(connection, MONITOR_NET_INTERFACES_COMMAND, this.execTimeoutMs);
+    const result = await runTimedExec(
+      connection,
+      MONITOR_NET_INTERFACES_COMMAND,
+      this.execTimeoutMs
+    );
     if (result.exitCode !== 0) {
       throw new Error(`网卡列表读取失败 (exit ${result.exitCode})`);
     }
@@ -352,7 +361,7 @@ export class SystemMonitorController {
 
     this.options.writeSelection({
       selectedNetworkInterface: normalized,
-      networkInterfaceOptions: options,
+      networkInterfaceOptions: options
     });
 
     return { ok: true };
@@ -364,7 +373,9 @@ export class SystemMonitorController {
   }
 
   private isGenerationActive(generation: number): boolean {
-    return generation === this.generation && (this.state === "STARTING" || this.state === "RUNNING");
+    return (
+      generation === this.generation && (this.state === "STARTING" || this.state === "RUNNING")
+    );
   }
 
   private startTicker(generation: number): void {
@@ -411,7 +422,7 @@ export class SystemMonitorController {
     if (this.backoff.isActive()) {
       this.options.logger.debug("[SystemMonitor] skipping poll: backoff active", {
         connectionId: this.options.connectionId,
-        remainingMs: this.backoff.remainingMs(),
+        remainingMs: this.backoff.remainingMs()
       });
       return;
     }
@@ -419,10 +430,13 @@ export class SystemMonitorController {
     if (this.lastProbeDurationMs > this.pollIntervalMs * 0.5) {
       this.skipCount += 1;
       if (this.skipCount % 2 !== 0) {
-        this.options.logger.debug("[SystemMonitor] throttling: slow probe detected, skipping frame", {
-          connectionId: this.options.connectionId,
-          lastProbeDurationMs: this.lastProbeDurationMs,
-        });
+        this.options.logger.debug(
+          "[SystemMonitor] throttling: slow probe detected, skipping frame",
+          {
+            connectionId: this.options.connectionId,
+            lastProbeDurationMs: this.lastProbeDurationMs
+          }
+        );
         return;
       }
     } else {
@@ -432,7 +446,7 @@ export class SystemMonitorController {
     if (this.inFlight) {
       this.options.logger.debug("[SystemMonitor] drop frame: previous probe still running", {
         connectionId: this.options.connectionId,
-        tickCount: this.tickCount,
+        tickCount: this.tickCount
       });
       return;
     }
@@ -440,7 +454,7 @@ export class SystemMonitorController {
     const flags: ProbeFlags = {
       collectCpuMemSwap: this.tickCount % this.cpuMemSwapIntervalTicks === 0,
       collectDisk: this.tickCount % this.diskIntervalTicks === 0,
-      includeInterfaceMeta: this.tickCount % this.interfaceMetaIntervalTicks === 0,
+      includeInterfaceMeta: this.tickCount % this.interfaceMetaIntervalTicks === 0
     };
 
     this.inFlight = true;
@@ -461,7 +475,10 @@ export class SystemMonitorController {
 
     if (selected) {
       this.networkInterface = selected;
-    } else if (this.networkInterfaceOptions.length > 0 && !this.networkInterfaceOptions.includes(this.networkInterface)) {
+    } else if (
+      this.networkInterfaceOptions.length > 0 &&
+      !this.networkInterfaceOptions.includes(this.networkInterface)
+    ) {
       this.networkInterface = this.networkInterfaceOptions[0] ?? "eth0";
     }
   }
@@ -480,11 +497,17 @@ export class SystemMonitorController {
       this.networkInterface = selected;
     } else if (counterInterface && this.networkInterfaceOptions.includes(counterInterface)) {
       this.networkInterface = counterInterface;
-    } else if (frame.defaultNetworkInterface && this.networkInterfaceOptions.includes(frame.defaultNetworkInterface)) {
+    } else if (
+      frame.defaultNetworkInterface &&
+      this.networkInterfaceOptions.includes(frame.defaultNetworkInterface)
+    ) {
       this.networkInterface = frame.defaultNetworkInterface;
     } else if (counterInterface) {
       this.networkInterface = counterInterface;
-    } else if (!this.networkInterfaceOptions.includes(this.networkInterface) && this.networkInterfaceOptions.length > 0) {
+    } else if (
+      !this.networkInterfaceOptions.includes(this.networkInterface) &&
+      this.networkInterfaceOptions.length > 0
+    ) {
       this.networkInterface = this.networkInterfaceOptions[0] ?? this.networkInterface;
     }
 
@@ -503,7 +526,7 @@ export class SystemMonitorController {
 
     this.options.writeSelection({
       selectedNetworkInterface: effectiveSelectedInterface,
-      networkInterfaceOptions: this.networkInterfaceOptions,
+      networkInterfaceOptions: this.networkInterfaceOptions
     });
   }
 
@@ -578,7 +601,7 @@ export class SystemMonitorController {
     const command = buildDynamicSystemProbeCommand(this.networkInterface, {
       collectCpuMemSwap: flags.collectCpuMemSwap,
       collectDisk: flags.collectDisk,
-      includeInterfaceMeta,
+      includeInterfaceMeta
     });
 
     let stdout = "";
@@ -595,7 +618,7 @@ export class SystemMonitorController {
         stdout: result.stdout.slice(0, 4096),
         exitCode: result.exitCode,
         durationMs: result.durationMs,
-        ok: result.exitCode === 0,
+        ok: result.exitCode === 0
       });
 
       if (result.exitCode !== 0) {
@@ -603,22 +626,25 @@ export class SystemMonitorController {
         this.options.logger.debug("[SystemMonitor] drop frame: command non-zero exit", {
           connectionId: this.options.connectionId,
           exitCode: result.exitCode,
-          tickCount: this.tickCount,
+          tickCount: this.tickCount
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
           await this.options.closeConnection();
           this.backoff.apply();
           if (this.backoff.isExhausted()) {
             this.suspended = true;
-            this.options.logger.warn("[SystemMonitor] server unresponsive, suspending monitor until reconnection", {
-              connectionId: this.options.connectionId,
-            });
+            this.options.logger.warn(
+              "[SystemMonitor] server unresponsive, suspending monitor until reconnection",
+              {
+                connectionId: this.options.connectionId
+              }
+            );
             await this.stop();
             return;
           }
           this.options.logger.warn("[SystemMonitor] backing off after consecutive failures", {
             connectionId: this.options.connectionId,
-            consecutiveFailures: this.consecutiveFailures,
+            consecutiveFailures: this.consecutiveFailures
           });
         }
         return;
@@ -638,17 +664,20 @@ export class SystemMonitorController {
         exitCode: -1,
         durationMs: 0,
         ok: false,
-        error: errorMessage,
+        error: errorMessage
       });
 
       this.consecutiveFailures += 1;
-      if (error instanceof MonitorExecTimeoutError || this.consecutiveFailures >= this.maxConsecutiveFailures) {
+      if (
+        error instanceof MonitorExecTimeoutError ||
+        this.consecutiveFailures >= this.maxConsecutiveFailures
+      ) {
         await this.options.closeConnection();
         this.backoff.apply();
         if (this.backoff.isExhausted()) {
           this.options.logger.warn("[SystemMonitor] server unresponsive, stopping monitor", {
             connectionId: this.options.connectionId,
-            reason: errorMessage,
+            reason: errorMessage
           });
           await this.stop();
           return;
@@ -656,14 +685,14 @@ export class SystemMonitorController {
         this.options.logger.warn("[SystemMonitor] backing off after probe failure", {
           connectionId: this.options.connectionId,
           consecutiveFailures: this.consecutiveFailures,
-          reason: errorMessage,
+          reason: errorMessage
         });
       }
 
       this.options.logger.warn("[SystemMonitor] drop frame: probe execution failed", {
         connectionId: this.options.connectionId,
         reason: errorMessage,
-        tickCount: this.tickCount,
+        tickCount: this.tickCount
       });
       return;
     }
@@ -676,7 +705,7 @@ export class SystemMonitorController {
     const parsed = parseSystemProbeSections(sections, {
       collectCpuMemSwap: flags.collectCpuMemSwap,
       collectDisk: flags.collectDisk,
-      includeInterfaceMeta,
+      includeInterfaceMeta
     });
 
     if (!parsed.ok) {
@@ -684,7 +713,7 @@ export class SystemMonitorController {
         connectionId: this.options.connectionId,
         reason: parsed.reason,
         missingSections: parsed.missingSections,
-        tickCount: this.tickCount,
+        tickCount: this.tickCount
       });
       if (parsed.reason === "invalid NETCOUNTERS") {
         this.networkInterfaceOptions = [];
@@ -721,7 +750,7 @@ export class SystemMonitorController {
       this.cachedNetOutMbps,
       this.networkInterface,
       this.networkInterfaceOptions,
-      this.cachedProcesses,
+      this.cachedProcesses
     );
 
     this.options.emitSnapshot(snapshot);

@@ -147,7 +147,7 @@ function createOrderedState<TPayload>(
     ackFloorDeliveryId: baselineDeliveryId,
     paused: false,
     onPause: input.onPause,
-    onResume: input.onResume,
+    onResume: input.onResume
   };
 }
 
@@ -215,10 +215,7 @@ function surrogateBoundaryDelta(left: string, right: string): number {
     return 0;
   }
 
-  if (
-    !isHighSurrogate(left.charCodeAt(left.length - 1)) ||
-    !isLowSurrogate(right.charCodeAt(0))
-  ) {
+  if (!isHighSurrogate(left.charCodeAt(left.length - 1)) || !isLowSurrogate(right.charCodeAt(0))) {
     return 0;
   }
 
@@ -304,9 +301,7 @@ export function createOrderedBytesDispatcher<TPayload>(
   let nextDeliveryId = 1;
 
   function totalBufferedBytes(state: OrderedStreamState<TPayload>): number {
-    return state.pendingChunkBytes
-      + state.queuedBytes
-      + state.inFlightBytes;
+    return state.pendingChunkBytes + state.queuedBytes + state.inFlightBytes;
   }
 
   function maybeResume(streamId: string, state: OrderedStreamState<TPayload>): void {
@@ -420,7 +415,7 @@ export function createOrderedBytesDispatcher<TPayload>(
           streamId,
           deliveryId,
           chunk: next.chunk,
-          byteLength: next.byteLength,
+          byteLength: next.byteLength
         })
       );
       sentAny = true;
@@ -623,6 +618,6 @@ export function createOrderedBytesDispatcher<TPayload>(
     },
     clear(streamId) {
       clearState(streamId);
-    },
+    }
   };
 }

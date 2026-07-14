@@ -171,8 +171,9 @@ export const parseMemoryFromMeminfo = (raw: string): ParsedMemoryTotals | undefi
     return undefined;
   }
 
-  const memAvailableKb = values.get("MemAvailable") ??
-    ((values.get("MemFree") ?? 0) + (values.get("Buffers") ?? 0) + (values.get("Cached") ?? 0));
+  const memAvailableKb =
+    values.get("MemAvailable") ??
+    (values.get("MemFree") ?? 0) + (values.get("Buffers") ?? 0) + (values.get("Cached") ?? 0);
 
   return {
     memTotalKb,
@@ -183,7 +184,10 @@ export const parseMemoryFromMeminfo = (raw: string): ParsedMemoryTotals | undefi
 };
 
 export const parseMemoryFromFree = (raw: string): ParsedMemoryTotals | undefined => {
-  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const memLine = lines.find((line) => /^mem:/i.test(line));
   if (!memLine) {
     return undefined;
@@ -199,7 +203,8 @@ export const parseMemoryFromFree = (raw: string): ParsedMemoryTotals | undefined
   const swapLine = lines.find((line) => /^swap:/i.test(line));
   const swapParts = swapLine?.split(/\s+/) ?? [];
   const swapTotalKb = parseIntSafe(swapParts[1]);
-  const swapFreeKb = parseIntSafe(swapParts[3]) || Math.max(0, swapTotalKb - parseIntSafe(swapParts[2]));
+  const swapFreeKb =
+    parseIntSafe(swapParts[3]) || Math.max(0, swapTotalKb - parseIntSafe(swapParts[2]));
 
   return {
     memTotalKb,
@@ -210,11 +215,12 @@ export const parseMemoryFromFree = (raw: string): ParsedMemoryTotals | undefined
 };
 
 export const parseDiskUsage = (raw: string): ParsedDiskTotals | undefined => {
-  const line = raw
-    .split(/\r?\n/)
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .at(-1) ?? "";
+  const line =
+    raw
+      .split(/\r?\n/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .at(-1) ?? "";
   const parts = line.replace(/\s+/g, " ").trim().split(" ");
   const diskTotalKb = parseIntSafe(parts[1]);
   const diskUsedKb = parseIntSafe(parts[2]);
@@ -367,7 +373,8 @@ export const parseSystemProbeSections = (
       };
     }
 
-    const memory = parseMemoryFromMeminfo(sections.get("MEMINFO") ?? "") ??
+    const memory =
+      parseMemoryFromMeminfo(sections.get("MEMINFO") ?? "") ??
       parseMemoryFromFree(sections.get("FREE") ?? "");
     if (!memory) {
       return {

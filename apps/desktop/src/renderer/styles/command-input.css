@@ -31,7 +31,9 @@
   color: #3f5570;
   font-size: 12px;
   cursor: pointer;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   flex-shrink: 0;
 }
 
@@ -113,7 +115,10 @@
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    opacity 0.15s;
   flex-shrink: 0;
   margin-right: 4px;
 }
@@ -140,7 +145,11 @@
   background: var(--accent-glow);
   color: #5d7088;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
   flex-shrink: 0;
 }
 
@@ -211,7 +220,11 @@
   background: rgba(255, 255, 255, 0.02);
   padding: 2px 8px;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, opacity 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s,
+    opacity 0.12s;
 }
 
 .cib-panel-mode:hover:not(:disabled),
@@ -260,7 +273,11 @@
   font-size: 11px;
   padding: 0 8px;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, opacity 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s,
+    opacity 0.12s;
 }
 
 .cib-search-action-btn:hover:not(:disabled) {
@@ -291,7 +308,10 @@
   border-radius: var(--r-sm);
   padding: 2px 8px;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
 }
 
 .cib-clear-btn:hover {
@@ -306,9 +326,16 @@
   overflow-x: hidden;
 }
 
-.cib-panel-list::-webkit-scrollbar { width: 4px; }
-.cib-panel-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 4px; }
-.cib-panel-list::-webkit-scrollbar-track { background: transparent; }
+.cib-panel-list::-webkit-scrollbar {
+  width: 4px;
+}
+.cib-panel-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+.cib-panel-list::-webkit-scrollbar-track {
+  background: transparent;
+}
 
 .cib-history-item {
   display: flex;
@@ -372,7 +399,9 @@
   color: #3d4f63;
   font-size: 14px;
   cursor: pointer;
-  transition: color 0.1s, background 0.1s;
+  transition:
+    color 0.1s,
+    background 0.1s;
   line-height: 1;
   padding: 0;
 }

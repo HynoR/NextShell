@@ -1,8 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  pollingScheduler,
-  type PollingSubscriptionOptions
-} from "../utils/pollingScheduler";
+import { pollingScheduler, type PollingSubscriptionOptions } from "../utils/pollingScheduler";
 
 export interface UseScheduledPollOptions {
   enabled: boolean;

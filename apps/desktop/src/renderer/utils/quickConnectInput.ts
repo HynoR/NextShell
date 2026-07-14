@@ -19,12 +19,7 @@ export interface QuickCreateConnectionInput {
   sshKeyId?: string;
 }
 
-export type QuickConnectParseErrorCode =
-  | "empty"
-  | "format"
-  | "username"
-  | "host"
-  | "port";
+export type QuickConnectParseErrorCode = "empty" | "format" | "username" | "host" | "port";
 
 export type QuickConnectParseResult =
   | { ok: true; value: QuickConnectAddress }
@@ -112,10 +107,11 @@ export const findExistingByAddress = (
   const expectedUsername = target.username.trim();
   const expectedHost = target.host.trim().toLowerCase();
 
-  return connections.find((connection) =>
-    connection.username.trim() === expectedUsername &&
-    connection.host.trim().toLowerCase() === expectedHost &&
-    connection.port === target.port
+  return connections.find(
+    (connection) =>
+      connection.username.trim() === expectedUsername &&
+      connection.host.trim().toLowerCase() === expectedHost &&
+      connection.port === target.port
   );
 };
 

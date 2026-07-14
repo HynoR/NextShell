@@ -6,7 +6,7 @@ import type {
   ConnectionProfile,
   OriginKind,
   ProxyProfile,
-  SshKeyProfile,
+  SshKeyProfile
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import type {
@@ -18,13 +18,13 @@ import type {
   SshKeyUpsertInput,
   SshKeyRemoveInput,
   ProxyUpsertInput,
-  ProxyRemoveInput,
+  ProxyRemoveInput
 } from "@nextshell/shared";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
   CachedSshKeyRepository,
-  CachedProxyRepository,
+  CachedProxyRepository
 } from "@nextshell/storage";
 import type { RemoteEditManager } from "./remote-edit-manager";
 import type { ActiveSession, ActiveRemoteSession, MonitorState } from "./container-types";
@@ -67,18 +67,30 @@ export class ConnectionService {
     return connection;
   }
 
-  private getCloudWorkspace(workspaceId: string | undefined): CloudSyncWorkspaceProfile | undefined {
+  private getCloudWorkspace(
+    workspaceId: string | undefined
+  ): CloudSyncWorkspaceProfile | undefined {
     if (!workspaceId) {
       return undefined;
     }
-    return this.options.getCloudSyncManager?.()
+    return this.options
+      .getCloudSyncManager?.()
       ?.listWorkspaces()
       .find((workspace) => workspace.id === workspaceId);
   }
 
   private resolveResourceOrigin(
-    current: { originKind?: OriginKind; originScopeKey?: string; originWorkspaceId?: string; uuidInScope?: string; resourceId?: string; copiedFromResourceId?: string } | undefined,
-    workspaceId: string | undefined,
+    current:
+      | {
+          originKind?: OriginKind;
+          originScopeKey?: string;
+          originWorkspaceId?: string;
+          uuidInScope?: string;
+          resourceId?: string;
+          copiedFromResourceId?: string;
+        }
+      | undefined,
+    workspaceId: string | undefined
   ): {
     originKind: OriginKind;
     originScopeKey: string;
@@ -87,7 +99,8 @@ export class ConnectionService {
     resourceId?: string;
     copiedFromResourceId?: string;
   } {
-    const targetWorkspaceId = workspaceId ?? (current?.originKind === "cloud" ? current.originWorkspaceId : undefined);
+    const targetWorkspaceId =
+      workspaceId ?? (current?.originKind === "cloud" ? current.originWorkspaceId : undefined);
     if (!targetWorkspaceId) {
       return {
         originKind: "local",
@@ -95,7 +108,7 @@ export class ConnectionService {
         originWorkspaceId: undefined,
         uuidInScope: current?.uuidInScope,
         resourceId: current?.resourceId,
-        copiedFromResourceId: current?.copiedFromResourceId,
+        copiedFromResourceId: current?.copiedFromResourceId
       };
     }
 
@@ -107,7 +120,7 @@ export class ConnectionService {
     const scopeKey = buildScopeKey({
       kind: "cloud",
       apiBaseUrl: workspace.apiBaseUrl,
-      workspaceName: workspace.workspaceName,
+      workspaceName: workspace.workspaceName
     });
     const uuidInScope = current?.uuidInScope ?? randomUUID();
     return {
@@ -116,7 +129,7 @@ export class ConnectionService {
       originWorkspaceId: targetWorkspaceId,
       uuidInScope,
       resourceId: buildResourceId(scopeKey, uuidInScope),
-      copiedFromResourceId: current?.copiedFromResourceId,
+      copiedFromResourceId: current?.copiedFromResourceId
     };
   }
 
@@ -150,13 +163,16 @@ export class ConnectionService {
     }
 
     const targetPath = enforceZonePrefix(input.target.groupPath);
-    return allConnections.filter((connection) =>
-      connection.groupPath === targetPath || connection.groupPath.startsWith(`${targetPath}/`)
+    return allConnections.filter(
+      (connection) =>
+        connection.groupPath === targetPath || connection.groupPath.startsWith(`${targetPath}/`)
     );
   }
 
   private assertSingleScope(connections: ConnectionProfile[]): string {
-    const scopeKeys = new Set(connections.map((connection) => this.getConnectionScopeKey(connection)));
+    const scopeKeys = new Set(
+      connections.map((connection) => this.getConnectionScopeKey(connection))
+    );
     if (scopeKeys.size > 1) {
       throw new Error("批量绑定认证要求所有目标连接属于同一来源范围");
     }
@@ -165,7 +181,7 @@ export class ConnectionService {
 
   private buildBatchAuthUpsertInput(
     connection: ConnectionProfile,
-    auth: ConnectionBatchAuthUpdateInput["auth"],
+    auth: ConnectionBatchAuthUpdateInput["auth"]
   ): ConnectionUpsertInput {
     return {
       id: connection.id,
@@ -176,9 +192,7 @@ export class ConnectionService {
       username: connection.username,
       authType: auth.authType,
       password:
-        auth.authType === "password" || auth.authType === "interactive"
-          ? auth.password
-          : undefined,
+        auth.authType === "password" || auth.authType === "interactive" ? auth.password : undefined,
       sshKeyId: auth.authType === "privateKey" ? auth.sshKeyId : undefined,
       hostFingerprint: connection.hostFingerprint,
       strictHostKeyChecking: connection.strictHostKeyChecking,
@@ -192,7 +206,7 @@ export class ConnectionService {
       tags: connection.tags,
       notes: connection.notes,
       favorite: connection.favorite,
-      monitorSession: connection.monitorSession,
+      monitorSession: connection.monitorSession
     };
   }
 
@@ -203,7 +217,7 @@ export class ConnectionService {
       proxyRepo,
       vault,
       appendAuditLogIfEnabled,
-      disposeAllMonitorSessions,
+      disposeAllMonitorSessions
     } = this.options;
 
     const now = new Date().toISOString();
@@ -211,7 +225,8 @@ export class ConnectionService {
     const current = connections.getById(id);
     const isNew = !current;
     const authTypeChanged = Boolean(current && current.authType !== input.authType);
-    const needsPasswordCredential = input.authType === "password" || input.authType === "interactive";
+    const needsPasswordCredential =
+      input.authType === "password" || input.authType === "interactive";
     const shouldDropPreviousCredential = input.authType === "agent" || authTypeChanged;
     const origin = this.resolveResourceOrigin(current, input.workspaceId);
     const targetScopeKey = origin.originScopeKey;
@@ -303,7 +318,7 @@ export class ConnectionService {
         input.authType === "privateKey"
           ? sshKeyRepo.getById(input.sshKeyId ?? "")?.resourceId
           : undefined,
-      copiedFromResourceId: origin.copiedFromResourceId,
+      copiedFromResourceId: origin.copiedFromResourceId
     };
 
     connections.save(profile);
@@ -325,14 +340,14 @@ export class ConnectionService {
         hasProxy: Boolean(profile.proxyId),
         terminalEncoding: profile.terminalEncoding,
         backspaceMode: profile.backspaceMode,
-        deleteMode: profile.deleteMode,
-      },
+        deleteMode: profile.deleteMode
+      }
     });
     return profile;
   }
 
   async batchUpdateConnectionAuth(
-    input: ConnectionBatchAuthUpdateInput,
+    input: ConnectionBatchAuthUpdateInput
   ): Promise<ConnectionBatchAuthUpdateResult> {
     const targets = this.getBatchAuthTargets(input);
     if (targets.length === 0) {
@@ -355,7 +370,7 @@ export class ConnectionService {
       total: targets.length,
       updated: 0,
       failed: 0,
-      errors: [],
+      errors: []
     };
 
     for (const connection of targets) {
@@ -378,8 +393,8 @@ export class ConnectionService {
         authType: input.auth.authType,
         total: result.total,
         updated: result.updated,
-        failed: result.failed,
-      },
+        failed: result.failed
+      }
     });
 
     return result;
@@ -397,7 +412,7 @@ export class ConnectionService {
       closeConnectionIfIdle,
       monitorStates,
       appendAuditLogIfEnabled,
-      sendSessionStatus,
+      sendSessionStatus
     } = this.options;
 
     const sessions = Array.from(activeSessions.values()).filter(
@@ -411,7 +426,7 @@ export class ConnectionService {
       sendSessionStatus(session.sender, {
         sessionId: session.descriptor.id,
         status: "disconnected",
-        reason: "Connection deleted",
+        reason: "Connection deleted"
       });
     }
 
@@ -430,7 +445,7 @@ export class ConnectionService {
         action: "connection.remove",
         level: "warn",
         connectionId: id,
-        message: "Connection profile deleted",
+        message: "Connection profile deleted"
       });
     }
     return { ok: true };
@@ -490,7 +505,7 @@ export class ConnectionService {
       originKind: origin.originKind,
       originScopeKey: origin.originScopeKey,
       originWorkspaceId: origin.originWorkspaceId,
-      copiedFromResourceId: origin.copiedFromResourceId,
+      copiedFromResourceId: origin.copiedFromResourceId
     };
 
     sshKeyRepo.save(profile);
@@ -569,7 +584,7 @@ export class ConnectionService {
       originKind: origin.originKind,
       originScopeKey: origin.originScopeKey,
       originWorkspaceId: origin.originWorkspaceId,
-      copiedFromResourceId: origin.copiedFromResourceId,
+      copiedFromResourceId: origin.copiedFromResourceId
     };
 
     proxyRepo.save(profile);
@@ -621,10 +636,16 @@ export class ConnectionService {
     let effectiveSshKeyId = authOverride.sshKeyId ?? latest.sshKeyId;
     if (authOverride.authType === "privateKey" && authOverride.privateKeyContent) {
       const keyId = randomUUID();
-      const keyContentRef = await vault.storeCredential(`sshkey-${keyId}`, authOverride.privateKeyContent);
+      const keyContentRef = await vault.storeCredential(
+        `sshkey-${keyId}`,
+        authOverride.privateKeyContent
+      );
       let passphraseRef: string | undefined;
       if (authOverride.passphrase) {
-        passphraseRef = await vault.storeCredential(`sshkey-${keyId}-pass`, authOverride.passphrase);
+        passphraseRef = await vault.storeCredential(
+          `sshkey-${keyId}-pass`,
+          authOverride.passphrase
+        );
       }
       const now = new Date().toISOString();
       sshKeyRepo.save({
@@ -633,7 +654,7 @@ export class ConnectionService {
         keyContentRef,
         passphraseRef,
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       });
       effectiveSshKeyId = keyId;
     }
@@ -662,7 +683,7 @@ export class ConnectionService {
       tags: latest.tags,
       notes: latest.notes,
       favorite: latest.favorite,
-      monitorSession: latest.monitorSession,
+      monitorSession: latest.monitorSession
     };
 
     try {
@@ -672,7 +693,7 @@ export class ConnectionService {
       const reason = normalizeError(error);
       logger.error("[Session] failed to persist auth override", {
         connectionId,
-        reason,
+        reason
       });
       appendAuditLogIfEnabled({
         action: "connection.auth_override_persist_failed",
@@ -680,8 +701,8 @@ export class ConnectionService {
         connectionId,
         message: "SSH auth override could not be persisted",
         metadata: {
-          reason,
-        },
+          reason
+        }
       });
       return "认证成功，但自动保存凭据失败，请在连接管理器中手动保存。";
     }

@@ -27,7 +27,9 @@ export function promptModal(
         <Input
           defaultValue={defaultValue}
           placeholder={placeholder}
-          onChange={(e) => { value = e.target.value; }}
+          onChange={(e) => {
+            value = e.target.value;
+          }}
           onPressEnter={() => {
             const trimmed = value.trim();
             close?.();
@@ -40,7 +42,7 @@ export function promptModal(
         const trimmed = value.trim();
         settle(trimmed || null);
       },
-      onCancel: () => settle(null),
+      onCancel: () => settle(null)
     });
     close = instance.destroy;
   });

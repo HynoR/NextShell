@@ -10,11 +10,11 @@ import {
   licenseUrl,
   DEBUG_MAX_ENTRIES,
   formatTimestamp,
-  truncateCommand,
+  truncateCommand
 } from "./constants";
 
 export const AboutSection = ({
-  message: msg,
+  message: msg
 }: {
   message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => {
@@ -29,12 +29,18 @@ export const AboutSection = ({
   const autoScrollRef = useRef(autoScroll);
   autoScrollRef.current = autoScroll;
 
-  const handleOpenLink = useCallback(async (url: string) => {
-    const openResult = await window.nextshell.dialog.openPath({ path: url, revealInFolder: false });
-    if (!openResult.ok) {
-      void msg.error(`打开链接失败：${formatErrorMessage(openResult.error, "请稍后重试")}`);
-    }
-  }, [msg]);
+  const handleOpenLink = useCallback(
+    async (url: string) => {
+      const openResult = await window.nextshell.dialog.openPath({
+        path: url,
+        revealInFolder: false
+      });
+      if (!openResult.ok) {
+        void msg.error(`打开链接失败：${formatErrorMessage(openResult.error, "请稍后重试")}`);
+      }
+    },
+    [msg]
+  );
 
   const handleCheckUpdate = useCallback(async () => {
     setChecking(true);
@@ -75,9 +81,10 @@ export const AboutSection = ({
 
     const unsub = window.nextshell.debug.onLogEvent((entry) => {
       setDebugLogs((prev) => {
-        const next = prev.length >= DEBUG_MAX_ENTRIES
-          ? [...prev.slice(-(DEBUG_MAX_ENTRIES - 1)), entry]
-          : [...prev, entry];
+        const next =
+          prev.length >= DEBUG_MAX_ENTRIES
+            ? [...prev.slice(-(DEBUG_MAX_ENTRIES - 1)), entry]
+            : [...prev, entry];
         return next;
       });
     });
@@ -123,11 +130,22 @@ export const AboutSection = ({
             检查更新
           </Button>
         </Tooltip>
-        <Tooltip title={debugEnabled ? "关闭后台 Shell 日志监听" : "开启后台 Shell 日志监听，实时查看数据采集命令执行情况"}>
+        <Tooltip
+          title={
+            debugEnabled
+              ? "关闭后台 Shell 日志监听"
+              : "开启后台 Shell 日志监听，实时查看数据采集命令执行情况"
+          }
+        >
           <Button
             type={debugEnabled ? "default" : "dashed"}
             danger={debugEnabled}
-            icon={<i className={debugEnabled ? "ri-stop-circle-line" : "ri-bug-line"} aria-hidden="true" />}
+            icon={
+              <i
+                className={debugEnabled ? "ri-stop-circle-line" : "ri-bug-line"}
+                aria-hidden="true"
+              />
+            }
             onClick={() => void handleToggleDebug()}
           >
             {debugEnabled ? "停止诊断日志" : "诊断日志"}
@@ -141,7 +159,9 @@ export const AboutSection = ({
             <span className="about-debug-title">
               <i className="ri-terminal-line" aria-hidden="true" />
               后台命令执行日志
-              <Tag color="processing" style={{ marginLeft: 8 }}>实时</Tag>
+              <Tag color="processing" style={{ marginLeft: 8 }}>
+                实时
+              </Tag>
               <span className="about-debug-count">{debugLogs.length} 条</span>
             </span>
             <div className="about-debug-actions">
@@ -170,15 +190,9 @@ export const AboutSection = ({
               </Tooltip>
             </div>
           </div>
-          <div
-            className="about-debug-log-box"
-            ref={logBoxRef}
-            onScroll={handleLogScroll}
-          >
+          <div className="about-debug-log-box" ref={logBoxRef} onScroll={handleLogScroll}>
             {debugLogs.length === 0 ? (
-              <div className="about-debug-empty">
-                等待后台命令执行...
-              </div>
+              <div className="about-debug-empty">等待后台命令执行...</div>
             ) : (
               debugLogs.map((entry) => (
                 <div key={entry.id} className={`about-debug-entry ${entry.ok ? "ok" : "fail"}`}>
@@ -207,7 +221,6 @@ export const AboutSection = ({
           </div>
         </div>
       )}
-
 
       <div className="about-section">
         <div className="about-row">
@@ -271,9 +284,13 @@ export const AboutSection = ({
             <span className="about-value">
               {result.latestVersion}
               {result.hasUpdate ? (
-                <Tag color="green" style={{ marginLeft: 8 }}>有更新</Tag>
+                <Tag color="green" style={{ marginLeft: 8 }}>
+                  有更新
+                </Tag>
               ) : (
-                <Tag color="default" style={{ marginLeft: 8 }}>已是最新</Tag>
+                <Tag color="default" style={{ marginLeft: 8 }}>
+                  已是最新
+                </Tag>
               )}
             </span>
           ) : (

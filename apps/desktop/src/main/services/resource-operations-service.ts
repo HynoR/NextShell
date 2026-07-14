@@ -16,7 +16,7 @@ import type {
   ProxyProfile,
   SshKeyProfile,
   RecycleBinEntry,
-  OriginKind,
+  OriginKind
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import type { CloudSyncManager } from "./cloud-sync-manager";
@@ -24,7 +24,7 @@ import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
   CachedProxyRepository,
-  CachedSshKeyRepository,
+  CachedSshKeyRepository
 } from "@nextshell/storage";
 
 // ── Input types ─────────────────────────────────────────────────────────────
@@ -99,10 +99,7 @@ export class ResourceOperationsService {
     // Handle SSH key dependency: auto-copy if needed
     let newSshKeyId = source.sshKeyId;
     if (source.sshKeyId && source.authType === "privateKey") {
-      newSshKeyId = await this.ensureSshKeyInScope(
-        source.sshKeyId,
-        targetScope,
-      );
+      newSshKeyId = await this.ensureSshKeyInScope(source.sshKeyId, targetScope);
     }
 
     let newProxyId = source.proxyId;
@@ -110,7 +107,7 @@ export class ResourceOperationsService {
       newProxyId = await this.ensureProxyInScope(source.proxyId, targetScope);
     }
 
-    // Copy credential (password) if applicable  
+    // Copy credential (password) if applicable
     let credentialRef: string | undefined;
     if (source.credentialRef) {
       const password = await vault.readCredential(source.credentialRef);
@@ -122,7 +119,9 @@ export class ResourceOperationsService {
     // Determine group path
     const zone = input.targetOriginKind === "cloud" ? "workspace" : "server";
     const subPath = input.targetGroupSubPath ?? "";
-    const groupPath = subPath ? `/${zone}${subPath.startsWith("/") ? subPath : "/" + subPath}` : `/${zone}`;
+    const groupPath = subPath
+      ? `/${zone}${subPath.startsWith("/") ? subPath : "/" + subPath}`
+      : `/${zone}`;
 
     const now = new Date().toISOString();
     const copied: ConnectionProfile = {
@@ -152,10 +151,12 @@ export class ResourceOperationsService {
       originKind: input.targetOriginKind,
       originScopeKey: targetScope.scopeKey,
       originWorkspaceId: input.targetWorkspaceId,
-      copiedFromResourceId: source.resourceId ?? buildResourceId(
-        source.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
-        source.uuidInScope ?? source.id,
-      ),
+      copiedFromResourceId:
+        source.resourceId ??
+        buildResourceId(
+          source.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+          source.uuidInScope ?? source.id
+        )
     };
 
     connections.save(copied);
@@ -174,8 +175,8 @@ export class ResourceOperationsService {
         sourceId: source.id,
         targetId: copied.id,
         targetOriginKind: input.targetOriginKind,
-        copiedFromResourceId: copied.copiedFromResourceId,
-      },
+        copiedFromResourceId: copied.copiedFromResourceId
+      }
     });
 
     return copied;
@@ -189,7 +190,7 @@ export class ResourceOperationsService {
    */
   async deleteConnection(
     input: DeleteConnectionInput,
-    reason: RecycleBinEntry["reason"] = "delete",
+    reason: RecycleBinEntry["reason"] = "delete"
   ): Promise<void> {
     const { connections, vault, cloudSyncManager } = this.deps;
 
@@ -202,21 +203,25 @@ export class ResourceOperationsService {
       try {
         const password = await vault.readCredential(conn.credentialRef);
         if (password) snapshotData._savedCredential = password;
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
 
     const entry: RecycleBinEntry = {
       id: randomUUID(),
       resourceType: "server",
       displayName: conn.name || conn.host,
-      originalResourceId: conn.resourceId ?? buildResourceId(
-        conn.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
-        conn.uuidInScope ?? conn.id,
-      ),
+      originalResourceId:
+        conn.resourceId ??
+        buildResourceId(
+          conn.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+          conn.uuidInScope ?? conn.id
+        ),
       originalScopeKey: conn.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
       reason,
       snapshotJson: JSON.stringify(snapshotData),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
 
     this.deps.saveRecycleBinEntry(entry);
@@ -239,7 +244,7 @@ export class ResourceOperationsService {
       level: "warn",
       connectionId: input.id,
       message: `Deleted connection "${conn.name}" to recycle bin`,
-      metadata: { reason, originKind: conn.originKind },
+      metadata: { reason, originKind: conn.originKind }
     });
   }
 
@@ -259,7 +264,9 @@ export class ResourceOperationsService {
     if (!input.force) {
       const refs = sshKeyRepo.getReferencingConnectionIds(input.id);
       if (refs.length > 0) {
-        throw new Error(`SSH key "${key.name}" is still referenced by ${refs.length} connection(s). Use force=true to delete anyway.`);
+        throw new Error(
+          `SSH key "${key.name}" is still referenced by ${refs.length} connection(s). Use force=true to delete anyway.`
+        );
       }
     }
 
@@ -269,27 +276,30 @@ export class ResourceOperationsService {
       try {
         const content = await vault.readCredential(key.keyContentRef);
         if (content) snapshotData._savedKeyContent = content;
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
     if (key.passphraseRef) {
       try {
         const pass = await vault.readCredential(key.passphraseRef);
         if (pass) snapshotData._savedPassphrase = pass;
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
 
     const entry: RecycleBinEntry = {
       id: randomUUID(),
       resourceType: "sshKey",
       displayName: key.name,
-      originalResourceId: key.resourceId ?? buildResourceId(
-        key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
-        key.uuidInScope ?? key.id,
-      ),
+      originalResourceId:
+        key.resourceId ??
+        buildResourceId(key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY, key.uuidInScope ?? key.id),
       originalScopeKey: key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
       reason: "delete",
       snapshotJson: JSON.stringify(snapshotData),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
 
     this.deps.saveRecycleBinEntry(entry);
@@ -310,7 +320,7 @@ export class ResourceOperationsService {
       action: "resource.delete_ssh_key",
       level: "warn",
       message: `Deleted SSH key "${key.name}" to recycle bin`,
-      metadata: { originKind: key.originKind },
+      metadata: { originKind: key.originKind }
     });
   }
 
@@ -319,7 +329,9 @@ export class ResourceOperationsService {
   /**
    * Restore from recycle bin as a NEW copy (never overwrite existing).
    */
-  async restoreFromRecycleBin(input: RestoreFromRecycleBinInput): Promise<ConnectionProfile | SshKeyProfile> {
+  async restoreFromRecycleBin(
+    input: RestoreFromRecycleBinInput
+  ): Promise<ConnectionProfile | SshKeyProfile> {
     const entries = this.deps.listRecycleBinEntries();
     const entry = entries.find((e) => e.id === input.recycleBinEntryId);
     if (!entry) throw new Error(`Recycle bin entry not found: ${input.recycleBinEntryId}`);
@@ -336,7 +348,10 @@ export class ResourceOperationsService {
       // Restore credential from snapshot if available
       let credentialRef: string | undefined;
       if (typeof snapshot._savedCredential === "string" && snapshot._savedCredential) {
-        credentialRef = await this.deps.vault.storeCredential(`conn-${newUuid}`, snapshot._savedCredential);
+        credentialRef = await this.deps.vault.storeCredential(
+          `conn-${newUuid}`,
+          snapshot._savedCredential
+        );
       }
 
       // Check SSH key dependency
@@ -369,7 +384,9 @@ export class ResourceOperationsService {
         proxyId,
         strictHostKeyChecking: Boolean(snapshot.strictHostKeyChecking),
         groupPath: `/${zone}`,
-        tags: Array.isArray(snapshot.tags) ? snapshot.tags.filter((t): t is string => typeof t === "string") : [],
+        tags: Array.isArray(snapshot.tags)
+          ? snapshot.tags.filter((t): t is string => typeof t === "string")
+          : [],
         notes: typeof snapshot.notes === "string" ? snapshot.notes : undefined,
         favorite: false,
         monitorSession: false,
@@ -383,7 +400,7 @@ export class ResourceOperationsService {
         originKind: input.targetOriginKind,
         originScopeKey: targetScope.scopeKey,
         originWorkspaceId: input.targetWorkspaceId,
-        copiedFromResourceId: entry.originalResourceId,
+        copiedFromResourceId: entry.originalResourceId
       };
 
       this.deps.connections.save(restored);
@@ -399,7 +416,7 @@ export class ResourceOperationsService {
         action: "resource.restore",
         level: "info",
         connectionId: restored.id,
-        message: `Restored connection "${restored.name}" from recycle bin as new copy`,
+        message: `Restored connection "${restored.name}" from recycle bin as new copy`
       });
 
       return restored;
@@ -407,12 +424,18 @@ export class ResourceOperationsService {
       // SSH key restore — re-store credentials from snapshot
       let keyContentRef = String(snapshot.keyContentRef ?? "");
       if (typeof snapshot._savedKeyContent === "string" && snapshot._savedKeyContent) {
-        keyContentRef = await this.deps.vault.storeCredential(`sshkey-${newUuid}`, snapshot._savedKeyContent);
+        keyContentRef = await this.deps.vault.storeCredential(
+          `sshkey-${newUuid}`,
+          snapshot._savedKeyContent
+        );
       }
 
       let passphraseRef: string | undefined;
       if (typeof snapshot._savedPassphrase === "string" && snapshot._savedPassphrase) {
-        passphraseRef = await this.deps.vault.storeCredential(`sshkey-${newUuid}-pass`, snapshot._savedPassphrase);
+        passphraseRef = await this.deps.vault.storeCredential(
+          `sshkey-${newUuid}-pass`,
+          snapshot._savedPassphrase
+        );
       } else if (typeof snapshot.passphraseRef === "string") {
         passphraseRef = snapshot.passphraseRef;
       }
@@ -429,7 +452,7 @@ export class ResourceOperationsService {
         originKind: input.targetOriginKind,
         originScopeKey: targetScope.scopeKey,
         originWorkspaceId: input.targetWorkspaceId,
-        copiedFromResourceId: entry.originalResourceId,
+        copiedFromResourceId: entry.originalResourceId
       };
 
       this.deps.sshKeyRepo.save(restored);
@@ -444,7 +467,7 @@ export class ResourceOperationsService {
       this.deps.appendAuditLog({
         action: "resource.restore_ssh_key",
         level: "info",
-        message: `Restored SSH key "${restored.name}" from recycle bin as new copy`,
+        message: `Restored SSH key "${restored.name}" from recycle bin as new copy`
       });
 
       return restored;
@@ -461,7 +484,7 @@ export class ResourceOperationsService {
     this.deps.appendAuditLog({
       action: "resource.purge",
       level: "warn",
-      message: `Permanently purged recycle bin entry ${id}`,
+      message: `Permanently purged recycle bin entry ${id}`
     });
   }
 
@@ -474,7 +497,7 @@ export class ResourceOperationsService {
    */
   private async ensureSshKeyInScope(
     sourceKeyId: string,
-    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string },
+    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string }
   ): Promise<string> {
     const { sshKeyRepo, vault } = this.deps;
 
@@ -490,8 +513,11 @@ export class ResourceOperationsService {
     // Check if we already have a copy of this key in the target scope
     const allKeys = sshKeyRepo.list();
     const existingCopy = allKeys.find(
-      (k) => k.originScopeKey === targetScope.scopeKey &&
-             k.copiedFromResourceId === (sourceKey.resourceId ?? buildResourceId(sourceScopeKey, sourceKey.uuidInScope ?? sourceKey.id))
+      (k) =>
+        k.originScopeKey === targetScope.scopeKey &&
+        k.copiedFromResourceId ===
+          (sourceKey.resourceId ??
+            buildResourceId(sourceScopeKey, sourceKey.uuidInScope ?? sourceKey.id))
     );
     if (existingCopy) return existingCopy.id;
 
@@ -529,7 +555,9 @@ export class ResourceOperationsService {
       originKind: targetScope.originKind,
       originScopeKey: targetScope.scopeKey,
       originWorkspaceId: targetScope.workspaceId,
-      copiedFromResourceId: sourceKey.resourceId ?? buildResourceId(sourceScopeKey, sourceKey.uuidInScope ?? sourceKey.id),
+      copiedFromResourceId:
+        sourceKey.resourceId ??
+        buildResourceId(sourceScopeKey, sourceKey.uuidInScope ?? sourceKey.id)
     };
 
     sshKeyRepo.save(copiedKey);
@@ -544,7 +572,7 @@ export class ResourceOperationsService {
 
   private async ensureProxyInScope(
     sourceProxyId: string,
-    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string },
+    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string }
   ): Promise<string> {
     const { proxyRepo, vault } = this.deps;
     const sourceProxy = proxyRepo.getById(sourceProxyId);
@@ -557,12 +585,15 @@ export class ResourceOperationsService {
       return sourceProxyId;
     }
 
-    const existingCopy = proxyRepo.list().find(
-      (proxy) =>
-        proxy.originScopeKey === targetScope.scopeKey &&
-        proxy.copiedFromResourceId ===
-          (sourceProxy.resourceId ?? buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id)),
-    );
+    const existingCopy = proxyRepo
+      .list()
+      .find(
+        (proxy) =>
+          proxy.originScopeKey === targetScope.scopeKey &&
+          proxy.copiedFromResourceId ===
+            (sourceProxy.resourceId ??
+              buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id))
+      );
     if (existingCopy) {
       return existingCopy.id;
     }
@@ -594,7 +625,8 @@ export class ResourceOperationsService {
       originScopeKey: targetScope.scopeKey,
       originWorkspaceId: targetScope.workspaceId,
       copiedFromResourceId:
-        sourceProxy.resourceId ?? buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id),
+        sourceProxy.resourceId ??
+        buildResourceId(sourceScopeKey, sourceProxy.uuidInScope ?? sourceProxy.id)
     };
 
     proxyRepo.save(copiedProxy);
@@ -607,7 +639,7 @@ export class ResourceOperationsService {
 
   private resolveScope(
     originKind: OriginKind,
-    workspaceId?: string,
+    workspaceId?: string
   ): { scopeKey: string; originKind: OriginKind; workspaceId?: string } {
     if (originKind === "local") {
       return { scopeKey: LOCAL_DEFAULT_SCOPE_KEY, originKind: "local" };
@@ -627,7 +659,7 @@ export class ResourceOperationsService {
     const scopeKey = buildScopeKey({
       kind: "cloud",
       apiBaseUrl: ws.apiBaseUrl,
-      workspaceName: ws.workspaceName,
+      workspaceName: ws.workspaceName
     });
 
     return { scopeKey, originKind: "cloud", workspaceId };

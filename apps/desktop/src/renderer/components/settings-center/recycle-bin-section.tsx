@@ -11,12 +11,12 @@ const REASON_LABELS: Record<string, string> = {
   delete: "用户删除",
   conflict_accept_remote: "冲突接受远端",
   conflict_keep_local: "冲突保留本地",
-  danger_move: "危险移动",
+  danger_move: "危险移动"
 };
 
 const TYPE_LABELS: Record<string, string> = {
   server: "连接",
-  sshKey: "密钥",
+  sshKey: "密钥"
 };
 
 const formatScopeKey = (scopeKey: string): string => {
@@ -84,7 +84,10 @@ export const RecycleBinSection = () => {
   };
 
   return (
-    <SettingsCard title="回收站" description="被删除或因冲突替换的资源会保留在此，可恢复或永久删除。">
+    <SettingsCard
+      title="回收站"
+      description="被删除或因冲突替换的资源会保留在此，可恢复或永久删除。"
+    >
       {entries.length > 0 && (
         <div style={{ marginBottom: 12, textAlign: "right" }}>
           <Popconfirm
@@ -105,9 +108,7 @@ export const RecycleBinSection = () => {
         loading={loading}
         dataSource={entries}
         locale={{
-          emptyText: (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="回收站为空" />
-          ),
+          emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="回收站为空" />
         }}
         renderItem={(entry) => (
           <List.Item
@@ -132,7 +133,7 @@ export const RecycleBinSection = () => {
                 <Button size="small" danger loading={busyId === entry.id}>
                   删除
                 </Button>
-              </Popconfirm>,
+              </Popconfirm>
             ]}
           >
             <List.Item.Meta
@@ -145,7 +146,10 @@ export const RecycleBinSection = () => {
               }
               description={
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  删除时间: <span title={formatDateTime(entry.createdAt)}>{formatRelativeTime(entry.createdAt)}</span>
+                  删除时间:{" "}
+                  <span title={formatDateTime(entry.createdAt)}>
+                    {formatRelativeTime(entry.createdAt)}
+                  </span>
                   {entry.originalScopeKey && ` · 来自: ${formatScopeKey(entry.originalScopeKey)}`}
                 </Typography.Text>
               }

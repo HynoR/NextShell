@@ -4,7 +4,7 @@ import type {
   BatchCommandExecutionResult,
   ConnectionProfile,
   ScopedCommandItem,
-  SessionDescriptor,
+  SessionDescriptor
 } from "@nextshell/core";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import {
@@ -12,19 +12,13 @@ import {
   filterCommands,
   groupCommands,
   buildGroupOptions,
-  getActiveScopeLabel,
+  getActiveScopeLabel
 } from "../../store/useCommandStore";
-import {
-  buildBatchTargetTree,
-  getBatchTargetConnectionIds,
-} from "../../utils/batchTargets";
+import { buildBatchTargetTree, getBatchTargetConnectionIds } from "../../utils/batchTargets";
 import { formatErrorMessage } from "../../utils/errorMessage";
 import { CommandList } from "./CommandList";
 import { CommandEditModal } from "./CommandEditModal";
-import {
-  TemplateParamDrawer,
-  type TemplateExecutionMode,
-} from "./TemplateParamDrawer";
+import { TemplateParamDrawer, type TemplateExecutionMode } from "./TemplateParamDrawer";
 import { BatchResultDrawer } from "./BatchResultDrawer";
 
 interface CommandCenterPaneProps {
@@ -40,15 +34,13 @@ export const CommandCenterPane = ({
   connected,
   connections,
   sessions,
-  onExecuteCommand,
+  onExecuteCommand
 }: CommandCenterPaneProps) => {
   const { message } = AntdApp.useApp();
   const batchMaxConcurrency = usePreferencesStore(
     (s) => s.preferences.commandCenter.batchMaxConcurrency
   );
-  const batchRetryCount = usePreferencesStore(
-    (s) => s.preferences.commandCenter.batchRetryCount
-  );
+  const batchRetryCount = usePreferencesStore((s) => s.preferences.commandCenter.batchRetryCount);
 
   const load = useCommandStore((s) => s.load);
   const upsert = useCommandStore((s) => s.upsert);
@@ -71,10 +63,7 @@ export const CommandCenterPane = ({
     () => filterCommands(allCommands, activeScope, keyword, groupFilter),
     [allCommands, activeScope, keyword, groupFilter]
   );
-  const commandGroups = useMemo(
-    () => groupCommands(filteredCommands),
-    [filteredCommands]
-  );
+  const commandGroups = useMemo(() => groupCommands(filteredCommands), [filteredCommands]);
   const groupOptions = useMemo(
     () => buildGroupOptions(allCommands, activeScope),
     [allCommands, activeScope]
@@ -95,19 +84,13 @@ export const CommandCenterPane = ({
   const [batchResultOpen, setBatchResultOpen] = useState(false);
 
   // ── Batch targets ──────────────────────────────────────────
-  const openTabTargetIds = useMemo(
-    () => getBatchTargetConnectionIds(sessions),
-    [sessions]
-  );
+  const openTabTargetIds = useMemo(() => getBatchTargetConnectionIds(sessions), [sessions]);
   const [targetSelection, setTargetSelection] = useState<string[] | null>(null);
   const targetConnectionIds = useMemo(
     () => targetSelection ?? openTabTargetIds,
     [targetSelection, openTabTargetIds]
   );
-  const targetTree = useMemo(
-    () => buildBatchTargetTree(connections),
-    [connections]
-  );
+  const targetTree = useMemo(() => buildBatchTargetTree(connections), [connections]);
 
   // ── Data loading ───────────────────────────────────────────
   useEffect(() => {
@@ -154,14 +137,12 @@ export const CommandCenterPane = ({
           command: normalized,
           connectionIds: targetConnectionIds,
           maxConcurrency: batchMaxConcurrency,
-          retryCount: batchRetryCount,
+          retryCount: batchRetryCount
         });
         setBatchResult(result);
         setBatchResultOpen(true);
       } catch (error) {
-        message.error(
-          `批量执行失败：${formatErrorMessage(error, "请检查连接状态")}`
-        );
+        message.error(`批量执行失败：${formatErrorMessage(error, "请检查连接状态")}`);
       } finally {
         setBatchRunning(false);
       }
@@ -244,7 +225,7 @@ export const CommandCenterPane = ({
               ? editingCmd.workspaceId
               : activeScope === "local"
                 ? undefined
-                : activeScope,
+                : activeScope
         });
         message.success(editingCmd ? "命令已更新" : "命令已添加");
         setEditOpen(false);
@@ -346,19 +327,9 @@ export const CommandCenterPane = ({
               onChange={(e) => setKeyword(e.target.value)}
               size="small"
               style={{ width: 130 }}
-              prefix={
-                <i
-                  className="ri-search-line"
-                  style={{ fontSize: 12, color: "var(--t3)" }}
-                />
-              }
+              prefix={<i className="ri-search-line" style={{ fontSize: 12, color: "var(--t3)" }} />}
             />
-            <button
-              type="button"
-              className="cc-add-btn"
-              onClick={handleCreate}
-              title="新建命令"
-            >
+            <button type="button" className="cc-add-btn" onClick={handleCreate} title="新建命令">
               <i className="ri-add-line" aria-hidden="true" />
             </button>
           </Space>

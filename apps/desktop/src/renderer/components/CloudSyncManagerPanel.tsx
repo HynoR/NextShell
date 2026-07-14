@@ -11,13 +11,18 @@ import {
   Switch,
   Tag,
   Typography,
-  message,
+  message
 } from "antd";
 import { Fragment, useCallback, useEffect, useState } from "react";
-import type { CloudSyncWorkspaceProfile, WorkspaceRepoConflict, WorkspaceRepoStatus } from "@nextshell/core";
+import type {
+  CloudSyncWorkspaceProfile,
+  WorkspaceRepoConflict,
+  WorkspaceRepoStatus
+} from "@nextshell/core";
 import { SettingsCard } from "./SettingsCard";
 
-const api = () => (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
+const api = () =>
+  (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
 
 interface WorkspaceFormState {
   id?: string;
@@ -37,7 +42,7 @@ const emptyForm: WorkspaceFormState = {
   workspacePassword: "",
   pullIntervalSec: 300,
   ignoreTlsErrors: false,
-  enabled: true,
+  enabled: true
 };
 
 type WorkspaceStatus = WorkspaceRepoStatus;
@@ -49,7 +54,7 @@ const STATE_COLORS: Record<string, string> = {
   syncing: "blue",
   error: "red",
   disabled: "default",
-  diverged: "orange",
+  diverged: "orange"
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -58,13 +63,13 @@ const STATE_LABELS: Record<string, string> = {
   syncing: "同步中",
   error: "出错",
   disabled: "已停用",
-  diverged: "有冲突",
+  diverged: "有冲突"
 };
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
   connection: "连接",
   sshKey: "SSH 密钥",
-  proxy: "代理",
+  proxy: "代理"
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -78,7 +83,7 @@ const FIELD_LABELS: Record<string, string> = {
   tags: "标签",
   favorite: "收藏",
   proxyType: "代理类型",
-  凭据: "凭据",
+  凭据: "凭据"
 };
 
 const CREDENTIAL_KEYS = new Set(["password", "privateKey", "passphrase"]);
@@ -92,7 +97,7 @@ const formatConflictValue = (value: unknown): string => {
 };
 
 const computeConflictDiff = (
-  item: WorkspaceRepoConflict,
+  item: WorkspaceRepoConflict
 ): Array<{ field: string; local: string; remote: string }> => {
   const parse = (json: string | undefined): Record<string, unknown> => {
     if (!json) return {};
@@ -144,7 +149,7 @@ export const CloudSyncManagerPanel = () => {
     try {
       const [list, statusResult] = await Promise.all([
         api().cloudSync.workspaceList(),
-        api().cloudSync.status(),
+        api().cloudSync.status()
       ]);
       setWorkspaces(list);
       const map = new Map<string, WorkspaceStatus>();
@@ -203,7 +208,7 @@ export const CloudSyncManagerPanel = () => {
       workspacePassword: "",
       pullIntervalSec: ws.pullIntervalSec,
       ignoreTlsErrors: ws.ignoreTlsErrors,
-      enabled: ws.enabled,
+      enabled: ws.enabled
     });
     setIsEditing(true);
     setModalOpen(true);
@@ -233,7 +238,7 @@ export const CloudSyncManagerPanel = () => {
           workspacePassword: editForm.workspacePassword || undefined,
           pullIntervalSec: editForm.pullIntervalSec,
           ignoreTlsErrors: editForm.ignoreTlsErrors,
-          enabled: editForm.enabled,
+          enabled: editForm.enabled
         });
       } else {
         await api().cloudSync.workspaceAdd({
@@ -243,7 +248,7 @@ export const CloudSyncManagerPanel = () => {
           workspacePassword: editForm.workspacePassword,
           pullIntervalSec: editForm.pullIntervalSec,
           ignoreTlsErrors: editForm.ignoreTlsErrors,
-          enabled: editForm.enabled,
+          enabled: editForm.enabled
         });
       }
       setModalOpen(false);
@@ -289,7 +294,7 @@ export const CloudSyncManagerPanel = () => {
         workspacePassword: draft.workspacePassword,
         pullIntervalSec: draft.pullIntervalSec,
         ignoreTlsErrors: draft.ignoreTlsErrors,
-        enabled: draft.enabled,
+        enabled: draft.enabled
       });
       message.success("已从工作区 Token 自动填充表单");
     } catch (err) {
@@ -316,7 +321,7 @@ export const CloudSyncManagerPanel = () => {
     workspaceId: string,
     resourceType: string,
     resourceId: string,
-    strategy: "keep_local" | "accept_remote",
+    strategy: "keep_local" | "accept_remote"
   ) => {
     const key = `${workspaceId}:${resourceType}:${resourceId}:${strategy}`;
     setConflictBusyKey(key);
@@ -325,7 +330,7 @@ export const CloudSyncManagerPanel = () => {
         workspaceId,
         resourceType: resourceType as "connection" | "sshKey" | "proxy",
         resourceId,
-        strategy,
+        strategy
       });
       await refreshConflicts();
       await refresh();
@@ -351,7 +356,7 @@ export const CloudSyncManagerPanel = () => {
         apiBaseUrl: editForm.apiBaseUrl,
         workspaceName: editForm.workspaceName,
         workspacePassword: editForm.workspacePassword,
-        ignoreTlsErrors: editForm.ignoreTlsErrors,
+        ignoreTlsErrors: editForm.ignoreTlsErrors
       });
       message.success(`连接成功${result.displayName ? `：${result.displayName}` : ""}`);
     } catch (err) {
@@ -429,7 +434,7 @@ export const CloudSyncManagerPanel = () => {
                     <Button size="small" danger>
                       删除
                     </Button>
-                  </Popconfirm>,
+                  </Popconfirm>
                 ]}
               >
                 <List.Item.Meta
@@ -490,22 +495,25 @@ export const CloudSyncManagerPanel = () => {
                 工作区: {group.workspaceName}
               </Typography.Text>
               {group.items.map((item) => {
-                const keepBusy = conflictBusyKey === `${wsId}:${item.resourceType}:${item.resourceId}:keep_local`;
-                const acceptBusy = conflictBusyKey === `${wsId}:${item.resourceType}:${item.resourceId}:accept_remote`;
+                const keepBusy =
+                  conflictBusyKey === `${wsId}:${item.resourceType}:${item.resourceId}:keep_local`;
+                const acceptBusy =
+                  conflictBusyKey ===
+                  `${wsId}:${item.resourceType}:${item.resourceId}:accept_remote`;
                 const diff = computeConflictDiff(item);
                 return (
                   <div
                     key={`${item.resourceType}:${item.resourceId}`}
                     style={{
                       padding: "8px 0",
-                      borderBottom: "1px solid var(--border-color)",
+                      borderBottom: "1px solid var(--border-color)"
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
-                        alignItems: "center",
+                        alignItems: "center"
                       }}
                     >
                       <div>
@@ -526,7 +534,12 @@ export const CloudSyncManagerPanel = () => {
                           size="small"
                           loading={keepBusy}
                           onClick={() =>
-                            handleResolveConflict(wsId, item.resourceType, item.resourceId, "keep_local")
+                            handleResolveConflict(
+                              wsId,
+                              item.resourceType,
+                              item.resourceId,
+                              "keep_local"
+                            )
                           }
                         >
                           保留本地
@@ -538,14 +551,15 @@ export const CloudSyncManagerPanel = () => {
                           cancelText="取消"
                           okButtonProps={{ danger: true }}
                           onConfirm={() =>
-                            handleResolveConflict(wsId, item.resourceType, item.resourceId, "accept_remote")
+                            handleResolveConflict(
+                              wsId,
+                              item.resourceType,
+                              item.resourceId,
+                              "accept_remote"
+                            )
                           }
                         >
-                          <Button
-                            size="small"
-                            danger
-                            loading={acceptBusy}
-                          >
+                          <Button size="small" danger loading={acceptBusy}>
                             接受云端
                           </Button>
                         </Popconfirm>
@@ -559,7 +573,7 @@ export const CloudSyncManagerPanel = () => {
                           display: "grid",
                           gridTemplateColumns: "auto 1fr 1fr",
                           gap: "2px 12px",
-                          alignItems: "baseline",
+                          alignItems: "baseline"
                         }}
                       >
                         <Typography.Text type="secondary">字段</Typography.Text>
@@ -569,7 +583,9 @@ export const CloudSyncManagerPanel = () => {
                           <Fragment key={row.field}>
                             <span style={{ color: "var(--t2)" }}>{row.field}</span>
                             <span style={{ wordBreak: "break-all" }}>{row.local}</span>
-                            <span style={{ wordBreak: "break-all", color: "var(--warn, #d48806)" }}>{row.remote}</span>
+                            <span style={{ wordBreak: "break-all", color: "var(--warn, #d48806)" }}>
+                              {row.remote}
+                            </span>
                           </Fragment>
                         ))}
                       </div>
@@ -599,7 +615,12 @@ export const CloudSyncManagerPanel = () => {
         okText={isEditing ? "保存" : "添加"}
         cancelText="取消"
         footer={[
-          <Button key="test" loading={testing} onClick={() => void handleTestConnection()} style={{ float: "left" }}>
+          <Button
+            key="test"
+            loading={testing}
+            onClick={() => void handleTestConnection()}
+            style={{ float: "left" }}
+          >
             测试连接
           </Button>,
           <Button key="cancel" onClick={() => setModalOpen(false)}>
@@ -607,7 +628,7 @@ export const CloudSyncManagerPanel = () => {
           </Button>,
           <Button key="ok" type="primary" loading={saving} onClick={() => void handleSave()}>
             {isEditing ? "保存" : "添加"}
-          </Button>,
+          </Button>
         ]}
       >
         <Space direction="vertical" style={{ width: "100%" }}>

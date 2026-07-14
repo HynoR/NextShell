@@ -4,8 +4,15 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { BackupArchiveMeta, BackupConflictPolicy, RestoreConflictPolicy } from "../../../../../packages/core/src/index";
-import { encryptBackupPayload, decryptBackupPayload } from "../../../../../packages/security/src/index";
+import type {
+  BackupArchiveMeta,
+  BackupConflictPolicy,
+  RestoreConflictPolicy
+} from "../../../../../packages/core/src/index";
+import {
+  encryptBackupPayload,
+  decryptBackupPayload
+} from "../../../../../packages/security/src/index";
 import type { ConnectionRepository } from "../../../../../packages/storage/src/index";
 import { logger } from "../logger";
 
@@ -108,22 +115,27 @@ export class BackupService {
     const rclone = await this.resolveRclone();
 
     try {
-      const { stdout } = await execFileAsync(rclone, [
-        "lsjson",
-        remotePath,
-        "--include",
-        `*${META_EXTENSION}`
-      ], { timeout: 30_000 });
+      const { stdout } = await execFileAsync(
+        rclone,
+        ["lsjson", remotePath, "--include", `*${META_EXTENSION}`],
+        { timeout: 30_000 }
+      );
 
-      const items = JSON.parse(stdout) as Array<{ Name: string; Size: number; ModTime: string; Path: string }>;
+      const items = JSON.parse(stdout) as Array<{
+        Name: string;
+        Size: number;
+        ModTime: string;
+        Path: string;
+      }>;
       const metas: BackupArchiveMeta[] = [];
 
       for (const item of items) {
         try {
-          const { stdout: metaContent } = await execFileAsync(rclone, [
-            "cat",
-            `${remotePath}/${item.Name}`
-          ], { timeout: 15_000 });
+          const { stdout: metaContent } = await execFileAsync(
+            rclone,
+            ["cat", `${remotePath}/${item.Name}`],
+            { timeout: 15_000 }
+          );
 
           const parsed = JSON.parse(metaContent) as Partial<BackupArchiveMeta>;
           if (parsed.id && parsed.timestamp && parsed.fileName) {
@@ -151,7 +163,9 @@ export class BackupService {
     }
   }
 
-  async run(conflictPolicy: BackupConflictPolicy = "skip"): Promise<{ ok: true; fileName?: string }> {
+  async run(
+    conflictPolicy: BackupConflictPolicy = "skip"
+  ): Promise<{ ok: true; fileName?: string }> {
     const password = this.requirePassword();
     const remotePath = this.getRemotePath();
     const rclone = await this.resolveRclone();
@@ -184,7 +198,9 @@ export class BackupService {
       try {
         await this.repo.backupDatabase(snapshotPath);
       } catch (error) {
-        throw new Error(`数据库快照失败: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(
+          `数据库快照失败: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
 
       if (!fs.existsSync(snapshotPath)) {
@@ -202,7 +218,9 @@ export class BackupService {
         snapshotDb.exec("DELETE FROM audit_logs");
         snapshotDb.exec("VACUUM");
         snapshotDb.close();
-      } catch { /* non-fatal */ }
+      } catch {
+        /* non-fatal */
+      }
 
       // 2. Read snapshot and create manifest
       const timestamp = new Date().toISOString();
@@ -247,23 +265,21 @@ export class BackupService {
 
       // 6. Upload (and compensate if data uploaded but metadata failed)
       try {
-        await execFileAsync(rclone, [
-          "copyto",
-          encryptedPath,
-          `${remotePath}/${fileName}`
-        ], { timeout: 120_000 });
+        await execFileAsync(rclone, ["copyto", encryptedPath, `${remotePath}/${fileName}`], {
+          timeout: 120_000
+        });
         archiveUploaded = true;
 
-        await execFileAsync(rclone, [
-          "copyto",
-          metaPath,
-          `${remotePath}/${metaFileName}`
-        ], { timeout: 30_000 });
+        await execFileAsync(rclone, ["copyto", metaPath, `${remotePath}/${metaFileName}`], {
+          timeout: 30_000
+        });
         metaUploaded = true;
       } catch (error) {
         if (archiveUploaded && !metaUploaded && fileName) {
           try {
-            await execFileAsync(rclone, ["deletefile", `${remotePath}/${fileName}`], { timeout: 30_000 });
+            await execFileAsync(rclone, ["deletefile", `${remotePath}/${fileName}`], {
+              timeout: 30_000
+            });
           } catch (rollbackError) {
             logger.warn("[Backup] failed to rollback partially uploaded archive", {
               fileName,
@@ -288,7 +304,10 @@ export class BackupService {
     }
   }
 
-  async restore(archiveId: string, conflictPolicy: RestoreConflictPolicy = "skip_older"): Promise<{ ok: true }> {
+  async restore(
+    archiveId: string,
+    conflictPolicy: RestoreConflictPolicy = "skip_older"
+  ): Promise<{ ok: true }> {
     const password = this.requirePassword();
     const remotePath = this.getRemotePath();
     const rclone = await this.resolveRclone();
@@ -315,11 +334,9 @@ export class BackupService {
 
     try {
       try {
-        await execFileAsync(rclone, [
-          "copyto",
-          `${remotePath}/${target.fileName}`,
-          downloadPath
-        ], { timeout: 120_000 });
+        await execFileAsync(rclone, ["copyto", `${remotePath}/${target.fileName}`, downloadPath], {
+          timeout: 120_000
+        });
       } catch (error) {
         throw new Error(`下载失败: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -362,12 +379,15 @@ export class BackupService {
       fs.writeFileSync(restoreSnapshotPath, snapshotData);
 
       const restoreMarkerPath = path.join(this.dataDir, "restore-pending");
-      fs.writeFileSync(restoreMarkerPath, JSON.stringify({
-        timestamp: manifest.timestamp,
-        deviceId: manifest.deviceId,
-        appVersion: manifest.appVersion,
-        restoredAt: new Date().toISOString()
-      }));
+      fs.writeFileSync(
+        restoreMarkerPath,
+        JSON.stringify({
+          timestamp: manifest.timestamp,
+          deviceId: manifest.deviceId,
+          appVersion: manifest.appVersion,
+          restoredAt: new Date().toISOString()
+        })
+      );
 
       logger.info("[Backup] restore prepared, pending restart", { archiveId });
       return { ok: true };

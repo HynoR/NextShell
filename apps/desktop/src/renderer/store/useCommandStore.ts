@@ -1,8 +1,5 @@
 import { create } from "zustand";
-import type {
-  CloudSyncWorkspaceProfile,
-  ScopedCommandItem,
-} from "@nextshell/core";
+import type { CloudSyncWorkspaceProfile, ScopedCommandItem } from "@nextshell/core";
 import { clearParamsFromStorage, getCommandStorageKey } from "../utils/commandTemplate";
 import { formatErrorMessage } from "../utils/errorMessage";
 
@@ -91,17 +88,16 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
     try {
       const [list, workspaceList] = await Promise.all([
         window.nextshell.savedCommand.listScoped(),
-        window.nextshell.cloudSync.workspaceList(),
+        window.nextshell.cloudSync.workspaceList()
       ]);
       const state = get();
       const scopeStillValid =
-        state.activeScope === "local" ||
-        workspaceList.some((w) => w.id === state.activeScope);
+        state.activeScope === "local" || workspaceList.some((w) => w.id === state.activeScope);
       set({
         allCommands: list,
         workspaces: workspaceList,
         loading: false,
-        ...(scopeStillValid ? {} : { activeScope: "local" as CommandScopeId }),
+        ...(scopeStillValid ? {} : { activeScope: "local" as CommandScopeId })
       });
     } catch {
       set({ loading: false });
@@ -123,18 +119,14 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
     set({
       allCommands: prev.filter(
         (item) =>
-          !(
-            item.id === cmd.id &&
-            item.scope === cmd.scope &&
-            item.workspaceId === cmd.workspaceId
-          )
-      ),
+          !(item.id === cmd.id && item.scope === cmd.scope && item.workspaceId === cmd.workspaceId)
+      )
     });
     clearParamsFromStorage(getCommandStorageKey(cmd));
     try {
       await window.nextshell.savedCommand.remove({
         id: cmd.id,
-        workspaceId: cmd.scope === "workspace" ? cmd.workspaceId : undefined,
+        workspaceId: cmd.scope === "workspace" ? cmd.workspaceId : undefined
       });
       return true;
     } catch {
@@ -145,7 +137,7 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
 
   setActiveScope: (scope) => set({ activeScope: scope, keyword: "", groupFilter: undefined }),
   setKeyword: (keyword) => set({ keyword }),
-  setGroupFilter: (groupFilter) => set({ groupFilter }),
+  setGroupFilter: (groupFilter) => set({ groupFilter })
 }));
 
 // ── Pure helpers (use in useMemo, not as Zustand selectors) ──────────
@@ -156,7 +148,7 @@ export function getActiveScopeLabel(
 ): string {
   if (activeScope === "local") return "本地";
   const ws = workspaces.find((w) => w.id === activeScope);
-  return ws ? (ws.displayName || ws.workspaceName) : "本地";
+  return ws ? ws.displayName || ws.workspaceName : "本地";
 }
 
 export function buildGroupOptions(
@@ -170,6 +162,6 @@ export function buildGroupOptions(
     { label: "全部", value: undefined },
     ...Array.from(groups)
       .sort((a, b) => a.localeCompare(b))
-      .map((g) => ({ label: g, value: g })),
+      .map((g) => ({ label: g, value: g }))
   ];
 }

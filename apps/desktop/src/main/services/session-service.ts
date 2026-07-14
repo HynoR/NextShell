@@ -2,22 +2,23 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { spawn as spawnPty } from "node-pty";
-import type {
-  ConnectionProfile,
-  SessionDescriptor,
-  SessionStatus,
-} from "@nextshell/core";
+import type { ConnectionProfile, SessionDescriptor, SessionStatus } from "@nextshell/core";
 import type { SshConnection } from "@nextshell/ssh";
 import type {
   SessionAuthOverrideInput,
   SessionOpenInput,
   SessionStatusEvent,
-  StreamDeliveryAckInput,
+  StreamDeliveryAckInput
 } from "@nextshell/shared";
 import { AUTH_REQUIRED_PREFIX, IPCChannel } from "@nextshell/shared";
 import type { CachedConnectionRepository } from "@nextshell/storage";
 import type { ActiveSession, ActiveRemoteSession, SystemMonitorRuntime } from "./container-types";
-import { normalizeError, toAuthRequiredReason, decodeTerminalData, encodeTerminalData } from "./container-utils";
+import {
+  normalizeError,
+  toAuthRequiredReason,
+  decodeTerminalData,
+  encodeTerminalData
+} from "./container-utils";
 import { createRemoteOsc7BootstrapPlan, resolveOsc7ShellFamily } from "./terminal-osc7-bootstrap";
 import { resolveLocalShellLaunch } from "./local-shell";
 import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
@@ -27,7 +28,10 @@ export interface SessionServiceOptions {
   connections: CachedConnectionRepository;
   activeSessions: Map<string, ActiveSession>;
   getConnectionOrThrow: (id: string) => ConnectionProfile;
-  ensureConnection: (connectionId: string, authOverride?: SessionAuthOverrideInput) => Promise<SshConnection>;
+  ensureConnection: (
+    connectionId: string,
+    authOverride?: SessionAuthOverrideInput
+  ) => Promise<SshConnection>;
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   appendAuditLogIfEnabled: (payload: {
     action: string;
@@ -41,22 +45,36 @@ export interface SessionServiceOptions {
   ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
   clearMonitorSuspension: (connectionId: string) => void;
   warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
-  persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
+  persistAuthOverride: (
+    connectionId: string,
+    authOverride: SessionAuthOverrideInput
+  ) => Promise<string | undefined>;
 }
 
 export class SessionService {
   private readonly connections: CachedConnectionRepository;
   private readonly activeSessions: Map<string, ActiveSession>;
   private readonly getConnectionOrThrow: (id: string) => ConnectionProfile;
-  private readonly ensureConnection: (connectionId: string, authOverride?: SessionAuthOverrideInput) => Promise<SshConnection>;
+  private readonly ensureConnection: (
+    connectionId: string,
+    authOverride?: SessionAuthOverrideInput
+  ) => Promise<SshConnection>;
   private readonly closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   private readonly appendAuditLogIfEnabled: SessionServiceOptions["appendAuditLogIfEnabled"];
   private readonly sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   private readonly sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  private readonly ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
+  private readonly ensureSystemMonitorRuntime: (
+    connectionId: string
+  ) => Promise<SystemMonitorRuntime>;
   private readonly clearMonitorSuspension: (connectionId: string) => void;
-  private readonly warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
-  private readonly persistAuthOverride: (connectionId: string, authOverride: SessionAuthOverrideInput) => Promise<string | undefined>;
+  private readonly warmupSftp: (
+    connectionId: string,
+    connection: SshConnection
+  ) => Promise<string | undefined>;
+  private readonly persistAuthOverride: (
+    connectionId: string,
+    authOverride: SessionAuthOverrideInput
+  ) => Promise<string | undefined>;
 
   constructor(options: SessionServiceOptions) {
     this.connections = options.connections;
@@ -75,10 +93,7 @@ export class SessionService {
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
-  async openSession(
-    input: SessionOpenInput,
-    sender: WebContents,
-  ): Promise<SessionDescriptor> {
+  async openSession(input: SessionOpenInput, sender: WebContents): Promise<SessionDescriptor> {
     if (input.target === "local") {
       return this.openLocalSession(sender, input.sessionId);
     }
@@ -90,7 +105,7 @@ export class SessionService {
     connectionId: string,
     sender: WebContents,
     sessionId?: string,
-    authOverride?: SessionAuthOverrideInput,
+    authOverride?: SessionAuthOverrideInput
   ): Promise<SessionDescriptor> {
     const profile = this.getConnectionOrThrow(connectionId);
     const descriptorId = sessionId ?? randomUUID();
@@ -105,12 +120,12 @@ export class SessionService {
       status: "connecting",
       type: "terminal",
       createdAt: new Date().toISOString(),
-      reconnectable: true,
+      reconnectable: true
     };
 
     this.sendSessionStatus(sender, {
       sessionId: descriptor.id,
-      status: "connecting",
+      status: "connecting"
     });
 
     try {
@@ -119,7 +134,7 @@ export class SessionService {
       let osc7ShellFamily: ReturnType<typeof resolveOsc7ShellFamily> = undefined;
       if (profile.monitorSession) {
         try {
-          const shellProbe = await connection.exec('printf \'%s\' "${SHELL:-}"');
+          const shellProbe = await connection.exec("printf '%s' \"${SHELL:-}\"");
           shellPath = shellProbe.stdout.trim() || undefined;
           osc7ShellFamily = resolveOsc7ShellFamily(shellPath);
         } catch {
@@ -131,25 +146,26 @@ export class SessionService {
         Boolean(profile.monitorSession),
         profile.host,
         osc7ShellFamily,
-        shellPath,
+        shellPath
       );
-      const shell = osc7Bootstrap.enabled && osc7Bootstrap.launchCommand
-        ? await connection.openExecChannel(osc7Bootstrap.launchCommand, {
-            cols: 140,
-            rows: 40,
-            term: "xterm-256color",
-          })
-        : await connection.openShell({
-            cols: 140,
-            rows: 40,
-            term: "xterm-256color",
-          });
+      const shell =
+        osc7Bootstrap.enabled && osc7Bootstrap.launchCommand
+          ? await connection.openExecChannel(osc7Bootstrap.launchCommand, {
+              cols: 140,
+              rows: 40,
+              term: "xterm-256color"
+            })
+          : await connection.openShell({
+              cols: 140,
+              rows: 40,
+              term: "xterm-256color"
+            });
 
       const now = new Date().toISOString();
       this.connections.save({
         ...profile,
         lastConnectedAt: now,
-        updatedAt: now,
+        updatedAt: now
       });
 
       descriptor.status = "connected";
@@ -162,7 +178,7 @@ export class SessionService {
         connectionId,
         terminalEncoding: profile.terminalEncoding,
         backspaceMode: profile.backspaceMode,
-        deleteMode: profile.deleteMode,
+        deleteMode: profile.deleteMode
       });
 
       shell.on("data", (chunk: Buffer | string) => {
@@ -176,7 +192,7 @@ export class SessionService {
           sender: active.sender,
           chunk: decodeTerminalData(chunk, active.terminalEncoding),
           onPause: () => shell.pause(),
-          onResume: () => shell.resume(),
+          onResume: () => shell.resume()
         });
       });
 
@@ -190,7 +206,7 @@ export class SessionService {
           sender: active.sender,
           chunk: decodeTerminalData(chunk, active.terminalEncoding),
           onPause: () => shell.pause(),
-          onResume: () => shell.resume(),
+          onResume: () => shell.resume()
         });
       });
 
@@ -227,7 +243,7 @@ export class SessionService {
             : monitorReason;
           logger.warn("[MonitorSession] failed to bootstrap runtime after terminal open", {
             connectionId,
-            reason: normalizeError(error),
+            reason: normalizeError(error)
           });
         }
       }
@@ -235,7 +251,7 @@ export class SessionService {
       this.sendSessionStatus(sender, {
         sessionId: descriptor.id,
         status: "connected",
-        reason: connectedReason,
+        reason: connectedReason
       });
 
       this.appendAuditLogIfEnabled({
@@ -244,8 +260,8 @@ export class SessionService {
         connectionId,
         message: "SSH session opened",
         metadata: {
-          sessionId: descriptor.id,
-        },
+          sessionId: descriptor.id
+        }
       });
 
       return descriptor;
@@ -255,13 +271,13 @@ export class SessionService {
       const reason = authReason ? `${AUTH_REQUIRED_PREFIX}${authReason}` : rawReason;
       logger.error("[Session] failed to open", {
         connectionId,
-        reason,
+        reason
       });
       if (!authReason) {
         this.sendSessionStatus(sender, {
           sessionId: descriptor.id,
           status: "failed",
-          reason,
+          reason
         });
       }
       this.appendAuditLogIfEnabled({
@@ -271,17 +287,14 @@ export class SessionService {
         message: "SSH session failed to open",
         metadata: {
           reason,
-          authRequired: Boolean(authReason),
-        },
+          authRequired: Boolean(authReason)
+        }
       });
       throw new Error(reason);
     }
   }
 
-  async openLocalSession(
-    sender: WebContents,
-    sessionId?: string,
-  ): Promise<SessionDescriptor> {
+  async openLocalSession(sender: WebContents, sessionId?: string): Promise<SessionDescriptor> {
     const descriptorId = sessionId ?? randomUUID();
     if (this.activeSessions.has(descriptorId)) {
       throw new Error("Session id already exists");
@@ -296,24 +309,26 @@ export class SessionService {
       status: "connecting",
       type: "terminal",
       createdAt: new Date().toISOString(),
-      reconnectable: true,
+      reconnectable: true
     };
 
     this.sendSessionStatus(sender, {
       sessionId: descriptor.id,
-      status: "connecting",
+      status: "connecting"
     });
 
     try {
       const localShellEnv = Object.fromEntries(
-        Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        Object.entries(process.env).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string"
+        )
       );
       const pty = spawnPty(shellLaunch.command, shellLaunch.args, {
         name: "xterm-256color",
         cols: 140,
         rows: 40,
         cwd: os.homedir(),
-        env: localShellEnv,
+        env: localShellEnv
       });
 
       descriptor.status = "connected";
@@ -322,7 +337,7 @@ export class SessionService {
         descriptor,
         pty,
         sender,
-        terminalEncoding: "utf-8",
+        terminalEncoding: "utf-8"
       });
 
       pty.onData((chunk) => {
@@ -336,7 +351,7 @@ export class SessionService {
           sender: active.sender,
           chunk,
           onPause: () => pty.pause(),
-          onResume: () => pty.resume(),
+          onResume: () => pty.resume()
         });
       });
 
@@ -351,13 +366,13 @@ export class SessionService {
         this.finalizeLocalSession(
           descriptor.id,
           "disconnected",
-          reasonParts.length > 0 ? reasonParts.join(", ") : undefined,
+          reasonParts.length > 0 ? reasonParts.join(", ") : undefined
         );
       });
 
       this.sendSessionStatus(sender, {
         sessionId: descriptor.id,
-        status: "connected",
+        status: "connected"
       });
 
       this.appendAuditLogIfEnabled({
@@ -366,8 +381,8 @@ export class SessionService {
         message: "Local terminal session opened",
         metadata: {
           sessionId: descriptor.id,
-          shell: shellLaunch.command,
-        },
+          shell: shellLaunch.command
+        }
       });
 
       return descriptor;
@@ -375,12 +390,12 @@ export class SessionService {
       const reason = error instanceof Error ? error.message : "Failed to open local shell";
       logger.error("[Session] failed to open local terminal", {
         sessionId: descriptor.id,
-        reason,
+        reason
       });
       this.sendSessionStatus(sender, {
         sessionId: descriptor.id,
         status: "failed",
-        reason,
+        reason
       });
       this.appendAuditLogIfEnabled({
         action: "session.local_open_failed",
@@ -388,8 +403,8 @@ export class SessionService {
         message: "Local terminal session failed to open",
         metadata: {
           sessionId: descriptor.id,
-          reason,
-        },
+          reason
+        }
       });
       throw new Error(reason);
     }
@@ -411,11 +426,7 @@ export class SessionService {
     return { ok: true };
   }
 
-  resizeSession(
-    sessionId: string,
-    cols: number,
-    rows: number,
-  ): { ok: true } {
+  resizeSession(sessionId: string, cols: number, rows: number): { ok: true } {
     const active = this.activeSessions.get(sessionId);
     if (!active) {
       // Session may have already disconnected; silently ignore resize requests
@@ -440,7 +451,7 @@ export class SessionService {
     logger.info("[Session] closing", {
       sessionId,
       connectionId: active.kind === "remote" ? active.connectionId : undefined,
-      target: active.descriptor.target,
+      target: active.descriptor.target
     });
     this.sessionDataDispatcher.clear(sessionId);
     if (active.kind === "local") {
@@ -448,14 +459,14 @@ export class SessionService {
       this.activeSessions.delete(sessionId);
       this.sendSessionStatus(active.sender, {
         sessionId,
-        status: "disconnected",
+        status: "disconnected"
       });
 
       this.appendAuditLogIfEnabled({
         action: "session.local_close",
         level: "info",
         message: "Local terminal session closed",
-        metadata: { sessionId },
+        metadata: { sessionId }
       });
       return { ok: true };
     }
@@ -468,7 +479,7 @@ export class SessionService {
     this.activeSessions.delete(sessionId);
     this.sendSessionStatus(active.sender, {
       sessionId,
-      status: "disconnected",
+      status: "disconnected"
     });
 
     this.appendAuditLogIfEnabled({
@@ -476,7 +487,7 @@ export class SessionService {
       level: "info",
       connectionId: active.connectionId,
       message: "SSH session closed",
-      metadata: { sessionId },
+      metadata: { sessionId }
     });
 
     await this.closeConnectionIfIdle(active.connectionId);
@@ -491,7 +502,7 @@ export class SessionService {
     this.sessionDataDispatcher.ack({
       streamId: input.streamId,
       deliveryId: input.deliveryId,
-      consumedBytes: input.consumedBytes,
+      consumedBytes: input.consumedBytes
     });
 
     return { ok: true };
@@ -502,7 +513,7 @@ export class SessionService {
   finalizeRemoteSession(
     sessionId: string,
     status: Extract<SessionStatus, "disconnected" | "failed">,
-    reason?: string,
+    reason?: string
   ): void {
     const active = this.activeSessions.get(sessionId);
     if (!active) {
@@ -530,7 +541,7 @@ export class SessionService {
   finalizeLocalSession(
     sessionId: string,
     status: Extract<SessionStatus, "disconnected" | "failed">,
-    reason?: string,
+    reason?: string
   ): void {
     const active = this.activeSessions.get(sessionId);
     if (!active || active.kind !== "local") {
@@ -551,7 +562,7 @@ export class SessionService {
         action: "session.local_close",
         level: status === "failed" ? "error" : "info",
         message: "Local terminal session closed",
-        metadata: { sessionId, reason },
+        metadata: { sessionId, reason }
       });
     });
   }

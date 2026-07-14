@@ -63,7 +63,9 @@ export const exportConnectionsBatchToDirectory = async <
   if (!directoryAvailable) {
     for (const connection of options.connections) {
       result.failed += 1;
-      result.errors.push(`${connection.name}(${connection.host}:${connection.port}): 导出目录不可用`);
+      result.errors.push(
+        `${connection.name}(${connection.host}:${connection.port}): 导出目录不可用`
+      );
     }
     return result;
   }
