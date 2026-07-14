@@ -35,8 +35,5 @@ jobs:
       - name: Unit tests (Bun)
         run: bun run test
 
-      # Note: the mcp-ssh-proxy and runtime suites use the node:test runner
-      # (`bun run test:node`) and load native modules (better-sqlite3). They are
-      # not wired into CI here because those *.test.ts files are not tracked in
-      # the repo and a dev `rebuild:native` builds better-sqlite3 for Electron's
-      # ABI. Add a step once they are committed and a node-ABI rebuild is set up.
+      - name: Integration tests (Node)
+        run: bun run test:node

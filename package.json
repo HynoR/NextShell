@@ -15,7 +15,7 @@
     "build:mcp-ssh-proxy": "bun run --cwd apps/mcp-ssh-proxy build",
     "typecheck": "bun run --cwd apps/desktop typecheck && bun run typecheck:packages && bun run --cwd apps/mcp-ssh-proxy typecheck",
     "typecheck:packages": "bun run --cwd packages/core typecheck && bun run --cwd packages/shared typecheck && bun run --cwd packages/security typecheck && bun run --cwd packages/ssh typecheck && bun run --cwd packages/storage typecheck && bun run --cwd packages/terminal typecheck && bun run --cwd packages/ui-kit typecheck && bun run --cwd packages/runtime typecheck",
-    "test": "bun test apps/desktop packages/core packages/security packages/shared packages/ssh packages/storage",
+    "test": "bun test apps/desktop packages/core packages/security packages/shared packages/ssh packages/storage packages/terminal packages/ui-kit",
     "test:node": "bun run test:mcp-ssh-proxy && bun run test:runtime",
     "test:mcp-ssh-proxy": "bun run --cwd apps/mcp-ssh-proxy test",
     "test:runtime": "bun run --cwd packages/runtime test"
