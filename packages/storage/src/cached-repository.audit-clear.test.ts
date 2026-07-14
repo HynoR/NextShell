@@ -25,7 +25,7 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
     }
   ];
 
-  return {
+  const repository = {
     clearCalls: 0,
     list: () => [],
     save: () => {},
@@ -82,7 +82,9 @@ const createRepositoryStub = (): ConnectionRepository & { clearCalls: number } =
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
-  };
+  } satisfies Partial<ConnectionRepository> & { clearCalls: number };
+
+  return repository as unknown as ConnectionRepository & { clearCalls: number };
 };
 
 (() => {

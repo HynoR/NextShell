@@ -18,7 +18,7 @@ const createRepositoryStub = (): ConnectionRepository & {
   const appendCalls: Array<{ action: string }> = [];
   const batchCalls: Array<Array<{ action: string }>> = [];
 
-  return {
+  const repository = {
     appendCalls,
     batchCalls,
     list: () => [],
@@ -78,6 +78,16 @@ const createRepositoryStub = (): ConnectionRepository & {
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
+  } satisfies Partial<ConnectionRepository> & {
+    appendCalls: Array<{ action: string }>;
+    batchCalls: Array<Array<{ action: string }>>;
+    appendAuditLogs: (payloads: Array<{ action: string }>) => void;
+  };
+
+  return repository as unknown as ConnectionRepository & {
+    appendCalls: Array<{ action: string }>;
+    batchCalls: Array<Array<{ action: string }>>;
+    appendAuditLogs: (payloads: Array<{ action: string }>) => void;
   };
 };
 

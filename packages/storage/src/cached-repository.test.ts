@@ -48,7 +48,7 @@ const evictHistory = (entries: MutableHistoryEntry[]): MutableHistoryEntry[] => 
 const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): ConnectionRepository => {
   let store = initialHistory.map((entry) => ({ ...entry }));
 
-  return {
+  const repository = {
     list: () => [],
     save: () => {},
     remove: () => {},
@@ -113,7 +113,9 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
-  };
+  } satisfies Partial<ConnectionRepository>;
+
+  return repository as unknown as ConnectionRepository;
 };
 
 (() => {

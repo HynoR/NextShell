@@ -27,7 +27,7 @@ const createRepositoryStub = (
   let store = initialHistory.map((entry) => ({ ...entry }));
   const pushCalls: string[] = [];
 
-  return {
+  const repository = {
     pushCalls,
     list: () => [],
     save: () => {},
@@ -82,7 +82,9 @@ const createRepositoryStub = (
     backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
-  };
+  } satisfies Partial<ConnectionRepository> & { pushCalls: string[] };
+
+  return repository as unknown as ConnectionRepository & { pushCalls: string[] };
 };
 
 (() => {
