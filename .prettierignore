@@ -1,0 +1,10 @@
+**/node_modules/**
+**/dist/**
+**/dist-electron/**
+**/release/**
+**/coverage/**
+**/*.tsbuildinfo
+.claude/**
+docs/**
+bun.lock
+IPC_OPTIMIZATION_PLAN.md
