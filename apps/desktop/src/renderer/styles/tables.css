@@ -82,6 +82,48 @@
   border-color: var(--border-mid);
 }
 
+.disk-pane {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.disk-toolbar,
+.disk-error,
+.system-static-group-switch {
+  flex-shrink: 0;
+}
+
+.system-static-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.system-static-group-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.system-static-section {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.system-static-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* 终端下方功能模块：未连接时的居中图标+文案提示 */
 .pane-connection-prompt {
   height: 100%;
@@ -106,4 +148,3 @@
   line-height: 1.45;
   max-width: 320px;
 }
-

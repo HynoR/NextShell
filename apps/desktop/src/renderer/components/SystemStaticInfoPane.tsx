@@ -13,6 +13,7 @@ import { formatDiskSize } from "../utils/diskUsage";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { pollingScheduler } from "../utils/pollingScheduler";
 import { buildSystemDiskCacheKey } from "../utils/systemDiskSharedCache";
+import { useTableScrollY } from "../hooks/useTableScrollY";
 
 interface SystemStaticInfoPaneProps {
   connection?: ConnectionProfile;
@@ -97,6 +98,7 @@ export const SystemStaticInfoPane = ({
   const [errorText, setErrorText] = useState<string>();
   const requestIdRef = useRef(0);
   const cacheRef = useRef<Record<string, SystemInfoCacheSnapshot>>({});
+  const [tableContainerRef, tableScrollY] = useTableScrollY();
 
   useEffect(() => {
     if (!cacheKey) {
@@ -418,32 +420,36 @@ export const SystemStaticInfoPane = ({
               {activeGroup === "network" ? (
                 <div className="system-static-section">
                   <div className="text-[12px] text-[var(--t2)] mb-1">网络接口累计流量</div>
-                  <Table<SystemNetworkInterfaceTotal>
-                    rowKey={(row) => row.name}
-                    columns={networkColumns}
-                    dataSource={snapshot.networkInterfaces}
-                    size="small"
-                    pagination={false}
-                    className="disk-table"
-                    scroll={{ y: "calc(100vh - 420px)" }}
-                    locale={{ emptyText: "暂无网卡数据" }}
-                  />
+                  <div ref={tableContainerRef} className="system-static-table-wrap">
+                    <Table<SystemNetworkInterfaceTotal>
+                      rowKey={(row) => row.name}
+                      columns={networkColumns}
+                      dataSource={snapshot.networkInterfaces}
+                      size="small"
+                      pagination={false}
+                      className="disk-table"
+                      scroll={{ y: tableScrollY }}
+                      locale={{ emptyText: "暂无网卡数据" }}
+                    />
+                  </div>
                 </div>
               ) : null}
 
               {activeGroup === "disk" ? (
                 <div className="system-static-section">
                   <div className="text-[12px] text-[var(--t2)] mb-1">文件系统挂载</div>
-                  <Table<SystemFilesystemEntry>
-                    rowKey={(row) => `${row.mountPoint}-${row.filesystem}`}
-                    columns={filesystemColumns}
-                    dataSource={snapshot.filesystems}
-                    size="small"
-                    pagination={false}
-                    className="disk-table"
-                    scroll={{ y: "calc(100vh - 420px)" }}
-                    locale={{ emptyText: "暂无文件系统数据" }}
-                  />
+                  <div ref={tableContainerRef} className="system-static-table-wrap">
+                    <Table<SystemFilesystemEntry>
+                      rowKey={(row) => `${row.mountPoint}-${row.filesystem}`}
+                      columns={filesystemColumns}
+                      dataSource={snapshot.filesystems}
+                      size="small"
+                      pagination={false}
+                      className="disk-table"
+                      scroll={{ y: tableScrollY }}
+                      locale={{ emptyText: "暂无文件系统数据" }}
+                    />
+                  </div>
                 </div>
               ) : null}
             </div>

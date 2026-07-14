@@ -10,6 +10,7 @@ import type {
 import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { useTableScrollY } from "../hooks/useTableScrollY";
 import { TableSkeleton } from "./LoadingSkeletons";
 
 interface NetworkMonitorPaneProps {
@@ -39,6 +40,8 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
   const [detailError, setDetailError] = useState<string>();
   const [initialLoading, setInitialLoading] = useState(true);
   const detailRequestIdRef = useRef(0);
+  const [listenerTableRef, listenerTableScrollY] = useTableScrollY();
+  const [connectionTableRef, connectionTableScrollY] = useTableScrollY();
   const allListeners = networkSnapshot?.listeners ?? [];
 
   useEffect(() => {
@@ -271,14 +274,14 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
             {listeners.length} 监听项 · {listenerCapturedAt}
           </span>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div ref={listenerTableRef} className="flex-1 overflow-hidden">
           <Table<NetworkListener>
             rowKey={getListenerKey}
             columns={listenerColumns}
             dataSource={listeners}
             size="small"
             pagination={false}
-            scroll={{ y: "calc(50vh - 156px)" }}
+            scroll={{ y: listenerTableScrollY }}
             className="nm-table"
             locale={{ emptyText: initialLoading ? <TableSkeleton rows={5} columns={4} /> : "暂无监听数据" }}
             onRow={(record) => ({
@@ -314,14 +317,14 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
               <div className="nm-detail-error">{detailError}</div>
             ) : null}
 
-            <div className="flex-1 overflow-hidden">
+            <div ref={connectionTableRef} className="flex-1 overflow-hidden">
               <Table<NetworkConnection>
                 rowKey={(row) => `${row.remoteIp}-${row.remotePort}-${row.localPort}-${row.pid}-${row.state}`}
                 columns={connectionColumns}
                 dataSource={portConnections}
                 size="small"
                 pagination={false}
-                scroll={{ y: "calc(50vh - 210px)" }}
+                scroll={{ y: connectionTableScrollY }}
                 className="nm-table"
                 locale={{
                   emptyText: detailLoading ? (

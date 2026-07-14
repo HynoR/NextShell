@@ -9,6 +9,7 @@ import type {
 } from "@nextshell/core";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { useTableScrollY } from "../hooks/useTableScrollY";
 import { TableSkeleton } from "./LoadingSkeletons";
 
 interface ProcessManagerPaneProps {
@@ -32,6 +33,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   const [sortKey, setSortKey] = useState<SortKey>("cpu");
   const [killing, setKilling] = useState<Set<number>>(new Set());
   const [initialLoading, setInitialLoading] = useState(true);
+  const [tableContainerRef, tableScrollY] = useTableScrollY();
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailPid, setDetailPid] = useState<number | undefined>(undefined);
@@ -306,14 +308,14 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
           {processes.length} 进程 · {capturedAt}
         </span>
       </div>
-      <div className="flex-1 overflow-hidden">
+      <div ref={tableContainerRef} className="flex-1 overflow-hidden">
         <Table<MonitorProcess>
           rowKey="pid"
           columns={columns}
           dataSource={processes}
           size="small"
           pagination={false}
-          scroll={{ y: "calc(100vh - 200px)" }}
+          scroll={{ y: tableScrollY }}
           className="pm-table"
           locale={{ emptyText: initialLoading ? <TableSkeleton rows={6} columns={4} /> : "暂无进程数据" }}
         />
