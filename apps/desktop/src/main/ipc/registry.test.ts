@@ -5,6 +5,20 @@ import { fileURLToPath } from "node:url";
 import { IPCChannel } from "../../../../../packages/shared/src/index";
 import { ipcInvokeRegistry } from "./registry";
 
+const expectedEventChannelNames = [
+  "SessionData",
+  "SessionStatus",
+  "MonitorSystemData",
+  "MonitorProcessData",
+  "MonitorNetworkData",
+  "SftpEditStatus",
+  "SftpTransferStatus",
+  "CloudSyncStatusEvent",
+  "CloudSyncAppliedEvent",
+  "TracerouteData",
+  "DebugLogEvent"
+] as const;
+
 function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
@@ -29,7 +43,29 @@ for (const entry of ipcInvokeRegistry) {
   }
 }
 
-// 3. Every channel the preload invokes must have a handler in the registry.
+const collectTypeScriptFiles = (directory: string): string[] => {
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...collectTypeScriptFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+};
+
+const assertSameNames = (actual: Set<string>, expected: ReadonlySet<string>, label: string): void => {
+  const missing = [...expected].filter((name) => !actual.has(name));
+  const extra = [...actual].filter((name) => !expected.has(name));
+  assert(
+    missing.length === 0 && extra.length === 0,
+    `${label} mismatch; missing: ${missing.join(", ") || "none"}; extra: ${extra.join(", ") || "none"}`
+  );
+};
+
+// 3. The preload invoke surface and registry must match in both directions.
 //    The preload is scanned statically (it cannot be imported outside Electron).
 {
   const preloadPath = fileURLToPath(new URL("../../preload/index.ts", import.meta.url));
@@ -45,22 +81,72 @@ for (const entry of ipcInvokeRegistry) {
   assert(invokedNames.size > 0, "no typed invoke(IPCChannel.*) calls found in preload — scan pattern broken?");
 
   const registered = new Set<string>(ipcInvokeRegistry.map((entry) => entry.channel));
-  const missing: string[] = [];
+  const registeredNames = new Set<string>();
+  for (const [name, channel] of Object.entries(IPCChannel)) {
+    if (registered.has(channel)) {
+      registeredNames.add(name);
+    }
+  }
+
+  const missingHandlers: string[] = [];
   for (const name of invokedNames) {
     const channel = (IPCChannel as Record<string, string>)[name];
     assert(channel !== undefined, `preload invokes unknown IPCChannel member "${name}"`);
     if (channel !== undefined && !registered.has(channel)) {
-      missing.push(name);
+      missingHandlers.push(name);
     }
   }
   assert(
-    missing.length === 0,
-    `preload invokes channels with no registry entry: ${missing.join(", ")}`
+    missingHandlers.length === 0,
+    `preload invokes channels with no registry entry: ${missingHandlers.join(", ")}`
   );
+  assertSameNames(registeredNames, invokedNames, "invoke registry/preload");
 
   console.log(
     `registry.test: ${ipcInvokeRegistry.length} registry entries cover all ${invokedNames.size} preload invoke channels`
   );
+}
+
+// 4. One-way event channels must stay aligned with preload subscriptions, and
+//    each expected event channel must still appear in non-test main-process code.
+{
+  const preloadPath = fileURLToPath(new URL("../../preload/index.ts", import.meta.url));
+  const preloadSource = fs.readFileSync(preloadPath, "utf8");
+  const subscriptionPattern = /ipcRenderer\.on\(\s*IPCChannel\.(\w+)/g;
+  const subscribedNames = new Set<string>();
+  for (
+    let match = subscriptionPattern.exec(preloadSource);
+    match;
+    match = subscriptionPattern.exec(preloadSource)
+  ) {
+    const name = match[1];
+    if (name) {
+      subscribedNames.add(name);
+    }
+  }
+
+  const expectedNames = new Set<string>(expectedEventChannelNames);
+  assertSameNames(subscribedNames, expectedNames, "event channel subscriptions");
+
+  const mainDirectory = fileURLToPath(new URL("..", import.meta.url));
+  const mainChannelNames = new Set<string>();
+  const channelPattern = /IPCChannel\.(\w+)/g;
+  for (const filePath of collectTypeScriptFiles(mainDirectory)) {
+    const source = fs.readFileSync(filePath, "utf8");
+    for (let match = channelPattern.exec(source); match; match = channelPattern.exec(source)) {
+      const name = match[1];
+      if (name) {
+        mainChannelNames.add(name);
+      }
+    }
+  }
+
+  const missingMainReferences = expectedEventChannelNames.filter((name) => !mainChannelNames.has(name));
+  assert(
+    missingMainReferences.length === 0,
+    `event channels missing from main-process code: ${missingMainReferences.join(", ")}`
+  );
+  console.log(`registry.test: ${expectedEventChannelNames.length} event channels are aligned`);
 }
 
 console.log("registry.test: all assertions passed");
