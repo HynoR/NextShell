@@ -10,10 +10,13 @@ import {
   protocol,
   net,
   nativeTheme,
-  powerMonitor
+  powerMonitor,
+  shell
 } from "electron";
 import { logger } from "./logger";
 import { resolveAllowedAssetPath } from "./asset-protocol";
+import { isTrustedRendererUrl } from "./navigation-security";
+import { parseExternalUrl } from "./services/container-utils";
 import { registerIpcHandlers } from "./ipc/register";
 import { createServiceContainer, type ServiceContainer } from "./services/container";
 import {
@@ -147,6 +150,29 @@ const createMainWindow = async (): Promise<void> => {
       nodeIntegration: false,
       sandbox: true
     }
+  });
+
+  const openExternalUrl = (rawUrl: string): void => {
+    const externalUrl = parseExternalUrl(rawUrl);
+    if (!externalUrl) {
+      return;
+    }
+    void shell.openExternal(externalUrl.toString()).catch((error) => {
+      logger.warn("[Window] failed to open external URL", error);
+    });
+  };
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalUrl(url);
+    return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
+    if (isTrustedRendererUrl(targetUrl, app.getAppPath(), process.env.VITE_DEV_SERVER_URL)) {
+      return;
+    }
+    event.preventDefault();
+    openExternalUrl(targetUrl);
   });
 
   mainWindow.on("close", (event) => {
