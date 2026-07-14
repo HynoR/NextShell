@@ -126,6 +126,7 @@ import type {
   RecycleBinRestoreInput,
   RecycleBinPurgeInput
 } from "./contracts";
+import { IPCChannel } from "./channels";
 
 export type SessionEventUnsubscribe = () => void;
 
@@ -300,3 +301,121 @@ export interface NextShellApi {
     clear: () => Promise<{ ok: true; deleted: number }>;
   };
 }
+
+type AsyncApiMethod = (...args: never[]) => Promise<unknown>;
+
+export interface IpcInvokeMethods {
+  [IPCChannel.ConnectionList]: NextShellApi["connection"]["list"];
+  [IPCChannel.ConnectionUpsert]: NextShellApi["connection"]["upsert"];
+  [IPCChannel.ConnectionBatchAuthUpdate]: NextShellApi["connection"]["batchUpdateAuth"];
+  [IPCChannel.ConnectionRemove]: NextShellApi["connection"]["remove"];
+  [IPCChannel.ConnectionExport]: NextShellApi["connection"]["exportToFile"];
+  [IPCChannel.ConnectionExportBatch]: NextShellApi["connection"]["exportBatch"];
+  [IPCChannel.ConnectionRevealPassword]: NextShellApi["connection"]["revealPassword"];
+  [IPCChannel.ConnectionImportPreview]: NextShellApi["connection"]["importPreview"];
+  [IPCChannel.ConnectionImportFinalShellPreview]: NextShellApi["connection"]["importFinalShellPreview"];
+  [IPCChannel.ConnectionImportDirectoryPreview]: NextShellApi["connection"]["importDirectoryPreview"];
+  [IPCChannel.ConnectionImportExecute]: NextShellApi["connection"]["importExecute"];
+  [IPCChannel.SettingsGet]: NextShellApi["settings"]["get"];
+  [IPCChannel.SettingsUpdate]: NextShellApi["settings"]["update"];
+  [IPCChannel.DialogOpenFiles]: NextShellApi["dialog"]["openFiles"];
+  [IPCChannel.DialogOpenDirectory]: NextShellApi["dialog"]["openDirectory"];
+  [IPCChannel.DialogOpenPath]: NextShellApi["dialog"]["openPath"];
+  [IPCChannel.SessionOpen]: NextShellApi["session"]["open"];
+  [IPCChannel.SessionWrite]: NextShellApi["session"]["write"];
+  [IPCChannel.SessionResize]: NextShellApi["session"]["resize"];
+  [IPCChannel.SessionClose]: NextShellApi["session"]["close"];
+  [IPCChannel.SessionGetHomeDir]: NextShellApi["session"]["getHomeDir"];
+  [IPCChannel.StreamDeliveryAck]: NextShellApi["session"]["ackData"];
+  [IPCChannel.MonitorSystemInfoSnapshot]: NextShellApi["monitor"]["getSystemInfoSnapshot"];
+  [IPCChannel.MonitorSystemStart]: NextShellApi["monitor"]["startSystem"];
+  [IPCChannel.MonitorSystemStop]: NextShellApi["monitor"]["stopSystem"];
+  [IPCChannel.MonitorSystemSelectInterface]: NextShellApi["monitor"]["selectSystemInterface"];
+  [IPCChannel.MonitorProcessStart]: NextShellApi["monitor"]["startProcess"];
+  [IPCChannel.MonitorProcessStop]: NextShellApi["monitor"]["stopProcess"];
+  [IPCChannel.MonitorProcessDetail]: NextShellApi["monitor"]["getProcessDetail"];
+  [IPCChannel.MonitorProcessKill]: NextShellApi["monitor"]["killProcess"];
+  [IPCChannel.MonitorNetworkStart]: NextShellApi["monitor"]["startNetwork"];
+  [IPCChannel.MonitorNetworkStop]: NextShellApi["monitor"]["stopNetwork"];
+  [IPCChannel.MonitorNetworkConnections]: NextShellApi["monitor"]["getNetworkConnections"];
+  [IPCChannel.CommandExec]: NextShellApi["command"]["exec"];
+  [IPCChannel.CommandBatchExec]: NextShellApi["command"]["execBatch"];
+  [IPCChannel.AuditClear]: NextShellApi["audit"]["clear"];
+  [IPCChannel.SftpList]: NextShellApi["sftp"]["list"];
+  [IPCChannel.SftpListLocal]: NextShellApi["sftp"]["listLocal"];
+  [IPCChannel.SftpUpload]: NextShellApi["sftp"]["upload"];
+  [IPCChannel.SftpUploadPacked]: NextShellApi["sftp"]["uploadPacked"];
+  [IPCChannel.SftpDownload]: NextShellApi["sftp"]["download"];
+  [IPCChannel.SftpTransferCancel]: NextShellApi["sftp"]["cancelTransfer"];
+  [IPCChannel.SftpDownloadPacked]: NextShellApi["sftp"]["downloadPacked"];
+  [IPCChannel.SftpTransferPacked]: NextShellApi["sftp"]["transferPacked"];
+  [IPCChannel.SftpMkdir]: NextShellApi["sftp"]["mkdir"];
+  [IPCChannel.SftpRename]: NextShellApi["sftp"]["rename"];
+  [IPCChannel.SftpDelete]: NextShellApi["sftp"]["remove"];
+  [IPCChannel.CommandHistoryList]: NextShellApi["commandHistory"]["list"];
+  [IPCChannel.CommandHistoryPush]: NextShellApi["commandHistory"]["push"];
+  [IPCChannel.CommandHistoryRemove]: NextShellApi["commandHistory"]["remove"];
+  [IPCChannel.CommandHistoryClear]: NextShellApi["commandHistory"]["clear"];
+  [IPCChannel.SavedCommandListScoped]: NextShellApi["savedCommand"]["listScoped"];
+  [IPCChannel.SavedCommandUpsert]: NextShellApi["savedCommand"]["upsert"];
+  [IPCChannel.SavedCommandRemove]: NextShellApi["savedCommand"]["remove"];
+  [IPCChannel.SftpEditOpen]: NextShellApi["sftp"]["editOpen"];
+  [IPCChannel.SftpEditStop]: NextShellApi["sftp"]["editStop"];
+  [IPCChannel.SftpEditStopAll]: NextShellApi["sftp"]["editStopAll"];
+  [IPCChannel.SftpEditList]: NextShellApi["sftp"]["editList"];
+  [IPCChannel.SftpEditOpenBuiltin]: NextShellApi["sftp"]["editOpenBuiltin"];
+  [IPCChannel.SftpEditSaveBuiltin]: NextShellApi["sftp"]["editSaveBuiltin"];
+  [IPCChannel.BackupList]: NextShellApi["backup"]["list"];
+  [IPCChannel.BackupRun]: NextShellApi["backup"]["run"];
+  [IPCChannel.BackupRestore]: NextShellApi["backup"]["restore"];
+  [IPCChannel.MasterPasswordSet]: NextShellApi["masterPassword"]["setPassword"];
+  [IPCChannel.MasterPasswordUnlock]: NextShellApi["masterPassword"]["unlockPassword"];
+  [IPCChannel.MasterPasswordChange]: NextShellApi["masterPassword"]["changePassword"];
+  [IPCChannel.MasterPasswordClearRemembered]: NextShellApi["masterPassword"]["clearRemembered"];
+  [IPCChannel.MasterPasswordStatus]: NextShellApi["masterPassword"]["passwordStatus"];
+  [IPCChannel.MasterPasswordGetCached]: NextShellApi["masterPassword"]["getCached"];
+  [IPCChannel.CloudSyncWorkspaceList]: NextShellApi["cloudSync"]["workspaceList"];
+  [IPCChannel.CloudSyncWorkspaceAdd]: NextShellApi["cloudSync"]["workspaceAdd"];
+  [IPCChannel.CloudSyncWorkspaceUpdate]: NextShellApi["cloudSync"]["workspaceUpdate"];
+  [IPCChannel.CloudSyncWorkspaceRemove]: NextShellApi["cloudSync"]["workspaceRemove"];
+  [IPCChannel.CloudSyncWorkspaceExportToken]: NextShellApi["cloudSync"]["workspaceExportToken"];
+  [IPCChannel.CloudSyncWorkspaceParseToken]: NextShellApi["cloudSync"]["workspaceParseToken"];
+  [IPCChannel.CloudSyncStatus]: NextShellApi["cloudSync"]["status"];
+  [IPCChannel.CloudSyncSyncNow]: NextShellApi["cloudSync"]["syncNow"];
+  [IPCChannel.CloudSyncListConflicts]: NextShellApi["cloudSync"]["listConflicts"];
+  [IPCChannel.CloudSyncTestConnection]: NextShellApi["cloudSync"]["testConnection"];
+  [IPCChannel.CloudSyncResolveConflict]: NextShellApi["cloudSync"]["resolveConflict"];
+  [IPCChannel.SshKeyList]: NextShellApi["sshKey"]["list"];
+  [IPCChannel.SshKeyUpsert]: NextShellApi["sshKey"]["upsert"];
+  [IPCChannel.SshKeyRemove]: NextShellApi["sshKey"]["remove"];
+  [IPCChannel.ProxyList]: NextShellApi["proxy"]["list"];
+  [IPCChannel.ProxyUpsert]: NextShellApi["proxy"]["upsert"];
+  [IPCChannel.ProxyRemove]: NextShellApi["proxy"]["remove"];
+  [IPCChannel.UpdateCheck]: NextShellApi["about"]["checkUpdate"];
+  [IPCChannel.Ping]: NextShellApi["ping"]["probe"];
+  [IPCChannel.TracerouteRun]: NextShellApi["traceroute"]["run"];
+  [IPCChannel.TracerouteStop]: NextShellApi["traceroute"]["stop"];
+  [IPCChannel.DebugLogEnable]: NextShellApi["debug"]["enableLog"];
+  [IPCChannel.DebugLogDisable]: NextShellApi["debug"]["disableLog"];
+  [IPCChannel.ResourceCopyConnection]: NextShellApi["resourceOps"]["copyConnection"];
+  [IPCChannel.RecycleBinList]: NextShellApi["recycleBin"]["list"];
+  [IPCChannel.RecycleBinRestore]: NextShellApi["recycleBin"]["restore"];
+  [IPCChannel.RecycleBinPurge]: NextShellApi["recycleBin"]["purge"];
+  [IPCChannel.RecycleBinClear]: NextShellApi["recycleBin"]["clear"];
+}
+
+export type IpcInvokeChannel = keyof IpcInvokeMethods;
+
+export type IpcInvokePayload<C extends IpcInvokeChannel> =
+  IpcInvokeMethods[C] extends AsyncApiMethod
+    ? Parameters<IpcInvokeMethods[C]> extends []
+      ? Record<string, never>
+      : [] extends Parameters<IpcInvokeMethods[C]>
+        ? NonNullable<Parameters<IpcInvokeMethods[C]>[0]> | Record<string, never>
+        : NonNullable<Parameters<IpcInvokeMethods[C]>[0]>
+    : never;
+
+export type IpcInvokeResult<C extends IpcInvokeChannel> =
+  IpcInvokeMethods[C] extends AsyncApiMethod
+    ? Awaited<ReturnType<IpcInvokeMethods[C]>>
+    : never;

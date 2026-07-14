@@ -16,21 +16,29 @@ import type {
 } from "../../../../packages/core/src/index";
 import {
   IPCChannel,
+  type IpcInvokeChannel,
+  type IpcInvokePayload,
+  type IpcInvokeResult,
   type NextShellApi
 } from "../../../../packages/shared/src/index";
 import { WINDOWS_TITLEBAR_SAFE_TOP } from "../shared/window-ui";
 
+const invoke = <C extends IpcInvokeChannel>(
+  channel: C,
+  payload: IpcInvokePayload<C>
+): Promise<IpcInvokeResult<C>> => ipcRenderer.invoke(channel, payload);
+
 const masterPasswordApi: NextShellApi["masterPassword"] = {
-  setPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordSet, payload),
-  unlockPassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordUnlock, payload),
-  changePassword: (payload) => ipcRenderer.invoke(IPCChannel.MasterPasswordChange, payload),
-  clearRemembered: () => ipcRenderer.invoke(IPCChannel.MasterPasswordClearRemembered, {}),
-  passwordStatus: () => ipcRenderer.invoke(IPCChannel.MasterPasswordStatus, {}),
-  getCached: () => ipcRenderer.invoke(IPCChannel.MasterPasswordGetCached, {})
+  setPassword: (payload) => invoke(IPCChannel.MasterPasswordSet, payload),
+  unlockPassword: (payload) => invoke(IPCChannel.MasterPasswordUnlock, payload),
+  changePassword: (payload) => invoke(IPCChannel.MasterPasswordChange, payload),
+  clearRemembered: () => invoke(IPCChannel.MasterPasswordClearRemembered, {}),
+  passwordStatus: () => invoke(IPCChannel.MasterPasswordStatus, {}),
+  getCached: () => invoke(IPCChannel.MasterPasswordGetCached, {})
 };
 
 const ackStreamDelivery = (payload: StreamDeliveryAckInput): Promise<{ ok: true }> => {
-  return ipcRenderer.invoke(IPCChannel.StreamDeliveryAck, payload);
+  return invoke(IPCChannel.StreamDeliveryAck, payload);
 };
 
 const api: NextShellApi = {
@@ -38,24 +46,24 @@ const api: NextShellApi = {
     return webUtils.getPathForFile(file);
   },
   connection: {
-    list: (query) => ipcRenderer.invoke(IPCChannel.ConnectionList, query),
-    upsert: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionUpsert, payload),
-    batchUpdateAuth: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionBatchAuthUpdate, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRemove, payload),
-    exportToFile: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionExport, payload),
-    exportBatch: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionExportBatch, payload),
-    revealPassword: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionRevealPassword, payload),
-    importPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportPreview, payload),
-    importFinalShellPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportFinalShellPreview, payload),
-    importDirectoryPreview: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportDirectoryPreview, payload),
-    importExecute: (payload) => ipcRenderer.invoke(IPCChannel.ConnectionImportExecute, payload)
+    list: (query) => invoke(IPCChannel.ConnectionList, query),
+    upsert: (payload) => invoke(IPCChannel.ConnectionUpsert, payload),
+    batchUpdateAuth: (payload) => invoke(IPCChannel.ConnectionBatchAuthUpdate, payload),
+    remove: (payload) => invoke(IPCChannel.ConnectionRemove, payload),
+    exportToFile: (payload) => invoke(IPCChannel.ConnectionExport, payload),
+    exportBatch: (payload) => invoke(IPCChannel.ConnectionExportBatch, payload),
+    revealPassword: (payload) => invoke(IPCChannel.ConnectionRevealPassword, payload),
+    importPreview: (payload) => invoke(IPCChannel.ConnectionImportPreview, payload),
+    importFinalShellPreview: (payload) => invoke(IPCChannel.ConnectionImportFinalShellPreview, payload),
+    importDirectoryPreview: (payload) => invoke(IPCChannel.ConnectionImportDirectoryPreview, payload),
+    importExecute: (payload) => invoke(IPCChannel.ConnectionImportExecute, payload)
   },
   session: {
-    open: (payload) => ipcRenderer.invoke(IPCChannel.SessionOpen, payload),
-    write: (payload) => ipcRenderer.invoke(IPCChannel.SessionWrite, payload),
-    resize: (payload) => ipcRenderer.invoke(IPCChannel.SessionResize, payload),
-    close: (payload) => ipcRenderer.invoke(IPCChannel.SessionClose, payload),
-    getHomeDir: (payload) => ipcRenderer.invoke(IPCChannel.SessionGetHomeDir, payload),
+    open: (payload) => invoke(IPCChannel.SessionOpen, payload),
+    write: (payload) => invoke(IPCChannel.SessionWrite, payload),
+    resize: (payload) => invoke(IPCChannel.SessionResize, payload),
+    close: (payload) => invoke(IPCChannel.SessionClose, payload),
+    getHomeDir: (payload) => invoke(IPCChannel.SessionGetHomeDir, payload),
     ackData: (payload) => ackStreamDelivery(payload),
     onData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: SessionDataEvent) => {
@@ -79,10 +87,10 @@ const api: NextShellApi = {
     }
   },
   monitor: {
-    getSystemInfoSnapshot: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemInfoSnapshot, payload),
-    startSystem: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemStart, payload),
-    stopSystem: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemStop, payload),
-    selectSystemInterface: (payload) => ipcRenderer.invoke(IPCChannel.MonitorSystemSelectInterface, payload),
+    getSystemInfoSnapshot: (payload) => invoke(IPCChannel.MonitorSystemInfoSnapshot, payload),
+    startSystem: (payload) => invoke(IPCChannel.MonitorSystemStart, payload),
+    stopSystem: (payload) => invoke(IPCChannel.MonitorSystemStop, payload),
+    selectSystemInterface: (payload) => invoke(IPCChannel.MonitorSystemSelectInterface, payload),
     onSystemData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: MonitorSnapshot) => {
         listener(payload);
@@ -92,8 +100,8 @@ const api: NextShellApi = {
         ipcRenderer.off(IPCChannel.MonitorSystemData, handler);
       };
     },
-    startProcess: (payload) => ipcRenderer.invoke(IPCChannel.MonitorProcessStart, payload),
-    stopProcess: (payload) => ipcRenderer.invoke(IPCChannel.MonitorProcessStop, payload),
+    startProcess: (payload) => invoke(IPCChannel.MonitorProcessStart, payload),
+    stopProcess: (payload) => invoke(IPCChannel.MonitorProcessStop, payload),
     onProcessData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: ProcessSnapshot) => {
         listener(payload);
@@ -103,10 +111,10 @@ const api: NextShellApi = {
         ipcRenderer.off(IPCChannel.MonitorProcessData, handler);
       };
     },
-    getProcessDetail: (payload) => ipcRenderer.invoke(IPCChannel.MonitorProcessDetail, payload),
-    killProcess: (payload) => ipcRenderer.invoke(IPCChannel.MonitorProcessKill, payload),
-    startNetwork: (payload) => ipcRenderer.invoke(IPCChannel.MonitorNetworkStart, payload),
-    stopNetwork: (payload) => ipcRenderer.invoke(IPCChannel.MonitorNetworkStop, payload),
+    getProcessDetail: (payload) => invoke(IPCChannel.MonitorProcessDetail, payload),
+    killProcess: (payload) => invoke(IPCChannel.MonitorProcessKill, payload),
+    startNetwork: (payload) => invoke(IPCChannel.MonitorNetworkStart, payload),
+    stopNetwork: (payload) => invoke(IPCChannel.MonitorNetworkStop, payload),
     onNetworkData: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: NetworkSnapshot) => {
         listener(payload);
@@ -116,42 +124,42 @@ const api: NextShellApi = {
         ipcRenderer.off(IPCChannel.MonitorNetworkData, handler);
       };
     },
-    getNetworkConnections: (payload) => ipcRenderer.invoke(IPCChannel.MonitorNetworkConnections, payload)
+    getNetworkConnections: (payload) => invoke(IPCChannel.MonitorNetworkConnections, payload)
   },
   command: {
-    exec: (payload) => ipcRenderer.invoke(IPCChannel.CommandExec, payload),
-    execBatch: (payload) => ipcRenderer.invoke(IPCChannel.CommandBatchExec, payload)
+    exec: (payload) => invoke(IPCChannel.CommandExec, payload),
+    execBatch: (payload) => invoke(IPCChannel.CommandBatchExec, payload)
   },
   audit: {
-    clear: (payload) => ipcRenderer.invoke(IPCChannel.AuditClear, payload ?? {})
+    clear: (payload) => invoke(IPCChannel.AuditClear, payload ?? {})
   },
   settings: {
-    get: () => ipcRenderer.invoke(IPCChannel.SettingsGet, {}),
-    update: (payload) => ipcRenderer.invoke(IPCChannel.SettingsUpdate, payload)
+    get: () => invoke(IPCChannel.SettingsGet, {}),
+    update: (payload) => invoke(IPCChannel.SettingsUpdate, payload)
   },
   dialog: {
-    openFiles: (payload) => ipcRenderer.invoke(IPCChannel.DialogOpenFiles, payload ?? {}),
-    openDirectory: (payload) => ipcRenderer.invoke(IPCChannel.DialogOpenDirectory, payload ?? {}),
-    openPath: (payload) => ipcRenderer.invoke(IPCChannel.DialogOpenPath, payload)
+    openFiles: (payload) => invoke(IPCChannel.DialogOpenFiles, payload ?? {}),
+    openDirectory: (payload) => invoke(IPCChannel.DialogOpenDirectory, payload ?? {}),
+    openPath: (payload) => invoke(IPCChannel.DialogOpenPath, payload)
   },
   sftp: {
-    list: (payload) => ipcRenderer.invoke(IPCChannel.SftpList, payload),
-    listLocal: (payload) => ipcRenderer.invoke(IPCChannel.SftpListLocal, payload),
-    upload: (payload) => ipcRenderer.invoke(IPCChannel.SftpUpload, payload),
-    download: (payload) => ipcRenderer.invoke(IPCChannel.SftpDownload, payload),
-    uploadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpUploadPacked, payload),
-    downloadPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpDownloadPacked, payload),
-    transferPacked: (payload) => ipcRenderer.invoke(IPCChannel.SftpTransferPacked, payload),
-    cancelTransfer: (payload) => ipcRenderer.invoke(IPCChannel.SftpTransferCancel, payload),
-    mkdir: (payload) => ipcRenderer.invoke(IPCChannel.SftpMkdir, payload),
-    rename: (payload) => ipcRenderer.invoke(IPCChannel.SftpRename, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.SftpDelete, payload),
-    editOpen: (payload) => ipcRenderer.invoke(IPCChannel.SftpEditOpen, payload),
-    editOpenBuiltin: (payload) => ipcRenderer.invoke(IPCChannel.SftpEditOpenBuiltin, payload),
-    editSaveBuiltin: (payload) => ipcRenderer.invoke(IPCChannel.SftpEditSaveBuiltin, payload),
-    editStop: (payload) => ipcRenderer.invoke(IPCChannel.SftpEditStop, payload),
-    editStopAll: () => ipcRenderer.invoke(IPCChannel.SftpEditStopAll, {}),
-    editList: () => ipcRenderer.invoke(IPCChannel.SftpEditList, {}),
+    list: (payload) => invoke(IPCChannel.SftpList, payload),
+    listLocal: (payload) => invoke(IPCChannel.SftpListLocal, payload),
+    upload: (payload) => invoke(IPCChannel.SftpUpload, payload),
+    download: (payload) => invoke(IPCChannel.SftpDownload, payload),
+    uploadPacked: (payload) => invoke(IPCChannel.SftpUploadPacked, payload),
+    downloadPacked: (payload) => invoke(IPCChannel.SftpDownloadPacked, payload),
+    transferPacked: (payload) => invoke(IPCChannel.SftpTransferPacked, payload),
+    cancelTransfer: (payload) => invoke(IPCChannel.SftpTransferCancel, payload),
+    mkdir: (payload) => invoke(IPCChannel.SftpMkdir, payload),
+    rename: (payload) => invoke(IPCChannel.SftpRename, payload),
+    remove: (payload) => invoke(IPCChannel.SftpDelete, payload),
+    editOpen: (payload) => invoke(IPCChannel.SftpEditOpen, payload),
+    editOpenBuiltin: (payload) => invoke(IPCChannel.SftpEditOpenBuiltin, payload),
+    editSaveBuiltin: (payload) => invoke(IPCChannel.SftpEditSaveBuiltin, payload),
+    editStop: (payload) => invoke(IPCChannel.SftpEditStop, payload),
+    editStopAll: () => invoke(IPCChannel.SftpEditStopAll, {}),
+    editList: () => invoke(IPCChannel.SftpEditList, {}),
     onEditStatus: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: SftpEditStatusEvent) => {
         listener(payload);
@@ -174,33 +182,33 @@ const api: NextShellApi = {
     }
   },
   commandHistory: {
-    list: (payload) => ipcRenderer.invoke(IPCChannel.CommandHistoryList, payload ?? {}),
-    push: (payload) => ipcRenderer.invoke(IPCChannel.CommandHistoryPush, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.CommandHistoryRemove, payload),
-    clear: (payload) => ipcRenderer.invoke(IPCChannel.CommandHistoryClear, payload ?? {})
+    list: (payload) => invoke(IPCChannel.CommandHistoryList, payload ?? {}),
+    push: (payload) => invoke(IPCChannel.CommandHistoryPush, payload),
+    remove: (payload) => invoke(IPCChannel.CommandHistoryRemove, payload),
+    clear: (payload) => invoke(IPCChannel.CommandHistoryClear, payload ?? {})
   },
   savedCommand: {
-    listScoped: () => ipcRenderer.invoke(IPCChannel.SavedCommandListScoped, {}),
-    upsert: (payload) => ipcRenderer.invoke(IPCChannel.SavedCommandUpsert, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.SavedCommandRemove, payload)
+    listScoped: () => invoke(IPCChannel.SavedCommandListScoped, {}),
+    upsert: (payload) => invoke(IPCChannel.SavedCommandUpsert, payload),
+    remove: (payload) => invoke(IPCChannel.SavedCommandRemove, payload)
   },
   backup: {
-    list: () => ipcRenderer.invoke(IPCChannel.BackupList, {}),
-    run: (payload) => ipcRenderer.invoke(IPCChannel.BackupRun, payload ?? {}),
-    restore: (payload) => ipcRenderer.invoke(IPCChannel.BackupRestore, payload)
+    list: () => invoke(IPCChannel.BackupList, {}),
+    run: (payload) => invoke(IPCChannel.BackupRun, payload ?? {}),
+    restore: (payload) => invoke(IPCChannel.BackupRestore, payload)
   },
   cloudSync: {
-    workspaceList: () => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceList, {}),
-    workspaceAdd: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceAdd, payload),
-    workspaceUpdate: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceUpdate, payload),
-    workspaceRemove: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceRemove, payload),
-    workspaceExportToken: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceExportToken, payload),
-    workspaceParseToken: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncWorkspaceParseToken, payload),
-    status: () => ipcRenderer.invoke(IPCChannel.CloudSyncStatus, {}),
-    syncNow: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncSyncNow, payload ?? {}),
-    listConflicts: () => ipcRenderer.invoke(IPCChannel.CloudSyncListConflicts, {}),
-    testConnection: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncTestConnection, payload),
-    resolveConflict: (payload) => ipcRenderer.invoke(IPCChannel.CloudSyncResolveConflict, payload),
+    workspaceList: () => invoke(IPCChannel.CloudSyncWorkspaceList, {}),
+    workspaceAdd: (payload) => invoke(IPCChannel.CloudSyncWorkspaceAdd, payload),
+    workspaceUpdate: (payload) => invoke(IPCChannel.CloudSyncWorkspaceUpdate, payload),
+    workspaceRemove: (payload) => invoke(IPCChannel.CloudSyncWorkspaceRemove, payload),
+    workspaceExportToken: (payload) => invoke(IPCChannel.CloudSyncWorkspaceExportToken, payload),
+    workspaceParseToken: (payload) => invoke(IPCChannel.CloudSyncWorkspaceParseToken, payload),
+    status: () => invoke(IPCChannel.CloudSyncStatus, {}),
+    syncNow: (payload) => invoke(IPCChannel.CloudSyncSyncNow, payload ?? {}),
+    listConflicts: () => invoke(IPCChannel.CloudSyncListConflicts, {}),
+    testConnection: (payload) => invoke(IPCChannel.CloudSyncTestConnection, payload),
+    resolveConflict: (payload) => invoke(IPCChannel.CloudSyncResolveConflict, payload),
     onStatus: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: CloudSyncManagerStatusEvent) => {
         listener(payload);
@@ -218,24 +226,24 @@ const api: NextShellApi = {
   },
   masterPassword: masterPasswordApi,
   sshKey: {
-    list: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyList, payload ?? {}),
-    upsert: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyUpsert, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.SshKeyRemove, payload)
+    list: (payload) => invoke(IPCChannel.SshKeyList, payload ?? {}),
+    upsert: (payload) => invoke(IPCChannel.SshKeyUpsert, payload),
+    remove: (payload) => invoke(IPCChannel.SshKeyRemove, payload)
   },
   proxy: {
-    list: (payload) => ipcRenderer.invoke(IPCChannel.ProxyList, payload ?? {}),
-    upsert: (payload) => ipcRenderer.invoke(IPCChannel.ProxyUpsert, payload),
-    remove: (payload) => ipcRenderer.invoke(IPCChannel.ProxyRemove, payload)
+    list: (payload) => invoke(IPCChannel.ProxyList, payload ?? {}),
+    upsert: (payload) => invoke(IPCChannel.ProxyUpsert, payload),
+    remove: (payload) => invoke(IPCChannel.ProxyRemove, payload)
   },
   about: {
-    checkUpdate: () => ipcRenderer.invoke(IPCChannel.UpdateCheck, {})
+    checkUpdate: () => invoke(IPCChannel.UpdateCheck, {})
   },
   ping: {
-    probe: (payload: { host: string }) => ipcRenderer.invoke(IPCChannel.Ping, payload)
+    probe: (payload: { host: string }) => invoke(IPCChannel.Ping, payload)
   },
   traceroute: {
-    run: (payload: { host: string }) => ipcRenderer.invoke(IPCChannel.TracerouteRun, payload),
-    stop: () => ipcRenderer.invoke(IPCChannel.TracerouteStop, {}),
+    run: (payload: { host: string }) => invoke(IPCChannel.TracerouteRun, payload),
+    stop: () => invoke(IPCChannel.TracerouteStop, {}),
     onData: (listener: (event: TracerouteEvent) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: TracerouteEvent) => {
         listener(payload);
@@ -247,8 +255,8 @@ const api: NextShellApi = {
     }
   },
   debug: {
-    enableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogEnable, {}),
-    disableLog: () => ipcRenderer.invoke(IPCChannel.DebugLogDisable, {}),
+    enableLog: () => invoke(IPCChannel.DebugLogEnable, {}),
+    disableLog: () => invoke(IPCChannel.DebugLogDisable, {}),
     onLogEvent: (listener: (entry: DebugLogEntry) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: DebugLogEntry) => {
         listener(payload);
@@ -260,13 +268,13 @@ const api: NextShellApi = {
     }
   },
   resourceOps: {
-    copyConnection: (payload) => ipcRenderer.invoke(IPCChannel.ResourceCopyConnection, payload)
+    copyConnection: (payload) => invoke(IPCChannel.ResourceCopyConnection, payload)
   },
   recycleBin: {
-    list: () => ipcRenderer.invoke(IPCChannel.RecycleBinList, {}),
-    restore: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinRestore, payload),
-    purge: (payload) => ipcRenderer.invoke(IPCChannel.RecycleBinPurge, payload),
-    clear: () => ipcRenderer.invoke(IPCChannel.RecycleBinClear, {})
+    list: () => invoke(IPCChannel.RecycleBinList, {}),
+    restore: (payload) => invoke(IPCChannel.RecycleBinRestore, payload),
+    purge: (payload) => invoke(IPCChannel.RecycleBinPurge, payload),
+    clear: () => invoke(IPCChannel.RecycleBinClear, {})
   },
   platform: process.platform,
   ui: {

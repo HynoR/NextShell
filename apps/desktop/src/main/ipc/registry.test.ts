@@ -34,7 +34,7 @@ for (const entry of ipcInvokeRegistry) {
 {
   const preloadPath = fileURLToPath(new URL("../../preload/index.ts", import.meta.url));
   const preloadSource = fs.readFileSync(preloadPath, "utf8");
-  const invokePattern = /\.invoke\(\s*IPCChannel\.(\w+)/g;
+  const invokePattern = /\binvoke\(\s*IPCChannel\.(\w+)/g;
   const invokedNames = new Set<string>();
   for (let match = invokePattern.exec(preloadSource); match; match = invokePattern.exec(preloadSource)) {
     const name = match[1];
@@ -42,7 +42,7 @@ for (const entry of ipcInvokeRegistry) {
       invokedNames.add(name);
     }
   }
-  assert(invokedNames.size > 0, "no ipcRenderer.invoke(IPCChannel.*) calls found in preload — scan pattern broken?");
+  assert(invokedNames.size > 0, "no typed invoke(IPCChannel.*) calls found in preload — scan pattern broken?");
 
   const registered = new Set<string>(ipcInvokeRegistry.map((entry) => entry.channel));
   const missing: string[] = [];

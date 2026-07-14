@@ -2,6 +2,9 @@ import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import {
   IPCChannel,
+  type IpcInvokeChannel,
+  type IpcInvokePayload,
+  type IpcInvokeResult,
   auditClearSchema,
   commandBatchExecSchema,
   commandExecSchema,
@@ -105,26 +108,47 @@ type IpcChannelValue = (typeof IPCChannel)[keyof typeof IPCChannel];
  *   receives `undefined` as input and must ignore it (label is unused then).
  * - `coerceEmptyPayload` → the legacy handler parsed `payload ?? {}` instead
  *   of `payload`.
- * - `dispatch` is declared with method syntax on purpose: method bivariance
- *   lets a concretely-typed entry widen to `IpcInvokeEntry<unknown>` in the
- *   registry array via the single cast inside `define`.
+ * - The public shape is erased for iteration; `define` performs the channel,
+ *   schema input, and dispatch result checks before that erasure.
  */
-export interface IpcInvokeEntry<T> {
+export interface IpcInvokeEntry {
   channel: IpcChannelValue;
-  schema: z.ZodType<T> | null;
+  schema: z.ZodType | null;
   label: string;
   coerceEmptyPayload?: boolean;
-  dispatch(services: ServiceContainer, input: T, event: IpcMainInvokeEvent): unknown;
+  dispatch(services: ServiceContainer, input: unknown, event: IpcMainInvokeEvent): unknown;
 }
 
-/** Type-safe entry constructor: `T` is inferred from `schema`, so `dispatch`
- *  gets a fully typed `input` without any per-entry cast. */
-const define = <T>(entry: IpcInvokeEntry<T>): IpcInvokeEntry<unknown> =>
-  entry as IpcInvokeEntry<unknown>;
+type SchemaForChannel<C extends IpcInvokeChannel, S extends z.ZodType | null> =
+  S extends z.ZodType
+    ? Exclude<IpcInvokePayload<C>, Record<string, never>> extends z.output<S> | z.input<S>
+      ? S
+      : never
+    : S;
+
+type ParsedInput<S extends z.ZodType | null> = S extends z.ZodType ? z.output<S> : undefined;
+
+interface TypedIpcInvokeEntry<C extends IpcInvokeChannel, S extends z.ZodType | null> {
+  channel: C;
+  schema: SchemaForChannel<C, S>;
+  label: string;
+  coerceEmptyPayload?: boolean;
+  dispatch(
+    services: ServiceContainer,
+    input: ParsedInput<S>,
+    event: IpcMainInvokeEvent
+  ): IpcInvokeResult<C> | Promise<IpcInvokeResult<C>>;
+}
+
+/** Type-safe entry constructor: the shared channel map locks schema input and
+ * dispatch output to the public preload API contract. */
+const define = <C extends IpcInvokeChannel, S extends z.ZodType | null>(
+  entry: TypedIpcInvokeEntry<C, S>
+): IpcInvokeEntry => entry as unknown as IpcInvokeEntry;
 
 const emptyObjectSchema = z.object({});
 
-export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry<unknown>> = [
+export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
   // ─── Connections ──────────────────────────────────────────────────────────
   define({
     channel: IPCChannel.ConnectionList,
