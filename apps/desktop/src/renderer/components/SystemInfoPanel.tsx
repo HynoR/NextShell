@@ -273,7 +273,6 @@ export const SystemInfoPanel = ({
                     size="small"
                     variant="borderless"
                     popupMatchSelectWidth={false}
-                    className="monitor-net-iface-select"
                     title="切换监控网卡"
                   />
                 ) : (

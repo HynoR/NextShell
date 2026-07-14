@@ -208,13 +208,6 @@
   color: var(--t1);
 }
 
-.hdr-btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 500;
-}
-
 /* 「有更新」:用 accent 强调而非装饰性绿 Tag */
 .hdr-btn.update {
   color: var(--accent);
@@ -225,11 +218,6 @@
   color: var(--accent);
   background: var(--accent-dim);
   border-color: var(--accent);
-}
-
-.hdr-btn.primary:hover {
-  background: #6aafff;
-  border-color: #6aafff;
 }
 
 .hdr-btn:disabled {
@@ -244,4 +232,3 @@
   background: var(--border);
   margin: 0 2px;
 }
-
