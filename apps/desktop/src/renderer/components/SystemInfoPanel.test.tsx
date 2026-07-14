@@ -41,5 +41,22 @@ describe("SystemInfoPanel", () => {
     expect(html).toMatch("1.9G");
     expect(html).toMatch("8.1G");
     expect(html).toMatch("492.0G");
+    expect(html).toMatch("上行");
+    expect(html).toMatch("下行");
+  });
+
+  test("explains why monitor manager actions are disabled", () => {
+    const html = renderToStaticMarkup(
+      <SystemInfoPanel
+        monitorSessionEnabled
+        hasVisibleTerminal={false}
+        snapshot={snapshot}
+        monitorActionsDisabled
+        onOpenProcessManager={() => {}}
+        onOpenNetworkMonitor={() => {}}
+      />,
+    );
+
+    expect(html).toMatch("需先连接 SSH 终端后可用");
   });
 });

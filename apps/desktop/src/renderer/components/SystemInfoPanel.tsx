@@ -393,12 +393,14 @@ export const SystemInfoPanel = ({
                 <div className="flex items-center gap-3.5 text-[11.5px] font-mono">
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-orange-500/10 text-orange-500 border border-orange-500/20">
                     <i className="ri-arrow-up-line" />
+                    <span>上行</span>
                     <span className="font-semibold">
                       {formatRate(snapshot.networkOutMbps)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                     <i className="ri-arrow-down-line" />
+                    <span>下行</span>
                     <span className="font-semibold">
                       {formatRate(snapshot.networkInMbps)}
                     </span>
@@ -418,7 +420,7 @@ export const SystemInfoPanel = ({
             className="monitor-manager-btn"
             onClick={() => onOpenProcessManager?.()}
             disabled={monitorActionsDisabled}
-            title="打开进程管理器"
+            title={monitorActionsDisabled ? "需先连接 SSH 终端后可用" : "打开进程管理器"}
           >
             <i className="ri-cpu-line" aria-hidden="true" />
             <span>进程管理器</span>
@@ -428,7 +430,7 @@ export const SystemInfoPanel = ({
             className="monitor-manager-btn"
             onClick={() => onOpenNetworkMonitor?.()}
             disabled={monitorActionsDisabled}
-            title="打开网络管理器"
+            title={monitorActionsDisabled ? "需先连接 SSH 终端后可用" : "打开网络管理器"}
           >
             <i className="ri-global-line" aria-hidden="true" />
             <span>网络管理器</span>
