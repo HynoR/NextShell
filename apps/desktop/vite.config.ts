@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import electron from "vite-plugin-electron/simple";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,11 +52,32 @@ const aliases = {
   "@nextshell/ui-kit": path.join(pkg("ui-kit"), "index.ts")
 };
 
+const remixiconWoff2Only = (): Plugin => ({
+  name: "nextshell-remixicon-woff2-only",
+  enforce: "pre",
+  transform(source, id) {
+    const normalizedId = id.replaceAll("\\", "/").split("?", 1)[0];
+    if (!normalizedId?.endsWith("/remixicon/fonts/remixicon.css")) {
+      return null;
+    }
+
+    return source.replace(
+      /@font-face\s*\{[\s\S]*?\}/,
+      `@font-face {
+  font-family: "remixicon";
+  src: url("remixicon.woff2") format("woff2");
+  font-display: swap;
+}`
+    );
+  }
+});
+
 export default defineConfig({
   build: {
     sourcemap: "hidden"
   },
   plugins: [
+    remixiconWoff2Only(),
     tailwindcss(),
     react(),
     electron({
