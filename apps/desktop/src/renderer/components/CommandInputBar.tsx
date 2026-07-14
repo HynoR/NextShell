@@ -325,7 +325,7 @@ export const CommandInputBar = ({
           ) : (
             <div className="cib-search-panel">
               <div className="cib-search-tip">
-                输入关键词搜索终端输出。`Enter` 下一条，`Shift+Enter` 上一条。
+                输入关键词搜索终端输出。`Enter` / `F3` 下一条，`Shift+Enter` / `Shift+F3` 上一条。
               </div>
               <div className="cib-search-actions">
                 <button
@@ -369,8 +369,8 @@ export const CommandInputBar = ({
           type="button"
           className={`cib-history-toggle${panelOpen && panelMode === "history" ? " active" : ""}`}
           onClick={openHistoryPanel}
-          aria-label="命令历史"
-          title="命令历史"
+          aria-label="命令历史（↑/↓ 翻阅）"
+          title="命令历史（↑/↓ 翻阅）"
         >
           <i className="ri-history-line" aria-hidden="true" style={{ fontSize: 15 }} />
           {entries.length > 0 && (
@@ -405,7 +405,7 @@ export const CommandInputBar = ({
               searchMode
                 ? "搜索终端输出，Enter 下一条 / Shift+Enter 上一条…"
                 : isConnected
-                  ? "输入命令，回车发送到终端…"
+                  ? "输入命令，回车发送；↑/↓ 翻阅历史…"
                   : "请先建立 SSH 连接"
             }
             disabled={searchMode ? !canSearch : !isConnected}
@@ -439,8 +439,8 @@ export const CommandInputBar = ({
               openSearchMode();
             }
           }}
-          aria-label="终端搜索"
-          title="终端搜索"
+          aria-label="终端搜索（Ctrl/Cmd+Shift+F）"
+          title="终端搜索（Ctrl/Cmd+Shift+F）"
         >
           <i className="ri-search-line" aria-hidden="true" />
         </button>
