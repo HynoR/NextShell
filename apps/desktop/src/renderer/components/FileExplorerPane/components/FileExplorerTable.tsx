@@ -2,6 +2,7 @@ import { useMemo, type MouseEvent as ReactMouseEvent } from "react";
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { RemoteFileEntry } from "@nextshell/core";
+import { useTableScrollY } from "../../../hooks/useTableScrollY";
 import { fileTypeLabel, formatFileSize, formatModifiedTime } from "../shared";
 
 interface FileExplorerTableProps {
@@ -23,12 +24,14 @@ export const FileExplorerTable = ({
   onRemoteEdit,
   onContextMenu
 }: FileExplorerTableProps) => {
+  const [tableContainerRef, tableScrollY] = useTableScrollY();
   const columns: ColumnsType<RemoteFileEntry> = useMemo(
     () => [
       {
         title: "文件名",
         dataIndex: "name",
         key: "name",
+        width: 360,
         sorter: (a, b) => a.name.localeCompare(b.name),
         defaultSortOrder: "ascend",
         render: (_value: string, row: RemoteFileEntry) => (
@@ -86,17 +89,19 @@ export const FileExplorerTable = ({
 
   return (
     <div
-      className="fe-table-wrap flex-1 min-h-0 overflow-auto"
+      ref={tableContainerRef}
+      className="fe-table-wrap flex-1 min-h-0 overflow-hidden"
       onContextMenu={(event) => onContextMenu(event)}
     >
       <Table
         size="small"
+        virtual
         pagination={false}
         rowKey="path"
         columns={columns}
         dataSource={files}
         loading={busy}
-        scroll={{ y: "100%" }}
+        scroll={{ x: 920, y: tableScrollY }}
         rowSelection={{
           selectedRowKeys: selectedPaths,
           onChange: (keys) => {
