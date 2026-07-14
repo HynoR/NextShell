@@ -108,6 +108,16 @@ jobs:
         shell: bash
         run: bun run --cwd apps/desktop dist -- --${{ matrix.platform }} --publish never -c.extraMetadata.version=${{ env.RELEASE_VERSION }}
 
+      - name: Upload source maps
+        uses: actions/upload-artifact@v4
+        with:
+          name: sourcemaps-${{ env.RELEASE_VERSION }}-${{ matrix.platform }}
+          path: |
+            apps/desktop/dist/**/*.map
+            apps/desktop/dist-electron/**/*.map
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload Windows artifact
         if: matrix.platform == 'win'
         uses: actions/upload-artifact@v4

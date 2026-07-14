@@ -6,6 +6,7 @@ directories:
 files:
   - dist/**
   - dist-electron/**
+  - "!**/*.map"
   - package.json
 mac:
   category: public.app-category.developer-tools

@@ -53,6 +53,9 @@ const aliases = {
 };
 
 export default defineConfig({
+  build: {
+    sourcemap: "hidden"
+  },
   plugins: [
     tailwindcss(),
     react(),
@@ -68,6 +71,7 @@ export default defineConfig({
             alias: aliases
           },
           build: {
+            sourcemap: "hidden",
             rolldownOptions: {
               output: {
                 entryFileNames: "main/[name].js",
@@ -102,6 +106,7 @@ export default defineConfig({
             alias: aliases
           },
           build: {
+            sourcemap: "hidden",
             rolldownOptions: {
               output: {
                 entryFileNames: "preload/[name].mjs",
