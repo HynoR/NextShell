@@ -258,8 +258,10 @@ const api: NextShellApi = {
     enableLog: () => invoke(IPCChannel.DebugLogEnable, {}),
     disableLog: () => invoke(IPCChannel.DebugLogDisable, {}),
     onLogEvent: (listener: (entry: DebugLogEntry) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: DebugLogEntry) => {
-        listener(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: DebugLogEntry[]) => {
+        for (const entry of payload) {
+          listener(entry);
+        }
       };
       ipcRenderer.on(IPCChannel.DebugLogEvent, handler);
       return () => {

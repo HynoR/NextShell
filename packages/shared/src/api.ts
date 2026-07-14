@@ -289,6 +289,7 @@ export interface NextShellApi {
   debug: {
     enableLog: () => Promise<{ ok: true }>;
     disableLog: () => Promise<{ ok: true }>;
+    /** Main-process batches are unpacked by preload; callers still receive entries in order. */
     onLogEvent: (listener: (entry: DebugLogEntry) => void) => SessionEventUnsubscribe;
   };
   resourceOps: {

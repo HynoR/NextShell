@@ -203,9 +203,7 @@ export class PreferencesDialogService {
       if (sender.isDestroyed()) {
         this.debugSenders.delete(sender);
       } else {
-        for (const entry of batch) {
-          sender.send(IPCChannel.DebugLogEvent, entry);
-        }
+        sender.send(IPCChannel.DebugLogEvent, batch);
       }
     }
   }
