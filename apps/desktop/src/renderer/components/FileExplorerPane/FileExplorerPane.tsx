@@ -195,7 +195,6 @@ export const FileExplorerPane = ({
         <FileExplorerContextMenu
           state={actions.contextMenu}
           clipboard={actions.clipboard}
-          connectionId={connection.id}
           onClose={actions.closeContextMenu}
           onRefresh={() => void explorer.loadFiles()}
           onDownload={(entries) => void transfers.handleDownload(entries)}

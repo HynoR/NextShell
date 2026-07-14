@@ -68,7 +68,7 @@
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 700;
-  color: var(--ok);
+  color: var(--t2);
   padding: 0 6px 0 10px;
   user-select: none;
   flex-shrink: 0;
@@ -381,4 +381,3 @@
   color: var(--err);
   background: color-mix(in srgb, var(--err) 15%, transparent);
 }
-

@@ -28,7 +28,7 @@ export const PropertyTab = ({ workspaces, scopeLocked }: PropertyTabProps) => {
           </Form.Item>
           <Form.Item name="groupSubPath" noStyle>
             <Input
-              placeholder={groupZone === CONNECTION_ZONES.WORKSPACE ? "/production" : "/production"}
+              placeholder="/production"
               prefix={<i className="ri-folder-3-line" style={{ color: "var(--t3)", fontSize: 13 }} />}
               style={{ fontFamily: "var(--mono)" }}
             />

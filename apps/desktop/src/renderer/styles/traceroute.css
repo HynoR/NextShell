@@ -10,7 +10,7 @@
   border-radius: 6px;
   background: #1a1a2e;
   color: #f8f8f2;
-  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", "Menlo", "Consolas", monospace;
+  font-family: var(--mono);
   font-size: 12px;
   line-height: 1.6;
   white-space: pre-wrap;

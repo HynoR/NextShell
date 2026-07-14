@@ -14,6 +14,7 @@ export const CommandSection = ({
   <SettingsCard title="命令中心 · 批量与模板" description="配置命令库的模板参数与批量执行默认参数">
     <SettingsSwitchRow
       label="记住模板参数"
+      hint="下次打开命令模板时自动回填上次填写的参数"
       checked={rememberTemplateParams}
       disabled={loading}
       onChange={(v) => save({ commandCenter: { rememberTemplateParams: v } })}

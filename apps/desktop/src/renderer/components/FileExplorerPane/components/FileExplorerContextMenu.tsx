@@ -6,7 +6,6 @@ import type { Clipboard, ContextMenuState } from "../types";
 interface FileExplorerContextMenuProps {
   state: ContextMenuState;
   clipboard: Clipboard | null;
-  connectionId: string;
   onClose: () => void;
   onRefresh: () => void;
   onDownload: (entries: RemoteFileEntry[]) => void;
@@ -29,7 +28,6 @@ const icon = (className: string) => <i className={className} aria-hidden="true" 
 export const FileExplorerContextMenu = ({
   state,
   clipboard,
-  connectionId,
   onClose,
   onRefresh,
   onDownload,
@@ -215,8 +213,6 @@ export const FileExplorerContextMenu = ({
           </Dropdown>
         </>
       )}
-
-      {connectionId && <div className="fe-ctx-connection-hint">连接：{connectionId.slice(0, 8)}…</div>}
     </div>
   );
 };

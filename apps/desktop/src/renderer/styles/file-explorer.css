@@ -368,15 +368,6 @@
   position: relative;
 }
 
-.fe-ctx-connection-hint {
-  padding: 4px 10px 2px;
-  font-size: 10px;
-  color: var(--t3);
-  font-family: var(--mono);
-  border-top: 1px solid var(--border-dim);
-  margin-top: 2px;
-}
-
 /* ── Editor modal / preset selector ──────────────────────── */
 .fe-editor-modal-body {
   display: flex;
@@ -411,4 +402,3 @@
   background: rgba(99, 102, 241, 0.12);
   color: var(--accent);
 }
-

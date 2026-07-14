@@ -189,7 +189,7 @@ export const NetworkSection = ({
         />
       </SettingsRow>
 
-      <SettingsRow label="界面语言">
+      <SettingsRow label="追踪结果语言">
         <Radio.Group
           value={traceroute.language}
           disabled={loading}
