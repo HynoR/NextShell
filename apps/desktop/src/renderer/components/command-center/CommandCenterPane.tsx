@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Input, Select, Space, Tag, TreeSelect, message } from "antd";
+import { App as AntdApp, Input, Select, Space, Tag, TreeSelect } from "antd";
 import type {
   BatchCommandExecutionResult,
   ConnectionProfile,
@@ -42,6 +42,7 @@ export const CommandCenterPane = ({
   sessions,
   onExecuteCommand,
 }: CommandCenterPaneProps) => {
+  const { message } = AntdApp.useApp();
   const batchMaxConcurrency = usePreferencesStore(
     (s) => s.preferences.commandCenter.batchMaxConcurrency
   );

@@ -197,13 +197,13 @@ export const useFileActions = ({
   const handleCopy = useCallback((entries: RemoteFileEntry[]) => {
     if (!connection) return;
     setClipboard({ mode: "copy", entries, sourceConnectionId: connection.id });
-    message.success(`已复制 ${entries.length} 项到剪切板`);
+    message.success(`已复制 ${entries.length} 项到剪贴板`);
   }, [connection, message]);
 
   const handleCut = useCallback((entries: RemoteFileEntry[]) => {
     if (!connection) return;
     setClipboard({ mode: "cut", entries, sourceConnectionId: connection.id });
-    message.success(`已剪切 ${entries.length} 项到剪切板`);
+    message.success(`已剪切 ${entries.length} 项到剪贴板`);
   }, [connection, message]);
 
   const handlePaste = useCallback(async (): Promise<void> => {
@@ -244,7 +244,7 @@ export const useFileActions = ({
   const handleCopyPath = useCallback((entries: RemoteFileEntry[]) => {
     const paths = entries.map((entry) => entry.path).join("\n");
     void navigator.clipboard.writeText(paths);
-    message.success("路径已复制到系统剪切板");
+    message.success("路径已复制到系统剪贴板");
   }, [message]);
 
   const doRemoteEdit = useCallback(async (entry: RemoteFileEntry, editorCmd: string) => {

@@ -1,4 +1,4 @@
-import { Button, Tag } from "antd";
+import { App as AntdApp, Button, Tag } from "antd";
 import type { TransferTask } from "../store/useTransferQueueStore";
 import { formatBytes, formatSpeed } from "../utils/formatBytes";
 
@@ -54,9 +54,13 @@ export const TransferQueuePanel = ({
   onClearFinished,
   onOpenLocalFile
 }: TransferQueuePanelProps) => {
+  const { message } = AntdApp.useApp();
   const runningCount = tasks.filter((task) => task.status === "running").length;
   const failedCount = tasks.filter((task) => task.status === "failed").length;
   const finishedCount = tasks.filter((task) => task.status === "success").length;
+  const clearableCount = tasks.filter(
+    (task) => task.status !== "queued" && task.status !== "running"
+  ).length;
 
   return (
     <section className="transfer-panel">
@@ -73,8 +77,11 @@ export const TransferQueuePanel = ({
               type="text"
               size="small"
               className="transfer-clear-btn"
-              onClick={onClearFinished}
-              disabled={finishedCount === 0}
+              onClick={() => {
+                onClearFinished();
+                message.success(`已清理 ${clearableCount} 条记录`);
+              }}
+              disabled={clearableCount === 0}
             >
               清理记录
             </Button>

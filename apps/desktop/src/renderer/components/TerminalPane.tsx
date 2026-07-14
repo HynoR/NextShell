@@ -626,10 +626,12 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
     }
     const selection = terminal.getSelection();
     if (selection) {
-      void navigator.clipboard.writeText(selection);
+      void navigator.clipboard.writeText(selection)
+        .then(() => message.success("已复制"))
+        .catch(() => message.error("复制失败"));
     }
     setCtxMenu(null);
-  }, []);
+  }, [message]);
 
   const handleCtxPaste = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -825,7 +827,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(({
       if (copyPressed) {
         const selection = terminal.getSelection();
         if (selection) {
-          void navigator.clipboard.writeText(selection);
+          void navigator.clipboard.writeText(selection)
+            .then(() => message.success("已复制"))
+            .catch(() => message.error("复制失败"));
         }
         return false;
       }
