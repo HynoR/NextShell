@@ -6,14 +6,12 @@ import { formatErrorMessage } from "../utils/errorMessage";
 
 export function useConnectionManager() {
   const { message } = AntdApp.useApp();
-  const {
-    connections,
-    activeConnectionId,
-    setConnections,
-    setActiveConnection,
-    setMonitor,
-    removeSessionsByConnection
-  } = useWorkspaceStore();
+  const connections = useWorkspaceStore((state) => state.connections);
+  const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
+  const setConnections = useWorkspaceStore((state) => state.setConnections);
+  const setActiveConnection = useWorkspaceStore((state) => state.setActiveConnection);
+  const setMonitor = useWorkspaceStore((state) => state.setMonitor);
+  const removeSessionsByConnection = useWorkspaceStore((state) => state.removeSessionsByConnection);
 
   const loadConnections = useCallback(async () => {
     try {

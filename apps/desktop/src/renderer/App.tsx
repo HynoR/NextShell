@@ -39,28 +39,26 @@ const getSessionConnectionId = (session?: SessionDescriptor): string | undefined
 
 export const App = () => {
   const { message } = AntdApp.useApp();
-  const {
-    connections,
-    sshKeys,
-    proxies,
-    activeConnectionId,
-    sessions,
-    activeSessionId,
-    monitor,
-    bottomTab,
-    lastActiveRemoteTerminalByConnection,
-    setConnections,
-    setSshKeys,
-    setProxies,
-    setActiveConnection,
-    upsertSession,
-    removeSession,
-    reorderSession,
-    renameSessionTitle,
-    setActiveSession,
-    setMonitor,
-    setBottomTab
-  } = useWorkspaceStore();
+  const connections = useWorkspaceStore((state) => state.connections);
+  const sshKeys = useWorkspaceStore((state) => state.sshKeys);
+  const proxies = useWorkspaceStore((state) => state.proxies);
+  const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
+  const sessions = useWorkspaceStore((state) => state.sessions);
+  const activeSessionId = useWorkspaceStore((state) => state.activeSessionId);
+  const bottomTab = useWorkspaceStore((state) => state.bottomTab);
+  const lastActiveRemoteTerminalByConnection = useWorkspaceStore(
+    (state) => state.lastActiveRemoteTerminalByConnection
+  );
+  const setConnections = useWorkspaceStore((state) => state.setConnections);
+  const setSshKeys = useWorkspaceStore((state) => state.setSshKeys);
+  const setProxies = useWorkspaceStore((state) => state.setProxies);
+  const setActiveConnection = useWorkspaceStore((state) => state.setActiveConnection);
+  const upsertSession = useWorkspaceStore((state) => state.upsertSession);
+  const removeSession = useWorkspaceStore((state) => state.removeSession);
+  const reorderSession = useWorkspaceStore((state) => state.reorderSession);
+  const renameSessionTitle = useWorkspaceStore((state) => state.renameSessionTitle);
+  const setActiveSession = useWorkspaceStore((state) => state.setActiveSession);
+  const setBottomTab = useWorkspaceStore((state) => state.setBottomTab);
 
   const [appReady, setAppReady] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
@@ -73,7 +71,6 @@ export const App = () => {
   const appBackgroundImagePath = usePreferencesStore((state) => state.preferences.window.backgroundImagePath);
   const appBackgroundOpacity = usePreferencesStore((state) => state.preferences.window.backgroundOpacity);
   const applyTransferEvent = useTransferQueueStore((state) => state.applyEvent);
-  const transferTasks = useTransferQueueStore((state) => state.tasks);
   const enqueueTransferTask = useTransferQueueStore((state) => state.enqueueTask);
   const getTransferTask = useTransferQueueStore((state) => state.getTask);
   const markTransferFailed = useTransferQueueStore((state) => state.markFailed);
@@ -553,8 +550,6 @@ export const App = () => {
           followTerminalSessionId={followTerminalSessionId}
           terminalSessionIds={terminalSessionIds}
           isActiveConnectionTerminalConnected={isActiveConnectionTerminalConnected}
-          monitor={monitor}
-          transferTasks={transferTasks}
           transferPanelCollapsed={transferPanelCollapsed}
           liveEditPanelCollapsed={liveEditPanelCollapsed}
           bottomTab={bottomTab}

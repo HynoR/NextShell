@@ -26,7 +26,7 @@ import { TransferQueuePanel } from "./TransferQueuePanel";
 import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import { usePreferencesStore } from "../store/usePreferencesStore";
-import type { TransferTask } from "../store/useTransferQueueStore";
+import { useTransferQueueStore, type TransferTask } from "../store/useTransferQueueStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import type { QuickCreateConnectionInput } from "../utils/quickConnectInput";
 import { promptModal } from "../utils/promptModal";
@@ -53,6 +53,20 @@ const BOTTOM_WORKBENCH_STORAGE_KEY = "nextshell.workspace.bottomWorkbenchCollaps
 const BOTTOM_WORKBENCH_RESIZE_TARGET_MIN_SIZE = {
     coarse: 12,
     fine: 4,
+};
+
+const TransferTaskBadge = () => {
+    const taskCount = useTransferQueueStore((state) => state.tasks.length);
+
+    if (taskCount === 0) {
+        return null;
+    }
+
+    return (
+        <div className="sidebar-collapsed-badge" title={`传输任务 ${taskCount}`}>
+            {taskCount > 99 ? "99+" : taskCount}
+        </div>
+    );
 };
 
 const getWorkspaceLayoutStorage = (): Storage | undefined => {
@@ -199,8 +213,6 @@ interface WorkspaceLayoutProps {
     followTerminalSessionId?: string;
     terminalSessionIds: string[];
     isActiveConnectionTerminalConnected: boolean;
-    monitor?: import("@nextshell/core").MonitorSnapshot;
-    transferTasks: TransferTask[];
     transferPanelCollapsed: boolean;
     liveEditPanelCollapsed: boolean;
     bottomTab: string;
@@ -250,8 +262,6 @@ export const WorkspaceLayout = ({
     followTerminalSessionId,
     terminalSessionIds,
     isActiveConnectionTerminalConnected,
-    monitor,
-    transferTasks,
     transferPanelCollapsed,
     liveEditPanelCollapsed,
     bottomTab,
@@ -530,8 +540,6 @@ export const WorkspaceLayout = ({
         }
     }, [bottomPanelRef]);
 
-    const collapsedTransferCount = transferTasks.length > 99 ? "99+" : String(transferTasks.length);
-
     const effectiveBottomActiveKey =
         bottomTab === "traceroute" && !showTracerouteTab ? "files" : bottomTab;
 
@@ -682,14 +690,7 @@ export const WorkspaceLayout = ({
                             >
                                 <span className="sidebar-session-dot" />
                             </div>
-                            {transferTasks.length > 0 ? (
-                                <div
-                                    className="sidebar-collapsed-badge"
-                                    title={`传输任务 ${transferTasks.length}`}
-                                >
-                                    {collapsedTransferCount}
-                                </div>
-                            ) : null}
+                            <TransferTaskBadge />
                         </div>
                     ) : (
                         <div className="w-full h-full flex flex-col overflow-hidden">
@@ -748,7 +749,6 @@ export const WorkspaceLayout = ({
                                     <SystemInfoPanel
                                         monitorSessionEnabled
                                         hasVisibleTerminal={isActiveConnectionTerminalConnected}
-                                        snapshot={monitor}
                                         onSelectNetworkInterface={onSelectNetworkInterface}
                                         onOpenProcessManager={handleOpenProcessManagerFromMonitor}
                                         onOpenNetworkMonitor={handleOpenNetworkMonitorFromMonitor}
@@ -759,7 +759,6 @@ export const WorkspaceLayout = ({
                                 ) : null}
                                 <PingCard host={activeConnection?.host} />
                                 <TransferQueuePanel
-                                    tasks={transferTasks}
                                     collapsed={transferPanelCollapsed}
                                     onToggle={onTransferPanelToggle}
                                     onRetry={(taskId) => void onRetryTransfer(taskId)}

@@ -1,9 +1,9 @@
 import { App as AntdApp, Button, Tag } from "antd";
 import type { TransferTask } from "../store/useTransferQueueStore";
+import { useTransferQueueStore } from "../store/useTransferQueueStore";
 import { formatBytes, formatSpeed } from "../utils/formatBytes";
 
 interface TransferQueuePanelProps {
-  tasks: TransferTask[];
   collapsed: boolean;
   onToggle: () => void;
   onRetry: (taskId: string) => void;
@@ -46,7 +46,6 @@ const statusTag = (task: TransferTask): { color: string; text: string } => {
 };
 
 export const TransferQueuePanel = ({
-  tasks,
   collapsed,
   onToggle,
   onRetry,
@@ -55,6 +54,7 @@ export const TransferQueuePanel = ({
   onOpenLocalFile
 }: TransferQueuePanelProps) => {
   const { message } = AntdApp.useApp();
+  const tasks = useTransferQueueStore((state) => state.tasks);
   const runningCount = tasks.filter((task) => task.status === "running").length;
   const failedCount = tasks.filter((task) => task.status === "failed").length;
   const finishedCount = tasks.filter((task) => task.status === "success").length;

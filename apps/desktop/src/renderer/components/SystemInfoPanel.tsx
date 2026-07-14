@@ -65,13 +65,15 @@ interface MetricRowProps {
 export const SystemInfoPanel = ({
   monitorSessionEnabled,
   hasVisibleTerminal,
-  snapshot,
+  snapshot: snapshotOverride,
   onSelectNetworkInterface,
   onOpenProcessManager,
   onOpenNetworkMonitor,
   monitorActionsDisabled,
 }: SystemInfoPanelProps) => {
   const [collapsed, setCollapsed] = useState(false);
+  const storeSnapshot = useWorkspaceStore((state) => state.monitor);
+  const snapshot = snapshotOverride ?? storeSnapshot;
   const networkRateHistory = useWorkspaceStore((s) => s.networkRateHistory);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);

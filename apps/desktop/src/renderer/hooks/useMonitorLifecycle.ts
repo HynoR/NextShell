@@ -11,7 +11,9 @@ export function useMonitorLifecycle(
   sessions: SessionDescriptor[]
 ) {
   const { message } = AntdApp.useApp();
-  const { setMonitor, appendNetworkRate, removeSession } = useWorkspaceStore();
+  const setMonitor = useWorkspaceStore((state) => state.setMonitor);
+  const appendNetworkRate = useWorkspaceStore((state) => state.appendNetworkRate);
+  const removeSession = useWorkspaceStore((state) => state.removeSession);
 
   // Receive system monitor snapshots
   useEffect(() => {
