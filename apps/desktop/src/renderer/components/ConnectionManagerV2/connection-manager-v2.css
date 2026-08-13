@@ -1,13 +1,11 @@
 /* Connection Manager V2 — .cm2-* */
 
-/* 字号只用五档，取代旧管理器里 9.5–44px 的 13 种取值。 */
+/*
+ * 字号只用五档，取代旧管理器 CSS 里 9.5–44px 的 13 种取值——其中 9 种挤在 9.5–14px 之间，
+ * 差得不够多所以读不出层级，又都太小所以都难读。变量挂在 :root（见 styles/index.css），
+ * 这里只消费。
+ */
 .cm2-shell {
-  --cm2-fs-xs: 11px;
-  --cm2-fs-sm: 12px;
-  --cm2-fs-base: 13px;
-  --cm2-fs-md: 15px;
-  --cm2-fs-lg: 18px;
-
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -15,7 +13,7 @@
 }
 
 .cm2-title {
-  font-size: var(--cm2-fs-md, 15px);
+  font-size: var(--fs-md, 15px);
   font-weight: 600;
 }
 
@@ -32,7 +30,7 @@
 }
 
 .cm2-scope-label {
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
   color: var(--t3);
 }
 
@@ -95,7 +93,7 @@
 
 .cm2-breadcrumb-sep {
   color: var(--t3);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
 }
 
 .cm2-breadcrumb-btn {
@@ -104,7 +102,7 @@
   padding: 1px 4px;
   border-radius: var(--r-sm);
   color: var(--t2);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   font-family: var(--sans);
   cursor: pointer;
 }
@@ -131,7 +129,7 @@
   margin: 0;
   padding: 16px 10px;
   color: var(--t3);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   text-align: center;
 }
 
@@ -146,7 +144,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--t1);
-  font-size: var(--cm2-fs-base);
+  font-size: var(--fs-base);
   font-family: var(--sans);
   text-align: left;
   cursor: pointer;
@@ -158,7 +156,7 @@
 
 .cm2-folder-row > i {
   color: var(--t3);
-  font-size: var(--cm2-fs-md);
+  font-size: var(--fs-md);
   flex-shrink: 0;
 }
 
@@ -172,7 +170,7 @@
 
 .cm2-folder-count {
   flex-shrink: 0;
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
   color: var(--t3);
   background: var(--bg-active);
   border: 1px solid var(--border-dim);
@@ -195,7 +193,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   color: var(--t2);
   cursor: pointer;
 }
@@ -210,7 +208,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--t2);
-  font-size: var(--cm2-fs-md);
+  font-size: var(--fs-md);
   cursor: pointer;
 }
 
@@ -240,7 +238,7 @@
 
 .cm2-search-row > i {
   color: var(--t3);
-  font-size: var(--cm2-fs-md);
+  font-size: var(--fs-md);
 }
 
 .cm2-search {
@@ -249,7 +247,7 @@
   border: none;
   background: transparent;
   color: var(--t1);
-  font-size: var(--cm2-fs-base);
+  font-size: var(--fs-base);
   font-family: var(--sans);
   outline: none;
 }
@@ -288,19 +286,19 @@
 
 .cm2-star {
   color: var(--warn);
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
 }
 
 .cm2-cell-mono {
   font-family: var(--mono);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
 }
 
 .cm2-auth-missing {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--danger, #e5484d);
+  color: var(--err);
 }
 
 .cm2-muted {
@@ -334,7 +332,7 @@
 
 .cm2-detail-title {
   margin: 0;
-  font-size: var(--cm2-fs-md);
+  font-size: var(--fs-md);
   font-weight: 600;
   color: var(--t1);
   word-break: break-all;
@@ -343,7 +341,7 @@
 .cm2-detail-sub {
   margin: 3px 0 0;
   font-family: var(--mono);
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
   color: var(--t3);
   word-break: break-all;
 }
@@ -361,7 +359,7 @@
   grid-template-columns: 64px 1fr;
   gap: 10px;
   padding: 5px 0;
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
 }
 
 .cm2-detail-label {
@@ -376,7 +374,7 @@
 
 .cm2-detail-mono {
   font-family: var(--mono);
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
 }
 
 .cm2-detail-foot {
@@ -398,7 +396,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--t1);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   font-family: var(--sans);
   cursor: pointer;
 }
@@ -454,7 +452,7 @@
   background: none;
   padding: 0;
   color: var(--accent);
-  font-size: var(--cm2-fs-xs);
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 
@@ -463,12 +461,12 @@
 }
 
 .cm2-editor .ant-form-item-label > label {
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   color: var(--t2);
 }
 
 .cm2-editor-sections .ant-collapse-header {
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   color: var(--t2);
 }
 
@@ -480,7 +478,7 @@
   align-items: center;
   justify-content: center;
   color: var(--t3);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
 }
 
 .cm2-placeholder--detail {
@@ -507,7 +505,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -523,20 +521,20 @@
 }
 
 .cm2-bulk-count {
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--accent);
   margin-right: 4px;
 }
 
 .cm2-btn--danger {
-  color: var(--danger, #e5484d);
-  border-color: color-mix(in srgb, var(--danger, #e5484d) 40%, transparent);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 40%, transparent);
 }
 
 .cm2-btn--danger:hover:not(:disabled) {
-  color: var(--danger, #e5484d);
-  border-color: var(--danger, #e5484d);
+  color: var(--err);
+  border-color: var(--err);
 }
 
 .cm2-ctx {
@@ -560,7 +558,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--t1);
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   font-family: var(--sans);
   text-align: left;
   cursor: pointer;
@@ -576,13 +574,13 @@
 }
 
 .cm2-ctx-item--danger {
-  color: var(--danger, #e5484d);
+  color: var(--err);
 }
 
 .cm2-modal-field {
   display: grid;
   gap: 4px;
-  font-size: var(--cm2-fs-sm);
+  font-size: var(--fs-sm);
   color: var(--t2);
 }
 
