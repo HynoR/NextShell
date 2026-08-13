@@ -20,8 +20,10 @@ import {
   CONNECTION_ZONES,
   ZONE_DISPLAY_NAMES,
   extractZone,
+  filterResourcesByOriginScope,
   getSubPath,
-  isValidZone
+  isValidZone,
+  resolveFormTargetScopeKey
 } from "@nextshell/shared";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
@@ -209,28 +211,21 @@ export const ConnectionManagerModal = ({
   const scopeLocked = mode === "edit" && selectedConnection?.originKind === "cloud";
   const effectiveWorkspaceId =
     groupZone === CONNECTION_ZONES.WORKSPACE ? formWorkspaceId : undefined;
-  const filteredSshKeys = useMemo(() => {
-    if (groupZone === CONNECTION_ZONES.WORKSPACE) {
-      if (!effectiveWorkspaceId) {
-        return [];
-      }
-      return sshKeys.filter(
-        (key) => key.originKind === "cloud" && key.originWorkspaceId === effectiveWorkspaceId
-      );
-    }
-    return sshKeys.filter((key) => key.originKind !== "cloud");
-  }, [effectiveWorkspaceId, groupZone, sshKeys]);
-  const filteredProxies = useMemo(() => {
-    if (groupZone === CONNECTION_ZONES.WORKSPACE) {
-      if (!effectiveWorkspaceId) {
-        return [];
-      }
-      return proxies.filter(
-        (proxy) => proxy.originKind === "cloud" && proxy.originWorkspaceId === effectiveWorkspaceId
-      );
-    }
-    return proxies.filter((proxy) => proxy.originKind !== "cloud");
-  }, [effectiveWorkspaceId, groupZone, proxies]);
+  const targetScopeKey = useMemo(() => {
+    const workspace =
+      groupZone === CONNECTION_ZONES.WORKSPACE
+        ? workspaces.find((item) => item.id === effectiveWorkspaceId)
+        : undefined;
+    return resolveFormTargetScopeKey({ groupZone, workspace });
+  }, [effectiveWorkspaceId, groupZone, workspaces]);
+  const filteredSshKeys = useMemo(
+    () => filterResourcesByOriginScope(sshKeys, targetScopeKey),
+    [sshKeys, targetScopeKey]
+  );
+  const filteredProxies = useMemo(
+    () => filterResourcesByOriginScope(proxies, targetScopeKey),
+    [proxies, targetScopeKey]
+  );
 
   const {
     currentImportBatch,
@@ -1317,6 +1312,7 @@ export const ConnectionManagerModal = ({
         open={importModalOpen}
         entries={currentImportBatch?.entries ?? []}
         existingConnections={connections}
+        sshKeys={sshKeys}
         sourceName={currentImportBatch?.fileName}
         sourceProgress={sourceProgress}
         onClose={resetImportFlow}

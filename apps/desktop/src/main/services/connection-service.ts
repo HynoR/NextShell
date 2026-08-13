@@ -9,16 +9,18 @@ import type {
   SshKeyProfile
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
-import type {
-  ConnectionBatchAuthUpdateInput,
-  ConnectionBatchAuthUpdateResult,
-  ConnectionUpsertInput,
-  SessionAuthOverrideInput,
-  SessionStatusEvent,
-  SshKeyUpsertInput,
-  SshKeyRemoveInput,
-  ProxyUpsertInput,
-  ProxyRemoveInput
+import {
+  resourceMatchesOriginScope,
+  resolveOriginScopeKey,
+  type ConnectionBatchAuthUpdateInput,
+  type ConnectionBatchAuthUpdateResult,
+  type ConnectionUpsertInput,
+  type SessionAuthOverrideInput,
+  type SessionStatusEvent,
+  type SshKeyUpsertInput,
+  type SshKeyRemoveInput,
+  type ProxyUpsertInput,
+  type ProxyRemoveInput
 } from "@nextshell/shared";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
@@ -140,7 +142,7 @@ export class ConnectionService {
   }
 
   private getConnectionScopeKey(connection: ConnectionProfile): string {
-    return connection.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+    return resolveOriginScopeKey(connection);
   }
 
   private getBatchAuthTargets(input: ConnectionBatchAuthUpdateInput): ConnectionProfile[] {
@@ -241,8 +243,7 @@ export class ConnectionService {
         throw new Error("Referenced SSH key not found.");
       }
       if (input.authType === "privateKey") {
-        const keyScopeKey = keyProfile.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
-        if (keyScopeKey !== targetScopeKey) {
+        if (!resourceMatchesOriginScope(keyProfile, targetScopeKey)) {
           throw new Error("禁止跨来源引用 SSH 密钥");
         }
       }
@@ -252,8 +253,7 @@ export class ConnectionService {
       if (!selectedProxy) {
         throw new Error("Referenced proxy not found.");
       }
-      const proxyScopeKey = selectedProxy.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
-      if (proxyScopeKey !== targetScopeKey) {
+      if (!resourceMatchesOriginScope(selectedProxy, targetScopeKey)) {
         throw new Error("禁止跨来源引用代理配置");
       }
     }
@@ -363,8 +363,7 @@ export class ConnectionService {
       if (!keyProfile) {
         throw new Error("选择的 SSH 密钥不存在");
       }
-      const keyScopeKey = keyProfile.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
-      if (keyScopeKey !== targetScopeKey) {
+      if (!resourceMatchesOriginScope(keyProfile, targetScopeKey)) {
         throw new Error("选择的 SSH 密钥与目标连接不属于同一来源范围");
       }
     }

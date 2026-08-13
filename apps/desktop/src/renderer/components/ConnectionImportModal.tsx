@@ -1,16 +1,20 @@
-import { useState, useMemo } from "react";
-import { App as AntdApp, Modal, Radio, Table, Tag } from "antd";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { App as AntdApp, Modal, Radio, Select, Table, Tag } from "antd";
 import type {
   ConnectionImportEntry,
   ConnectionProfile,
-  ImportConflictPolicy
+  ImportConflictPolicy,
+  SshKeyProfile
 } from "@nextshell/core";
+import { LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
+import { filterResourcesByOriginScope } from "@nextshell/shared";
 import { formatErrorMessage } from "../utils/errorMessage";
 
 interface ConnectionImportModalProps {
   open: boolean;
   entries: ConnectionImportEntry[];
   existingConnections: ConnectionProfile[];
+  sshKeys: SshKeyProfile[];
   sourceName?: string;
   sourceProgress?: string;
   onClose: () => void;
@@ -21,6 +25,7 @@ export const ConnectionImportModal = ({
   open,
   entries,
   existingConnections,
+  sshKeys,
   sourceName,
   sourceProgress,
   onClose,
@@ -29,6 +34,11 @@ export const ConnectionImportModal = ({
   const { message } = AntdApp.useApp();
   const [conflictPolicy, setConflictPolicy] = useState<ImportConflictPolicy>("skip");
   const [importing, setImporting] = useState(false);
+  const [keyBindings, setKeyBindings] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    setKeyBindings({});
+  }, [entries]);
 
   const existingSet = useMemo(() => {
     const set = new Set<string>();
@@ -38,55 +48,100 @@ export const ConnectionImportModal = ({
     return set;
   }, [existingConnections]);
 
+  const localSshKeys = useMemo(
+    () => filterResourcesByOriginScope(sshKeys, LOCAL_DEFAULT_SCOPE_KEY),
+    [sshKeys]
+  );
+  const sshKeyOptions = useMemo(
+    () => localSshKeys.map((key) => ({ label: key.name, value: key.id })),
+    [localSshKeys]
+  );
+
   const columns = [
     {
       title: "名称",
       dataIndex: "name",
       key: "name",
-      width: 160,
+      width: 140,
       ellipsis: true
     },
     {
       title: "主机:端口",
       key: "hostPort",
-      width: 180,
+      width: 160,
       render: (_: unknown, record: ConnectionImportEntry) => `${record.host}:${record.port}`
     },
     {
       title: "用户名",
       dataIndex: "username",
       key: "username",
-      width: 120,
+      width: 100,
       ellipsis: true
     },
     {
       title: "分组",
       dataIndex: "groupPath",
       key: "groupPath",
-      width: 180,
+      width: 150,
       ellipsis: true
     },
     {
       title: "来源文件",
       key: "sourceFile",
-      width: 160,
+      width: 140,
       ellipsis: true,
       render: (_: unknown, record: ConnectionImportEntry) =>
         record.sourceRelativePath ?? record.sourceFileName ?? "-"
     },
     {
       title: "认证",
-      dataIndex: "authType",
       key: "authType",
-      width: 80
+      width: 220,
+      render: (_: unknown, record: ConnectionImportEntry, index: number) => {
+        const boundKeyId = keyBindings[index] ?? record.sshKeyId;
+        const authLabel =
+          record.originalAuth === "privateKey" || record.authType === "privateKey"
+            ? "私钥"
+            : record.authType === "interactive"
+              ? "交互式"
+              : record.authType === "agent"
+                ? "Agent"
+                : "密码";
+        return (
+          <div style={{ display: "grid", gap: 6 }}>
+            <span>{authLabel}</span>
+            {record.needsKeyRebind ? (
+              <Select
+                size="small"
+                allowClear
+                placeholder="重新绑定密钥"
+                options={sshKeyOptions}
+                value={boundKeyId}
+                onChange={(value) => {
+                  setKeyBindings((prev) => {
+                    const next = { ...prev };
+                    if (value) {
+                      next[index] = value;
+                    } else {
+                      delete next[index];
+                    }
+                    return next;
+                  });
+                }}
+              />
+            ) : null}
+          </div>
+        );
+      }
     },
     {
       title: "状态",
       key: "status",
-      width: 140,
-      render: (_: unknown, record: ConnectionImportEntry) => {
-        const tags: React.ReactNode[] = [];
+      width: 180,
+      render: (_: unknown, record: ConnectionImportEntry, index: number) => {
+        const tags: ReactNode[] = [];
         const key = `${record.host}:${record.port}:${record.username}`;
+        const boundKeyId = keyBindings[index] ?? record.sshKeyId;
         if (existingSet.has(key)) {
           tags.push(
             <Tag key="conflict" color="orange">
@@ -98,6 +153,13 @@ export const ConnectionImportModal = ({
           tags.push(
             <Tag key="pw" color="red">
               密码缺失
+            </Tag>
+          );
+        }
+        if (record.needsKeyRebind && !boundKeyId) {
+          tags.push(
+            <Tag key="key" color="red">
+              {record.sourceFormat === "finalshell" ? "原为密钥认证，需重新绑定" : "需重新绑定密钥"}
             </Tag>
           );
         }
@@ -124,24 +186,33 @@ export const ConnectionImportModal = ({
     setImporting(true);
     try {
       const result = await window.nextshell.connection.importExecute({
-        entries: entries.map((e) => ({
-          name: e.name,
-          host: e.host,
-          port: e.port,
-          username: e.username,
-          authType: e.authType,
-          password: e.password,
-          keepAliveEnabled: e.keepAliveEnabled,
-          keepAliveIntervalSec: e.keepAliveIntervalSec,
-          groupPath: e.groupPath,
-          tags: e.tags,
-          notes: e.notes,
-          favorite: e.favorite,
-          terminalEncoding: e.terminalEncoding,
-          backspaceMode: e.backspaceMode,
-          deleteMode: e.deleteMode,
-          monitorSession: e.monitorSession
-        })),
+        entries: entries.map((e, index) => {
+          const sshKeyId = keyBindings[index] ?? e.sshKeyId;
+          return {
+            name: e.name,
+            host: e.host,
+            port: e.port,
+            username: e.username,
+            authType: sshKeyId
+              ? "privateKey"
+              : e.authType === "privateKey"
+                ? "interactive"
+                : e.authType,
+            password: e.password,
+            sshKeyId,
+            sshKeyRef: e.sshKeyRef,
+            keepAliveEnabled: e.keepAliveEnabled,
+            keepAliveIntervalSec: e.keepAliveIntervalSec,
+            groupPath: e.groupPath,
+            tags: e.tags,
+            notes: e.notes,
+            favorite: e.favorite,
+            terminalEncoding: e.terminalEncoding,
+            backspaceMode: e.backspaceMode,
+            deleteMode: e.deleteMode,
+            monitorSession: e.monitorSession
+          };
+        }),
         conflictPolicy
       });
 
@@ -174,7 +245,7 @@ export const ConnectionImportModal = ({
       open={open}
       onCancel={onClose}
       title={sourceProgress ? `导入连接 (${sourceProgress})` : "导入连接"}
-      width={920}
+      width={1080}
       okText="确认导入"
       cancelText="取消"
       onOk={handleConfirm}

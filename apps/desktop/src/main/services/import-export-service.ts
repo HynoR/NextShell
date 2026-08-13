@@ -21,12 +21,16 @@ import type {
 } from "@nextshell/shared";
 import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX } from "@nextshell/shared";
 import type { EncryptedSecretVault } from "@nextshell/security";
-import type { CachedConnectionRepository } from "@nextshell/storage";
+import type { CachedConnectionRepository, CachedSshKeyRepository } from "@nextshell/storage";
 import {
+  enrichImportEntry,
+  hashSshKeyContent,
   isFinalShellFormat,
   isNextShellFormat,
   parseFinalShellImport,
-  parseNextShellImport
+  parseNextShellImport,
+  resolveImportedAuth,
+  type SshKeyMatchCandidate
 } from "./import-export";
 import {
   decryptConnectionExportPayload,
@@ -37,6 +41,7 @@ import { scanConnectionImportDirectory } from "./connection-import-directory";
 
 interface ImportExportServiceOptions {
   connections: CachedConnectionRepository;
+  sshKeyRepo: CachedSshKeyRepository;
   vault: EncryptedSecretVault;
   upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   appendAuditLogIfEnabled: (payload: {
@@ -54,12 +59,14 @@ const trimBomAndWhitespace = (value: string): string => value.replace(/^\uFEFF/,
 
 export class ImportExportService {
   private readonly connections: CachedConnectionRepository;
+  private readonly sshKeyRepo: CachedSshKeyRepository;
   private readonly vault: EncryptedSecretVault;
   private readonly upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   private readonly appendAuditLogIfEnabled: ImportExportServiceOptions["appendAuditLogIfEnabled"];
 
   constructor(options: ImportExportServiceOptions) {
     this.connections = options.connections;
+    this.sshKeyRepo = options.sshKeyRepo;
     this.vault = options.vault;
     this.upsertConnection = options.upsertConnection;
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
@@ -161,7 +168,7 @@ export class ImportExportService {
     const raw = fs.readFileSync(input.filePath, "utf-8");
     const data = await this.parseImportPayloadText(raw, input.decryptionPassword);
     if (isNextShellFormat(data)) {
-      return parseNextShellImport(data);
+      return this.enrichImportEntries(parseNextShellImport(data));
     }
     throw new Error(
       "该文件不是 NextShell 导出格式，请使用\u201c导入 FinalShell 文件\u201d按钮导入 FinalShell 配置"
@@ -176,7 +183,7 @@ export class ImportExportService {
     if (!isFinalShellFormat(data)) {
       throw new Error("该文件不是 FinalShell 配置格式");
     }
-    return parseFinalShellImport(data);
+    return this.enrichImportEntries(parseFinalShellImport(data));
   }
 
   async importConnectionsDirectoryPreview(
@@ -208,11 +215,13 @@ export class ImportExportService {
           continue;
         }
 
-        const entriesWithSource = entries.map((entry) => ({
-          ...entry,
-          sourceFileName: file.fileName,
-          sourceRelativePath: file.relativePath
-        }));
+        const entriesWithSource = await this.enrichImportEntries(
+          entries.map((entry) => ({
+            ...entry,
+            sourceFileName: file.fileName,
+            sourceRelativePath: file.relativePath
+          }))
+        );
 
         result.importedFiles++;
         result.entries.push(...entriesWithSource);
@@ -253,12 +262,14 @@ export class ImportExportService {
     };
 
     const allConnections = this.connections.list({});
+    const keyCandidates = await this.loadSshKeyMatchCandidates(true);
 
     for (const entry of input.entries) {
       try {
         const existing = allConnections.find(
           (c) => c.host === entry.host && c.port === entry.port && c.username === entry.username
         );
+        const upsertInput = this.toImportedUpsertInput(entry, keyCandidates, existing?.id);
 
         if (existing) {
           if (input.conflictPolicy === "skip") {
@@ -266,67 +277,16 @@ export class ImportExportService {
             continue;
           }
           if (input.conflictPolicy === "overwrite") {
-            await this.upsertConnection({
-              id: existing.id,
-              name: entry.name,
-              host: entry.host,
-              port: entry.port,
-              username: entry.username,
-              authType: entry.authType,
-              password: entry.password,
-              strictHostKeyChecking: false,
-              keepAliveEnabled: entry.keepAliveEnabled,
-              keepAliveIntervalSec: entry.keepAliveIntervalSec,
-              groupPath: entry.groupPath,
-              tags: entry.tags,
-              notes: entry.notes,
-              favorite: entry.favorite,
-              terminalEncoding: entry.terminalEncoding,
-              backspaceMode: entry.backspaceMode,
-              deleteMode: entry.deleteMode,
-              monitorSession: entry.monitorSession,
-              // Imported files carry no agent authorization: overwriting also replaces the auth
-              // material, so any previously granted access is revoked rather than inherited.
-              agentAccess: "off"
-            });
+            await this.upsertConnection(upsertInput);
             result.overwritten++;
-            if (
-              !entry.password &&
-              (entry.authType === "password" || entry.authType === "interactive")
-            ) {
-              result.passwordsUnavailable++;
-            }
+            this.notePasswordUnavailable(result, upsertInput.authType, entry.password);
             continue;
           }
         }
 
-        await this.upsertConnection({
-          name: entry.name,
-          host: entry.host,
-          port: entry.port,
-          username: entry.username,
-          authType: entry.authType,
-          password: entry.password,
-          strictHostKeyChecking: false,
-          keepAliveEnabled: entry.keepAliveEnabled,
-          keepAliveIntervalSec: entry.keepAliveIntervalSec,
-          groupPath: entry.groupPath,
-          tags: entry.tags,
-          notes: entry.notes,
-          favorite: entry.favorite,
-          terminalEncoding: entry.terminalEncoding,
-          backspaceMode: entry.backspaceMode,
-          deleteMode: entry.deleteMode,
-          monitorSession: entry.monitorSession,
-          agentAccess: "off"
-        });
+        await this.upsertConnection({ ...upsertInput, id: undefined });
         result.created++;
-        if (
-          !entry.password &&
-          (entry.authType === "password" || entry.authType === "interactive")
-        ) {
-          result.passwordsUnavailable++;
-        }
+        this.notePasswordUnavailable(result, upsertInput.authType, entry.password);
       } catch (error) {
         result.failed++;
         const reason = error instanceof Error ? error.message : "未知错误";
@@ -413,6 +373,7 @@ export class ImportExportService {
         /* If we can't read the credential, export without password */
       }
     }
+    const sshKeyRef = conn.sshKeyId ? await this.buildExportedSshKeyRef(conn.sshKeyId) : undefined;
     return {
       name: conn.name,
       host: conn.host,
@@ -429,8 +390,100 @@ export class ImportExportService {
       terminalEncoding: conn.terminalEncoding,
       backspaceMode: conn.backspaceMode,
       deleteMode: conn.deleteMode,
-      monitorSession: conn.monitorSession
+      monitorSession: conn.monitorSession,
+      sshKeyRef
     };
+  }
+
+  private async buildExportedSshKeyRef(
+    sshKeyId: string
+  ): Promise<ExportedConnection["sshKeyRef"] | undefined> {
+    const key = this.sshKeyRepo.getById(sshKeyId);
+    if (!key) {
+      return undefined;
+    }
+    let fingerprint: string | undefined;
+    try {
+      const content = await this.vault.readCredential(key.keyContentRef);
+      if (content) {
+        fingerprint = hashSshKeyContent(content);
+      }
+    } catch {
+      /* Export the name even if the vault cannot yield a fingerprint. */
+    }
+    return { name: key.name, fingerprint };
+  }
+
+  private async enrichImportEntries(
+    entries: ConnectionImportEntry[]
+  ): Promise<ConnectionImportEntry[]> {
+    const needFingerprints = entries.some((entry) => Boolean(entry.sshKeyRef?.fingerprint));
+    const keys = await this.loadSshKeyMatchCandidates(needFingerprints);
+    return entries.map((entry) => enrichImportEntry(entry, keys));
+  }
+
+  private async loadSshKeyMatchCandidates(
+    needFingerprints: boolean
+  ): Promise<SshKeyMatchCandidate[]> {
+    const keys = this.sshKeyRepo.list();
+    const candidates: SshKeyMatchCandidate[] = [];
+    for (const key of keys) {
+      let fingerprint: string | undefined;
+      if (needFingerprints) {
+        try {
+          const content = await this.vault.readCredential(key.keyContentRef);
+          if (content) {
+            fingerprint = hashSshKeyContent(content);
+          }
+        } catch {
+          /* Name matching still works if the vault read fails. */
+        }
+      }
+      candidates.push({ id: key.id, name: key.name, fingerprint });
+    }
+    return candidates;
+  }
+
+  private toImportedUpsertInput(
+    entry: ConnectionImportExecuteInput["entries"][number],
+    keys: readonly SshKeyMatchCandidate[],
+    existingId?: string
+  ): ConnectionUpsertInput {
+    const resolved = resolveImportedAuth(entry, keys);
+    return {
+      id: existingId,
+      name: entry.name,
+      host: entry.host,
+      port: entry.port,
+      username: entry.username,
+      authType: resolved.authType,
+      password: entry.password,
+      sshKeyId: resolved.sshKeyId,
+      strictHostKeyChecking: false,
+      keepAliveEnabled: entry.keepAliveEnabled,
+      keepAliveIntervalSec: entry.keepAliveIntervalSec,
+      groupPath: entry.groupPath,
+      tags: entry.tags,
+      notes: entry.notes,
+      favorite: entry.favorite,
+      terminalEncoding: entry.terminalEncoding,
+      backspaceMode: entry.backspaceMode,
+      deleteMode: entry.deleteMode,
+      monitorSession: entry.monitorSession,
+      // Imported files carry no agent authorization: overwriting also replaces the auth
+      // material, so any previously granted access is revoked rather than inherited.
+      agentAccess: "off"
+    };
+  }
+
+  private notePasswordUnavailable(
+    result: ConnectionImportResult,
+    authType: ConnectionUpsertInput["authType"],
+    password: string | undefined
+  ): void {
+    if (!password && (authType === "password" || authType === "interactive")) {
+      result.passwordsUnavailable++;
+    }
   }
 }
 

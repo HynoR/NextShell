@@ -791,6 +791,18 @@ export interface CommandTemplateParam {
   updatedAt: string;
 }
 
+/** Reference to an SSH key in an export file. Never contains private key material. */
+export interface ExportedSshKeyRef {
+  name: string;
+  /**
+   * 密钥的稳定标识,用于导入时自动重新绑定;读不到 vault 时可缺省,届时退回按名称匹配。
+   * 当前写入的是私钥文本摘要(`sha256-content:…`),等密钥子系统能解析私钥后会换成 OpenSSH
+   * 公钥指纹(`SHA256:…`)。两种前缀互不匹配,所以格式切换只会导致退回名称匹配 + 提示重新绑定,
+   * 不会误绑到别的密钥上。
+   */
+  fingerprint?: string;
+}
+
 export interface ExportedConnection {
   name: string;
   host: string;
@@ -808,6 +820,21 @@ export interface ExportedConnection {
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
   monitorSession: boolean;
+  /** Key name + fingerprint so a later import can rebind without shipping the private key. */
+  sshKeyRef?: ExportedSshKeyRef;
+}
+
+export interface ConnectionImportEntry extends ExportedConnection {
+  passwordUnavailable?: boolean;
+  sourceFormat: "nextshell" | "finalshell";
+  sourceFileName?: string;
+  sourceRelativePath?: string;
+  /** Resolved or user-picked key id for this import batch. */
+  sshKeyId?: string;
+  /** True when private-key auth cannot be rebound automatically. */
+  needsKeyRebind?: boolean;
+  /** Original auth before import degraded it (e.g. FinalShell key auth → interactive). */
+  originalAuth?: AuthType;
 }
 
 export interface ConnectionExportFile {
@@ -829,13 +856,6 @@ export interface ConnectionExportFile {
    */
   passwordsOmitted?: boolean;
   connections: ExportedConnection[];
-}
-
-export interface ConnectionImportEntry extends ExportedConnection {
-  passwordUnavailable?: boolean;
-  sourceFormat: "nextshell" | "finalshell";
-  sourceFileName?: string;
-  sourceRelativePath?: string;
 }
 
 export type ImportConflictPolicy = "skip" | "overwrite" | "duplicate";

@@ -776,6 +776,7 @@ export const createServiceContainer = async (
 
   const importExportSvc = new ImportExportService({
     connections,
+    sshKeyRepo,
     vault,
     upsertConnection: (input) => connectionSvc.upsertConnection(input),
     appendAuditLogIfEnabled
@@ -794,7 +795,8 @@ export const createServiceContainer = async (
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
     clearMonitorSuspension: (id) => monitorSvc.clearMonitorSuspension(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
-    persistAuthOverride: (id, override) => connectionSvc.persistSuccessfulAuthOverride(id, override),
+    persistAuthOverride: (id, override) =>
+      connectionSvc.persistSuccessfulAuthOverride(id, override),
     // Both agent-facing layers hang off this one tap, and both are gated on the
     // host being agent-visible: an unauthorized host costs nothing at all. They
     // stay separate parsers on purpose — OscTap owns command boundaries and the
@@ -1071,7 +1073,14 @@ export const createServiceContainer = async (
         run: (taskId) => {
           const release = retainConnection(connectionId);
           const done = packed
-            ? sftpSvc.uploadRemotePacked(connectionId, [localPath], remotePath, undefined, undefined, taskId)
+            ? sftpSvc.uploadRemotePacked(
+                connectionId,
+                [localPath],
+                remotePath,
+                undefined,
+                undefined,
+                taskId
+              )
             : sftpSvc.uploadRemoteFile(connectionId, localPath, remotePath, undefined, taskId);
           return done.finally(() => {
             release();

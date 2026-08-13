@@ -7,7 +7,11 @@ import {
   type ConnectionProfile,
   type SshKeyProfile
 } from "@nextshell/core";
-import type { ConnectionBatchAuthUpdateInput } from "@nextshell/shared";
+import {
+  filterResourcesByOriginScope,
+  resolveOriginScopeKey,
+  type ConnectionBatchAuthUpdateInput
+} from "@nextshell/shared";
 import { formatErrorMessage } from "../../../utils/errorMessage";
 import type { BatchAuthTarget } from "../types";
 
@@ -27,10 +31,7 @@ interface BatchAuthFormValues {
 }
 
 const getConnectionScopeKey = (connection: ConnectionProfile): string =>
-  connection.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
-
-const getSshKeyScopeKey = (sshKey: SshKeyProfile): string =>
-  sshKey.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY;
+  resolveOriginScopeKey(connection);
 
 const isUnderGroupPath = (connection: ConnectionProfile, groupPath: string): boolean =>
   connection.groupPath === groupPath || connection.groupPath.startsWith(`${groupPath}/`);
@@ -75,7 +76,7 @@ export const ConnectionBatchAuthModal = ({
     ? getConnectionScopeKey(targetConnections[0])
     : LOCAL_DEFAULT_SCOPE_KEY;
   const scopedSshKeys = useMemo(
-    () => sshKeys.filter((key) => getSshKeyScopeKey(key) === targetScopeKey),
+    () => filterResourcesByOriginScope(sshKeys, targetScopeKey),
     [sshKeys, targetScopeKey]
   );
 

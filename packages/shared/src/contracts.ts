@@ -1047,9 +1047,7 @@ export interface AgentInstallClaudeDesktopResult {
 }
 
 /** 导出 `.mcpb` 一键安装包的结果；用户取消保存对话框时 `canceled: true`。 */
-export type AgentExportMcpbResult =
-  | { ok: true; filePath: string }
-  | { ok: false; canceled: true };
+export type AgentExportMcpbResult = { ok: true; filePath: string } | { ok: false; canceled: true };
 
 // ─── SSH Key Management ─────────────────────────────────────────────────────
 
@@ -1133,6 +1131,11 @@ export const connectionImportDirectoryPreviewSchema = z.object({
   decryptionPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 });
 
+const exportedSshKeyRefSchema = z.object({
+  name: z.string().min(1),
+  fingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+});
+
 export const connectionImportExecuteSchema = z.object({
   entries: z.array(
     z.object({
@@ -1142,6 +1145,8 @@ export const connectionImportExecuteSchema = z.object({
       username: z.string(),
       authType: authTypeSchema,
       password: z.string().optional(),
+      sshKeyId: z.string().uuid().optional(),
+      sshKeyRef: exportedSshKeyRefSchema.optional(),
       keepAliveEnabled: z.boolean().optional(),
       keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional(),
       groupPath: z.string().min(1),
