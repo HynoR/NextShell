@@ -1,5 +1,22 @@
 import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
-import { utils } from "ssh2";
+import { createRequire } from "node:module";
+import type { ParsedKey } from "ssh2";
+
+const require = createRequire(import.meta.url);
+
+interface Ssh2Utils {
+  parseKey: (data: string | Buffer, passphrase?: string) => ParsedKey | ParsedKey[] | Error;
+}
+
+/**
+ * ssh2 是 CommonJS，主进程打成 ESM 后具名导入会在 Node 的 ESM loader 里失败
+ * （`Named export 'utils' not found`）。与 `packages/ssh/src/index.ts` 一致地用 createRequire，
+ * 模块名拼接是为了不让打包器把它静态解析掉。
+ */
+const loadSsh2Utils = (): Ssh2Utils => {
+  const moduleName = `ssh${2}`;
+  return (require(moduleName) as { utils: Ssh2Utils }).utils;
+};
 
 /**
  * 私钥的可展示元数据。保存密钥时解析出来落库,让用户能核对"服务器上装的是不是这一把",
@@ -85,6 +102,7 @@ export const parseSshKeyMaterial = (
   privateKey: string,
   passphrase?: string
 ): SshKeyMaterialInfo => {
+  const utils = loadSsh2Utils();
   const parsed = passphrase
     ? utils.parseKey(privateKey, passphrase)
     : utils.parseKey(privateKey);
