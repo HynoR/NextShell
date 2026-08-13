@@ -1569,7 +1569,8 @@ export const recycleBinListSchema = z.object({});
 
 export const recycleBinRestoreSchema = z.object({
   recycleBinEntryId: z.string().trim().min(1),
-  targetOriginKind: z.enum(["local", "cloud"]),
+  /** 省略时按条目被删除时所在的来源范围恢复；显式给出才覆盖。 */
+  targetOriginKind: z.enum(["local", "cloud"]).optional(),
   targetWorkspaceId: z.string().trim().min(1).optional()
 });
 

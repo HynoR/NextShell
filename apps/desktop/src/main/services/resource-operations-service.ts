@@ -51,7 +51,8 @@ export interface DeleteSshKeyInput {
 
 export interface RestoreFromRecycleBinInput {
   recycleBinEntryId: string;
-  targetOriginKind: OriginKind;
+  /** 省略时按条目自身的来源范围恢复,而不是一律落到本地。 */
+  targetOriginKind?: OriginKind;
   targetWorkspaceId?: string;
 }
 
@@ -337,13 +338,15 @@ export class ResourceOperationsService {
     if (!entry) throw new Error(`Recycle bin entry not found: ${input.recycleBinEntryId}`);
 
     const snapshot = JSON.parse(entry.snapshotJson) as Record<string, unknown>;
-    const targetScope = this.resolveScope(input.targetOriginKind, input.targetWorkspaceId);
+    const targetScope = input.targetOriginKind
+      ? this.resolveScope(input.targetOriginKind, input.targetWorkspaceId)
+      : this.resolveOriginalScope(entry.originalScopeKey);
     const newUuid = randomUUID();
     const newResourceId = buildResourceId(targetScope.scopeKey, newUuid);
     const now = new Date().toISOString();
 
     if (entry.resourceType === "server") {
-      const zone = input.targetOriginKind === "cloud" ? "workspace" : "server";
+      const restoreRoot = this.restoreRootPath(targetScope);
 
       // Restore credential from snapshot if available
       let credentialRef: string | undefined;
@@ -383,7 +386,7 @@ export class ResourceOperationsService {
         sshKeyId,
         proxyId,
         strictHostKeyChecking: Boolean(snapshot.strictHostKeyChecking),
-        groupPath: `/${zone}`,
+        groupPath: restoreRoot,
         tags: Array.isArray(snapshot.tags)
           ? snapshot.tags.filter((t): t is string => typeof t === "string")
           : [],
@@ -397,7 +400,7 @@ export class ResourceOperationsService {
         updatedAt: now,
         resourceId: newResourceId,
         uuidInScope: newUuid,
-        originKind: input.targetOriginKind,
+        originKind: targetScope.originKind,
         originScopeKey: targetScope.scopeKey,
         originWorkspaceId: input.targetWorkspaceId,
         copiedFromResourceId: entry.originalResourceId
@@ -635,6 +638,58 @@ export class ResourceOperationsService {
     }
 
     return copiedProxy.id;
+  }
+
+  /**
+   * 按条目被删除时所在的来源范围恢复。目标 workspace 已被移除时退回本地——恢复不该因为
+   * workspace 没了就失败,把资源还给用户比丢掉它重要。
+   */
+  private resolveOriginalScope(originalScopeKey: string): {
+    scopeKey: string;
+    originKind: OriginKind;
+    workspaceId?: string;
+  } {
+    if (!originalScopeKey || originalScopeKey === LOCAL_DEFAULT_SCOPE_KEY) {
+      return { scopeKey: LOCAL_DEFAULT_SCOPE_KEY, originKind: "local" };
+    }
+    const workspace = this.deps.cloudSyncManager
+      ?.listWorkspaces()
+      .find(
+        (item) =>
+          buildScopeKey({
+            kind: "cloud",
+            apiBaseUrl: item.apiBaseUrl,
+            workspaceName: item.workspaceName
+          }) === originalScopeKey
+      );
+    if (!workspace) {
+      return { scopeKey: LOCAL_DEFAULT_SCOPE_KEY, originKind: "local" };
+    }
+    return { scopeKey: originalScopeKey, originKind: "cloud", workspaceId: workspace.id };
+  }
+
+  /**
+   * 恢复目标的根路径。云资源必须落到 `/workspace/<slug>`:只写 `/workspace` 的话树会为它
+   * 造出一个名为 "workspace" 的幽灵根节点。
+   */
+  private restoreRootPath(target: { originKind: OriginKind; workspaceId?: string }): string {
+    if (target.originKind !== "cloud" || !target.workspaceId) {
+      return "/server";
+    }
+    const workspace = this.deps.cloudSyncManager
+      ?.listWorkspaces()
+      .find((item) => item.id === target.workspaceId);
+    if (!workspace) {
+      return "/server";
+    }
+    const slug =
+      workspace.workspaceName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "") || "workspace";
+    return `/workspace/${slug}`;
   }
 
   private resolveScope(

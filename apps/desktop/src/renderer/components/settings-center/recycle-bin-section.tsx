@@ -4,9 +4,6 @@ import type { RecycleBinEntry } from "@nextshell/core";
 import { SettingsCard } from "./shared-components";
 import { formatRelativeTime, formatDateTime } from "../../utils/formatTime";
 
-const api = () =>
-  (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
-
 const REASON_LABELS: Record<string, string> = {
   delete: "用户删除",
   conflict_accept_remote: "冲突接受远端",
@@ -34,7 +31,7 @@ export const RecycleBinSection = () => {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await api().recycleBin.list();
+      const list = await window.nextshell.recycleBin.list();
       setEntries(list);
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
@@ -50,7 +47,8 @@ export const RecycleBinSection = () => {
   const handleRestore = async (entryId: string) => {
     setBusyId(entryId);
     try {
-      await api().recycleBin.restore({ recycleBinEntryId: entryId, targetOriginKind: "local" });
+      // 不指定目标范围：主进程按条目被删除时所在的来源范围恢复（目标 workspace 已移除时退回本地）。
+      await window.nextshell.recycleBin.restore({ recycleBinEntryId: entryId });
       await refresh();
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
@@ -62,7 +60,7 @@ export const RecycleBinSection = () => {
   const handlePurge = async (entryId: string) => {
     setBusyId(entryId);
     try {
-      await api().recycleBin.purge({ id: entryId });
+      await window.nextshell.recycleBin.purge({ id: entryId });
       await refresh();
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
@@ -74,7 +72,7 @@ export const RecycleBinSection = () => {
   const handleClear = async () => {
     setBusyId("__clearing__");
     try {
-      await api().recycleBin.clear();
+      await window.nextshell.recycleBin.clear();
       await refresh();
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
