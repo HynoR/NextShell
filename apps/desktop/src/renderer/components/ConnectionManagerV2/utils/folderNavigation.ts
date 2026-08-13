@@ -1,8 +1,8 @@
 import type { ConnectionFolder, ConnectionProfile } from "@nextshell/core";
 
 /**
- * 钻取式导航:目录栏只渲染当前层,靠面包屑回溯。缩进恒为 0,所以连接名在任何深度都有全宽——
- * 这正是旧管理器"越深越读不到名字"的解法(260px 固定侧栏 + 每层 12px 缩进)。
+ * 目录导航的纯函数层。树本身的构建在 folderTree.ts;这里是"当前选中目录"衍生出的查询:
+ * 面包屑(详情卡里显示位置)与可见连接集。
  */
 
 export interface BreadcrumbSegment {
@@ -10,18 +10,6 @@ export interface BreadcrumbSegment {
   folderId?: string;
   label: string;
 }
-
-export interface FolderListItem {
-  folder: ConnectionFolder;
-  /** 含所有子目录的连接数,让用户在钻进去之前就知道里面有没有东西。 */
-  connectionCount: number;
-  hasChildren: boolean;
-}
-
-const compareFolders = (left: ConnectionFolder, right: ConnectionFolder): number =>
-  left.sortIndex !== right.sortIndex
-    ? left.sortIndex - right.sortIndex
-    : left.name.localeCompare(right.name);
 
 /** 从当前目录一路向上到根;成环时截断而不是死循环。 */
 export const buildBreadcrumb = (
@@ -73,28 +61,6 @@ export const collectDescendantIds = (
     }
   }
   return result;
-};
-
-export const listChildFolders = (
-  parentId: string | undefined,
-  folders: readonly ConnectionFolder[],
-  connections: readonly ConnectionProfile[]
-): FolderListItem[] => {
-  const children = folders
-    .filter((folder) => (folder.parentId ?? undefined) === parentId)
-    .sort(compareFolders);
-
-  return children.map((folder) => {
-    const subtree = collectDescendantIds(folder.id, folders);
-    subtree.add(folder.id);
-    return {
-      folder,
-      connectionCount: connections.filter(
-        (connection) => connection.folderId && subtree.has(connection.folderId)
-      ).length,
-      hasChildren: folders.some((candidate) => candidate.parentId === folder.id)
-    };
-  });
 };
 
 export interface VisibleConnectionsInput {

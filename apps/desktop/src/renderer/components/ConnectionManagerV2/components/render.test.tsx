@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { ConnectionFolder, ConnectionProfile, SshKeyProfile } from "@nextshell/core";
-import { FolderColumn } from "./FolderColumn";
+import type {
+  ConnectionFolder,
+  ConnectionProfile,
+  ProxyProfile,
+  SshKeyProfile
+} from "@nextshell/core";
+import { FolderTree } from "./FolderTree";
+import { ProxyPane } from "./ProxyPane";
 import { ConnectionTable } from "./ConnectionTable";
 import { DetailCard } from "./DetailCard";
 import { ManagerToolbar } from "./ManagerToolbar";
@@ -58,46 +64,72 @@ const key = (id: string, name: string): SshKeyProfile =>
 
 const noop = () => undefined;
 
-describe("FolderColumn", () => {
+describe("FolderTree", () => {
   const folders = [folder("prod", "prod"), folder("asia", "asia", "prod")];
   const connections = [connection({ id: "c1", folderId: "asia" })];
 
-  test("renders the breadcrumb and the current level only", () => {
+  test("renders the scope root and the top level of the hierarchy", () => {
     const html = renderToStaticMarkup(
-      <FolderColumn
+      <FolderTree
         rootLabel="本地"
         folders={folders}
         connections={connections}
         currentFolderId="prod"
-        includeSubfolders
-        onToggleIncludeSubfolders={noop}
-        onEnterFolder={noop}
+        onSelectFolder={noop}
         onCreateFolder={noop}
-        onFolderContextMenu={noop}
-        visibleConnectionCount={1}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onMoveFolder={noop}
       />
     );
+    // 根节点默认展开，顶层目录及其子树计数可见。
     expect(html).toContain("本地");
     expect(html).toContain("prod");
-    expect(html).toContain("asia");
-    expect(html).toContain("含子目录");
+    expect(html).toContain("cm2-tree-count");
   });
 
-  test("renders an empty level without crashing", () => {
+  test("renders an empty scope without crashing", () => {
     const html = renderToStaticMarkup(
-      <FolderColumn
+      <FolderTree
         rootLabel="本地"
         folders={[]}
         connections={[]}
-        includeSubfolders={false}
-        onToggleIncludeSubfolders={noop}
-        onEnterFolder={noop}
+        onSelectFolder={noop}
         onCreateFolder={noop}
-        onFolderContextMenu={noop}
-        visibleConnectionCount={0}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onMoveFolder={noop}
       />
     );
-    expect(html).toContain("此处没有子目录");
+    expect(html).toContain("本地");
+  });
+});
+
+describe("ProxyPane", () => {
+  const proxy: ProxyProfile = {
+    id: "p1",
+    name: "office",
+    proxyType: "socks5",
+    host: "127.0.0.1",
+    port: 1080,
+    username: "u",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z"
+  } as ProxyProfile;
+
+  test("renders the proxy list", () => {
+    const html = renderToStaticMarkup(
+      <ProxyPane proxies={[proxy]} onReload={() => Promise.resolve()} />
+    );
+    expect(html).toContain("office");
+    expect(html).toContain("SOCKS5");
+    expect(html).toContain("127.0.0.1:1080");
+    expect(html).toContain("新建代理");
+  });
+
+  test("renders the empty state", () => {
+    const html = renderToStaticMarkup(<ProxyPane proxies={[]} onReload={() => Promise.resolve()} />);
+    expect(html).toContain("当前作用域没有代理");
   });
 });
 
@@ -241,20 +273,22 @@ describe("ConnectionEditor", () => {
 });
 
 describe("toolbars", () => {
-  test("ManagerToolbar renders every global command", () => {
+  test("ManagerToolbar renders every global command plus the search box", () => {
     const html = renderToStaticMarkup(
       <ManagerToolbar
+        keyword=""
+        onKeywordChange={noop}
         columns={DEFAULT_CONNECTION_COLUMNS}
         onColumnsChange={noop}
         onNewConnection={noop}
         onImport={noop}
         onExportAll={noop}
-        onNewFolder={noop}
       />
     );
     expect(html).toContain("新建连接");
     expect(html).toContain("导入");
     expect(html).toContain("导出全部");
+    expect(html).toContain("搜索整个作用域");
   });
 
   test("BulkBar surfaces batch auth binding", () => {

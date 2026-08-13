@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { App as AntdApp, Form, Input, Modal, Select, Table, Tooltip } from "antd";
+import { App as AntdApp, Button, Form, Input, Modal, Select, Table, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { SshKeyProfile } from "@nextshell/core";
 import type { SshKeyUsageItem } from "@nextshell/shared";
@@ -137,31 +137,31 @@ export const SshKeyPane = ({ sshKeys, workspaceId, onReload }: SshKeyPaneProps) 
     <>
       <div className="cm2-main">
         <div className="cm2-toolbar">
-          <button
-            type="button"
-            className="cm2-btn cm2-btn--primary"
+          <Button
+            type="primary"
+            icon={<i className="ri-add-line" aria-hidden="true" />}
             onClick={() => {
               form.resetFields();
               form.setFieldsValue({ mode: "generate", algorithm: "ed25519" });
               setCreateOpen(true);
             }}
           >
-            <i className="ri-add-line" aria-hidden="true" />
             新建 / 生成密钥
-          </button>
+          </Button>
         </div>
-        <Table<SshKeyProfile>
-          className="cm2-table app-table"
-          size="small"
-          rowKey="id"
-          dataSource={sshKeys}
-          columns={columns}
-          pagination={false}
-          scroll={{ y: "100%" }}
-          locale={{ emptyText: "当前作用域没有密钥" }}
-          rowClassName={(key) => (key.id === selectedId ? "cm2-row cm2-row--focused" : "cm2-row")}
-          onRow={(key) => ({ onClick: () => setSelectedId(key.id) })}
-        />
+        <div className="cm2-table-wrap">
+          <Table<SshKeyProfile>
+            className="cm2-table app-table"
+            size="small"
+            rowKey="id"
+            dataSource={sshKeys}
+            columns={columns}
+            pagination={false}
+            locale={{ emptyText: "当前作用域没有密钥" }}
+            rowClassName={(key) => (key.id === selectedId ? "cm2-row cm2-row--focused" : "cm2-row")}
+            onRow={(key) => ({ onClick: () => setSelectedId(key.id) })}
+          />
+        </div>
       </div>
 
       <div className="cm2-detail-col">
@@ -205,23 +205,24 @@ export const SshKeyPane = ({ sshKeys, workspaceId, onReload }: SshKeyPaneProps) 
             </div>
             <footer className="cm2-detail-foot">
               <Tooltip title="复制可直接贴进 authorized_keys 的公钥">
-                <button
-                  type="button"
-                  className="cm2-btn"
+                <Button
+                  icon={<i className="ri-file-copy-line" aria-hidden="true" />}
                   disabled={!selected.publicKeyLine}
                   onClick={() => {
                     void navigator.clipboard.writeText(selected.publicKeyLine ?? "");
                     message.success("已复制公钥");
                   }}
                 >
-                  <i className="ri-file-copy-line" aria-hidden="true" />
                   复制公钥
-                </button>
+                </Button>
               </Tooltip>
-              <button type="button" className="cm2-btn cm2-btn--danger" onClick={handleDelete}>
-                <i className="ri-delete-bin-line" aria-hidden="true" />
+              <Button
+                danger
+                icon={<i className="ri-delete-bin-line" aria-hidden="true" />}
+                onClick={handleDelete}
+              >
                 删除
-              </button>
+              </Button>
             </footer>
           </div>
         ) : (

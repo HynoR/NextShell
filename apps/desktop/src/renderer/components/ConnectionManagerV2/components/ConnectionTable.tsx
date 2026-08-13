@@ -1,7 +1,8 @@
-import { useMemo } from "react";
-import type { MouseEvent } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent, RefObject } from "react";
 import { Table, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import type { SortOrder } from "antd/es/table/interface";
 import { formatRelativeTime } from "../../../utils/formatTime";
 import type { ConnectionRow } from "../utils/connectionRows";
 import {
@@ -26,16 +27,36 @@ interface ConnectionTableProps {
   onRowContextMenu: (event: MouseEvent, connectionId: string) => void;
 }
 
-const SORTABLE: Record<ConnectionColumnKey, ConnectionSortKey | undefined> = {
+const SORTABLE: Partial<Record<ConnectionColumnKey, ConnectionSortKey>> = {
   name: "name",
   address: "address",
-  username: undefined,
-  auth: undefined,
-  tags: undefined,
   lastConnected: "lastConnected"
 };
 
-export const ConnectionTable = ({
+/** 表头(size=small)约 39px;虚拟列表需要的是表体高度。 */
+const HEADER_HEIGHT = 39;
+
+/**
+ * 表体高度必须是数字才能让 antd 滚动/虚拟列表生效——`scroll.y="100%"` 在没有完整高度链的
+ * 容器里解析不出来,表体会无限增高,这正是"列表不能滚动"的根因。
+ */
+const useBodyHeight = (): [RefObject<HTMLDivElement | null>, number] => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+    const observer = new ResizeObserver(() => setHeight(element.clientHeight));
+    observer.observe(element);
+    setHeight(element.clientHeight);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, height];
+};
+
+const ConnectionTableInner = ({
   rows,
   columns,
   sort,
@@ -47,6 +68,8 @@ export const ConnectionTable = ({
   onConnect,
   onRowContextMenu
 }: ConnectionTableProps) => {
+  const [wrapRef, wrapHeight] = useBodyHeight();
+
   const tableColumns = useMemo<ColumnsType<ConnectionRow>>(() => {
     const definitions: Record<ConnectionColumnKey, ColumnsType<ConnectionRow>[number]> = {
       name: {
@@ -79,7 +102,7 @@ export const ConnectionTable = ({
       auth: {
         title: CONNECTION_COLUMN_LABELS.auth,
         key: "auth",
-        width: 160,
+        width: 150,
         ellipsis: true,
         render: (_value, row) =>
           row.authMissing ? (
@@ -132,55 +155,59 @@ export const ConnectionTable = ({
       if (!sortKey) {
         return definition;
       }
+      const sortOrder: SortOrder | null =
+        sort.key === sortKey ? (sort.direction === "asc" ? "ascend" : "descend") : null;
       return {
         ...definition,
-        title: (
-          <button
-            type="button"
-            className="cm2-col-sort"
-            onClick={() =>
-              onSortChange({
-                key: sortKey,
-                direction: sort.key === sortKey && sort.direction === "asc" ? "desc" : "asc"
-              })
-            }
-          >
-            {definition.title as string}
-            {sort.key === sortKey ? (
-              <i
-                className={sort.direction === "asc" ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"}
-                aria-hidden="true"
-              />
-            ) : null}
-          </button>
-        )
+        // 排序在外层(经过过滤/目录圈定之后)做,这里只报告用户点了哪一列。
+        sorter: true,
+        sortOrder,
+        onHeaderCell: () => ({
+          onClick: () =>
+            onSortChange({
+              key: sortKey,
+              direction: sort.key === sortKey && sort.direction === "asc" ? "desc" : "asc"
+            })
+        })
       };
     });
   }, [columns, onSortChange, sort]);
 
+  // 虚拟表要求 scroll.x/y 都是数字;x 给个下限,无宽度的名称列会自动吃满剩余宽度。
+  // 首帧(和 SSR)还没量到高度,先渲染普通表,量到后切虚拟。
+  const bodyHeight = Math.max(48, wrapHeight - HEADER_HEIGHT);
+  const sizing =
+    wrapHeight > 0 ? { virtual: true, scroll: { x: 560, y: bodyHeight } } : {};
+
   return (
-    <Table<ConnectionRow>
-      className="cm2-table app-table"
-      size="small"
-      rowKey={(row) => row.connection.id}
-      dataSource={rows}
-      columns={tableColumns}
-      pagination={false}
-      scroll={{ y: "100%" }}
-      locale={{ emptyText: "此处没有连接" }}
-      rowSelection={{
-        selectedRowKeys: selectedIds,
-        onChange: (keys) => onSelectionChange(keys.map(String)),
-        columnWidth: 36
-      }}
-      rowClassName={(row) =>
-        row.connection.id === focusedId ? "cm2-row cm2-row--focused" : "cm2-row"
+    <div ref={wrapRef} className="cm2-table-wrap">
+      {
+        <Table<ConnectionRow>
+          className="cm2-table app-table"
+          size="small"
+          {...sizing}
+          rowKey={(row) => row.connection.id}
+          dataSource={rows}
+          columns={tableColumns}
+          pagination={false}
+          locale={{ emptyText: "此处没有连接" }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => onSelectionChange(keys.map(String)),
+            columnWidth: 36
+          }}
+          rowClassName={(row) =>
+            row.connection.id === focusedId ? "cm2-row cm2-row--focused" : "cm2-row"
+          }
+          onRow={(row) => ({
+            onClick: () => onFocus(row.connection.id),
+            onDoubleClick: () => onConnect(row.connection.id),
+            onContextMenu: (event) => onRowContextMenu(event, row.connection.id)
+          })}
+        />
       }
-      onRow={(row) => ({
-        onClick: () => onFocus(row.connection.id),
-        onDoubleClick: () => onConnect(row.connection.id),
-        onContextMenu: (event) => onRowContextMenu(event, row.connection.id)
-      })}
-    />
+    </div>
   );
 };
+
+export const ConnectionTable = memo(ConnectionTableInner);

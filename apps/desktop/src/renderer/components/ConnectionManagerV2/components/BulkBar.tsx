@@ -1,3 +1,5 @@
+import { Button, Space } from "antd";
+
 interface BulkBarProps {
   count: number;
   onClear: () => void;
@@ -21,24 +23,35 @@ export const BulkBar = ({
 }: BulkBarProps) => (
   <div className="cm2-bulk-bar" role="toolbar" aria-label="批量操作">
     <span className="cm2-bulk-count">已选 {count}</span>
-    <button type="button" className="cm2-btn" onClick={onBindAuth}>
-      <i className="ri-key-2-line" aria-hidden="true" />
-      绑定认证
-    </button>
-    <button type="button" className="cm2-btn" onClick={onCopyToScope}>
-      <i className="ri-file-copy-line" aria-hidden="true" />
-      复制到作用域…
-    </button>
-    <button type="button" className="cm2-btn" onClick={onExport}>
-      <i className="ri-download-2-line" aria-hidden="true" />
-      导出
-    </button>
-    <button type="button" className="cm2-btn cm2-btn--danger" onClick={onDelete}>
-      <i className="ri-delete-bin-line" aria-hidden="true" />
-      删除
-    </button>
-    <button type="button" className="cm2-btn" onClick={onClear} aria-label="取消选择">
-      取消选择
-    </button>
+    <Space size={8} wrap>
+      <Button size="small" icon={<i className="ri-key-2-line" aria-hidden="true" />} onClick={onBindAuth}>
+        绑定认证
+      </Button>
+      <Button
+        size="small"
+        icon={<i className="ri-file-copy-line" aria-hidden="true" />}
+        onClick={onCopyToScope}
+      >
+        复制到作用域…
+      </Button>
+      <Button
+        size="small"
+        icon={<i className="ri-download-2-line" aria-hidden="true" />}
+        onClick={onExport}
+      >
+        导出
+      </Button>
+      <Button
+        size="small"
+        danger
+        icon={<i className="ri-delete-bin-line" aria-hidden="true" />}
+        onClick={onDelete}
+      >
+        删除
+      </Button>
+      <Button size="small" type="text" onClick={onClear}>
+        取消选择
+      </Button>
+    </Space>
   </div>
 );

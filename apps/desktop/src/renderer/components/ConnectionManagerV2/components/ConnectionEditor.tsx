@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import { Collapse, Form, Input, InputNumber, Select, Switch } from "antd";
+import { Button, Collapse, Form, Input, InputNumber, Select, Switch } from "antd";
 import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
+import { buildFolderPathLabels } from "../utils/folderTree";
 
 export interface ConnectionEditorValues extends ConnectionUpsertInput {
   folderId?: string;
@@ -74,6 +75,13 @@ export const ConnectionEditor = ({
   );
   // 表单未注册完成前（首帧、SSR）退回已知值，避免认证分支闪错。
   const authType = Form.useWatch("authType", form) ?? initialValues.authType;
+  // 不同层级的同名目录只显示名字无法区分，下拉里给完整路径。
+  const folderOptions = useMemo(() => {
+    const labels = buildFolderPathLabels(folders);
+    return folders
+      .map((folder) => ({ value: folder.id, label: labels.get(folder.id) ?? folder.name }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [folders]);
 
   return (
     <Form
@@ -161,18 +169,13 @@ export const ConnectionEditor = ({
                 {revealedPassword ? (
                   <Input.Password value={revealedPassword} readOnly visibilityToggle />
                 ) : (
-                  <button
-                    type="button"
-                    className="cm2-btn"
+                  <Button
+                    icon={<i className="ri-eye-line" aria-hidden="true" />}
+                    loading={revealingPassword}
                     onClick={onRevealPassword}
-                    disabled={revealingPassword}
                   >
-                    <i
-                      className={revealingPassword ? "ri-loader-4-line" : "ri-eye-line"}
-                      aria-hidden="true"
-                    />
                     {revealingPassword ? "验证中…" : "输入主密码查看"}
-                  </button>
+                  </Button>
                 )}
               </Form.Item>
             ) : null}
@@ -182,8 +185,10 @@ export const ConnectionEditor = ({
         <Form.Item label="目录" name="folderId">
           <Select
             allowClear
+            showSearch
+            optionFilterProp="label"
             placeholder="顶层"
-            options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+            options={folderOptions}
           />
         </Form.Item>
 
@@ -304,18 +309,12 @@ export const ConnectionEditor = ({
       </div>
 
       <footer className="cm2-detail-foot">
-        <button
-          type="submit"
-          className="cm2-btn cm2-btn--primary"
-          disabled={saving}
-          aria-label="保存连接"
-        >
-          <i className={saving ? "ri-loader-4-line" : "ri-save-line"} aria-hidden="true" />
+        <Button type="primary" htmlType="submit" loading={saving}>
           保存
-        </button>
-        <button type="button" className="cm2-btn" onClick={onCancel} disabled={saving}>
+        </Button>
+        <Button onClick={onCancel} disabled={saving}>
           取消
-        </button>
+        </Button>
       </footer>
     </Form>
   );

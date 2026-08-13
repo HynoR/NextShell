@@ -3,7 +3,6 @@ import type { ConnectionFolder, ConnectionProfile } from "@nextshell/core";
 import {
   buildBreadcrumb,
   collectDescendantIds,
-  listChildFolders,
   listVisibleConnections,
   reconcileCurrentFolder
 } from "./folderNavigation";
@@ -101,30 +100,6 @@ describe("collectDescendantIds", () => {
   test("terminates on a cycle", () => {
     const cyclic = [folder("x", "x", "y"), folder("y", "y", "x")];
     expect([...collectDescendantIds("x", cyclic)].sort()).toEqual(["x", "y"]);
-  });
-});
-
-describe("listChildFolders", () => {
-  test("lists only the current level, sorted by sortIndex then name", () => {
-    const ordered = [
-      folder("b", "b", undefined, 1),
-      folder("a", "a", undefined, 2),
-      folder("c", "c", undefined, 1)
-    ];
-    expect(listChildFolders(undefined, ordered, []).map((item) => item.folder.name)).toEqual([
-      "b",
-      "c",
-      "a"
-    ]);
-  });
-
-  test("counts connections across the whole subtree", () => {
-    const [prod, staging] = listChildFolders(undefined, folders, connections);
-    expect(prod?.folder.name).toBe("prod");
-    expect(prod?.connectionCount).toBe(4);
-    expect(prod?.hasChildren).toBe(true);
-    expect(staging?.connectionCount).toBe(0);
-    expect(staging?.hasChildren).toBe(false);
   });
 });
 

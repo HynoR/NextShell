@@ -1,4 +1,4 @@
-import { Tooltip } from "antd";
+import { Button, Tooltip } from "antd";
 import type { ConnectionProfile, SshKeyProfile } from "@nextshell/core";
 import { formatDateTime, formatRelativeTime } from "../../../utils/formatTime";
 
@@ -85,14 +85,16 @@ export const DetailCard = ({
       </div>
 
       <footer className="cm2-detail-foot">
-        <button type="button" className="cm2-btn cm2-btn--primary" onClick={onConnect}>
-          <i className="ri-terminal-box-line" aria-hidden="true" />
+        <Button
+          type="primary"
+          icon={<i className="ri-terminal-box-line" aria-hidden="true" />}
+          onClick={onConnect}
+        >
           连接
-        </button>
-        <button type="button" className="cm2-btn" onClick={onEdit}>
-          <i className="ri-edit-line" aria-hidden="true" />
+        </Button>
+        <Button icon={<i className="ri-edit-line" aria-hidden="true" />} onClick={onEdit}>
           编辑
-        </button>
+        </Button>
       </footer>
     </div>
   );

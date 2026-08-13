@@ -3,7 +3,7 @@
 /*
  * 字号只用五档，取代旧管理器 CSS 里 9.5–44px 的 13 种取值——其中 9 种挤在 9.5–14px 之间，
  * 差得不够多所以读不出层级，又都太小所以都难读。变量挂在 :root（见 styles/index.css），
- * 这里只消费。
+ * 这里只消费。按钮/菜单/输入等控件一律用 antd 组件，本文件只负责布局与少量单元格样式。
  */
 .cm2-shell {
   display: flex;
@@ -44,7 +44,7 @@
   gap: 6px;
 }
 
-/* ── 三栏 ───────────────────────────────────────────────── */
+/* ── 栏布局 ─────────────────────────────────────────────── */
 
 .cm2-columns {
   display: grid;
@@ -53,122 +53,77 @@
   overflow: hidden;
 }
 
+/* 独占一条 6px 的 grid 轨道；拖动时只改 --cm2-folder-w，不触发 React 重渲。 */
 .cm2-resizer {
-  position: absolute;
-  width: 6px;
   cursor: col-resize;
-  align-self: stretch;
-  margin-left: -3px;
   background: transparent;
+  border-left: 1px solid var(--border);
 }
 
-.cm2-resizer:hover {
+.cm2-resizer:hover,
+.cm2-resizer:active {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
-/* ── 目录栏 ─────────────────────────────────────────────── */
+/* ── 目录树 ─────────────────────────────────────────────── */
 
 .cm2-folder-col {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border-right: 1px solid var(--border);
+  min-width: 0;
   background: var(--bg-elevated);
 }
 
-.cm2-breadcrumb {
+.cm2-folder-head {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
-  padding: 8px 10px;
+  justify-content: space-between;
+  padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--border-dim);
   flex-shrink: 0;
 }
 
-.cm2-breadcrumb-item {
-  display: inline-flex;
-  align-items: center;
-}
-
-.cm2-breadcrumb-sep {
+.cm2-folder-head-label {
+  font-size: var(--fs-xs);
   color: var(--t3);
-  font-size: var(--fs-sm);
 }
 
-.cm2-breadcrumb-btn {
-  border: none;
-  background: none;
-  padding: 1px 4px;
-  border-radius: var(--r-sm);
-  color: var(--t2);
-  font-size: var(--fs-sm);
-  font-family: var(--sans);
-  cursor: pointer;
-}
-
-.cm2-breadcrumb-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--t1);
-}
-
-.cm2-breadcrumb-btn--current {
-  color: var(--t1);
-  font-weight: 600;
-  cursor: default;
-}
-
-.cm2-folder-list {
+.cm2-folder-tree {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
   padding: 4px 6px;
 }
 
-.cm2-folder-empty {
-  margin: 0;
-  padding: 16px 10px;
-  color: var(--t3);
-  font-size: var(--fs-sm);
-  text-align: center;
-}
-
-/* 缩进恒为 0：钻取式导航下名称在任何深度都拿到全宽。 */
-.cm2-folder-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--r-sm);
+.cm2-folder-tree .ant-tree {
   background: transparent;
-  color: var(--t1);
   font-size: var(--fs-base);
-  font-family: var(--sans);
-  text-align: left;
-  cursor: pointer;
 }
 
-.cm2-folder-row:hover {
-  background: var(--bg-hover);
+.cm2-folder-tree .ant-tree .ant-tree-treenode {
+  padding-bottom: 2px;
 }
 
-.cm2-folder-row > i {
-  color: var(--t3);
-  font-size: var(--fs-md);
-  flex-shrink: 0;
+.cm2-folder-tree .ant-tree .ant-tree-node-content-wrapper {
+  min-width: 0;
 }
 
-.cm2-folder-name {
-  flex: 1;
+.cm2-tree-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.cm2-tree-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.cm2-folder-count {
+.cm2-tree-count {
   flex-shrink: 0;
   font-size: var(--fs-xs);
   color: var(--t3);
@@ -179,45 +134,7 @@
   line-height: 16px;
 }
 
-.cm2-folder-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border-dim);
-  flex-shrink: 0;
-}
-
-.cm2-subfolder-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--t2);
-  cursor: pointer;
-}
-
-.cm2-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--t2);
-  font-size: var(--fs-md);
-  cursor: pointer;
-}
-
-.cm2-icon-btn:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-/* ── 中栏：搜索 + 表格 ──────────────────────────────────── */
+/* ── 中栏：工具条 + 表格 ────────────────────────────────── */
 
 .cm2-main {
   display: flex;
@@ -227,7 +144,7 @@
   overflow: hidden;
 }
 
-.cm2-search-row {
+.cm2-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -236,26 +153,33 @@
   flex-shrink: 0;
 }
 
-.cm2-search-row > i {
-  color: var(--t3);
-  font-size: var(--fs-md);
-}
-
 .cm2-search {
   flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--t1);
-  font-size: var(--fs-base);
-  font-family: var(--sans);
-  outline: none;
+  min-width: 120px;
+}
+
+.cm2-search-icon {
+  color: var(--t3);
+}
+
+/* 表格的滚动容器。普通表在这里滚（表头 sticky）；虚拟表自己管理表体滚动，撑满即可。 */
+.cm2-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .cm2-table {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+}
+
+.cm2-table-wrap > .cm2-table .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .cm2-row {
@@ -266,16 +190,21 @@
   background: var(--accent-dim) !important;
 }
 
-.cm2-col-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  border: none;
-  background: none;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+/* 虚拟表的行是 div 结构，app-table 的 tr>td 皮肤打不中，这里按同样的视觉补一份。 */
+.cm2-table .ant-table-tbody-virtual .ant-table-cell {
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--t1);
+  background: var(--bg-base);
+  padding: 4px 10px;
+  font-size: var(--fs-base);
+}
+
+.cm2-table .ant-table-tbody-virtual .ant-table-row:hover .ant-table-cell {
+  background: var(--bg-hover);
+}
+
+.cm2-table .ant-table-tbody-virtual .cm2-row--focused .ant-table-cell {
+  background: var(--accent-dim);
 }
 
 .cm2-cell-name {
@@ -305,12 +234,33 @@
   color: var(--t3);
 }
 
+/* ── 批量条 ─────────────────────────────────────────────── */
+
+.cm2-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--accent-dim);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.cm2-bulk-count {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 4px;
+}
+
 /* ── 右栏：详情 / 编辑 ──────────────────────────────────── */
 
 .cm2-detail-col {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -385,38 +335,6 @@
   flex-shrink: 0;
 }
 
-/* 主操作带文字，不做纯图标——旧表单头部 6 个按钮里 5 个没有文字。 */
-.cm2-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--t1);
-  font-size: var(--fs-sm);
-  font-family: var(--sans);
-  cursor: pointer;
-}
-
-.cm2-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.cm2-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.cm2-btn--primary {
-  background: var(--accent-dim);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-  color: var(--accent);
-}
-
 .cm2-field-pair {
   display: flex;
   gap: 10px;
@@ -470,111 +388,16 @@
   color: var(--t2);
 }
 
-/* ── 占位 ───────────────────────────────────────────────── */
-
+/* ── 占位 / 杂项 ────────────────────────────────────────── */
 
 .cm2-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 1;
+  margin: 0;
   color: var(--t3);
   font-size: var(--fs-sm);
-}
-
-.cm2-placeholder--detail {
-  border-left: 1px solid var(--border);
-}
-
-/* ── 工具条 / 批量条 / 右键菜单 ─────────────────────────── */
-
-.cm2-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border-dim);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.cm2-toolbar-gap {
-  flex: 1;
-}
-
-.cm2-col-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.cm2-bulk-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--accent-dim);
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-
-.cm2-bulk-count {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--accent);
-  margin-right: 4px;
-}
-
-.cm2-btn--danger {
-  color: var(--err);
-  border-color: color-mix(in srgb, var(--err) 40%, transparent);
-}
-
-.cm2-btn--danger:hover:not(:disabled) {
-  color: var(--err);
-  border-color: var(--err);
-}
-
-.cm2-ctx {
-  position: fixed;
-  z-index: 1100;
-  min-width: 180px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-}
-
-.cm2-ctx-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--t1);
-  font-size: var(--fs-sm);
-  font-family: var(--sans);
-  text-align: left;
-  cursor: pointer;
-}
-
-.cm2-ctx-item:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.cm2-ctx-item:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.cm2-ctx-item--danger {
-  color: var(--err);
 }
 
 .cm2-modal-field {
@@ -588,10 +411,4 @@
   word-break: break-all;
   max-height: 96px;
   overflow-y: auto;
-}
-
-/* 密钥态时中栏与右栏由 SshKeyPane 接管，隐藏连接态的两栏而不是卸载，保留其滚动位置。 */
-.cm2-main[hidden],
-.cm2-detail-col[hidden] {
-  display: none;
 }

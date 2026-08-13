@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { App as AntdApp, Modal } from "antd";
 import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
@@ -6,16 +6,16 @@ import { formatErrorMessage } from "../../utils/errorMessage";
 import { promptModal } from "../../utils/promptModal";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { ScopeBar } from "./components/ScopeBar";
-import { FolderColumn } from "./components/FolderColumn";
+import { FolderTree } from "./components/FolderTree";
 import { ConnectionTable } from "./components/ConnectionTable";
 import { DetailCard } from "./components/DetailCard";
 import { ConnectionEditor, type ConnectionEditorValues } from "./components/ConnectionEditor";
 import { ManagerToolbar } from "./components/ManagerToolbar";
 import { BulkBar } from "./components/BulkBar";
-import { RowContextMenu, type ContextMenuItem } from "./components/RowContextMenu";
+import { PointerMenu, type PointerMenuItem } from "./components/PointerMenu";
 import { CopyToScopeModal } from "./components/CopyToScopeModal";
 import { SshKeyPane } from "./components/SshKeyPane";
-import { ProxyManagerPanel } from "../ProxyManagerPanel";
+import { ProxyPane } from "./components/ProxyPane";
 import { describeAffected, planRowCommands } from "./utils/rowCommands";
 import { useConnectionExportActions } from "./hooks/useConnectionExportActions";
 import { useConnectionImportFlow } from "./hooks/useConnectionImportFlow";
@@ -64,10 +64,8 @@ const useViewport = (): { width: number; height: number } => {
 };
 
 /**
- * 重构后的连接管理器。相对旧版的三处结构性改变:
- *  1. 作用域(本地 / 某个云 workspace)是最高层控制,一次只看一个隔离域;
- *  2. 用户目录是实体,导航方式为钻取 + 面包屑,不再靠 groupPath 字符串聚合出无限缩进的树;
- *  3. 对话框可缩放,尺寸与栏宽记住。
+ * 连接管理器。结构:作用域(本地/某个云 workspace)是最高层隔离,其下按资源分连接/密钥/代理
+ * 三个态。连接态是 目录树|表格|详情 三栏;密钥与代理态是 列表|详情 两栏。
  * 云同步与回收站不在这里——它们是全局配置,归设置中心。
  */
 export const ConnectionManagerV2 = ({
@@ -87,8 +85,6 @@ export const ConnectionManagerV2 = ({
   const viewport = useViewport();
 
   const [resourceTab, setResourceTab] = useState<ResourceTab>("connections");
-  const [includeSubfolders, setIncludeSubfolders] = useState(true);
-  const [folderColumnWidth, setFolderColumnWidth] = useState(preferences.folderColumnWidth);
   const [keyword, setKeyword] = useState("");
   const [sort, setSort] = useState<ConnectionSort>({ key: "name", direction: "asc" });
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -98,7 +94,7 @@ export const ConnectionManagerV2 = ({
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
-    items: ContextMenuItem[];
+    items: PointerMenuItem[];
   } | null>(null);
   const [copyTarget, setCopyTarget] = useState<string[] | null>(null);
   const [batchAuthTarget, setBatchAuthTarget] = useState<BatchAuthTarget | null>(null);
@@ -129,10 +125,6 @@ export const ConnectionManagerV2 = ({
   );
   const scope = useManagerScope({ open, onError: notifyError });
 
-  useEffect(() => {
-    setFolderColumnWidth(preferences.folderColumnWidth);
-  }, [preferences.folderColumnWidth]);
-
   const dialogSize = useMemo(
     () =>
       fitDialogToViewport(
@@ -162,17 +154,18 @@ export const ConnectionManagerV2 = ({
         folderId: scope.currentFolderId,
         folders: scope.folders,
         connections: scopedConnections,
-        includeSubfolders
+        includeSubfolders: true
       }),
-    [includeSubfolders, scope.currentFolderId, scope.folders, scopedConnections]
+    [scope.currentFolderId, scope.folders, scopedConnections]
   );
 
+  // 搜索时无视目录圈定,直接搜整个作用域——找一台机器时没人记得它在哪个目录里。
+  const searching = keyword.trim().length > 0;
   const rows = useMemo(() => {
-    const built = visibleConnections.map((connection) =>
-      buildConnectionRow(connection, scopedSshKeys)
-    );
+    const base = searching ? scopedConnections : visibleConnections;
+    const built = base.map((connection) => buildConnectionRow(connection, scopedSshKeys));
     return sortConnectionRows(filterConnectionRows(built, keyword), sort);
-  }, [keyword, scopedSshKeys, sort, visibleConnections]);
+  }, [keyword, scopedSshKeys, searching, scopedConnections, sort, visibleConnections]);
 
   // 目录/作用域切换后，选中与详情里的连接可能已经不在列表里，留着会显示一张查不到的卡片。
   useEffect(() => {
@@ -283,7 +276,7 @@ export const ConnectionManagerV2 = ({
       const target = scopedConnections.find((item) => item.id === connectionId);
       const label = describeAffected(plan.affectedIds, scopedConnections);
 
-      const byCommand: Record<string, ContextMenuItem> = {
+      const byCommand: Record<string, PointerMenuItem> = {
         edit: {
           key: "edit",
           label: "编辑",
@@ -362,7 +355,7 @@ export const ConnectionManagerV2 = ({
         y: event.clientY,
         items: plan.commands
           .map((command) => byCommand[command])
-          .filter((item): item is ContextMenuItem => Boolean(item))
+          .filter((item): item is PointerMenuItem => Boolean(item))
       });
     },
     [
@@ -378,55 +371,53 @@ export const ConnectionManagerV2 = ({
     ]
   );
 
-  const persistFolderColumnWidth = useCallback(
-    (width: number) => {
-      const next = clampDialogSize("folderColumn", width);
-      setFolderColumnWidth(next);
-      void updatePreferences({ connectionManager: { folderColumnWidth: next } });
+  // ── 目录 CRUD ──────────────────────────────────────────────
+
+  const handleCreateFolder = useCallback(
+    async (parentId: string | undefined) => {
+      const name = await promptModal(modal, "新建目录", "请输入目录名称");
+      if (!name) {
+        return;
+      }
+      try {
+        await window.nextshell.connectionFolder.create({
+          scopeKey: scope.activeScope.key,
+          name,
+          parentId
+        });
+        await scope.reloadFolders();
+      } catch (error) {
+        message.error(`新建目录失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
     },
-    [updatePreferences]
+    [message, modal, scope]
   );
 
-  const handleCreateFolder = useCallback(async () => {
-    const name = await promptModal(modal, "新建目录", "请输入目录名称");
-    if (!name) {
-      return;
-    }
-    try {
-      await window.nextshell.connectionFolder.create({
-        scopeKey: scope.activeScope.key,
-        name,
-        parentId: scope.currentFolderId
-      });
-      await scope.reloadFolders();
-    } catch (error) {
-      message.error(`新建目录失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  }, [message, modal, scope]);
+  const handleRenameFolder = useCallback(
+    async (folder: ConnectionFolder) => {
+      const name = await promptModal(modal, `重命名目录「${folder.name}」`, "请输入新的目录名称");
+      if (!name || name === folder.name) {
+        return;
+      }
+      try {
+        await window.nextshell.connectionFolder.rename({ id: folder.id, name });
+        await scope.reloadFolders();
+      } catch (error) {
+        message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
+    },
+    [message, modal, scope]
+  );
 
-  const handleFolderContextMenu = useCallback(
-    (event: MouseEvent, folder: ConnectionFolder) => {
-      event.preventDefault();
+  const handleDeleteFolder = useCallback(
+    (folder: ConnectionFolder) => {
       modal.confirm({
-        title: `目录「${folder.name}」`,
-        content: "重命名或删除该目录。删除只移除目录本身，里面的连接会回到上一层。",
-        okText: "重命名",
-        cancelText: "删除",
-        okButtonProps: { type: "default" },
-        cancelButtonProps: { danger: true },
+        title: `删除目录「${folder.name}」`,
+        content: "只移除目录本身，里面的连接和子目录会回到上一层。",
+        okText: "删除",
+        cancelText: "取消",
+        okButtonProps: { danger: true },
         onOk: async () => {
-          const name = await promptModal(modal, "重命名目录", "请输入新的目录名称");
-          if (!name) {
-            return;
-          }
-          try {
-            await window.nextshell.connectionFolder.rename({ id: folder.id, name });
-            await scope.reloadFolders();
-          } catch (error) {
-            message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
-          }
-        },
-        onCancel: async () => {
           try {
             await window.nextshell.connectionFolder.remove({ id: folder.id });
             await scope.reloadFolders();
@@ -438,6 +429,53 @@ export const ConnectionManagerV2 = ({
       });
     },
     [message, modal, onReloadConnections, scope]
+  );
+
+  const handleMoveFolder = useCallback(
+    async (folderId: string, parentId: string | undefined) => {
+      try {
+        await window.nextshell.connectionFolder.move({ id: folderId, parentId });
+        await scope.reloadFolders();
+        await onReloadConnections();
+      } catch (error) {
+        message.error(`移动目录失败：${formatErrorMessage(error, "请稍后重试")}`);
+      }
+    },
+    [message, onReloadConnections, scope]
+  );
+
+  // ── 栏宽拖拽:命令式改 CSS 变量,不触发 React 重渲;松手才落 state 和偏好。──
+  const columnsRef = useRef<HTMLDivElement>(null);
+  const folderWidthRef = useRef(preferences.folderColumnWidth);
+
+  useEffect(() => {
+    folderWidthRef.current = preferences.folderColumnWidth;
+    columnsRef.current?.style.setProperty("--cm2-folder-w", `${preferences.folderColumnWidth}px`);
+  }, [preferences.folderColumnWidth, resourceTab]);
+
+  const startResize = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const target = event.currentTarget;
+      target.setPointerCapture(event.pointerId);
+      let last = event.clientX;
+      const move = (moveEvent: PointerEvent) => {
+        folderWidthRef.current = clampDialogSize(
+          "folderColumn",
+          folderWidthRef.current + (moveEvent.clientX - last)
+        );
+        last = moveEvent.clientX;
+        columnsRef.current?.style.setProperty("--cm2-folder-w", `${folderWidthRef.current}px`);
+      };
+      const up = () => {
+        target.removeEventListener("pointermove", move);
+        target.removeEventListener("pointerup", up);
+        void updatePreferences({ connectionManager: { folderColumnWidth: folderWidthRef.current } });
+      };
+      target.addEventListener("pointermove", move);
+      target.addEventListener("pointerup", up);
+    },
+    [updatePreferences]
   );
 
   return (
@@ -463,133 +501,135 @@ export const ConnectionManagerV2 = ({
           onSelectResource={setResourceTab}
         />
 
-        <div
-          className="cm2-columns"
-          style={{ gridTemplateColumns: `${folderColumnWidth}px 1fr ${preferences.detailColumnWidth}px` }}
-        >
-          <FolderColumn
-            rootLabel={scope.activeScope.label}
-            folders={scope.folders}
-            connections={scopedConnections}
-            currentFolderId={scope.currentFolderId}
-            includeSubfolders={includeSubfolders}
-            onToggleIncludeSubfolders={setIncludeSubfolders}
-            onEnterFolder={scope.enterFolder}
-            onCreateFolder={() => void handleCreateFolder()}
-            onFolderContextMenu={handleFolderContextMenu}
-            visibleConnectionCount={visibleConnections.length}
-          />
-
-          <ColumnResizer
-            onResize={(delta) => setFolderColumnWidth((width) => clampDialogSize("folderColumn", width + delta))}
-            onCommit={() => persistFolderColumnWidth(folderColumnWidth)}
-          />
-
-          {resourceTab === "keys" ? (
-            <SshKeyPane
-              sshKeys={scopedSshKeys}
-              workspaceId={scope.activeScope.workspaceId}
-              onReload={onReloadSshKeys}
+        {resourceTab === "connections" ? (
+          <div
+            ref={columnsRef}
+            className="cm2-columns"
+            style={{
+              gridTemplateColumns: `var(--cm2-folder-w, ${preferences.folderColumnWidth}px) 6px minmax(0, 1fr) ${preferences.detailColumnWidth}px`
+            }}
+          >
+            <FolderTree
+              rootLabel={scope.activeScope.label}
+              folders={scope.folders}
+              connections={scopedConnections}
+              currentFolderId={scope.currentFolderId}
+              onSelectFolder={scope.enterFolder}
+              onCreateFolder={(parentId) => void handleCreateFolder(parentId)}
+              onRenameFolder={(folder) => void handleRenameFolder(folder)}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveFolder={(id, parentId) => void handleMoveFolder(id, parentId)}
             />
-          ) : null}
 
-          <div className="cm2-main" hidden={resourceTab === "keys"}>
-            {resourceTab === "connections" ? (
-              <>
-                <div className="cm2-search-row">
-                  <i className="ri-search-line" aria-hidden="true" />
-                  <input
-                    className="cm2-search"
-                    placeholder="搜索名称、地址、用户名、标签、备注…"
-                    value={keyword}
-                    onChange={(event) => setKeyword(event.target.value)}
-                  />
-                </div>
-                <ManagerToolbar
-                  columns={columns}
-                  onColumnsChange={setColumns}
-                  onNewConnection={() => setDetail({ kind: "edit", connection: undefined })}
-                  onNewFolder={() => void handleCreateFolder()}
-                  onImport={() => void importFlow.handleImportNextShell()}
-                  onExportAll={() =>
-                    handleExport(scopedConnections.map((item) => item.id))
-                  }
-                />
-                {selectedIds.length > 0 ? (
-                  <BulkBar
-                    count={selectedIds.length}
-                    onClear={() => setSelectedIds([])}
-                    onBindAuth={() => onOpenBatchAuth(selectedIds)}
-                    onCopyToScope={() => setCopyTarget(selectedIds)}
-                    onExport={() => handleExport(selectedIds)}
-                    onDelete={() => handleDelete(selectedIds)}
-                  />
-                ) : null}
-                <ConnectionTable
-                  rows={rows}
-                  columns={columns}
-                  sort={sort}
-                  onSortChange={setSort}
-                  selectedIds={selectedIds}
-                  onSelectionChange={setSelectedIds}
-                  focusedId={detail.kind === "view" ? detail.connection.id : undefined}
-                  onFocus={(id) => {
-                    const found = visibleConnections.find((item) => item.id === id);
-                    if (found) {
-                      setDetail({ kind: "view", connection: found });
-                    }
-                  }}
-                  onConnect={handleConnect}
-                  onRowContextMenu={handleRowContextMenu}
-                />
-              </>
-            ) : resourceTab === "proxies" ? (
-              // 代理没有单独的重构诉求，沿用既有面板，只把资源限定在当前作用域。
-              <ProxyManagerPanel proxies={scopedProxies} workspaces={[]} onReload={onReloadProxies} />
-            ) : null}
-          </div>
+            <div
+              className="cm2-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={startResize}
+            />
 
-          <div className="cm2-detail-col" hidden={resourceTab === "keys"}>
-            {detail.kind === "view" ? (
-              <DetailCard
-                connection={detail.connection}
-                sshKeys={scopedSshKeys}
-                folderLabel={folderLabel}
-                onEdit={() => setDetail({ kind: "edit", connection: detail.connection })}
-                onConnect={() => handleConnect(detail.connection.id)}
+            <div className="cm2-main">
+              <ManagerToolbar
+                keyword={keyword}
+                onKeywordChange={setKeyword}
+                columns={columns}
+                onColumnsChange={setColumns}
+                onNewConnection={() => setDetail({ kind: "edit", connection: undefined })}
+                onImport={() => void importFlow.handleImportNextShell()}
+                onExportAll={() => handleExport(scopedConnections.map((item) => item.id))}
               />
-            ) : detail.kind === "edit" ? (
-              <ConnectionEditor
-                // 换连接时整体重挂载，让 initialValues 生效，也天然清掉上一条的未保存输入。
-                key={detail.connection?.id ?? "__new__"}
-                connection={detail.connection}
-                folders={scope.folders}
-                currentFolderId={scope.currentFolderId}
+              {selectedIds.length > 0 ? (
+                <BulkBar
+                  count={selectedIds.length}
+                  onClear={() => setSelectedIds([])}
+                  onBindAuth={() => onOpenBatchAuth(selectedIds)}
+                  onCopyToScope={() => setCopyTarget(selectedIds)}
+                  onExport={() => handleExport(selectedIds)}
+                  onDelete={() => handleDelete(selectedIds)}
+                />
+              ) : null}
+              <ConnectionTable
+                rows={rows}
+                columns={columns}
+                sort={sort}
+                onSortChange={setSort}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
+                focusedId={detail.kind === "view" ? detail.connection.id : undefined}
+                onFocus={(id) => {
+                  const found = rows.find((row) => row.connection.id === id);
+                  if (found) {
+                    setDetail({ kind: "view", connection: found.connection });
+                  }
+                }}
+                onConnect={handleConnect}
+                onRowContextMenu={handleRowContextMenu}
+              />
+            </div>
+
+            <div className="cm2-detail-col">
+              {detail.kind === "view" ? (
+                <DetailCard
+                  connection={detail.connection}
+                  sshKeys={scopedSshKeys}
+                  folderLabel={folderLabel}
+                  onEdit={() => setDetail({ kind: "edit", connection: detail.connection })}
+                  onConnect={() => handleConnect(detail.connection.id)}
+                />
+              ) : detail.kind === "edit" ? (
+                <ConnectionEditor
+                  // 换连接时整体重挂载，让 initialValues 生效，也天然清掉上一条的未保存输入。
+                  key={detail.connection?.id ?? "__new__"}
+                  connection={detail.connection}
+                  folders={scope.folders}
+                  currentFolderId={scope.currentFolderId}
+                  sshKeys={scopedSshKeys}
+                  proxies={scopedProxies}
+                  saving={saving}
+                  revealedPassword={revealedLoginPassword}
+                  revealingPassword={revealingLoginPassword}
+                  onRevealPassword={() => void handleRevealConnectionPassword()}
+                  onSubmit={(values) => void handleSubmit(values)}
+                  onCancel={() =>
+                    setDetail(
+                      detail.connection
+                        ? { kind: "view", connection: detail.connection }
+                        : { kind: "empty" }
+                    )
+                  }
+                  onCreateKey={() => setResourceTab("keys")}
+                />
+              ) : (
+                <p className="cm2-placeholder">单击一行查看详情，双击直接连接</p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div
+            className="cm2-columns"
+            style={{
+              gridTemplateColumns: `minmax(0, 1fr) ${preferences.detailColumnWidth}px`
+            }}
+          >
+            {resourceTab === "keys" ? (
+              <SshKeyPane
                 sshKeys={scopedSshKeys}
-                proxies={scopedProxies}
-                saving={saving}
-                revealedPassword={revealedLoginPassword}
-                revealingPassword={revealingLoginPassword}
-                onRevealPassword={() => void handleRevealConnectionPassword()}
-                onSubmit={(values) => void handleSubmit(values)}
-                onCancel={() =>
-                  setDetail(
-                    detail.connection
-                      ? { kind: "view", connection: detail.connection }
-                      : { kind: "empty" }
-                  )
-                }
-                onCreateKey={() => setResourceTab("keys")}
+                workspaceId={scope.activeScope.workspaceId}
+                onReload={onReloadSshKeys}
               />
             ) : (
-              <p className="cm2-placeholder">单击一行查看详情，双击直接连接</p>
+              <ProxyPane
+                proxies={scopedProxies}
+                workspaceId={scope.activeScope.workspaceId}
+                onReload={onReloadProxies}
+              />
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {contextMenu ? (
-        <RowContextMenu
+        <PointerMenu
           x={contextMenu.x}
           y={contextMenu.y}
           items={contextMenu.items}
@@ -628,34 +668,3 @@ export const ConnectionManagerV2 = ({
     </Modal>
   );
 };
-
-/** 栏宽拖拽。指针捕获让拖出栏外也不丢事件。 */
-const ColumnResizer = ({
-  onResize,
-  onCommit
-}: {
-  onResize: (delta: number) => void;
-  onCommit: () => void;
-}) => (
-  <div
-    className="cm2-resizer"
-    role="separator"
-    aria-orientation="vertical"
-    onPointerDown={(event) => {
-      event.currentTarget.setPointerCapture(event.pointerId);
-      let last = event.clientX;
-      const target = event.currentTarget;
-      const move = (moveEvent: PointerEvent) => {
-        onResize(moveEvent.clientX - last);
-        last = moveEvent.clientX;
-      };
-      const up = () => {
-        target.removeEventListener("pointermove", move);
-        target.removeEventListener("pointerup", up);
-        onCommit();
-      };
-      target.addEventListener("pointermove", move);
-      target.addEventListener("pointerup", up);
-    }}
-  />
-);
