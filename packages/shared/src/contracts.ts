@@ -1049,6 +1049,53 @@ export interface AgentInstallClaudeDesktopResult {
 /** 导出 `.mcpb` 一键安装包的结果；用户取消保存对话框时 `canceled: true`。 */
 export type AgentExportMcpbResult = { ok: true; filePath: string } | { ok: false; canceled: true };
 
+// ─── Connection Folders ─────────────────────────────────────────────────────
+
+/**
+ * 目录名是树上的可寻址标识,所以拒绝空白与路径分隔符:带 `/` 的名字会和派生出来的 groupPath
+ * 投影产生歧义。作用域一律由调用方显式给出,目录不跨隔离域嵌套。
+ */
+const folderNameSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.trim() : value),
+  z
+    .string()
+    .min(1, "目录名称不能为空")
+    .refine((name) => !name.includes("/") && !name.includes("\\"), {
+      message: "目录名称不能包含 / 或 \\"
+    })
+);
+
+export const connectionFolderListSchema = z.object({
+  scopeKey: z.string().trim().min(1).optional()
+});
+
+export const connectionFolderCreateSchema = z.object({
+  scopeKey: z.string().trim().min(1),
+  name: folderNameSchema,
+  parentId: z.string().uuid().optional(),
+  sortIndex: z.coerce.number().int().min(0).optional()
+});
+
+export const connectionFolderRenameSchema = z.object({
+  id: z.string().uuid(),
+  name: folderNameSchema
+});
+
+export const connectionFolderMoveSchema = z.object({
+  id: z.string().uuid(),
+  /** 省略表示移到顶层。 */
+  parentId: z.string().uuid().optional()
+});
+
+export const connectionFolderReorderSchema = z.object({
+  id: z.string().uuid(),
+  sortIndex: z.coerce.number().int().min(0)
+});
+
+export const connectionFolderRemoveSchema = z.object({
+  id: z.string().uuid()
+});
+
 // ─── SSH Key Management ─────────────────────────────────────────────────────
 
 export const sshKeyListSchema = z.object({});
@@ -1238,6 +1285,12 @@ export type CredentialStoreReauthorizeInput = z.infer<typeof credentialStoreReau
 export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
 export type MasterPasswordChangeInput = z.infer<typeof masterPasswordChangeSchema>;
 export type SshKeyListInput = z.infer<typeof sshKeyListSchema>;
+export type ConnectionFolderListInput = z.infer<typeof connectionFolderListSchema>;
+export type ConnectionFolderCreateInput = z.infer<typeof connectionFolderCreateSchema>;
+export type ConnectionFolderRenameInput = z.infer<typeof connectionFolderRenameSchema>;
+export type ConnectionFolderMoveInput = z.infer<typeof connectionFolderMoveSchema>;
+export type ConnectionFolderReorderInput = z.infer<typeof connectionFolderReorderSchema>;
+export type ConnectionFolderRemoveInput = z.infer<typeof connectionFolderRemoveSchema>;
 export type SshKeyUpsertInput = z.infer<typeof sshKeyUpsertSchema>;
 export type SshKeyRemoveInput = z.infer<typeof sshKeyRemoveSchema>;
 export type ProxyListInput = z.infer<typeof proxyListSchema>;

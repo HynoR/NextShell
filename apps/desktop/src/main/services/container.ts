@@ -33,6 +33,7 @@ import {
   CachedConnectionRepository,
   SQLiteSshKeyRepository,
   CachedSshKeyRepository,
+  SQLiteConnectionFolderRepository,
   SQLiteProxyRepository,
   CachedProxyRepository
 } from "../../../../../packages/storage/src/index";
@@ -89,6 +90,7 @@ export const createServiceContainer = async (
 
   const sshKeyRepo = new CachedSshKeyRepository(new SQLiteSshKeyRepository(rawRepo.getDb()));
   const proxyRepo = new CachedProxyRepository(new SQLiteProxyRepository(rawRepo.getDb()));
+  const folderRepo = new SQLiteConnectionFolderRepository(rawRepo.getDb());
 
   // ─── Device Key ──────────────────────────────────────────────────────────
   // The device key encrypts every stored credential. Keep it OUT of the SQLite
@@ -1209,6 +1211,7 @@ export const createServiceContainer = async (
     cloudSync: cloudSyncManager,
     resourceOps: resourceOpsSvc,
     agentMcp: agentMcpSvc,
+    connectionFolders: folderRepo,
 
     // Orchestration
     removeConnection: async (id) => {

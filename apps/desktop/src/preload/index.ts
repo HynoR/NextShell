@@ -295,6 +295,14 @@ const api: NextShellApi = {
       return () => ipcRenderer.off(IPCChannel.AgentSessionFocusEvent, handler);
     }
   },
+  connectionFolder: {
+    list: (payload) => invoke(IPCChannel.ConnectionFolderList, payload ?? {}),
+    create: (payload) => invoke(IPCChannel.ConnectionFolderCreate, payload),
+    rename: (payload) => invoke(IPCChannel.ConnectionFolderRename, payload),
+    move: (payload) => invoke(IPCChannel.ConnectionFolderMove, payload),
+    reorder: (payload) => invoke(IPCChannel.ConnectionFolderReorder, payload),
+    remove: (payload) => invoke(IPCChannel.ConnectionFolderRemove, payload)
+  },
   sshKey: {
     list: (payload) => invoke(IPCChannel.SshKeyList, payload ?? {}),
     upsert: (payload) => invoke(IPCChannel.SshKeyUpsert, payload),

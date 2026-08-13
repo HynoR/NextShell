@@ -17,6 +17,7 @@ import type {
   RecycleBinEntry,
   RemoteFileEntry,
   ScopedCommandItem,
+  ConnectionFolder,
   SavedCommand,
   SessionDescriptor,
   SystemInfoSnapshot,
@@ -28,6 +29,12 @@ import type {
   AppPreferences,
   AppPreferencesPatchInput,
   AuditClearInput,
+  ConnectionFolderCreateInput,
+  ConnectionFolderListInput,
+  ConnectionFolderMoveInput,
+  ConnectionFolderRemoveInput,
+  ConnectionFolderRenameInput,
+  ConnectionFolderReorderInput,
   DebugLogEntry,
   BackupListInput,
   BackupRestoreInput,
@@ -364,6 +371,14 @@ export interface NextShellApi {
     /** Agent 请求把界面切到某个标签并置顶窗口。 */
     onSessionFocus: (listener: (event: AgentSessionFocusEvent) => void) => SessionEventUnsubscribe;
   };
+  connectionFolder: {
+    list: (payload?: ConnectionFolderListInput) => Promise<ConnectionFolder[]>;
+    create: (payload: ConnectionFolderCreateInput) => Promise<ConnectionFolder>;
+    rename: (payload: ConnectionFolderRenameInput) => Promise<ConnectionFolder>;
+    move: (payload: ConnectionFolderMoveInput) => Promise<ConnectionFolder>;
+    reorder: (payload: ConnectionFolderReorderInput) => Promise<ConnectionFolder>;
+    remove: (payload: ConnectionFolderRemoveInput) => Promise<{ ok: true }>;
+  };
   sshKey: {
     list: (payload?: SshKeyListInput) => Promise<SshKeyProfile[]>;
     upsert: (payload: SshKeyUpsertInput) => Promise<SshKeyProfile>;
@@ -500,6 +515,12 @@ export interface IpcInvokeMethods {
   [IPCChannel.CloudSyncListConflicts]: NextShellApi["cloudSync"]["listConflicts"];
   [IPCChannel.CloudSyncTestConnection]: NextShellApi["cloudSync"]["testConnection"];
   [IPCChannel.CloudSyncResolveConflict]: NextShellApi["cloudSync"]["resolveConflict"];
+  [IPCChannel.ConnectionFolderList]: NextShellApi["connectionFolder"]["list"];
+  [IPCChannel.ConnectionFolderCreate]: NextShellApi["connectionFolder"]["create"];
+  [IPCChannel.ConnectionFolderRename]: NextShellApi["connectionFolder"]["rename"];
+  [IPCChannel.ConnectionFolderMove]: NextShellApi["connectionFolder"]["move"];
+  [IPCChannel.ConnectionFolderReorder]: NextShellApi["connectionFolder"]["reorder"];
+  [IPCChannel.ConnectionFolderRemove]: NextShellApi["connectionFolder"]["remove"];
   [IPCChannel.SshKeyList]: NextShellApi["sshKey"]["list"];
   [IPCChannel.SshKeyUpsert]: NextShellApi["sshKey"]["upsert"];
   [IPCChannel.SshKeyRemove]: NextShellApi["sshKey"]["remove"];

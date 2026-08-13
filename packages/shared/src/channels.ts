@@ -101,6 +101,12 @@ export const IPCChannel = {
   AgentSessionFocusEvent: "nextshell:agent:session:focus:event",
 
   ConnectionRevealPassword: "nextshell:connection:reveal-password",
+  ConnectionFolderList: "nextshell:connection-folder:list",
+  ConnectionFolderCreate: "nextshell:connection-folder:create",
+  ConnectionFolderRename: "nextshell:connection-folder:rename",
+  ConnectionFolderMove: "nextshell:connection-folder:move",
+  ConnectionFolderReorder: "nextshell:connection-folder:reorder",
+  ConnectionFolderRemove: "nextshell:connection-folder:remove",
   SshKeyList: "nextshell:ssh-key:list",
   SshKeyUpsert: "nextshell:ssh-key:upsert",
   SshKeyRemove: "nextshell:ssh-key:remove",

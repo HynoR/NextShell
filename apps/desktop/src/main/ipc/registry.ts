@@ -86,6 +86,12 @@ import {
   masterPasswordGetCachedSchema,
   credentialStoreReauthorizeSchema,
   sshKeyListSchema,
+  connectionFolderCreateSchema,
+  connectionFolderListSchema,
+  connectionFolderMoveSchema,
+  connectionFolderRemoveSchema,
+  connectionFolderRenameSchema,
+  connectionFolderReorderSchema,
   sshKeyUpsertSchema,
   sshKeyRemoveSchema,
   proxyListSchema,
@@ -798,6 +804,49 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
         input.resourceId,
         input.strategy
       );
+      return { ok: true as const };
+    }
+  }),
+
+  // ─── Connection Folders ───────────────────────────────────────────────────
+  define({
+    channel: IPCChannel.ConnectionFolderList,
+    schema: connectionFolderListSchema,
+    label: "目录列表",
+    coerceEmptyPayload: true,
+    dispatch: (services, input) => services.connectionFolders.list(input.scopeKey)
+  }),
+  define({
+    channel: IPCChannel.ConnectionFolderCreate,
+    schema: connectionFolderCreateSchema,
+    label: "新建目录",
+    dispatch: (services, input) => services.connectionFolders.create(input)
+  }),
+  define({
+    channel: IPCChannel.ConnectionFolderRename,
+    schema: connectionFolderRenameSchema,
+    label: "目录重命名",
+    dispatch: (services, input) => services.connectionFolders.rename(input.id, input.name)
+  }),
+  define({
+    channel: IPCChannel.ConnectionFolderMove,
+    schema: connectionFolderMoveSchema,
+    label: "目录移动",
+    dispatch: (services, input) => services.connectionFolders.move(input.id, input.parentId)
+  }),
+  define({
+    channel: IPCChannel.ConnectionFolderReorder,
+    schema: connectionFolderReorderSchema,
+    label: "目录排序",
+    dispatch: (services, input) => services.connectionFolders.reorder(input.id, input.sortIndex)
+  }),
+  define({
+    channel: IPCChannel.ConnectionFolderRemove,
+    schema: connectionFolderRemoveSchema,
+    label: "目录删除",
+    // Children cascade; the connections inside are only detached, never deleted.
+    dispatch: (services, input) => {
+      services.connectionFolders.remove(input.id);
       return { ok: true as const };
     }
   }),
