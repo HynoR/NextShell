@@ -219,56 +219,261 @@
   border-color: var(--accent);
 }
 
-/* ── 中栏最小列表（完整表格接入前） ─────────────────────── */
+/* ── 中栏：搜索 + 表格 ──────────────────────────────────── */
 
-.cm2-list {
+.cm2-main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-  overflow-y: auto;
-  padding: 4px 6px;
+  overflow: hidden;
 }
 
-.cm2-list-row {
+.cm2-search-row {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  width: 100%;
-  padding: 6px 10px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.cm2-search-row > i {
+  color: var(--t3);
+  font-size: var(--cm2-fs-md);
+}
+
+.cm2-search {
+  flex: 1;
+  min-width: 0;
   border: none;
-  border-radius: var(--r-sm);
   background: transparent;
   color: var(--t1);
   font-size: var(--cm2-fs-base);
   font-family: var(--sans);
-  text-align: left;
+  outline: none;
+}
+
+.cm2-table {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cm2-row {
   cursor: pointer;
 }
 
-.cm2-list-row:hover {
-  background: var(--bg-hover);
+.cm2-row--focused > td {
+  background: var(--accent-dim) !important;
 }
 
-/* 名称优先：地址让位而不是反过来（旧管理器的 flex-shrink: 0 让 host 永不收缩）。 */
-.cm2-list-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.cm2-col-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
-.cm2-list-address {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--mono);
+.cm2-cell-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cm2-star {
+  color: var(--warn);
   font-size: var(--cm2-fs-xs);
+}
+
+.cm2-cell-mono {
+  font-family: var(--mono);
+  font-size: var(--cm2-fs-sm);
+}
+
+.cm2-auth-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger, #e5484d);
+}
+
+.cm2-muted {
   color: var(--t3);
 }
 
-/* ── 占位（详情接入前） ─────────────────────────────────── */
+/* ── 右栏：详情 / 编辑 ──────────────────────────────────── */
+
+.cm2-detail-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.cm2-detail,
+.cm2-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.cm2-detail-head {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.cm2-detail-title {
+  margin: 0;
+  font-size: var(--cm2-fs-md);
+  font-weight: 600;
+  color: var(--t1);
+  word-break: break-all;
+}
+
+.cm2-detail-sub {
+  margin: 3px 0 0;
+  font-family: var(--mono);
+  font-size: var(--cm2-fs-xs);
+  color: var(--t3);
+  word-break: break-all;
+}
+
+.cm2-detail-body,
+.cm2-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+}
+
+.cm2-detail-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: var(--cm2-fs-sm);
+}
+
+.cm2-detail-label {
+  color: var(--t3);
+}
+
+.cm2-detail-value {
+  color: var(--t1);
+  min-width: 0;
+  word-break: break-word;
+}
+
+.cm2-detail-mono {
+  font-family: var(--mono);
+  font-size: var(--cm2-fs-xs);
+}
+
+.cm2-detail-foot {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+/* 主操作带文字，不做纯图标——旧表单头部 6 个按钮里 5 个没有文字。 */
+.cm2-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: var(--cm2-fs-sm);
+  font-family: var(--sans);
+  cursor: pointer;
+}
+
+.cm2-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cm2-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cm2-btn--primary {
+  background: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+}
+
+.cm2-field-pair {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.cm2-field-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.cm2-field-port {
+  width: 92px;
+  flex-shrink: 0;
+}
+
+.cm2-mono input,
+.cm2-mono {
+  font-family: var(--mono);
+}
+
+.cm2-label-with-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm2-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--cm2-fs-xs);
+  cursor: pointer;
+}
+
+.cm2-editor .ant-form-item {
+  margin-bottom: 10px;
+}
+
+.cm2-editor .ant-form-item-label > label {
+  font-size: var(--cm2-fs-sm);
+  color: var(--t2);
+}
+
+.cm2-editor-sections .ant-collapse-header {
+  font-size: var(--cm2-fs-sm);
+  color: var(--t2);
+}
+
+/* ── 占位 ───────────────────────────────────────────────── */
+
 
 .cm2-placeholder {
   display: flex;

@@ -7,11 +7,20 @@ import { promptModal } from "../../utils/promptModal";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { ScopeBar } from "./components/ScopeBar";
 import { FolderColumn } from "./components/FolderColumn";
+import { ConnectionTable } from "./components/ConnectionTable";
+import { DetailCard } from "./components/DetailCard";
+import { ConnectionEditor, type ConnectionEditorValues } from "./components/ConnectionEditor";
 import { useManagerScope } from "./hooks/useManagerScope";
-import { listVisibleConnections } from "./utils/folderNavigation";
+import { buildBreadcrumb, listVisibleConnections } from "./utils/folderNavigation";
+import { buildConnectionRow, filterConnectionRows, sortConnectionRows } from "./utils/connectionRows";
 import { resourceMatchesOriginScope } from "@nextshell/shared";
 import { clampDialogSize, fitDialogToViewport } from "./utils/dialogSize";
-import type { ResourceTab } from "./types";
+import {
+  DEFAULT_CONNECTION_COLUMNS,
+  type ConnectionSort,
+  type DetailMode,
+  type ResourceTab
+} from "./types";
 import "./connection-manager-v2.css";
 
 interface ConnectionManagerV2Props {
@@ -61,6 +70,11 @@ export const ConnectionManagerV2 = ({
   const [resourceTab, setResourceTab] = useState<ResourceTab>("connections");
   const [includeSubfolders, setIncludeSubfolders] = useState(true);
   const [folderColumnWidth, setFolderColumnWidth] = useState(preferences.folderColumnWidth);
+  const [keyword, setKeyword] = useState("");
+  const [sort, setSort] = useState<ConnectionSort>({ key: "name", direction: "asc" });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [detail, setDetail] = useState<DetailMode>({ kind: "empty" });
+  const [saving, setSaving] = useState(false);
 
   const notifyError = useCallback((text: string) => message.error(text), [message]);
   const scope = useManagerScope({ open, onError: notifyError });
@@ -101,6 +115,65 @@ export const ConnectionManagerV2 = ({
         includeSubfolders
       }),
     [includeSubfolders, scope.currentFolderId, scope.folders, scopedConnections]
+  );
+
+  const rows = useMemo(() => {
+    const built = visibleConnections.map((connection) =>
+      buildConnectionRow(connection, scopedSshKeys)
+    );
+    return sortConnectionRows(filterConnectionRows(built, keyword), sort);
+  }, [keyword, scopedSshKeys, sort, visibleConnections]);
+
+  // 目录/作用域切换后，选中与详情里的连接可能已经不在列表里，留着会显示一张查不到的卡片。
+  useEffect(() => {
+    const visibleIds = new Set(rows.map((row) => row.connection.id));
+    setSelectedIds((previous) => previous.filter((id) => visibleIds.has(id)));
+    setDetail((previous) =>
+      previous.kind === "view" && !visibleIds.has(previous.connection.id)
+        ? { kind: "empty" }
+        : previous
+    );
+  }, [rows]);
+
+  const folderLabel = useMemo(() => {
+    const target =
+      detail.kind === "view" ? detail.connection.folderId : undefined;
+    return buildBreadcrumb(target, scope.folders, scope.activeScope.label)
+      .map((segment) => segment.label)
+      .join(" / ");
+  }, [detail, scope.activeScope.label, scope.folders]);
+
+  const handleConnect = useCallback(
+    (connectionId: string) => {
+      void onConnectConnection(connectionId).then(onClose);
+    },
+    [onClose, onConnectConnection]
+  );
+
+  const handleSubmit = useCallback(
+    async (values: ConnectionEditorValues) => {
+      setSaving(true);
+      try {
+        const host = (values.host ?? "").trim();
+        await window.nextshell.connection.upsert({
+          ...values,
+          name: (values.name ?? "").trim() || `${host}:${values.port}`,
+          host,
+          username: (values.username ?? "").trim(),
+          workspaceId: scope.activeScope.workspaceId,
+          // groupPath 由主进程按 folderId 派生；这里给出的值只是旧调用方的兜底。
+          groupPath: "/server"
+        });
+        await onReloadConnections();
+        message.success(values.id ? "连接已更新" : "连接已创建");
+        setDetail({ kind: "empty" });
+      } catch (error) {
+        message.error(`保存连接失败：${formatErrorMessage(error, "请检查输入内容")}`);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [message, onReloadConnections, scope.activeScope.workspaceId]
   );
 
   const persistFolderColumnWidth = useCallback(
@@ -210,37 +283,90 @@ export const ConnectionManagerV2 = ({
             onCommit={() => persistFolderColumnWidth(folderColumnWidth)}
           />
 
-          {/* 完整表格与详情/编辑栏在下一步接入；先给出可用的最小列表。 */}
-          <div className="cm2-list">
-            {resourceTab !== "connections" ? (
+          <div className="cm2-main">
+            {resourceTab === "connections" ? (
+              <>
+                <div className="cm2-search-row">
+                  <i className="ri-search-line" aria-hidden="true" />
+                  <input
+                    className="cm2-search"
+                    placeholder="搜索名称、地址、用户名、标签、备注…"
+                    value={keyword}
+                    onChange={(event) => setKeyword(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="cm2-btn"
+                    onClick={() => setDetail({ kind: "edit", connection: undefined })}
+                  >
+                    <i className="ri-add-line" aria-hidden="true" />
+                    新建连接
+                  </button>
+                </div>
+                <ConnectionTable
+                  rows={rows}
+                  columns={DEFAULT_CONNECTION_COLUMNS}
+                  sort={sort}
+                  onSortChange={setSort}
+                  selectedIds={selectedIds}
+                  onSelectionChange={setSelectedIds}
+                  focusedId={detail.kind === "view" ? detail.connection.id : undefined}
+                  onFocus={(id) => {
+                    const found = visibleConnections.find((item) => item.id === id);
+                    if (found) {
+                      setDetail({ kind: "view", connection: found });
+                    }
+                  }}
+                  onConnect={handleConnect}
+                  onRowContextMenu={(event, id) => {
+                    event.preventDefault();
+                    const found = visibleConnections.find((item) => item.id === id);
+                    if (found) {
+                      setDetail({ kind: "edit", connection: found });
+                    }
+                  }}
+                />
+              </>
+            ) : (
               <p className="cm2-placeholder">
                 {resourceTab === "keys"
                   ? `${scopedSshKeys.length} 个密钥`
                   : `${scopedProxies.length} 个代理`}
               </p>
-            ) : visibleConnections.length === 0 ? (
-              <p className="cm2-placeholder">此处没有连接</p>
-            ) : (
-              visibleConnections.map((connection) => (
-                <button
-                  key={connection.id}
-                  type="button"
-                  className="cm2-list-row"
-                  // 双击=关闭对话框并直连，与右键编辑、单击查看分开。
-                  onDoubleClick={() => {
-                    void onConnectConnection(connection.id).then(onClose);
-                  }}
-                  title={`${connection.name} — 双击连接`}
-                >
-                  <span className="cm2-list-name">{connection.name}</span>
-                  <span className="cm2-list-address">
-                    {connection.host}:{connection.port}
-                  </span>
-                </button>
-              ))
             )}
           </div>
-          <div className="cm2-placeholder cm2-placeholder--detail">选中后显示详情</div>
+
+          <div className="cm2-detail-col">
+            {detail.kind === "view" ? (
+              <DetailCard
+                connection={detail.connection}
+                sshKeys={scopedSshKeys}
+                folderLabel={folderLabel}
+                onEdit={() => setDetail({ kind: "edit", connection: detail.connection })}
+                onConnect={() => handleConnect(detail.connection.id)}
+              />
+            ) : detail.kind === "edit" ? (
+              <ConnectionEditor
+                connection={detail.connection}
+                folders={scope.folders}
+                currentFolderId={scope.currentFolderId}
+                sshKeys={scopedSshKeys}
+                proxies={scopedProxies}
+                saving={saving}
+                onSubmit={(values) => void handleSubmit(values)}
+                onCancel={() =>
+                  setDetail(
+                    detail.connection
+                      ? { kind: "view", connection: detail.connection }
+                      : { kind: "empty" }
+                  )
+                }
+                onCreateKey={() => message.info("密钥创建入口在下一步接入")}
+              />
+            ) : (
+              <p className="cm2-placeholder">单击一行查看详情，双击直接连接</p>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
