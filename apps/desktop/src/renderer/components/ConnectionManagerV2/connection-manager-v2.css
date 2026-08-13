@@ -486,3 +486,102 @@
 .cm2-placeholder--detail {
   border-left: 1px solid var(--border);
 }
+
+/* ── 工具条 / 批量条 / 右键菜单 ─────────────────────────── */
+
+.cm2-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.cm2-toolbar-gap {
+  flex: 1;
+}
+
+.cm2-col-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--cm2-fs-sm);
+  cursor: pointer;
+}
+
+.cm2-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--accent-dim);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.cm2-bulk-count {
+  font-size: var(--cm2-fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+  margin-right: 4px;
+}
+
+.cm2-btn--danger {
+  color: var(--danger, #e5484d);
+  border-color: color-mix(in srgb, var(--danger, #e5484d) 40%, transparent);
+}
+
+.cm2-btn--danger:hover:not(:disabled) {
+  color: var(--danger, #e5484d);
+  border-color: var(--danger, #e5484d);
+}
+
+.cm2-ctx {
+  position: fixed;
+  z-index: 1100;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+.cm2-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: var(--cm2-fs-sm);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cm2-ctx-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.cm2-ctx-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cm2-ctx-item--danger {
+  color: var(--danger, #e5484d);
+}
+
+.cm2-modal-field {
+  display: grid;
+  gap: 4px;
+  font-size: var(--cm2-fs-sm);
+  color: var(--t2);
+}

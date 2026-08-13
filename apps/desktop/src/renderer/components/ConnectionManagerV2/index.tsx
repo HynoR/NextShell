@@ -10,6 +10,16 @@ import { FolderColumn } from "./components/FolderColumn";
 import { ConnectionTable } from "./components/ConnectionTable";
 import { DetailCard } from "./components/DetailCard";
 import { ConnectionEditor, type ConnectionEditorValues } from "./components/ConnectionEditor";
+import { ManagerToolbar } from "./components/ManagerToolbar";
+import { BulkBar } from "./components/BulkBar";
+import { RowContextMenu, type ContextMenuItem } from "./components/RowContextMenu";
+import { CopyToScopeModal } from "./components/CopyToScopeModal";
+import { describeAffected, planRowCommands } from "./utils/rowCommands";
+import { useConnectionExportActions } from "../ConnectionManagerModal/hooks/useConnectionExportActions";
+import { useConnectionImportFlow } from "../ConnectionManagerModal/hooks/useConnectionImportFlow";
+import { ConnectionBatchAuthModal } from "../ConnectionManagerModal/components/ConnectionBatchAuthModal";
+import { ConnectionImportModal } from "../ConnectionImportModal";
+import type { BatchAuthTarget } from "../ConnectionManagerModal/types";
 import { useManagerScope } from "./hooks/useManagerScope";
 import { buildBreadcrumb, listVisibleConnections } from "./utils/folderNavigation";
 import { buildConnectionRow, filterConnectionRows, sortConnectionRows } from "./utils/connectionRows";
@@ -17,6 +27,7 @@ import { resourceMatchesOriginScope } from "@nextshell/shared";
 import { clampDialogSize, fitDialogToViewport } from "./utils/dialogSize";
 import {
   DEFAULT_CONNECTION_COLUMNS,
+  type ConnectionColumnKey,
   type ConnectionSort,
   type DetailMode,
   type ResourceTab
@@ -75,8 +86,27 @@ export const ConnectionManagerV2 = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<DetailMode>({ kind: "empty" });
   const [saving, setSaving] = useState(false);
+  const [columns, setColumns] = useState<ConnectionColumnKey[]>(DEFAULT_CONNECTION_COLUMNS);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  const [copyTarget, setCopyTarget] = useState<string[] | null>(null);
+  const [batchAuthTarget, setBatchAuthTarget] = useState<BatchAuthTarget | null>(null);
 
   const notifyError = useCallback((text: string) => message.error(text), [message]);
+  const importFlow = useConnectionImportFlow({ modal, message, onConnectionsImported: onReloadConnections });
+  const onOpenBatchAuth = useCallback(
+    (connectionIds: string[]) => {
+      setBatchAuthTarget({
+        type: "connections",
+        connectionIds,
+        label: `选中的 ${connectionIds.length} 个连接`
+      });
+    },
+    []
+  );
   const scope = useManagerScope({ open, onError: notifyError });
 
   useEffect(() => {
@@ -174,6 +204,158 @@ export const ConnectionManagerV2 = ({
       }
     },
     [message, onReloadConnections, scope.activeScope.workspaceId]
+  );
+
+  const handleDelete = useCallback(
+    (ids: string[]) => {
+      modal.confirm({
+        title: "确认删除",
+        content: `删除${describeAffected(ids, scopedConnections)}后会关闭相关会话。删除的连接会进入回收站。`,
+        okText: "删除",
+        cancelText: "取消",
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          try {
+            for (const id of ids) {
+              await window.nextshell.connection.remove({ id });
+            }
+            await onReloadConnections();
+            setSelectedIds([]);
+            setDetail({ kind: "empty" });
+          } catch (error) {
+            message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
+          }
+        }
+      });
+    },
+    [message, modal, onReloadConnections, scopedConnections]
+  );
+
+  // 导出的目录选择、明文/加密选项与批量结果汇总沿用既有 hook，不重复一套。
+  const [exportIds, setExportIds] = useState<string[]>([]);
+  const exportSelection = useMemo(() => new Set(exportIds), [exportIds]);
+  const { handleExportSelected } = useConnectionExportActions({
+    connections: scopedConnections,
+    selectedIds: exportSelection,
+    modal,
+    message
+  });
+
+  const handleExport = useCallback(
+    (ids: string[]) => {
+      setExportIds(ids);
+    },
+    []
+  );
+
+  // hook 读的是 selectedIds 快照，所以要等 state 落地后再触发。
+  useEffect(() => {
+    if (exportIds.length === 0) {
+      return;
+    }
+    void handleExportSelected().finally(() => setExportIds([]));
+  }, [exportIds, handleExportSelected]);
+
+  const handleRowContextMenu = useCallback(
+    (event: MouseEvent, connectionId: string) => {
+      event.preventDefault();
+      const plan = planRowCommands({ targetId: connectionId, selectedIds });
+      const target = scopedConnections.find((item) => item.id === connectionId);
+      const label = describeAffected(plan.affectedIds, scopedConnections);
+
+      const byCommand: Record<string, ContextMenuItem> = {
+        edit: {
+          key: "edit",
+          label: "编辑",
+          icon: "ri-edit-line",
+          onSelect: () => setDetail({ kind: "edit", connection: target })
+        },
+        connect: {
+          key: "connect",
+          label: "连接",
+          icon: "ri-terminal-box-line",
+          onSelect: () => handleConnect(connectionId)
+        },
+        rename: {
+          key: "rename",
+          label: "重命名",
+          icon: "ri-pencil-line",
+          onSelect: () => {
+            void (async () => {
+              if (!target) {
+                return;
+              }
+              const name = await promptModal(modal, "重命名连接", "请输入新的名称");
+              if (!name || name === target.name) {
+                return;
+              }
+              try {
+                await window.nextshell.connection.upsert({ ...target, name });
+                await onReloadConnections();
+              } catch (error) {
+                message.error(`重命名失败：${formatErrorMessage(error, "请稍后重试")}`);
+              }
+            })();
+          }
+        },
+        copyAddress: {
+          key: "copyAddress",
+          label: "复制地址",
+          icon: "ri-link-m",
+          onSelect: () => {
+            if (!target) {
+              return;
+            }
+            void navigator.clipboard.writeText(`${target.host}:${target.port}`);
+            message.success("已复制地址");
+          }
+        },
+        copyToScope: {
+          key: "copyToScope",
+          label: "复制到作用域…",
+          icon: "ri-file-copy-line",
+          onSelect: () => setCopyTarget(plan.affectedIds)
+        },
+        bindAuth: {
+          key: "bindAuth",
+          label: `批量绑定认证（${label}）`,
+          icon: "ri-key-2-line",
+          onSelect: () => onOpenBatchAuth(plan.affectedIds)
+        },
+        export: {
+          key: "export",
+          label: "导出",
+          icon: "ri-download-2-line",
+          onSelect: () => handleExport(plan.affectedIds)
+        },
+        delete: {
+          key: "delete",
+          label: plan.isBulk ? `删除 ${plan.affectedIds.length} 个` : "删除",
+          icon: "ri-delete-bin-line",
+          danger: true,
+          onSelect: () => handleDelete(plan.affectedIds)
+        }
+      };
+
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: plan.commands
+          .map((command) => byCommand[command])
+          .filter((item): item is ContextMenuItem => Boolean(item))
+      });
+    },
+    [
+      handleConnect,
+      handleDelete,
+      handleExport,
+      message,
+      modal,
+      onOpenBatchAuth,
+      onReloadConnections,
+      scopedConnections,
+      selectedIds
+    ]
   );
 
   const persistFolderColumnWidth = useCallback(
@@ -294,18 +476,30 @@ export const ConnectionManagerV2 = ({
                     value={keyword}
                     onChange={(event) => setKeyword(event.target.value)}
                   />
-                  <button
-                    type="button"
-                    className="cm2-btn"
-                    onClick={() => setDetail({ kind: "edit", connection: undefined })}
-                  >
-                    <i className="ri-add-line" aria-hidden="true" />
-                    新建连接
-                  </button>
                 </div>
+                <ManagerToolbar
+                  columns={columns}
+                  onColumnsChange={setColumns}
+                  onNewConnection={() => setDetail({ kind: "edit", connection: undefined })}
+                  onNewFolder={() => void handleCreateFolder()}
+                  onImport={() => void importFlow.handleImportNextShell()}
+                  onExportAll={() =>
+                    handleExport(scopedConnections.map((item) => item.id))
+                  }
+                />
+                {selectedIds.length > 0 ? (
+                  <BulkBar
+                    count={selectedIds.length}
+                    onClear={() => setSelectedIds([])}
+                    onBindAuth={() => onOpenBatchAuth(selectedIds)}
+                    onCopyToScope={() => setCopyTarget(selectedIds)}
+                    onExport={() => handleExport(selectedIds)}
+                    onDelete={() => handleDelete(selectedIds)}
+                  />
+                ) : null}
                 <ConnectionTable
                   rows={rows}
-                  columns={DEFAULT_CONNECTION_COLUMNS}
+                  columns={columns}
                   sort={sort}
                   onSortChange={setSort}
                   selectedIds={selectedIds}
@@ -318,13 +512,7 @@ export const ConnectionManagerV2 = ({
                     }
                   }}
                   onConnect={handleConnect}
-                  onRowContextMenu={(event, id) => {
-                    event.preventDefault();
-                    const found = visibleConnections.find((item) => item.id === id);
-                    if (found) {
-                      setDetail({ kind: "edit", connection: found });
-                    }
-                  }}
+                  onRowContextMenu={handleRowContextMenu}
                 />
               </>
             ) : (
@@ -369,6 +557,44 @@ export const ConnectionManagerV2 = ({
           </div>
         </div>
       </div>
+
+      {contextMenu ? (
+        <RowContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
+
+      <ConnectionBatchAuthModal
+        open={Boolean(batchAuthTarget)}
+        target={batchAuthTarget}
+        connections={connections}
+        sshKeys={sshKeys}
+        onClose={() => setBatchAuthTarget(null)}
+        onUpdated={onReloadConnections}
+      />
+
+      <ConnectionImportModal
+        open={importFlow.importModalOpen}
+        entries={importFlow.currentImportBatch?.entries ?? []}
+        existingConnections={connections}
+        sshKeys={sshKeys}
+        sourceName={importFlow.currentImportBatch?.fileName}
+        onClose={importFlow.resetImportFlow}
+        onImported={importFlow.handleImportBatchImported}
+      />
+
+      <CopyToScopeModal
+        open={copyTarget !== null}
+        connectionIds={copyTarget ?? []}
+        label={describeAffected(copyTarget ?? [], scopedConnections)}
+        scopes={scope.scopes}
+        currentScopeKey={scope.activeScope.key}
+        onClose={() => setCopyTarget(null)}
+        onCopied={onReloadConnections}
+      />
     </Modal>
   );
 };
