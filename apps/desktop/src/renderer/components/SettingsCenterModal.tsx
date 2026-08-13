@@ -457,6 +457,7 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
             confirmBeforeClose={preferences.window.confirmBeforeClose}
             leftSidebarDefaultCollapsed={preferences.window.leftSidebarDefaultCollapsed}
             bottomWorkbenchDefaultCollapsed={preferences.window.bottomWorkbenchDefaultCollapsed}
+            connectionManagerV2={preferences.connectionManager.useV2}
             save={save}
           />
         );
