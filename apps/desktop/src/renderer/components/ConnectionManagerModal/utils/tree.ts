@@ -235,11 +235,16 @@ export const buildManagerTreeResult = (
     return node;
   };
 
-  for (const meta of Array.from(workspaceMetas.values()).sort((a, b) =>
-    a.label.localeCompare(b.label)
-  )) {
-    root.children.splice(root.children.length - 1, 0, ensureWorkspaceRoot(meta.slug));
-  }
+  // workspace 根插在 server 与 import 之间。按位置 splice 依赖"import 一定是最后一个"这个
+  // 隐式约定，改成显式找 import 节点的下标。
+  const importIndex = root.children.findIndex(
+    (node) => node.type === "group" && node.zone === CONNECTION_ZONES.IMPORT
+  );
+  const insertAt = importIndex >= 0 ? importIndex : root.children.length;
+  const workspaceRootNodes = Array.from(workspaceMetas.values())
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((meta) => ensureWorkspaceRoot(meta.slug));
+  root.children.splice(insertAt, 0, ...workspaceRootNodes);
 
   const ensureGroup = (zoneNode: MgrGroupNode, subSegments: string[]): MgrGroupNode => {
     let pointer = zoneNode;
@@ -369,12 +374,8 @@ export const sortMgrChildren = (
     if (child.type === "group") groups.push(sortMgrChildren(child, mode));
     else leaves.push(child);
   }
-  if (!node.zone) {
-    groups.sort((a, b) => {
-      if (a.zone && b.zone) return 0;
-      return a.label.localeCompare(b.label);
-    });
-  }
+  // 根节点的子节点（server / 各 workspace / import）全都带 zone，原先那段比较器恒返回 0，
+  // 是一段从未生效的排序；分组顺序实际由构建时的插入顺序决定。
   leaves.sort((a, b) => {
     if (mode === "host") return a.connection.host.localeCompare(b.connection.host);
     if (mode === "createdAt") {
