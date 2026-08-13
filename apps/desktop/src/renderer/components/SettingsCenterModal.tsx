@@ -16,6 +16,8 @@ import {
   TerminalSection,
   NetworkSection,
   BackupSection,
+  CloudSyncSection,
+  RecycleBinSection,
   SecuritySection,
   AgentSection,
   AboutSection
@@ -403,6 +405,14 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
   // ─── Memoized section content ───────────────────────────────────────
   const sectionContent = useMemo(() => {
     switch (activeSection) {
+      // 云同步是账号/服务配置，回收站是全局删除历史（含密钥）：两者都是低频全局设置，
+      // 不属于「管理这台机器的连接」，所以从连接管理器搬到这里。
+      case "cloudSync":
+        return <CloudSyncSection />;
+
+      case "recycleBin":
+        return <RecycleBinSection />;
+
       case "security":
         return (
           <SecuritySection

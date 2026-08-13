@@ -1081,14 +1081,6 @@
   font-size: 14px;
 }
 
-.mgr-cloud-sync-panel,
-.mgr-recycle-bin-panel {
-  padding: 16px 18px 18px;
-  max-height: 580px;
-  overflow: auto;
-  background: var(--bg-surface);
-}
-
 /* Flat list for keys/proxies sidebar */
 .mgr-flat-list {
   display: flex;

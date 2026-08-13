@@ -28,9 +28,7 @@ import {
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { SshKeyManagerPanel } from "./SshKeyManagerPanel";
 import { ProxyManagerPanel } from "./ProxyManagerPanel";
-import { CloudSyncManagerPanel } from "./CloudSyncManagerPanel";
 import { ConnectionImportModal } from "./ConnectionImportModal";
-import { RecycleBinSection } from "./settings-center";
 import { ConnectionSidebar } from "./ConnectionManagerModal/components/ConnectionSidebar";
 import { ConnectionFormPanel } from "./ConnectionManagerModal/components/ConnectionFormPanel";
 import { ConnectionBatchAuthModal } from "./ConnectionManagerModal/components/ConnectionBatchAuthModal";
@@ -1272,18 +1270,6 @@ export const ConnectionManagerModal = ({
               workspaces={workspaces}
               onReload={onReloadProxies}
             />
-          ) : null}
-
-          {activeTab === "cloudSync" ? (
-            <div className="mgr-cloud-sync-panel">
-              <CloudSyncManagerPanel />
-            </div>
-          ) : null}
-
-          {activeTab === "recycleBin" ? (
-            <div className="mgr-recycle-bin-panel">
-              <RecycleBinSection />
-            </div>
           ) : null}
 
           {activeTab === "import" ? (
