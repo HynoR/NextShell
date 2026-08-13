@@ -17,6 +17,7 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   ssh: { ...prefs.ssh },
   backup: { ...prefs.backup },
   window: { ...prefs.window },
+  connectionManager: { ...prefs.connectionManager },
   traceroute: { ...prefs.traceroute },
   audit: { ...prefs.audit },
   agent: {
@@ -161,6 +162,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       ssh: { ...prev.ssh, ...(patch.ssh ?? {}) },
       backup: { ...prev.backup, ...(patch.backup ?? {}) },
       window: { ...prev.window, ...(patch.window ?? {}) },
+      connectionManager: { ...prev.connectionManager, ...(patch.connectionManager ?? {}) },
       traceroute: { ...prev.traceroute, ...(patch.traceroute ?? {}) },
       audit: { ...prev.audit, ...(patch.audit ?? {}) },
       agent: { ...prev.agent, ...(patch.agent ?? {}) }

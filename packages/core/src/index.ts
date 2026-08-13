@@ -651,6 +651,15 @@ export interface AppPreferences {
     /** 底部工作台默认是否折叠 */
     bottomWorkbenchDefaultCollapsed: boolean;
   };
+  connectionManager: {
+    /** 切到重构后的三栏连接管理器；V2 稳定前默认关闭。 */
+    useV2: boolean;
+    /** 对话框尺寸与栏宽都记住，避免每次打开都要重新拖。 */
+    dialogWidth: number;
+    dialogHeight: number;
+    folderColumnWidth: number;
+    detailColumnWidth: number;
+  };
   traceroute: {
     /** nexttrace 可执行文件路径，留空表示从 PATH 查找 */
     nexttracePath: string;
@@ -760,6 +769,13 @@ export interface AppPreferencesPatch {
     backgroundOpacity?: number;
     leftSidebarDefaultCollapsed?: boolean;
     bottomWorkbenchDefaultCollapsed?: boolean;
+  };
+  connectionManager?: {
+    useV2?: boolean;
+    dialogWidth?: number;
+    dialogHeight?: number;
+    folderColumnWidth?: number;
+    detailColumnWidth?: number;
   };
   traceroute?: {
     nexttracePath?: string;
@@ -959,6 +975,13 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     backgroundOpacity: 60,
     leftSidebarDefaultCollapsed: false,
     bottomWorkbenchDefaultCollapsed: false
+  },
+  connectionManager: {
+    useV2: false,
+    dialogWidth: 1180,
+    dialogHeight: 760,
+    folderColumnWidth: 240,
+    detailColumnWidth: 340
   },
   traceroute: {
     nexttracePath: "",

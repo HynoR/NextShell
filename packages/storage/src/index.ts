@@ -589,6 +589,20 @@ const rowToSavedCommand = (row: SavedCommandRow): SavedCommand => ({
   updatedAt: row.updated_at
 });
 
+/** 存坏的尺寸不该让对话框缩成一条缝或撑出屏幕，越界一律退回默认值。 */
+const readStoredSize = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return fallback;
+  }
+  const rounded = Math.round(value);
+  return rounded < min || rounded > max ? fallback : rounded;
+};
+
 const cloneDefaultPreferences = (): AppPreferences => {
   return {
     transfer: { ...DEFAULT_APP_PREFERENCES_VALUE.transfer },
@@ -598,6 +612,7 @@ const cloneDefaultPreferences = (): AppPreferences => {
     ssh: { ...DEFAULT_APP_PREFERENCES_VALUE.ssh },
     backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
+    connectionManager: { ...DEFAULT_APP_PREFERENCES_VALUE.connectionManager },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
     audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit },
     agent: {
@@ -831,6 +846,36 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.window?.bottomWorkbenchDefaultCollapsed === "boolean"
             ? parsed.window.bottomWorkbenchDefaultCollapsed
             : fallback.window.bottomWorkbenchDefaultCollapsed
+      },
+      connectionManager: {
+        useV2:
+          typeof parsed.connectionManager?.useV2 === "boolean"
+            ? parsed.connectionManager.useV2
+            : fallback.connectionManager.useV2,
+        dialogWidth: readStoredSize(
+          parsed.connectionManager?.dialogWidth,
+          fallback.connectionManager.dialogWidth,
+          900,
+          3840
+        ),
+        dialogHeight: readStoredSize(
+          parsed.connectionManager?.dialogHeight,
+          fallback.connectionManager.dialogHeight,
+          560,
+          2160
+        ),
+        folderColumnWidth: readStoredSize(
+          parsed.connectionManager?.folderColumnWidth,
+          fallback.connectionManager.folderColumnWidth,
+          160,
+          520
+        ),
+        detailColumnWidth: readStoredSize(
+          parsed.connectionManager?.detailColumnWidth,
+          fallback.connectionManager.detailColumnWidth,
+          260,
+          720
+        )
       },
       traceroute: {
         nexttracePath:

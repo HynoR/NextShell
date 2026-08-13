@@ -39,6 +39,11 @@ const LazyConnectionManagerModal = lazy(() =>
     default: module.ConnectionManagerModal
   }))
 );
+const LazyConnectionManagerV2 = lazy(() =>
+  import("./components/ConnectionManagerV2").then((module) => ({
+    default: module.ConnectionManagerV2
+  }))
+);
 const LazySettingsCenterModal = lazy(() =>
   import("./components/SettingsCenterModal").then((module) => ({
     default: module.SettingsCenterModal
@@ -61,6 +66,10 @@ export const App = () => {
   const connections = useWorkspaceStore((state) => state.connections);
   const sshKeys = useWorkspaceStore((state) => state.sshKeys);
   const proxies = useWorkspaceStore((state) => state.proxies);
+  // 隐藏开关：V2 稳定前默认关闭，出问题可随时切回旧管理器。
+  const useConnectionManagerV2 = usePreferencesStore(
+    (state) => state.preferences.connectionManager.useV2
+  );
   const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
   const sessions = useWorkspaceStore((state) => state.sessions);
   const activeSessionId = useWorkspaceStore((state) => state.activeSessionId);
@@ -813,7 +822,26 @@ export const App = () => {
           onSetBottomTab={handleSetBottomTab}
         />
 
-        {managerModalLoaded ? (
+        {managerModalLoaded && useConnectionManagerV2 ? (
+          <Suspense fallback={null}>
+            <LazyConnectionManagerV2
+              open={managerOpen}
+              connections={connections}
+              sshKeys={sshKeys}
+              proxies={proxies}
+              onClose={() => {
+                setManagerOpen(false);
+                setManagerFocusConnectionId(undefined);
+              }}
+              onConnectConnection={async (connectionId: string) => {
+                await startSession(connectionId);
+              }}
+              onReloadConnections={loadConnections}
+            />
+          </Suspense>
+        ) : null}
+
+        {managerModalLoaded && !useConnectionManagerV2 ? (
           <Suspense fallback={null}>
             <LazyConnectionManagerModal
               open={managerOpen}

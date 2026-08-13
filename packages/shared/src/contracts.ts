@@ -590,6 +590,36 @@ export const appPreferencesSchema = z
           .default(DEFAULT_APP_PREFERENCES.window.bottomWorkbenchDefaultCollapsed)
       })
       .default(DEFAULT_APP_PREFERENCES.window),
+    connectionManager: z
+      .object({
+        useV2: z.boolean().default(DEFAULT_APP_PREFERENCES.connectionManager.useV2),
+        // 尺寸夹在可用范围内：存坏的值不该让对话框缩成一条缝或撑出屏幕。
+        dialogWidth: z.coerce
+          .number()
+          .int()
+          .min(900)
+          .max(3840)
+          .default(DEFAULT_APP_PREFERENCES.connectionManager.dialogWidth),
+        dialogHeight: z.coerce
+          .number()
+          .int()
+          .min(560)
+          .max(2160)
+          .default(DEFAULT_APP_PREFERENCES.connectionManager.dialogHeight),
+        folderColumnWidth: z.coerce
+          .number()
+          .int()
+          .min(160)
+          .max(520)
+          .default(DEFAULT_APP_PREFERENCES.connectionManager.folderColumnWidth),
+        detailColumnWidth: z.coerce
+          .number()
+          .int()
+          .min(260)
+          .max(720)
+          .default(DEFAULT_APP_PREFERENCES.connectionManager.detailColumnWidth)
+      })
+      .default(DEFAULT_APP_PREFERENCES.connectionManager),
     traceroute: z
       .object({
         nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
@@ -754,6 +784,15 @@ export const appPreferencesPatchSchema = z.object({
       backgroundOpacity: z.coerce.number().int().min(30).max(80).optional(),
       leftSidebarDefaultCollapsed: z.boolean().optional(),
       bottomWorkbenchDefaultCollapsed: z.boolean().optional()
+    })
+    .optional(),
+  connectionManager: z
+    .object({
+      useV2: z.boolean().optional(),
+      dialogWidth: z.coerce.number().int().min(900).max(3840).optional(),
+      dialogHeight: z.coerce.number().int().min(560).max(2160).optional(),
+      folderColumnWidth: z.coerce.number().int().min(160).max(520).optional(),
+      detailColumnWidth: z.coerce.number().int().min(260).max(720).optional()
     })
     .optional(),
   traceroute: z

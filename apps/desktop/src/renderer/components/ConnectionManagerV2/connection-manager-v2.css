@@ -1,0 +1,283 @@
+/* Connection Manager V2 — .cm2-* */
+
+/* 字号只用五档，取代旧管理器里 9.5–44px 的 13 种取值。 */
+.cm2-shell {
+  --cm2-fs-xs: 11px;
+  --cm2-fs-sm: 12px;
+  --cm2-fs-base: 13px;
+  --cm2-fs-md: 15px;
+  --cm2-fs-lg: 18px;
+
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.cm2-title {
+  font-size: var(--cm2-fs-md, 15px);
+  font-weight: 600;
+}
+
+/* ── 作用域条 ───────────────────────────────────────────── */
+
+.cm2-scope-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+
+.cm2-scope-label {
+  font-size: var(--cm2-fs-xs);
+  color: var(--t3);
+}
+
+.cm2-scope-select {
+  min-width: 180px;
+}
+
+.cm2-scope-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── 三栏 ───────────────────────────────────────────────── */
+
+.cm2-columns {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.cm2-resizer {
+  position: absolute;
+  width: 6px;
+  cursor: col-resize;
+  align-self: stretch;
+  margin-left: -3px;
+  background: transparent;
+}
+
+.cm2-resizer:hover {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* ── 目录栏 ─────────────────────────────────────────────── */
+
+.cm2-folder-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.cm2-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.cm2-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cm2-breadcrumb-sep {
+  color: var(--t3);
+  font-size: var(--cm2-fs-sm);
+}
+
+.cm2-breadcrumb-btn {
+  border: none;
+  background: none;
+  padding: 1px 4px;
+  border-radius: var(--r-sm);
+  color: var(--t2);
+  font-size: var(--cm2-fs-sm);
+  font-family: var(--sans);
+  cursor: pointer;
+}
+
+.cm2-breadcrumb-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+
+.cm2-breadcrumb-btn--current {
+  color: var(--t1);
+  font-weight: 600;
+  cursor: default;
+}
+
+.cm2-folder-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+
+.cm2-folder-empty {
+  margin: 0;
+  padding: 16px 10px;
+  color: var(--t3);
+  font-size: var(--cm2-fs-sm);
+  text-align: center;
+}
+
+/* 缩进恒为 0：钻取式导航下名称在任何深度都拿到全宽。 */
+.cm2-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: var(--cm2-fs-base);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cm2-folder-row:hover {
+  background: var(--bg-hover);
+}
+
+.cm2-folder-row > i {
+  color: var(--t3);
+  font-size: var(--cm2-fs-md);
+  flex-shrink: 0;
+}
+
+.cm2-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm2-folder-count {
+  flex-shrink: 0;
+  font-size: var(--cm2-fs-xs);
+  color: var(--t3);
+  background: var(--bg-active);
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  padding: 0 6px;
+  line-height: 16px;
+}
+
+.cm2-folder-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.cm2-subfolder-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--cm2-fs-sm);
+  color: var(--t2);
+  cursor: pointer;
+}
+
+.cm2-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t2);
+  font-size: var(--cm2-fs-md);
+  cursor: pointer;
+}
+
+.cm2-icon-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── 中栏最小列表（完整表格接入前） ─────────────────────── */
+
+.cm2-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px;
+}
+
+.cm2-list-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--t1);
+  font-size: var(--cm2-fs-base);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cm2-list-row:hover {
+  background: var(--bg-hover);
+}
+
+/* 名称优先：地址让位而不是反过来（旧管理器的 flex-shrink: 0 让 host 永不收缩）。 */
+.cm2-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm2-list-address {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: var(--cm2-fs-xs);
+  color: var(--t3);
+}
+
+/* ── 占位（详情接入前） ─────────────────────────────────── */
+
+.cm2-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t3);
+  font-size: var(--cm2-fs-sm);
+}
+
+.cm2-placeholder--detail {
+  border-left: 1px solid var(--border);
+}
