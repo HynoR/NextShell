@@ -585,3 +585,15 @@
   font-size: var(--cm2-fs-sm);
   color: var(--t2);
 }
+
+.cm2-pubkey {
+  word-break: break-all;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+/* 密钥态时中栏与右栏由 SshKeyPane 接管，隐藏连接态的两栏而不是卸载，保留其滚动位置。 */
+.cm2-main[hidden],
+.cm2-detail-col[hidden] {
+  display: none;
+}

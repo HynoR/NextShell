@@ -14,6 +14,8 @@ import { ManagerToolbar } from "./components/ManagerToolbar";
 import { BulkBar } from "./components/BulkBar";
 import { RowContextMenu, type ContextMenuItem } from "./components/RowContextMenu";
 import { CopyToScopeModal } from "./components/CopyToScopeModal";
+import { SshKeyPane } from "./components/SshKeyPane";
+import { ProxyManagerPanel } from "../ProxyManagerPanel";
 import { describeAffected, planRowCommands } from "./utils/rowCommands";
 import { useConnectionExportActions } from "../ConnectionManagerModal/hooks/useConnectionExportActions";
 import { useConnectionImportFlow } from "../ConnectionManagerModal/hooks/useConnectionImportFlow";
@@ -42,6 +44,8 @@ interface ConnectionManagerV2Props {
   onClose: () => void;
   onConnectConnection: (connectionId: string) => Promise<void>;
   onReloadConnections: () => Promise<void>;
+  onReloadSshKeys: () => Promise<void>;
+  onReloadProxies: () => Promise<void>;
 }
 
 const useViewport = (): { width: number; height: number } => {
@@ -71,7 +75,9 @@ export const ConnectionManagerV2 = ({
   proxies,
   onClose,
   onConnectConnection,
-  onReloadConnections
+  onReloadConnections,
+  onReloadSshKeys,
+  onReloadProxies
 }: ConnectionManagerV2Props) => {
   const { message, modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((state) => state.preferences.connectionManager);
@@ -465,7 +471,15 @@ export const ConnectionManagerV2 = ({
             onCommit={() => persistFolderColumnWidth(folderColumnWidth)}
           />
 
-          <div className="cm2-main">
+          {resourceTab === "keys" ? (
+            <SshKeyPane
+              sshKeys={scopedSshKeys}
+              workspaceId={scope.activeScope.workspaceId}
+              onReload={onReloadSshKeys}
+            />
+          ) : null}
+
+          <div className="cm2-main" hidden={resourceTab === "keys"}>
             {resourceTab === "connections" ? (
               <>
                 <div className="cm2-search-row">
@@ -515,16 +529,13 @@ export const ConnectionManagerV2 = ({
                   onRowContextMenu={handleRowContextMenu}
                 />
               </>
-            ) : (
-              <p className="cm2-placeholder">
-                {resourceTab === "keys"
-                  ? `${scopedSshKeys.length} 个密钥`
-                  : `${scopedProxies.length} 个代理`}
-              </p>
-            )}
+            ) : resourceTab === "proxies" ? (
+              // 代理没有单独的重构诉求，沿用既有面板，只把资源限定在当前作用域。
+              <ProxyManagerPanel proxies={scopedProxies} workspaces={[]} onReload={onReloadProxies} />
+            ) : null}
           </div>
 
-          <div className="cm2-detail-col">
+          <div className="cm2-detail-col" hidden={resourceTab === "keys"}>
             {detail.kind === "view" ? (
               <DetailCard
                 connection={detail.connection}
@@ -549,7 +560,7 @@ export const ConnectionManagerV2 = ({
                       : { kind: "empty" }
                   )
                 }
-                onCreateKey={() => message.info("密钥创建入口在下一步接入")}
+                onCreateKey={() => setResourceTab("keys")}
               />
             ) : (
               <p className="cm2-placeholder">单击一行查看详情，双击直接连接</p>

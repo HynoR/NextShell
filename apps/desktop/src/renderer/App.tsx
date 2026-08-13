@@ -837,6 +837,8 @@ export const App = () => {
                 await startSession(connectionId);
               }}
               onReloadConnections={loadConnections}
+              onReloadSshKeys={loadSshKeys}
+              onReloadProxies={loadProxies}
             />
           </Suspense>
         ) : null}
