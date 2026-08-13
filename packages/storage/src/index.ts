@@ -16,6 +16,7 @@ import type {
   RecycleBinEntry,
   AuditLogRecord,
   CommandHistoryEntry,
+  ConnectionFolder,
   ConnectionListQuery,
   ConnectionProfile,
   MasterKeyMeta,
@@ -1540,8 +1541,151 @@ const migrations: MigrationDefinition[] = [
         "agent_access TEXT NOT NULL DEFAULT 'off'"
       );
     }
+  },
+  {
+    version: 25,
+    name: "create_connection_folders_table",
+    apply: (db) => {
+      // Folders become real rows so that empty folders survive, and rename/delete/reorder
+      // become single writes instead of rewriting every child connection's group_path.
+      // Purely additive: group_path stays and keeps driving every existing read path, so
+      // this migration changes no behaviour on its own.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS connection_folders (
+          id TEXT PRIMARY KEY,
+          scope_key TEXT NOT NULL,
+          parent_id TEXT REFERENCES connection_folders(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          sort_index INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_connection_folders_scope
+          ON connection_folders(scope_key);
+        CREATE INDEX IF NOT EXISTS idx_connection_folders_parent
+          ON connection_folders(parent_id);
+        -- Siblings must be uniquely nameable: the tree is addressed by name in the UI, and
+        -- the backfill below relies on this to merge duplicate legacy paths instead of
+        -- creating two indistinguishable folders.
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_connection_folders_sibling_name
+          ON connection_folders(scope_key, IFNULL(parent_id, ''), name);
+      `);
+
+      ensureColumn(
+        db,
+        "connections",
+        "folder_id",
+        "folder_id TEXT REFERENCES connection_folders(id) ON DELETE SET NULL"
+      );
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_connections_folder_id ON connections(folder_id);"
+      );
+
+      backfillConnectionFolders(db);
+    }
   }
 ];
+
+/**
+ * 把历史 `group_path` 里的用户目录部分拆出来。
+ *
+ * zone 前缀(`server` / `import` / `workspace/<slug>`)只是旧模型用来编码隔离域的,隔离域现在由
+ * `origin_scope_key` 单独承载,所以这里一律剥掉——`/import/finalshell/hk` 会被提升成顶层的
+ * `finalshell/hk`,而不是继续挂在一个叫"文件导入"的伪目录下面。
+ */
+export const splitLegacyGroupPath = (groupPath: string | null | undefined): string[] => {
+  const segments = (groupPath ?? "").split("/").filter((segment) => segment.length > 0);
+  const head = segments[0];
+  if (head === "workspace") {
+    // /workspace/<slug>/a/b —— slug 也是隔离域的一部分,连同 zone 一起剥掉。
+    return segments.slice(2);
+  }
+  if (head === "server" || head === "import") {
+    return segments.slice(1);
+  }
+  return segments;
+};
+
+export interface LegacyConnectionFolderRow {
+  id: string;
+  group_path: string | null;
+  origin_scope_key: string | null;
+}
+
+export interface ConnectionFolderBackfillPlan {
+  /** 按父先于子的顺序排列,可直接顺序插入。 */
+  folders: Array<{ id: string; scopeKey: string; parentId: string | null; name: string }>;
+  /** 只包含真正落在某个目录下的连接;顶层连接不出现在这里(folder_id 保持 NULL)。 */
+  assignments: Array<{ connectionId: string; folderId: string }>;
+}
+
+/**
+ * 把历史连接行翻译成目录表的插入计划。做成纯函数是因为 better-sqlite3 是按 Electron ABI 编译
+ * 的,测试进程里加载不了——迁移的判断逻辑必须能脱离数据库验证。
+ *
+ * 同一 scope 下前缀剥离后同名的旧路径(例如 `/server/prod` 与 `/import/prod`)会合并到同一个
+ * 目录,这也正是 sibling 唯一索引所要求的。
+ */
+export const planConnectionFolderBackfill = (
+  rows: readonly LegacyConnectionFolderRow[],
+  generateId: () => string = randomUUID
+): ConnectionFolderBackfillPlan => {
+  const plan: ConnectionFolderBackfillPlan = { folders: [], assignments: [] };
+  const byKey = new Map<string, string>();
+
+  for (const row of rows) {
+    const scopeKey = row.origin_scope_key ?? LOCAL_DEFAULT_SCOPE_KEY;
+    let parentId: string | null = null;
+    for (const name of splitLegacyGroupPath(row.group_path)) {
+      const key = `${scopeKey} ${parentId ?? ""} ${name}`;
+      const existing = byKey.get(key);
+      if (existing) {
+        parentId = existing;
+        continue;
+      }
+      const id = generateId();
+      byKey.set(key, id);
+      plan.folders.push({ id, scopeKey, parentId, name });
+      parentId = id;
+    }
+    if (parentId) {
+      plan.assignments.push({ connectionId: row.id, folderId: parentId });
+    }
+  }
+
+  return plan;
+};
+
+const backfillConnectionFolders = (db: Database.Database): void => {
+  const rows = db
+    .prepare("SELECT id, group_path, origin_scope_key FROM connections")
+    .all() as LegacyConnectionFolderRow[];
+  const plan = planConnectionFolderBackfill(rows);
+  if (plan.folders.length === 0) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const insertFolder = db.prepare(
+    `INSERT INTO connection_folders (id, scope_key, parent_id, name, sort_index, created_at, updated_at)
+     VALUES (@id, @scope_key, @parent_id, @name, 0, @now, @now)`
+  );
+  const setFolder = db.prepare("UPDATE connections SET folder_id = ? WHERE id = ?");
+
+  for (const folder of plan.folders) {
+    insertFolder.run({
+      id: folder.id,
+      scope_key: folder.scopeKey,
+      parent_id: folder.parentId,
+      name: folder.name,
+      now
+    });
+  }
+  for (const assignment of plan.assignments) {
+    setFolder.run(assignment.folderId, assignment.connectionId);
+  }
+};
 
 export interface SshKeyRepository {
   list: () => SshKeyProfile[];
@@ -3412,5 +3556,212 @@ class SQLiteSecretStore implements SecretStoreDB {
       tag_b64: string;
       aad: string;
     }>;
+  }
+}
+
+// ─── SQLiteConnectionFolderRepository ───────────────────────────────────────
+
+export interface ConnectionFolderCreateInput {
+  scopeKey: string;
+  name: string;
+  parentId?: string;
+  sortIndex?: number;
+}
+
+export interface ConnectionFolderRepository {
+  /** 省略 scopeKey 时返回全部隔离域的目录。 */
+  list: (scopeKey?: string) => ConnectionFolder[];
+  getById: (id: string) => ConnectionFolder | undefined;
+  create: (input: ConnectionFolderCreateInput) => ConnectionFolder;
+  rename: (id: string, name: string) => ConnectionFolder;
+  /** parentId 为 undefined 表示移到顶层。跨 scope 与成环都会抛错。 */
+  move: (id: string, parentId: string | undefined) => ConnectionFolder;
+  reorder: (id: string, sortIndex: number) => ConnectionFolder;
+  /** 级联删除子目录;其中的连接 folder_id 置空(连接本身不删)。 */
+  remove: (id: string) => void;
+  /** 目录自身及其所有子目录里的连接数。 */
+  countConnections: (id: string) => number;
+}
+
+interface ConnectionFolderRow {
+  id: string;
+  scope_key: string;
+  parent_id: string | null;
+  name: string;
+  sort_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const rowToConnectionFolder = (row: ConnectionFolderRow): ConnectionFolder => ({
+  id: row.id,
+  scopeKey: row.scope_key,
+  parentId: row.parent_id ?? undefined,
+  name: row.name,
+  sortIndex: row.sort_index,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at
+});
+
+const FOLDER_COLUMNS =
+  "id, scope_key, parent_id, name, sort_index, created_at, updated_at";
+
+export const normalizeFolderName = (name: string): string => {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("目录名称不能为空");
+  }
+  if (trimmed.includes("/") || trimmed.includes("\\")) {
+    throw new Error("目录名称不能包含 / 或 \\");
+  }
+  return trimmed;
+};
+
+/**
+ * 校验一次目录移动是否合法。抽成纯函数(靠 `lookup` 拿父链)是为了让成环与跨 scope 这两条守卫
+ * 能脱离数据库测试——SQLite 会老老实实存下自环边,然后整棵子树从所有查询里消失。
+ */
+export const assertFolderMoveAllowed = (
+  folder: ConnectionFolder,
+  parentId: string | undefined,
+  lookup: (id: string) => ConnectionFolder | undefined
+): void => {
+  if (!parentId) {
+    return;
+  }
+  if (parentId === folder.id) {
+    throw new Error("目录不能移动到自身之下");
+  }
+  const parent = lookup(parentId);
+  if (!parent) {
+    throw new Error("目标目录不存在");
+  }
+  if (parent.scopeKey !== folder.scopeKey) {
+    throw new Error("目录不能跨来源范围移动");
+  }
+  let cursor = parent.parentId;
+  while (cursor) {
+    if (cursor === folder.id) {
+      throw new Error("目录不能移动到自己的子目录之下");
+    }
+    cursor = lookup(cursor)?.parentId;
+  }
+};
+
+export class SQLiteConnectionFolderRepository implements ConnectionFolderRepository {
+  constructor(private readonly db: Database.Database) {}
+
+  list(scopeKey?: string): ConnectionFolder[] {
+    const rows = (
+      scopeKey
+        ? this.db
+            .prepare(
+              `SELECT ${FOLDER_COLUMNS} FROM connection_folders WHERE scope_key = ? ORDER BY sort_index ASC, name ASC`
+            )
+            .all(scopeKey)
+        : this.db
+            .prepare(
+              `SELECT ${FOLDER_COLUMNS} FROM connection_folders ORDER BY scope_key ASC, sort_index ASC, name ASC`
+            )
+            .all()
+    ) as ConnectionFolderRow[];
+    return rows.map(rowToConnectionFolder);
+  }
+
+  getById(id: string): ConnectionFolder | undefined {
+    const row = this.db
+      .prepare(`SELECT ${FOLDER_COLUMNS} FROM connection_folders WHERE id = ?`)
+      .get(id) as ConnectionFolderRow | undefined;
+    return row ? rowToConnectionFolder(row) : undefined;
+  }
+
+  private getOrThrow(id: string): ConnectionFolder {
+    const folder = this.getById(id);
+    if (!folder) {
+      throw new Error("目录不存在");
+    }
+    return folder;
+  }
+
+  create(input: ConnectionFolderCreateInput): ConnectionFolder {
+    const name = normalizeFolderName(input.name);
+    if (input.parentId) {
+      const parent = this.getOrThrow(input.parentId);
+      if (parent.scopeKey !== input.scopeKey) {
+        throw new Error("目录不能跨来源范围嵌套");
+      }
+    }
+    const now = new Date().toISOString();
+    const folder: ConnectionFolder = {
+      id: randomUUID(),
+      scopeKey: input.scopeKey,
+      parentId: input.parentId,
+      name,
+      sortIndex: input.sortIndex ?? 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    this.db
+      .prepare(
+        `INSERT INTO connection_folders (${FOLDER_COLUMNS})
+         VALUES (@id, @scope_key, @parent_id, @name, @sort_index, @created_at, @updated_at)`
+      )
+      .run({
+        id: folder.id,
+        scope_key: folder.scopeKey,
+        parent_id: folder.parentId ?? null,
+        name: folder.name,
+        sort_index: folder.sortIndex,
+        created_at: folder.createdAt,
+        updated_at: folder.updatedAt
+      });
+    return folder;
+  }
+
+  rename(id: string, name: string): ConnectionFolder {
+    const folder = this.getOrThrow(id);
+    const nextName = normalizeFolderName(name);
+    const now = new Date().toISOString();
+    this.db
+      .prepare("UPDATE connection_folders SET name = ?, updated_at = ? WHERE id = ?")
+      .run(nextName, now, id);
+    return { ...folder, name: nextName, updatedAt: now };
+  }
+
+  move(id: string, parentId: string | undefined): ConnectionFolder {
+    const folder = this.getOrThrow(id);
+    assertFolderMoveAllowed(folder, parentId, (candidate) => this.getById(candidate));
+    const now = new Date().toISOString();
+    this.db
+      .prepare("UPDATE connection_folders SET parent_id = ?, updated_at = ? WHERE id = ?")
+      .run(parentId ?? null, now, id);
+    return { ...folder, parentId, updatedAt: now };
+  }
+
+  reorder(id: string, sortIndex: number): ConnectionFolder {
+    const folder = this.getOrThrow(id);
+    const now = new Date().toISOString();
+    this.db
+      .prepare("UPDATE connection_folders SET sort_index = ?, updated_at = ? WHERE id = ?")
+      .run(sortIndex, now, id);
+    return { ...folder, sortIndex, updatedAt: now };
+  }
+
+  remove(id: string): void {
+    this.db.prepare("DELETE FROM connection_folders WHERE id = ?").run(id);
+  }
+
+  countConnections(id: string): number {
+    const row = this.db
+      .prepare(
+        `WITH RECURSIVE subtree(id) AS (
+           SELECT ?
+           UNION ALL
+           SELECT f.id FROM connection_folders f JOIN subtree s ON f.parent_id = s.id
+         )
+         SELECT COUNT(*) AS total FROM connections WHERE folder_id IN (SELECT id FROM subtree)`
+      )
+      .get(id) as { total: number };
+    return row.total;
   }
 }

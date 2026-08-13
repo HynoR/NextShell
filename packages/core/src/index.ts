@@ -192,6 +192,25 @@ export const buildResourceId = (scopeKey: string, uuidInScope: string): string =
   `${scopeKey}-${uuidInScope}`;
 
 /** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
+/**
+ * 用户自建的连接目录。取代靠 `groupPath` 字符串聚合出来的伪目录:目录成为实体后才能持久化空
+ * 目录、重命名、删除与排序。
+ *
+ * `scopeKey` 是隔离边界(本地 / 某个云 workspace),与连接、密钥、代理用的是同一个口径
+ * (`LOCAL_DEFAULT_SCOPE_KEY` 或 `buildScopeKey({ kind: "cloud", … })`);目录不跨 scope 引用。
+ */
+export interface ConnectionFolder {
+  id: string;
+  scopeKey: string;
+  /** 顶层目录为 undefined。 */
+  parentId?: string;
+  name: string;
+  /** 同级手工排序;相同值时按 name 兜底。 */
+  sortIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SshKeyProfile {
   id: string;
   name: string;
