@@ -4,6 +4,7 @@ import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { deleteExplorerCache } from "../components/FileExplorerPane/explorerStateCache";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { persistConnectionWrite } from "./useConnectionManager.helpers";
 
 export function useConnectionManager() {
   const { message } = AntdApp.useApp();
@@ -37,14 +38,11 @@ export function useConnectionManager() {
   }, [activeConnectionId, setActiveConnection, setConnections, removeMonitorSnapshot]);
 
   const handleConnectionSaved = async (payload: ConnectionUpsertInput): Promise<void> => {
-    try {
+    await persistConnectionWrite(async () => {
       await window.nextshell.connection.upsert(payload);
       const refreshed = await window.nextshell.connection.list({});
       setConnections(refreshed);
-    } catch (error) {
-      message.error(`保存连接失败：${formatErrorMessage(error, "请稍后重试")}`);
-      void loadConnections();
-    }
+    }, loadConnections);
   };
 
   const handleConnectionRemoved = async (connectionId: string): Promise<void> => {
@@ -61,6 +59,7 @@ export function useConnectionManager() {
     } catch (error) {
       message.error(`删除连接失败：${formatErrorMessage(error, "请稍后重试")}`);
       setConnections(prevConnections);
+      throw error;
     }
   };
 
