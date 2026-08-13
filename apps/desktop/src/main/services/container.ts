@@ -733,6 +733,7 @@ export const createServiceContainer = async (
   });
 
   const connectionSvc = new ConnectionService({
+    connectionFolders: folderRepo,
     connections,
     sshKeyRepo,
     proxyRepo,

@@ -10,6 +10,8 @@ import type {
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import {
+  deriveGroupPath,
+  resolveFolderNames,
   resourceMatchesOriginScope,
   resolveOriginScopeKey,
   type ConnectionBatchAuthUpdateInput,
@@ -27,8 +29,9 @@ import type { SshKeyAlgorithm, SshKeyMaterialInfo } from "@nextshell/ssh";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
+  CachedProxyRepository,
   CachedSshKeyRepository,
-  CachedProxyRepository
+  ConnectionFolderRepository
 } from "@nextshell/storage";
 import type { RemoteEditManager } from "./remote-edit-manager";
 import type { ActiveSession, ActiveRemoteSession, MonitorState } from "./container-types";
@@ -41,6 +44,7 @@ export interface ConnectionServiceOptions {
   connections: CachedConnectionRepository;
   sshKeyRepo: CachedSshKeyRepository;
   proxyRepo: CachedProxyRepository;
+  connectionFolders: ConnectionFolderRepository;
   vault: EncryptedSecretVault;
   activeSessions: Map<string, ActiveSession>;
   disposeAllMonitorSessions: (connectionId: string) => Promise<void>;
@@ -135,6 +139,31 @@ export class ConnectionService {
       resourceId: buildResourceId(scopeKey, uuidInScope),
       copiedFromResourceId: current?.copiedFromResourceId
     };
+  }
+
+  /**
+   * 目录 → groupPath 投影。目录必须与连接同属一个隔离域,否则一条本地连接会被投影到某个
+   * workspace 路径下,云同步会把它当成那个 workspace 的资源。
+   */
+  private deriveGroupPathFromFolder(
+    folderId: string | undefined,
+    origin: { originScopeKey: string; originWorkspaceId?: string }
+  ): string {
+    const workspaceName = origin.originWorkspaceId
+      ? this.getCloudWorkspace(origin.originWorkspaceId)?.workspaceName
+      : undefined;
+    if (!folderId) {
+      return deriveGroupPath({ scopeKey: origin.originScopeKey, workspaceName, folderNames: [] });
+    }
+    const folders = this.options.connectionFolders.list(origin.originScopeKey);
+    if (!folders.some((folder) => folder.id === folderId)) {
+      throw new Error("目标目录不存在或不属于该来源范围");
+    }
+    return deriveGroupPath({
+      scopeKey: origin.originScopeKey,
+      workspaceName,
+      folderNames: resolveFolderNames(folderId, folders)
+    });
   }
 
   // ── Connection CRUD ───────────────────────────────────────────────
@@ -284,8 +313,13 @@ export class ConnectionService {
       }
     }
 
-    // Enforce zone prefix on groupPath to guarantee valid zone isolation
-    const safeGroupPath = enforceZonePrefix(input.groupPath);
+    // folderId is the local source of truth; groupPath is the projection the cloud-sync
+    // wire format, the MCP tool schema and export files still read. Callers that predate
+    // folders (import, quick connect, auth rewrites) keep passing a path instead.
+    const safeGroupPath =
+      input.folderId !== undefined
+        ? this.deriveGroupPathFromFolder(input.folderId, origin)
+        : enforceZonePrefix(input.groupPath);
 
     const profile: ConnectionProfile = {
       id,
@@ -305,6 +339,7 @@ export class ConnectionService {
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
       groupPath: safeGroupPath,
+      folderId: input.folderId ?? current?.folderId,
       tags: input.tags,
       notes: input.notes,
       favorite: input.favorite,

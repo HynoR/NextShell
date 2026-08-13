@@ -66,6 +66,7 @@ interface ConnectionRow {
   backspace_mode: "ascii-backspace" | "ascii-delete" | null;
   delete_mode: "vt220-delete" | "ascii-delete" | "ascii-backspace" | null;
   group_path: string;
+  folder_id: string | null;
   tags: string;
   notes: string | null;
   favorite: number;
@@ -418,6 +419,7 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
         ? row.delete_mode
         : "vt220-delete",
     groupPath: parseGroupPath(row.group_path),
+    folderId: row.folder_id ?? undefined,
     tags: fromJSON(row.tags),
     notes: row.notes ?? undefined,
     favorite: row.favorite === 1,
@@ -1949,6 +1951,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             backspace_mode,
             delete_mode,
             group_path,
+            folder_id,
             tags,
             notes,
             favorite,
@@ -2038,6 +2041,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             @backspace_mode,
             @delete_mode,
             @group_path,
+            @folder_id,
             @tags,
             @notes,
             @favorite,
@@ -2071,6 +2075,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
             backspace_mode = excluded.backspace_mode,
             delete_mode = excluded.delete_mode,
             group_path = excluded.group_path,
+            folder_id = excluded.folder_id,
             tags = excluded.tags,
             notes = excluded.notes,
             favorite = excluded.favorite,
@@ -2107,6 +2112,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         backspace_mode: connection.backspaceMode,
         delete_mode: connection.deleteMode,
         group_path: connection.groupPath,
+        folder_id: connection.folderId ?? null,
         tags: toJSON(connection.tags),
         notes: connection.notes ?? null,
         favorite: connection.favorite ? 1 : 0,

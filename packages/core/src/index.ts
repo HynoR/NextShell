@@ -296,7 +296,14 @@ export interface ConnectionProfile {
   backspaceMode: BackspaceMode;
   deleteMode: DeleteMode;
   /** 分组路径，如 /server/hk，以 / 分隔层级 */
+  /**
+   * 派生投影：由 scope + 目录链算出来，写入时维护。
+   * 之所以还留着，是因为云同步线协议、MCP 工具 schema 与导出文件格式都读它。
+   * 本地的唯一真相是 `folderId`。
+   */
   groupPath: string;
+  /** 所属目录；顶层为 undefined。 */
+  folderId?: string;
   tags: string[];
   notes?: string;
   favorite: boolean;

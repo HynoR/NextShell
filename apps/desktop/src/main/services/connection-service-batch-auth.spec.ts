@@ -7,7 +7,8 @@ import {
 import type {
   CachedConnectionRepository,
   CachedProxyRepository,
-  CachedSshKeyRepository
+  CachedSshKeyRepository,
+  ConnectionFolderRepository
 } from "@nextshell/storage";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import { ConnectionService } from "./connection-service";
@@ -77,6 +78,10 @@ const createService = (connections: ConnectionProfile[], sshKeys: SshKeyProfile[
         return connection;
       }
     } as unknown as CachedConnectionRepository,
+    // 批量认证不碰目录；给个空实现即可，folderId 缺席时 upsert 走 groupPath 兼容路径。
+    connectionFolders: {
+      list: () => []
+    } as unknown as ConnectionFolderRepository,
     sshKeyRepo: {
       getById: (id: string) => sshKeyMap.get(id)
     } as unknown as CachedSshKeyRepository,

@@ -59,6 +59,11 @@ export const connectionUpsertSchema = z
     authType: authTypeSchema.default("password"),
     password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
     sshKeyId: z.string().uuid().optional(),
+    /**
+     * 目标目录。给了它就由它派生 groupPath；没给则沿用传入的 groupPath（旧调用方：
+     * 导入、快速连接、认证改写）。
+     */
+    folderId: z.string().uuid().optional(),
     hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
     strictHostKeyChecking: z.boolean().default(false),
     proxyId: z.string().uuid().optional(),
