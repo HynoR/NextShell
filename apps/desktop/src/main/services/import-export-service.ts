@@ -24,7 +24,6 @@ import type { EncryptedSecretVault } from "@nextshell/security";
 import type { CachedConnectionRepository, CachedSshKeyRepository } from "@nextshell/storage";
 import {
   enrichImportEntry,
-  hashSshKeyContent,
   isFinalShellFormat,
   isNextShellFormat,
   parseFinalShellImport,
@@ -215,7 +214,7 @@ export class ImportExportService {
           continue;
         }
 
-        const entriesWithSource = await this.enrichImportEntries(
+        const entriesWithSource = this.enrichImportEntries(
           entries.map((entry) => ({
             ...entry,
             sourceFileName: file.fileName,
@@ -262,7 +261,7 @@ export class ImportExportService {
     };
 
     const allConnections = this.connections.list({});
-    const keyCandidates = await this.loadSshKeyMatchCandidates(true);
+    const keyCandidates = this.loadSshKeyMatchCandidates();
 
     for (const entry of input.entries) {
       try {
@@ -373,7 +372,7 @@ export class ImportExportService {
         /* If we can't read the credential, export without password */
       }
     }
-    const sshKeyRef = conn.sshKeyId ? await this.buildExportedSshKeyRef(conn.sshKeyId) : undefined;
+    const sshKeyRef = conn.sshKeyId ? this.buildExportedSshKeyRef(conn.sshKeyId) : undefined;
     return {
       name: conn.name,
       host: conn.host,
@@ -395,53 +394,29 @@ export class ImportExportService {
     };
   }
 
-  private async buildExportedSshKeyRef(
-    sshKeyId: string
-  ): Promise<ExportedConnection["sshKeyRef"] | undefined> {
+  /**
+   * 只带名称与 OpenSSH 公钥指纹,永远不带私钥内容。指纹在保存密钥时就解析好落库了,所以这里
+   * 不需要碰 vault。
+   */
+  private buildExportedSshKeyRef(sshKeyId: string): ExportedConnection["sshKeyRef"] | undefined {
     const key = this.sshKeyRepo.getById(sshKeyId);
     if (!key) {
       return undefined;
     }
-    let fingerprint: string | undefined;
-    try {
-      const content = await this.vault.readCredential(key.keyContentRef);
-      if (content) {
-        fingerprint = hashSshKeyContent(content);
-      }
-    } catch {
-      /* Export the name even if the vault cannot yield a fingerprint. */
-    }
-    return { name: key.name, fingerprint };
+    return { name: key.name, fingerprint: key.fingerprint };
   }
 
-  private async enrichImportEntries(
-    entries: ConnectionImportEntry[]
-  ): Promise<ConnectionImportEntry[]> {
-    const needFingerprints = entries.some((entry) => Boolean(entry.sshKeyRef?.fingerprint));
-    const keys = await this.loadSshKeyMatchCandidates(needFingerprints);
+  private enrichImportEntries(entries: ConnectionImportEntry[]): ConnectionImportEntry[] {
+    const keys = this.loadSshKeyMatchCandidates();
     return entries.map((entry) => enrichImportEntry(entry, keys));
   }
 
-  private async loadSshKeyMatchCandidates(
-    needFingerprints: boolean
-  ): Promise<SshKeyMatchCandidate[]> {
-    const keys = this.sshKeyRepo.list();
-    const candidates: SshKeyMatchCandidate[] = [];
-    for (const key of keys) {
-      let fingerprint: string | undefined;
-      if (needFingerprints) {
-        try {
-          const content = await this.vault.readCredential(key.keyContentRef);
-          if (content) {
-            fingerprint = hashSshKeyContent(content);
-          }
-        } catch {
-          /* Name matching still works if the vault read fails. */
-        }
-      }
-      candidates.push({ id: key.id, name: key.name, fingerprint });
-    }
-    return candidates;
+  private loadSshKeyMatchCandidates(): SshKeyMatchCandidate[] {
+    // Keys stored before fingerprints were parsed carry none; those fall back to name
+    // matching, which enrichImportEntry already handles.
+    return this.sshKeyRepo
+      .list()
+      .map((key) => ({ id: key.id, name: key.name, fingerprint: key.fingerprint }));
   }
 
   private toImportedUpsertInput(

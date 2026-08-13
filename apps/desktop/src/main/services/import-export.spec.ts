@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 import type { ConnectionExportFile } from "@nextshell/core";
 import {
   enrichImportEntry,
-  hashSshKeyContent,
   mapFinalShellAuth,
   matchSshKeyRef,
   parseFinalShellImport,
@@ -198,14 +197,4 @@ describe("imported SSH key matching", () => {
     expect(resolved.sshKeyId).toBe("22222222-2222-4222-8222-222222222222");
   });
 
-  test("key-content hash is stable and never claims to be an OpenSSH fingerprint", () => {
-    const first = hashSshKeyContent("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
-    const second = hashSshKeyContent("-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n");
-    expect(first).toMatch(/^sha256-content:/);
-    // `SHA256:` 是 ssh-keygen 公钥指纹的格式,留给后续真正解析私钥时使用;
-    // 现在这个值不能冒用它,否则两代格式会互相误判。
-    expect(first).not.toMatch(/^SHA256:/);
-    expect(first).toBe(second);
-    expect(hashSshKeyContent("other")).not.toBe(first);
-  });
 });

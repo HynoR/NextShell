@@ -22,6 +22,8 @@ import {
   type ProxyUpsertInput,
   type ProxyRemoveInput
 } from "@nextshell/shared";
+import { generateSshKeyPair, parseSshKeyMaterial } from "@nextshell/ssh";
+import type { SshKeyAlgorithm, SshKeyMaterialInfo } from "@nextshell/ssh";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
@@ -471,6 +473,17 @@ export class ConnectionService {
     const current = sshKeyRepo.getById(id);
     const origin = this.resolveResourceOrigin(current, input.workspaceId);
 
+    // Parse before touching the vault: a pasted public key, a truncated file or a wrong
+    // passphrase must fail here rather than at connect time, and the metadata it yields is
+    // what lets the UI show a fingerprint and what lets an import rebind automatically.
+    let material: SshKeyMaterialInfo | undefined;
+    if (input.keyContent) {
+      const passphrase =
+        input.passphrase ??
+        (current?.passphraseRef ? await vault.readCredential(current.passphraseRef) : undefined);
+      material = parseSshKeyMaterial(input.keyContent, passphrase || undefined);
+    }
+
     // Store key content in vault
     let keyContentRef = current?.keyContentRef;
     if (input.keyContent) {
@@ -500,6 +513,12 @@ export class ConnectionService {
       name: input.name,
       keyContentRef,
       passphraseRef,
+      // Keep whatever was parsed before when only the name changed.
+      keyType: material?.keyType ?? current?.keyType,
+      keyBits: material?.bits ?? current?.keyBits,
+      keyComment: material?.comment ?? current?.keyComment,
+      fingerprint: material?.fingerprint ?? current?.fingerprint,
+      publicKeyLine: material?.publicKeyLine ?? current?.publicKeyLine,
       createdAt: current?.createdAt ?? now,
       updatedAt: now,
       resourceId: origin.resourceId,
@@ -515,6 +534,37 @@ export class ConnectionService {
       this.options.getCloudSyncManager?.()?.pushSshKeyUpsert(profile);
     }
     return profile;
+  }
+
+  /**
+   * 生成并保存一把新密钥。私钥只在这里短暂存在于内存,随即进 vault;返回的 profile 里只有
+   * 指纹和公钥,渲染进程永远拿不到私钥。
+   */
+  async generateSshKey(input: {
+    name: string;
+    algorithm: SshKeyAlgorithm;
+    comment?: string;
+    workspaceId?: string;
+  }): Promise<SshKeyProfile> {
+    const generated = generateSshKeyPair(input.algorithm, input.comment ?? "");
+    return this.upsertSshKey({
+      name: input.name,
+      keyContent: generated.privateKey,
+      workspaceId: input.workspaceId
+    });
+  }
+
+  /** 哪些连接正引用这把密钥。删除前的告知、以及密钥详情页的"被 N 个连接使用"都用它。 */
+  listSshKeyUsage(sshKeyId: string): Array<{ id: string; name: string; groupPath: string }> {
+    const ids = new Set(this.options.sshKeyRepo.getReferencingConnectionIds(sshKeyId));
+    return this.options.connections
+      .list({})
+      .filter((connection) => ids.has(connection.id))
+      .map((connection) => ({
+        id: connection.id,
+        name: connection.name,
+        groupPath: connection.groupPath
+      }));
   }
 
   async removeSshKeyRecord(input: SshKeyRemoveInput): Promise<{ ok: true }> {

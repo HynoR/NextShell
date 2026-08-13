@@ -89,6 +89,11 @@ interface SshKeyRow {
   name: string;
   key_content_ref: string;
   passphrase_ref: string | null;
+  key_type: string | null;
+  key_bits: number | null;
+  key_comment: string | null;
+  fingerprint: string | null;
+  public_key_line: string | null;
   created_at: string;
   updated_at: string;
   // v2 origin fields (nullable for old data)
@@ -442,6 +447,11 @@ const rowToSshKey = (row: SshKeyRow): SshKeyProfile => {
     name: row.name,
     keyContentRef: row.key_content_ref,
     passphraseRef: row.passphrase_ref ?? undefined,
+    keyType: row.key_type ?? undefined,
+    keyBits: row.key_bits ?? undefined,
+    keyComment: row.key_comment ?? undefined,
+    fingerprint: row.fingerprint ?? undefined,
+    publicKeyLine: row.public_key_line ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     resourceId,
@@ -1583,6 +1593,23 @@ const migrations: MigrationDefinition[] = [
       );
 
       backfillConnectionFolders(db);
+    }
+  },
+  {
+    version: 26,
+    name: "add_ssh_key_material_columns",
+    apply: (db) => {
+      // Parsed-on-save key metadata. Left NULL for keys stored before this migration:
+      // their private key sits in the vault, which migrations cannot read, so they are
+      // backfilled lazily the next time the key is saved.
+      ensureColumn(db, "ssh_keys", "key_type", "key_type TEXT");
+      ensureColumn(db, "ssh_keys", "key_bits", "key_bits INTEGER");
+      ensureColumn(db, "ssh_keys", "key_comment", "key_comment TEXT");
+      ensureColumn(db, "ssh_keys", "fingerprint", "fingerprint TEXT");
+      ensureColumn(db, "ssh_keys", "public_key_line", "public_key_line TEXT");
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);"
+      );
     }
   }
 ];
@@ -3274,7 +3301,7 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
   list(): SshKeyProfile[] {
     const rows = this.db
       .prepare(
-        "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys ORDER BY name ASC"
+        "SELECT id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys ORDER BY name ASC"
       )
       .all() as SshKeyRow[];
     return rows.map(rowToSshKey);
@@ -3283,7 +3310,7 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
   getById(id: string): SshKeyProfile | undefined {
     const row = this.db
       .prepare(
-        "SELECT id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys WHERE id = ?"
+        "SELECT id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys WHERE id = ?"
       )
       .get(id) as SshKeyRow | undefined;
     return row ? rowToSshKey(row) : undefined;
@@ -3293,12 +3320,17 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
     this.db
       .prepare(
         `
-        INSERT INTO ssh_keys (id, name, key_content_ref, passphrase_ref, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id)
-        VALUES (@id, @name, @key_content_ref, @passphrase_ref, @created_at, @updated_at, @resource_id, @uuid_in_scope, @origin_kind, @origin_scope_key, @origin_workspace_id, @copied_from_resource_id)
+        INSERT INTO ssh_keys (id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id)
+        VALUES (@id, @name, @key_content_ref, @passphrase_ref, @key_type, @key_bits, @key_comment, @fingerprint, @public_key_line, @created_at, @updated_at, @resource_id, @uuid_in_scope, @origin_kind, @origin_scope_key, @origin_workspace_id, @copied_from_resource_id)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           key_content_ref = excluded.key_content_ref,
           passphrase_ref = excluded.passphrase_ref,
+          key_type = excluded.key_type,
+          key_bits = excluded.key_bits,
+          key_comment = excluded.key_comment,
+          fingerprint = excluded.fingerprint,
+          public_key_line = excluded.public_key_line,
           updated_at = excluded.updated_at,
           resource_id = excluded.resource_id,
           uuid_in_scope = excluded.uuid_in_scope,
@@ -3313,6 +3345,11 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
         name: key.name,
         key_content_ref: key.keyContentRef,
         passphrase_ref: key.passphraseRef ?? null,
+        key_type: key.keyType ?? null,
+        key_bits: key.keyBits ?? null,
+        key_comment: key.keyComment ?? null,
+        fingerprint: key.fingerprint ?? null,
+        public_key_line: key.publicKeyLine ?? null,
         created_at: key.createdAt,
         updated_at: key.updatedAt,
         resource_id: key.resourceId ?? null,

@@ -30,6 +30,9 @@ import type {
   AppPreferencesPatchInput,
   AuditClearInput,
   ConnectionFolderCreateInput,
+  SshKeyGenerateInput,
+  SshKeyUsageInput,
+  SshKeyUsageItem,
   ConnectionFolderListInput,
   ConnectionFolderMoveInput,
   ConnectionFolderRemoveInput,
@@ -383,6 +386,8 @@ export interface NextShellApi {
     list: (payload?: SshKeyListInput) => Promise<SshKeyProfile[]>;
     upsert: (payload: SshKeyUpsertInput) => Promise<SshKeyProfile>;
     remove: (payload: SshKeyRemoveInput) => Promise<{ ok: true }>;
+    generate: (payload: SshKeyGenerateInput) => Promise<SshKeyProfile>;
+    usage: (payload: SshKeyUsageInput) => Promise<SshKeyUsageItem[]>;
   };
   proxy: {
     list: (payload?: ProxyListInput) => Promise<ProxyProfile[]>;
@@ -524,6 +529,8 @@ export interface IpcInvokeMethods {
   [IPCChannel.SshKeyList]: NextShellApi["sshKey"]["list"];
   [IPCChannel.SshKeyUpsert]: NextShellApi["sshKey"]["upsert"];
   [IPCChannel.SshKeyRemove]: NextShellApi["sshKey"]["remove"];
+  [IPCChannel.SshKeyGenerate]: NextShellApi["sshKey"]["generate"];
+  [IPCChannel.SshKeyUsage]: NextShellApi["sshKey"]["usage"];
   [IPCChannel.ProxyList]: NextShellApi["proxy"]["list"];
   [IPCChannel.ProxyUpsert]: NextShellApi["proxy"]["upsert"];
   [IPCChannel.ProxyRemove]: NextShellApi["proxy"]["remove"];

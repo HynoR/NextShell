@@ -92,6 +92,8 @@ import {
   connectionFolderRemoveSchema,
   connectionFolderRenameSchema,
   connectionFolderReorderSchema,
+  sshKeyGenerateSchema,
+  sshKeyUsageSchema,
   sshKeyUpsertSchema,
   sshKeyRemoveSchema,
   proxyListSchema,
@@ -874,6 +876,19 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
       await services.resourceOps.deleteSshKey({ id: input.id, force: input.force });
       return { ok: true as const };
     }
+  }),
+
+  define({
+    channel: IPCChannel.SshKeyGenerate,
+    schema: sshKeyGenerateSchema,
+    label: "生成密钥",
+    dispatch: (services, input) => services.connections.generateSshKey(input)
+  }),
+  define({
+    channel: IPCChannel.SshKeyUsage,
+    schema: sshKeyUsageSchema,
+    label: "密钥引用",
+    dispatch: (services, input) => services.connections.listSshKeyUsage(input.id)
   }),
 
   // ─── Proxies ──────────────────────────────────────────────────────────────

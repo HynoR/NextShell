@@ -92,6 +92,14 @@ const normalizeProxyError = (error: unknown): Error => {
   return new Error(`Proxy is unreachable: ${message}`);
 };
 
+export {
+  generateSshKeyPair,
+  parseSshKeyMaterial,
+  type GeneratedSshKey,
+  type SshKeyAlgorithm,
+  type SshKeyMaterialInfo
+} from "./key-material";
+
 export interface SshProxyOptions {
   type: ProxyType;
   host: string;

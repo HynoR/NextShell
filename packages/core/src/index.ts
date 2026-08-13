@@ -191,7 +191,6 @@ export const buildScopeKey = (origin: {
 export const buildResourceId = (scopeKey: string, uuidInScope: string): string =>
   `${scopeKey}-${uuidInScope}`;
 
-/** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
 /**
  * 用户自建的连接目录。取代靠 `groupPath` 字符串聚合出来的伪目录:目录成为实体后才能持久化空
  * 目录、重命名、删除与排序。
@@ -211,6 +210,7 @@ export interface ConnectionFolder {
   updatedAt: string;
 }
 
+/** SSH 密钥实体 — 独立于服务器连接，可被多个连接引用 */
 export interface SshKeyProfile {
   id: string;
   name: string;
@@ -218,6 +218,16 @@ export interface SshKeyProfile {
   keyContentRef: string;
   /** 加密存储的 passphrase 引用 (secret://sshkey-{id}-pass)，可选 */
   passphraseRef?: string;
+  /** 保存时解析出的算法名，例如 ssh-ed25519 / ssh-rsa。 */
+  keyType?: string;
+  /** RSA 为模数位数，ed25519 恒为 256。 */
+  keyBits?: number;
+  /** 私钥自带的注释，通常是 user@host。 */
+  keyComment?: string;
+  /** OpenSSH 公钥指纹，与 `ssh-keygen -lf` 一致；导入时靠它自动重新绑定。 */
+  fingerprint?: string;
+  /** authorized_keys 可直接使用的单行公钥。私钥永远不出 vault。 */
+  publicKeyLine?: string;
   createdAt: string;
   updatedAt: string;
   /** 全局唯一资源 ID = "<scopeKey>-<uuidInScope>" */
@@ -814,10 +824,8 @@ export interface CommandTemplateParam {
 export interface ExportedSshKeyRef {
   name: string;
   /**
-   * 密钥的稳定标识,用于导入时自动重新绑定;读不到 vault 时可缺省,届时退回按名称匹配。
-   * 当前写入的是私钥文本摘要(`sha256-content:…`),等密钥子系统能解析私钥后会换成 OpenSSH
-   * 公钥指纹(`SHA256:…`)。两种前缀互不匹配,所以格式切换只会导致退回名称匹配 + 提示重新绑定,
-   * 不会误绑到别的密钥上。
+   * OpenSSH 公钥指纹(`SHA256:…`,与 `ssh-keygen -lf` 一致),导入时靠它自动重新绑定。
+   * 早于"保存即解析"的旧密钥没有指纹,那些条目退回按名称匹配。
    */
   fingerprint?: string;
 }

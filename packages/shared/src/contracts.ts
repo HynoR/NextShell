@@ -1108,6 +1108,27 @@ export const sshKeyUpsertSchema = z.object({
   passphrase: z.preprocess(trimToOptionalString, z.string().min(1).optional())
 });
 
+export const sshKeyAlgorithmSchema = z.enum(["ed25519", "rsa-2048", "rsa-4096"]);
+
+export const sshKeyGenerateSchema = z.object({
+  name: z.string().trim().min(1),
+  algorithm: sshKeyAlgorithmSchema.default("ed25519"),
+  /** 写进私钥的注释，通常是 user@host；留空则不写。 */
+  comment: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
+  workspaceId: z.string().trim().min(1).optional()
+});
+
+export const sshKeyUsageSchema = z.object({
+  id: z.string().uuid()
+});
+
+/** 引用某把密钥的连接，用于删除前告知与密钥详情页。 */
+export interface SshKeyUsageItem {
+  id: string;
+  name: string;
+  groupPath: string;
+}
+
 export const sshKeyRemoveSchema = z.object({
   id: z.string().uuid(),
   force: z.boolean().default(false)
@@ -1293,6 +1314,8 @@ export type ConnectionFolderReorderInput = z.infer<typeof connectionFolderReorde
 export type ConnectionFolderRemoveInput = z.infer<typeof connectionFolderRemoveSchema>;
 export type SshKeyUpsertInput = z.infer<typeof sshKeyUpsertSchema>;
 export type SshKeyRemoveInput = z.infer<typeof sshKeyRemoveSchema>;
+export type SshKeyGenerateInput = z.infer<typeof sshKeyGenerateSchema>;
+export type SshKeyUsageInput = z.infer<typeof sshKeyUsageSchema>;
 export type ProxyListInput = z.infer<typeof proxyListSchema>;
 export type ProxyUpsertInput = z.infer<typeof proxyUpsertSchema>;
 export type ProxyRemoveInput = z.infer<typeof proxyRemoveSchema>;

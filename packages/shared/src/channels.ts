@@ -110,6 +110,8 @@ export const IPCChannel = {
   SshKeyList: "nextshell:ssh-key:list",
   SshKeyUpsert: "nextshell:ssh-key:upsert",
   SshKeyRemove: "nextshell:ssh-key:remove",
+  SshKeyGenerate: "nextshell:ssh-key:generate",
+  SshKeyUsage: "nextshell:ssh-key:usage",
   ProxyList: "nextshell:proxy:list",
   ProxyUpsert: "nextshell:proxy:upsert",
   ProxyRemove: "nextshell:proxy:remove",

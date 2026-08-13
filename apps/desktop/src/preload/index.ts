@@ -306,7 +306,9 @@ const api: NextShellApi = {
   sshKey: {
     list: (payload) => invoke(IPCChannel.SshKeyList, payload ?? {}),
     upsert: (payload) => invoke(IPCChannel.SshKeyUpsert, payload),
-    remove: (payload) => invoke(IPCChannel.SshKeyRemove, payload)
+    remove: (payload) => invoke(IPCChannel.SshKeyRemove, payload),
+    generate: (payload) => invoke(IPCChannel.SshKeyGenerate, payload),
+    usage: (payload) => invoke(IPCChannel.SshKeyUsage, payload)
   },
   proxy: {
     list: (payload) => invoke(IPCChannel.ProxyList, payload ?? {}),

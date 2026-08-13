@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type {
   AuthType,
   BackspaceMode,
@@ -47,17 +46,6 @@ export interface SshKeyMatchCandidate {
   name: string;
   fingerprint?: string;
 }
-
-/**
- * 私钥**文本**的摘要,不是 OpenSSH 的公钥指纹。前缀刻意写成 `sha256-content:` 而非 `SHA256:`:
- * 后者是 `ssh-keygen -lf` 的格式,等密钥子系统能真正解析私钥后 `sshKeyRef.fingerprint` 会换成
- * 那个值。两种前缀不会互相误判——旧导出文件届时匹配不上,自动退回按名称匹配并提示重新绑定,
- * 而不是悄悄绑到一把不相干的密钥上。
- */
-export const hashSshKeyContent = (keyContent: string): string => {
-  const sha256Base64 = createHash("sha256").update(keyContent.trim()).digest("base64");
-  return `sha256-content:${sha256Base64.replace(/=+$/, "")}`;
-};
 
 export const matchSshKeyRef = (
   ref: ExportedSshKeyRef | undefined,
