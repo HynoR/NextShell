@@ -33,12 +33,7 @@ import {
 const isTerminalSession = (session: SessionDescriptor): boolean =>
   !session.type || session.type === "terminal";
 
-// 连接管理器/设置中心体积较大(@dnd-kit、大表单),按需加载,首次打开时才拉取 chunk
-const LazyConnectionManagerModal = lazy(() =>
-  import("./components/ConnectionManagerModal").then((module) => ({
-    default: module.ConnectionManagerModal
-  }))
-);
+// 连接管理器/设置中心体积较大,按需加载,首次打开时才拉取 chunk
 const LazyConnectionManagerV2 = lazy(() =>
   import("./components/ConnectionManagerV2").then((module) => ({
     default: module.ConnectionManagerV2
@@ -66,10 +61,6 @@ export const App = () => {
   const connections = useWorkspaceStore((state) => state.connections);
   const sshKeys = useWorkspaceStore((state) => state.sshKeys);
   const proxies = useWorkspaceStore((state) => state.proxies);
-  // 隐藏开关：V2 稳定前默认关闭，出问题可随时切回旧管理器。
-  const useConnectionManagerV2 = usePreferencesStore(
-    (state) => state.preferences.connectionManager.useV2
-  );
   const activeConnectionId = useWorkspaceStore((state) => state.activeConnectionId);
   const sessions = useWorkspaceStore((state) => state.sessions);
   const activeSessionId = useWorkspaceStore((state) => state.activeSessionId);
@@ -822,7 +813,7 @@ export const App = () => {
           onSetBottomTab={handleSetBottomTab}
         />
 
-        {managerModalLoaded && useConnectionManagerV2 ? (
+        {managerModalLoaded ? (
           <Suspense fallback={null}>
             <LazyConnectionManagerV2
               open={managerOpen}
@@ -839,31 +830,6 @@ export const App = () => {
               onReloadConnections={loadConnections}
               onReloadSshKeys={loadSshKeys}
               onReloadProxies={loadProxies}
-            />
-          </Suspense>
-        ) : null}
-
-        {managerModalLoaded && !useConnectionManagerV2 ? (
-          <Suspense fallback={null}>
-            <LazyConnectionManagerModal
-              open={managerOpen}
-              focusConnectionId={managerFocusConnectionId}
-              connections={connections}
-              sshKeys={sshKeys}
-              proxies={proxies}
-              onClose={() => {
-                setManagerOpen(false);
-                setManagerFocusConnectionId(undefined);
-              }}
-              onConnectionSaved={(payload: ConnectionUpsertInput) => handleConnectionSaved(payload)}
-              onConnectConnection={async (connectionId: string) => {
-                await startSession(connectionId);
-              }}
-              onConnectionRemoved={(connectionId: string) => handleConnectionRemoved(connectionId)}
-              onConnectionsImported={loadConnections}
-              onReloadSshKeys={loadSshKeys}
-              onReloadProxies={loadProxies}
-              onOpenLocalTerminal={handleOpenLocalTerminal}
             />
           </Suspense>
         ) : null}

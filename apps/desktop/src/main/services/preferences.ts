@@ -229,7 +229,6 @@ export const mergePreferences = (
           : current.backup.lastBackupAt
     },
     connectionManager: {
-      useV2: patch.connectionManager?.useV2 ?? current.connectionManager.useV2,
       // 尺寸由契约层夹过范围，这里只做“没给就保持原值”。
       dialogWidth: patch.connectionManager?.dialogWidth ?? current.connectionManager.dialogWidth,
       dialogHeight: patch.connectionManager?.dialogHeight ?? current.connectionManager.dialogHeight,

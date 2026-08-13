@@ -6,6 +6,7 @@ import { ConnectionTable } from "./ConnectionTable";
 import { DetailCard } from "./DetailCard";
 import { ManagerToolbar } from "./ManagerToolbar";
 import { BulkBar } from "./BulkBar";
+import { ConnectionEditor } from "./ConnectionEditor";
 import { ScopeBar } from "./ScopeBar";
 import { buildConnectionRow } from "../utils/connectionRows";
 import { buildManagerScopes, LOCAL_SCOPE } from "../utils/scopes";
@@ -177,6 +178,65 @@ describe("DetailCard", () => {
       />
     );
     expect(html).toContain("密码");
+  });
+});
+
+describe("ConnectionEditor", () => {
+  test("renders the always-visible fields plus the collapsed sections", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEditor
+        connection={connection({ id: "c1", name: "prod-db" })}
+        folders={[folder("prod", "prod")]}
+        sshKeys={[]}
+        proxies={[]}
+        saving={false}
+        revealingPassword={false}
+        onRevealPassword={noop}
+        onSubmit={noop}
+        onCancel={noop}
+        onCreateKey={noop}
+      />
+    );
+    expect(html).toContain("主机");
+    expect(html).toContain("认证方式");
+    expect(html).toContain("目录");
+    // 四个折叠区取代旧表单的四个 tab
+    expect(html).toContain("安全");
+    expect(html).toContain("网络");
+    expect(html).toContain("终端");
+  });
+
+  test("offers to reveal a stored password only when editing password auth", () => {
+    const html = renderToStaticMarkup(
+      <ConnectionEditor
+        connection={connection({ id: "c1", authType: "password" })}
+        folders={[]}
+        sshKeys={[]}
+        proxies={[]}
+        saving={false}
+        revealingPassword={false}
+        onRevealPassword={noop}
+        onSubmit={noop}
+        onCancel={noop}
+        onCreateKey={noop}
+      />
+    );
+    expect(html).toContain("输入主密码查看");
+
+    const forNew = renderToStaticMarkup(
+      <ConnectionEditor
+        folders={[]}
+        sshKeys={[]}
+        proxies={[]}
+        saving={false}
+        revealingPassword={false}
+        onRevealPassword={noop}
+        onSubmit={noop}
+        onCancel={noop}
+        onCreateKey={noop}
+      />
+    );
+    expect(forNew).not.toContain("输入主密码查看");
   });
 });
 

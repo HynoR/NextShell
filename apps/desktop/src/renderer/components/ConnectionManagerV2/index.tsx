@@ -17,11 +17,12 @@ import { CopyToScopeModal } from "./components/CopyToScopeModal";
 import { SshKeyPane } from "./components/SshKeyPane";
 import { ProxyManagerPanel } from "../ProxyManagerPanel";
 import { describeAffected, planRowCommands } from "./utils/rowCommands";
-import { useConnectionExportActions } from "../ConnectionManagerModal/hooks/useConnectionExportActions";
-import { useConnectionImportFlow } from "../ConnectionManagerModal/hooks/useConnectionImportFlow";
-import { ConnectionBatchAuthModal } from "../ConnectionManagerModal/components/ConnectionBatchAuthModal";
+import { useConnectionExportActions } from "./hooks/useConnectionExportActions";
+import { useConnectionImportFlow } from "./hooks/useConnectionImportFlow";
+import { useConnectionPasswordReveal } from "./hooks/useConnectionPasswordReveal";
+import { ConnectionBatchAuthModal } from "./components/ConnectionBatchAuthModal";
 import { ConnectionImportModal } from "../ConnectionImportModal";
-import type { BatchAuthTarget } from "../ConnectionManagerModal/types";
+
 import { useManagerScope } from "./hooks/useManagerScope";
 import { buildBreadcrumb, listVisibleConnections } from "./utils/folderNavigation";
 import { buildConnectionRow, filterConnectionRows, sortConnectionRows } from "./utils/connectionRows";
@@ -29,6 +30,7 @@ import { resourceMatchesOriginScope } from "@nextshell/shared";
 import { clampDialogSize, fitDialogToViewport } from "./utils/dialogSize";
 import {
   DEFAULT_CONNECTION_COLUMNS,
+  type BatchAuthTarget,
   type ConnectionColumnKey,
   type ConnectionSort,
   type DetailMode,
@@ -100,6 +102,18 @@ export const ConnectionManagerV2 = ({
   } | null>(null);
   const [copyTarget, setCopyTarget] = useState<string[] | null>(null);
   const [batchAuthTarget, setBatchAuthTarget] = useState<BatchAuthTarget | null>(null);
+  const editingConnection = detail.kind === "edit" ? detail.connection : undefined;
+  const {
+    handleRevealConnectionPassword,
+    revealedLoginPassword,
+    revealingLoginPassword
+  } = useConnectionPasswordReveal({
+    activeAuthType: editingConnection?.authType,
+    modal,
+    message,
+    primarySelectedId: editingConnection?.id,
+    selectedConnection: editingConnection
+  });
 
   const notifyError = useCallback((text: string) => message.error(text), [message]);
   const importFlow = useConnectionImportFlow({ modal, message, onConnectionsImported: onReloadConnections });
@@ -546,12 +560,17 @@ export const ConnectionManagerV2 = ({
               />
             ) : detail.kind === "edit" ? (
               <ConnectionEditor
+                // 换连接时整体重挂载，让 initialValues 生效，也天然清掉上一条的未保存输入。
+                key={detail.connection?.id ?? "__new__"}
                 connection={detail.connection}
                 folders={scope.folders}
                 currentFolderId={scope.currentFolderId}
                 sshKeys={scopedSshKeys}
                 proxies={scopedProxies}
                 saving={saving}
+                revealedPassword={revealedLoginPassword}
+                revealingPassword={revealingLoginPassword}
+                onRevealPassword={() => void handleRevealConnectionPassword()}
                 onSubmit={(values) => void handleSubmit(values)}
                 onCancel={() =>
                   setDetail(

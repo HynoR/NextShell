@@ -1,4 +1,4 @@
-import type { ConnectionProfile } from "@nextshell/core";
+import type { ConnectionImportEntry, ConnectionProfile } from "@nextshell/core";
 
 export type ResourceTab = "connections" | "keys" | "proxies";
 
@@ -39,3 +39,19 @@ export type DetailMode =
   | { kind: "empty" }
   | { kind: "view"; connection: ConnectionProfile }
   | { kind: "edit"; connection?: ConnectionProfile };
+
+/** 导入预览的一批条目（一个文件或目录扫描结果）。 */
+export interface ImportPreviewBatch {
+  fileName: string;
+  sourcePath?: string;
+  sourceKind?: "file" | "directory";
+  entries: ConnectionImportEntry[];
+}
+
+/**
+ * 批量绑定认证的目标。`group` 分支按 groupPath 前缀匹配，是主进程既有的契约形态；
+ * V2 只构造 `connections`——作用域切换器保证选区同域，不需要再按路径圈定。
+ */
+export type BatchAuthTarget =
+  | { type: "connections"; connectionIds: string[]; label: string }
+  | { type: "group"; groupPath: string; label: string };

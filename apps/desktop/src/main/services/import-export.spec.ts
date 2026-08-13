@@ -36,10 +36,12 @@ const createNextShellExport = (
 });
 
 describe("connection import parsers", () => {
-  test("single NextShell import remaps exported groupPath into import zone", () => {
+  // 往返导入保留原路径：过去 remapToImportZone 会把自己导出的 /server/prod 改写成 /import/prod，
+  // 用户组织好的结构在往返一次后被抹平。
+  test("single NextShell import keeps the exported groupPath", () => {
     const entries = parseNextShellImport(createNextShellExport("/server/prod"));
 
-    expect(entries[0]?.groupPath).toBe("/import/prod");
+    expect(entries[0]?.groupPath).toBe("/server/prod");
   });
 
   test("directory NextShell import uses directory-derived groupPath", () => {

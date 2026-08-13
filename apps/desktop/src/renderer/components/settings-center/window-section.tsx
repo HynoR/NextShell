@@ -10,7 +10,6 @@ export const WindowSection = ({
   confirmBeforeClose,
   leftSidebarDefaultCollapsed,
   bottomWorkbenchDefaultCollapsed,
-  connectionManagerV2,
   save
 }: {
   loading: boolean;
@@ -19,23 +18,9 @@ export const WindowSection = ({
   confirmBeforeClose: boolean;
   leftSidebarDefaultCollapsed: boolean;
   bottomWorkbenchDefaultCollapsed: boolean;
-  connectionManagerV2: boolean;
   save: SaveFn;
 }) => (
   <>
-    <SettingsCard
-      title="连接管理器"
-      description="新版为三栏布局：作用域切换器 + 目录钻取 + 连接表格。关掉可回到旧版。"
-    >
-      <SettingsSwitchRow
-        label="使用新版连接管理器"
-        hint="遇到问题可随时关掉切回旧版"
-        checked={connectionManagerV2}
-        disabled={loading}
-        onChange={(v) => save({ connectionManager: { useV2: v } })}
-      />
-    </SettingsCard>
-
     <SettingsCard title="界面风格" description="「跟随系统」会随操作系统深/浅色自动切换">
       <SettingsRow label="外观模式">
         <Select<WindowAppearance>

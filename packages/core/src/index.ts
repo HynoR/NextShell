@@ -652,10 +652,6 @@ export interface AppPreferences {
     bottomWorkbenchDefaultCollapsed: boolean;
   };
   connectionManager: {
-    /**
-     * 三栏连接管理器。默认开启；关掉可回到旧版，旧版会在 V2 在真实环境跑过一轮后移除。
-     */
-    useV2: boolean;
     /** 对话框尺寸与栏宽都记住，避免每次打开都要重新拖。 */
     dialogWidth: number;
     dialogHeight: number;
@@ -773,7 +769,6 @@ export interface AppPreferencesPatch {
     bottomWorkbenchDefaultCollapsed?: boolean;
   };
   connectionManager?: {
-    useV2?: boolean;
     dialogWidth?: number;
     dialogHeight?: number;
     folderColumnWidth?: number;
@@ -979,7 +974,6 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     bottomWorkbenchDefaultCollapsed: false
   },
   connectionManager: {
-    useV2: true,
     dialogWidth: 1180,
     dialogHeight: 760,
     folderColumnWidth: 240,

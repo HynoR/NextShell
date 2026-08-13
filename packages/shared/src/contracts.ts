@@ -592,7 +592,6 @@ export const appPreferencesSchema = z
       .default(DEFAULT_APP_PREFERENCES.window),
     connectionManager: z
       .object({
-        useV2: z.boolean().default(DEFAULT_APP_PREFERENCES.connectionManager.useV2),
         // 尺寸夹在可用范围内：存坏的值不该让对话框缩成一条缝或撑出屏幕。
         dialogWidth: z.coerce
           .number()
@@ -788,7 +787,6 @@ export const appPreferencesPatchSchema = z.object({
     .optional(),
   connectionManager: z
     .object({
-      useV2: z.boolean().optional(),
       dialogWidth: z.coerce.number().int().min(900).max(3840).optional(),
       dialogHeight: z.coerce.number().int().min(560).max(2160).optional(),
       folderColumnWidth: z.coerce.number().int().min(160).max(520).optional(),

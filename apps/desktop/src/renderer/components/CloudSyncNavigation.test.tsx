@@ -1,15 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-// 这两条曾经钉的是相反的位置（云同步在连接管理器里、回收站不在设置里）。
-// 决策已反转：云同步是账号/服务配置，回收站是全局删除历史，都属于低频全局设置。
+// 这条曾经钉的是相反的位置(云同步在连接管理器里、回收站不在设置里)。决策已反转:
+// 云同步是账号/服务配置,回收站是全局删除历史,都属于低频全局设置。
 describe("cloud sync and recycle bin placement", () => {
-  const stubGlobals = () => {
+  test("settings center exposes both sections after data backup", async () => {
     (globalThis as Record<string, unknown>).__APP_VERSION__ = "test";
     (globalThis as Record<string, unknown>).__GITHUB_REPO__ = "owner/repo";
-  };
 
-  test("settings center exposes both sections after data backup", async () => {
-    stubGlobals();
     const { SECTIONS } = await import("./settings-center/constants");
     const keys = SECTIONS.map((section) => section.key);
 
@@ -17,14 +14,5 @@ describe("cloud sync and recycle bin placement", () => {
     expect(keys).toContain("recycleBin");
     expect(keys.indexOf("cloudSync")).toBe(keys.indexOf("backup") + 1);
     expect(keys.indexOf("recycleBin")).toBe(keys.indexOf("cloudSync") + 1);
-  });
-
-  test("the connection manager no longer carries either as a tab", async () => {
-    stubGlobals();
-    const { MANAGER_TABS } = await import("./ConnectionManagerModal/constants");
-    const keys = MANAGER_TABS.map((tab) => tab.key);
-
-    expect(keys).not.toContain("cloudSync");
-    expect(keys).not.toContain("recycleBin");
   });
 });

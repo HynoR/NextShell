@@ -1,6 +1,5 @@
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { CONNECTION_ZONES } from "../../../../../packages/shared/src/constants";
 
 const MAX_IMPORT_DIRECTORY_FILES = 2000;
 const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
@@ -44,7 +43,7 @@ export const buildImportGroupPathFromRelativeFile = (relativePath: string): stri
   const normalized = normalizeRelativePath(relativePath);
   const normalizedDir = path.posix.dirname(normalized);
   if (!normalized || normalizedDir === "." || normalizedDir === "/") {
-    return `/${CONNECTION_ZONES.IMPORT}`;
+    return "/";
   }
 
   const segments = normalizedDir
@@ -53,8 +52,8 @@ export const buildImportGroupPathFromRelativeFile = (relativePath: string): stri
     .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 
   return segments.length > 0
-    ? `/${CONNECTION_ZONES.IMPORT}/${segments.join("/")}`
-    : `/${CONNECTION_ZONES.IMPORT}`;
+    ? `/${segments.join("/")}`
+    : "/";
 };
 
 export const scanConnectionImportDirectory = async (

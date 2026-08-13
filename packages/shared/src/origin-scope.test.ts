@@ -1,9 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { LOCAL_DEFAULT_SCOPE_KEY } from "../../core/src/index";
-import { CONNECTION_ZONES } from "./constants";
 import {
   filterResourcesByOriginScope,
-  resolveFormTargetScopeKey,
   resolveOriginScopeKey,
   resourceMatchesOriginScope
 } from "./origin-scope";
@@ -47,25 +45,10 @@ describe("origin scope matching", () => {
     ).toEqual(["cloud"]);
   });
 
-  test("returns no resources when the target workspace scope cannot be resolved", () => {
+  test("returns no resources when the target scope is unknown", () => {
+    // 作用域切换器解析不出目标域时宁可空列表，也不能退回"显示全部"——那正是跨域误引用的入口。
     expect(
       filterResourcesByOriginScope([{ originScopeKey: LOCAL_DEFAULT_SCOPE_KEY }], undefined)
     ).toEqual([]);
-    expect(resolveFormTargetScopeKey({ groupZone: CONNECTION_ZONES.WORKSPACE })).toBeUndefined();
-  });
-
-  test("computes the same cloud scope key the main process uses", () => {
-    expect(
-      resolveFormTargetScopeKey({
-        groupZone: CONNECTION_ZONES.WORKSPACE,
-        workspace: {
-          apiBaseUrl: "https://sync.example.com/",
-          workspaceName: "team-a"
-        }
-      })
-    ).toBe("sync.example.com-team-a");
-    expect(resolveFormTargetScopeKey({ groupZone: CONNECTION_ZONES.SERVER })).toBe(
-      LOCAL_DEFAULT_SCOPE_KEY
-    );
   });
 });

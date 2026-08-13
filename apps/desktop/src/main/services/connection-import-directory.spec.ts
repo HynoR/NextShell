@@ -8,12 +8,12 @@ import {
 } from "./connection-import-directory";
 
 describe("connection import directory scanning", () => {
-  test("maps relative file directories into the import zone without selected root", () => {
-    expect(buildImportGroupPathFromRelativeFile("alpha.json")).toBe("/import");
-    expect(buildImportGroupPathFromRelativeFile("prod/alpha.json")).toBe("/import/prod");
-    expect(buildImportGroupPathFromRelativeFile("客户A/prod/alpha.json")).toBe(
-      "/import/客户A/prod"
-    );
+  // 目录结构原样保留，不再套一层 /import：归属由导入时选的目标目录(folderId)决定，
+  // groupPath 只是给云同步/MCP/导出读的投影。
+  test("mirrors the source directory structure", () => {
+    expect(buildImportGroupPathFromRelativeFile("alpha.json")).toBe("/");
+    expect(buildImportGroupPathFromRelativeFile("prod/alpha.json")).toBe("/prod");
+    expect(buildImportGroupPathFromRelativeFile("客户A/prod/alpha.json")).toBe("/客户A/prod");
   });
 
   test("recursively scans regular files and skips symbolic links", async () => {
@@ -33,7 +33,7 @@ describe("connection import directory scanning", () => {
       const result = await scanConnectionImportDirectory(root);
 
       expect(result.files.map((file) => file.relativePath)).toEqual(["prod/web.json", "root.json"]);
-      expect(result.files.map((file) => file.groupPath)).toEqual(["/import/prod", "/import"]);
+      expect(result.files.map((file) => file.groupPath)).toEqual(["/prod", "/"]);
       if (symlinkCreated) {
         expect(result.warnings.some((warning) => warning.includes("linked.json"))).toBe(true);
       }

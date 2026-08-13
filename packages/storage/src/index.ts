@@ -848,10 +848,6 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
             : fallback.window.bottomWorkbenchDefaultCollapsed
       },
       connectionManager: {
-        useV2:
-          typeof parsed.connectionManager?.useV2 === "boolean"
-            ? parsed.connectionManager.useV2
-            : fallback.connectionManager.useV2,
         dialogWidth: readStoredSize(
           parsed.connectionManager?.dialogWidth,
           fallback.connectionManager.dialogWidth,

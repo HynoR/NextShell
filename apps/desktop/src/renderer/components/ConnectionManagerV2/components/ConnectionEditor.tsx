@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useMemo } from "react";
 import { Collapse, Form, Input, InputNumber, Select, Switch } from "antd";
 import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
@@ -14,6 +14,10 @@ interface ConnectionEditorProps {
   sshKeys: SshKeyProfile[];
   proxies: ProxyProfile[];
   saving: boolean;
+  /** 已保存的登录密码，输入主密码后才由主进程返回；30 秒后自动清空。 */
+  revealedPassword?: string;
+  revealingPassword: boolean;
+  onRevealPassword: () => void;
   onSubmit: (values: ConnectionEditorValues) => void;
   onCancel: () => void;
   onCreateKey: () => void;
@@ -30,44 +34,51 @@ export const ConnectionEditor = ({
   sshKeys,
   proxies,
   saving,
+  revealedPassword,
+  revealingPassword,
+  onRevealPassword,
   onSubmit,
   onCancel,
   onCreateKey
 }: ConnectionEditorProps) => {
   const [form] = Form.useForm<ConnectionEditorValues>();
-  const authType = Form.useWatch("authType", form);
-
-  useEffect(() => {
-    form.resetFields();
-    form.setFieldsValue({
-      id: connection?.id,
-      name: connection?.name ?? "",
-      host: connection?.host ?? "",
-      port: connection?.port ?? 22,
-      username: connection?.username ?? "",
-      authType: connection?.authType ?? "password",
-      sshKeyId: connection?.sshKeyId,
-      folderId: connection?.folderId ?? currentFolderId,
-      hostFingerprint: connection?.hostFingerprint,
-      strictHostKeyChecking: connection?.strictHostKeyChecking ?? false,
-      proxyId: connection?.proxyId,
-      keepAliveEnabled: connection?.keepAliveEnabled,
-      keepAliveIntervalSec: connection?.keepAliveIntervalSec,
-      terminalEncoding: connection?.terminalEncoding ?? "utf-8",
-      backspaceMode: connection?.backspaceMode ?? "ascii-backspace",
-      deleteMode: connection?.deleteMode ?? "vt220-delete",
-      monitorSession: connection?.monitorSession ?? true,
-      tags: connection?.tags ?? [],
-      notes: connection?.notes,
-      favorite: connection?.favorite ?? false,
-      agentAccess: connection?.agentAccess ?? "off",
-      password: undefined
-    } as ConnectionEditorValues);
-  }, [connection, currentFolderId, form]);
+  // 首帧就用 `initialValues` 给全值，而不是等 effect 里 setFieldsValue：后者会先渲染一遍空表单，
+  // 也让 authType 的分支在首帧走错。调用方按连接 id 重挂载本组件来切换目标。
+  const initialValues = useMemo<ConnectionEditorValues>(
+    () =>
+      ({
+        id: connection?.id,
+        name: connection?.name ?? "",
+        host: connection?.host ?? "",
+        port: connection?.port ?? 22,
+        username: connection?.username ?? "",
+        authType: connection?.authType ?? "password",
+        sshKeyId: connection?.sshKeyId,
+        folderId: connection?.folderId ?? currentFolderId,
+        hostFingerprint: connection?.hostFingerprint,
+        strictHostKeyChecking: connection?.strictHostKeyChecking ?? false,
+        proxyId: connection?.proxyId,
+        keepAliveEnabled: connection?.keepAliveEnabled,
+        keepAliveIntervalSec: connection?.keepAliveIntervalSec,
+        terminalEncoding: connection?.terminalEncoding ?? "utf-8",
+        backspaceMode: connection?.backspaceMode ?? "ascii-backspace",
+        deleteMode: connection?.deleteMode ?? "vt220-delete",
+        monitorSession: connection?.monitorSession ?? true,
+        tags: connection?.tags ?? [],
+        notes: connection?.notes,
+        favorite: connection?.favorite ?? false,
+        agentAccess: connection?.agentAccess ?? "off",
+        password: undefined
+      }) as ConnectionEditorValues,
+    [connection, currentFolderId]
+  );
+  // 表单未注册完成前（首帧、SSR）退回已知值，避免认证分支闪错。
+  const authType = Form.useWatch("authType", form) ?? initialValues.authType;
 
   return (
     <Form
       form={form}
+      initialValues={initialValues}
       layout="vertical"
       requiredMark={false}
       className="cm2-editor"
@@ -140,9 +151,32 @@ export const ConnectionEditor = ({
         ) : null}
 
         {authType === "password" || authType === "interactive" ? (
-          <Form.Item label="密码" name="password" preserve={false}>
-            <Input.Password placeholder={connection ? "留空则不修改" : "输入登录密码"} />
-          </Form.Item>
+          <>
+            <Form.Item label="密码" name="password" preserve={false}>
+              <Input.Password placeholder={connection ? "留空则不修改" : "输入登录密码"} />
+            </Form.Item>
+            {connection &&
+            (connection.authType === "password" || connection.authType === "interactive") ? (
+              <Form.Item label="已保存的密码" preserve={false}>
+                {revealedPassword ? (
+                  <Input.Password value={revealedPassword} readOnly visibilityToggle />
+                ) : (
+                  <button
+                    type="button"
+                    className="cm2-btn"
+                    onClick={onRevealPassword}
+                    disabled={revealingPassword}
+                  >
+                    <i
+                      className={revealingPassword ? "ri-loader-4-line" : "ri-eye-line"}
+                      aria-hidden="true"
+                    />
+                    {revealingPassword ? "验证中…" : "输入主密码查看"}
+                  </button>
+                )}
+              </Form.Item>
+            ) : null}
+          </>
         ) : null}
 
         <Form.Item label="目录" name="folderId">

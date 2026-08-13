@@ -9,33 +9,6 @@ import type {
 } from "../../../../../packages/core/src/index";
 import { deobfuscatePassword } from "./connection-export-crypto";
 import { decryptFinalShellPassword } from "./finalshell/decrypt-password";
-import {
-  CONNECTION_ZONES,
-  extractZone,
-  isValidZone,
-  getSubPath
-} from "../../../../../packages/shared/src/constants";
-
-/**
- * Remap an imported connection's groupPath into the /import zone.
- * Strips any existing zone prefix so the user-visible sub-path is preserved.
- * @example remapToImportZone("/server/hk")        → "/import/hk"
- * @example remapToImportZone("/workspace/team/prod") → "/import/team/prod"
- * @example remapToImportZone("/import/old")        → "/import/old"
- * @example remapToImportZone("/mygroup/foo")       → "/import/mygroup/foo"
- */
-const remapToImportZone = (groupPath: string): string => {
-  if (!groupPath) return `/${CONNECTION_ZONES.IMPORT}`;
-  const zone = extractZone(groupPath);
-  if (isValidZone(zone)) {
-    // Strip the zone prefix, keep sub-path
-    const sub = getSubPath(groupPath);
-    return sub ? `/${CONNECTION_ZONES.IMPORT}${sub}` : `/${CONNECTION_ZONES.IMPORT}`;
-  }
-  // Not a valid zone — treat entire path (after leading /) as sub-path
-  const normalized = groupPath.startsWith("/") ? groupPath : "/" + groupPath;
-  return `/${CONNECTION_ZONES.IMPORT}${normalized}`;
-};
 
 interface ImportParseOptions {
   groupPathOverride?: string;
@@ -210,7 +183,8 @@ export const parseNextShellImport = (
       password,
       keepAliveEnabled: conn.keepAliveEnabled,
       keepAliveIntervalSec: conn.keepAliveIntervalSec,
-      groupPath: options.groupPathOverride ?? remapToImportZone(conn.groupPath),
+      // 导入不再改写来源路径:归属由目标目录(folderId)决定,groupPath 只是投影。
+      groupPath: options.groupPathOverride ?? conn.groupPath,
       tags: conn.tags,
       notes: conn.notes,
       favorite: conn.favorite,

@@ -36,7 +36,7 @@ import type {
 import type { RemoteEditManager } from "./remote-edit-manager";
 import type { ActiveSession, ActiveRemoteSession, MonitorState } from "./container-types";
 import type { CloudSyncManager } from "./cloud-sync-manager";
-import { enforceZonePrefix } from "../../../../../packages/shared/src/constants";
+import { normalizeGroupPath } from "../../../../../packages/shared/src/constants";
 import { normalizeError } from "./container-utils";
 import { logger } from "../logger";
 
@@ -195,7 +195,7 @@ export class ConnectionService {
       return targets;
     }
 
-    const targetPath = enforceZonePrefix(input.target.groupPath);
+    const targetPath = normalizeGroupPath(input.target.groupPath);
     return allConnections.filter(
       (connection) =>
         connection.groupPath === targetPath || connection.groupPath.startsWith(`${targetPath}/`)
@@ -319,7 +319,7 @@ export class ConnectionService {
     const safeGroupPath =
       input.folderId !== undefined
         ? this.deriveGroupPathFromFolder(input.folderId, origin)
-        : enforceZonePrefix(input.groupPath);
+        : normalizeGroupPath(input.groupPath);
 
     const profile: ConnectionProfile = {
       id,
