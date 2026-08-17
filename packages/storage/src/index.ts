@@ -1865,6 +1865,49 @@ export interface ConnectionRepository {
   close: () => void;
 }
 
+/** 连接行的读写列。list / getById / upsert 共用,避免再出现 INSERT 漏列或 SELECT 漏读。 */
+const CONNECTION_COLUMN_LIST = [
+  "id",
+  "name",
+  "host",
+  "port",
+  "username",
+  "auth_type",
+  "credential_ref",
+  "ssh_key_id",
+  "host_fingerprint",
+  "strict_host_key_checking",
+  "proxy_id",
+  "keepalive_enabled",
+  "keepalive_interval_sec",
+  "terminal_encoding",
+  "backspace_mode",
+  "delete_mode",
+  "group_path",
+  "folder_id",
+  "tags",
+  "notes",
+  "favorite",
+  "monitor_session",
+  "agent_access",
+  "created_at",
+  "updated_at",
+  "last_connected_at",
+  "resource_id",
+  "uuid_in_scope",
+  "origin_kind",
+  "origin_scope_key",
+  "origin_workspace_id",
+  "ssh_key_resource_id",
+  "copied_from_resource_id"
+] as const;
+
+const CONNECTION_COLUMNS = CONNECTION_COLUMN_LIST.join(", ");
+const CONNECTION_VALUES = CONNECTION_COLUMN_LIST.map((column) => `@${column}`).join(", ");
+const CONNECTION_UPSERT_SET = CONNECTION_COLUMN_LIST.filter((column) => column !== "id")
+  .map((column) => `${column} = excluded.${column}`)
+  .join(", ");
+
 export class SQLiteConnectionRepository implements ConnectionRepository {
   private readonly db: Database.Database;
   private readonly resolvedDbPath: string;
@@ -1974,40 +2017,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const rows = this.db
       .prepare(
         `
-          SELECT
-            id,
-            name,
-            host,
-            port,
-            username,
-            auth_type,
-            credential_ref,
-            ssh_key_id,
-            host_fingerprint,
-            strict_host_key_checking,
-            proxy_id,
-            keepalive_enabled,
-            keepalive_interval_sec,
-            terminal_encoding,
-            backspace_mode,
-            delete_mode,
-            group_path,
-            folder_id,
-            tags,
-            notes,
-            favorite,
-            monitor_session,
-            agent_access,
-            created_at,
-            updated_at,
-            last_connected_at,
-            resource_id,
-            uuid_in_scope,
-            origin_kind,
-            origin_scope_key,
-            origin_workspace_id,
-            ssh_key_resource_id,
-            copied_from_resource_id
+          SELECT ${CONNECTION_COLUMNS}
           FROM connections
           WHERE (@favorite IS NULL OR favorite = @favorite)
             AND (@group IS NULL OR (group_path = @group OR group_path LIKE @group || '/%'))
@@ -2031,107 +2041,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     this.db
       .prepare(
         `
-          INSERT INTO connections (
-            id,
-            name,
-            host,
-            port,
-            username,
-            auth_type,
-            credential_ref,
-            ssh_key_id,
-            host_fingerprint,
-            strict_host_key_checking,
-            proxy_id,
-            keepalive_enabled,
-            keepalive_interval_sec,
-            terminal_encoding,
-            backspace_mode,
-            delete_mode,
-            group_path,
-            tags,
-            notes,
-            favorite,
-            monitor_session,
-            agent_access,
-            created_at,
-            updated_at,
-            last_connected_at,
-            resource_id,
-            uuid_in_scope,
-            origin_kind,
-            origin_scope_key,
-            origin_workspace_id,
-            ssh_key_resource_id,
-            copied_from_resource_id
-          ) VALUES (
-            @id,
-            @name,
-            @host,
-            @port,
-            @username,
-            @auth_type,
-            @credential_ref,
-            @ssh_key_id,
-            @host_fingerprint,
-            @strict_host_key_checking,
-            @proxy_id,
-            @keepalive_enabled,
-            @keepalive_interval_sec,
-            @terminal_encoding,
-            @backspace_mode,
-            @delete_mode,
-            @group_path,
-            @folder_id,
-            @tags,
-            @notes,
-            @favorite,
-            @monitor_session,
-            @agent_access,
-            @created_at,
-            @updated_at,
-            @last_connected_at,
-            @resource_id,
-            @uuid_in_scope,
-            @origin_kind,
-            @origin_scope_key,
-            @origin_workspace_id,
-            @ssh_key_resource_id,
-            @copied_from_resource_id
-          )
+          INSERT INTO connections (${CONNECTION_COLUMNS})
+          VALUES (${CONNECTION_VALUES})
           ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            host = excluded.host,
-            port = excluded.port,
-            username = excluded.username,
-            auth_type = excluded.auth_type,
-            credential_ref = excluded.credential_ref,
-            ssh_key_id = excluded.ssh_key_id,
-            host_fingerprint = excluded.host_fingerprint,
-            strict_host_key_checking = excluded.strict_host_key_checking,
-            proxy_id = excluded.proxy_id,
-            keepalive_enabled = excluded.keepalive_enabled,
-            keepalive_interval_sec = excluded.keepalive_interval_sec,
-            terminal_encoding = excluded.terminal_encoding,
-            backspace_mode = excluded.backspace_mode,
-            delete_mode = excluded.delete_mode,
-            group_path = excluded.group_path,
-            folder_id = excluded.folder_id,
-            tags = excluded.tags,
-            notes = excluded.notes,
-            favorite = excluded.favorite,
-            monitor_session = excluded.monitor_session,
-            agent_access = excluded.agent_access,
-            created_at = excluded.created_at,
-            updated_at = excluded.updated_at,
-            last_connected_at = excluded.last_connected_at,
-            resource_id = excluded.resource_id,
-            uuid_in_scope = excluded.uuid_in_scope,
-            origin_kind = excluded.origin_kind,
-            origin_scope_key = excluded.origin_scope_key,
-            origin_workspace_id = excluded.origin_workspace_id,
-            ssh_key_resource_id = excluded.ssh_key_resource_id,
-            copied_from_resource_id = excluded.copied_from_resource_id
+            ${CONNECTION_UPSERT_SET}
         `
       )
       .run({
@@ -2180,39 +2093,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const row = this.db
       .prepare(
         `
-          SELECT
-            id,
-            name,
-            host,
-            port,
-            username,
-            auth_type,
-            credential_ref,
-            ssh_key_id,
-            host_fingerprint,
-            strict_host_key_checking,
-            proxy_id,
-            keepalive_enabled,
-            keepalive_interval_sec,
-            terminal_encoding,
-            backspace_mode,
-            delete_mode,
-            group_path,
-            tags,
-            notes,
-            favorite,
-            monitor_session,
-            agent_access,
-            created_at,
-            updated_at,
-            last_connected_at,
-            resource_id,
-            uuid_in_scope,
-            origin_kind,
-            origin_scope_key,
-            origin_workspace_id,
-            ssh_key_resource_id,
-            copied_from_resource_id
+          SELECT ${CONNECTION_COLUMNS}
           FROM connections
           WHERE id = ?
         `
@@ -3342,23 +3223,48 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
 // ─── SQLiteSshKeyRepository ─────────────────────────────────────────────────
 
+/** SSH 密钥行的读写列。list / getById / upsert 共用,避免再出现 INSERT 漏列。 */
+const SSH_KEY_COLUMN_LIST = [
+  "id",
+  "name",
+  "key_content_ref",
+  "passphrase_ref",
+  "key_type",
+  "key_bits",
+  "key_comment",
+  "fingerprint",
+  "public_key_line",
+  "created_at",
+  "updated_at",
+  "resource_id",
+  "uuid_in_scope",
+  "origin_kind",
+  "origin_scope_key",
+  "origin_workspace_id",
+  "copied_from_resource_id"
+] as const;
+
+const SSH_KEY_COLUMNS = SSH_KEY_COLUMN_LIST.join(", ");
+const SSH_KEY_VALUES = SSH_KEY_COLUMN_LIST.map((column) => `@${column}`).join(", ");
+const SSH_KEY_UPSERT_SET = SSH_KEY_COLUMN_LIST.filter(
+  (column) => column !== "id" && column !== "created_at"
+)
+  .map((column) => `${column} = excluded.${column}`)
+  .join(", ");
+
 export class SQLiteSshKeyRepository implements SshKeyRepository {
   constructor(private readonly db: Database.Database) {}
 
   list(): SshKeyProfile[] {
     const rows = this.db
-      .prepare(
-        "SELECT id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys ORDER BY name ASC"
-      )
+      .prepare(`SELECT ${SSH_KEY_COLUMNS} FROM ssh_keys ORDER BY name ASC`)
       .all() as SshKeyRow[];
     return rows.map(rowToSshKey);
   }
 
   getById(id: string): SshKeyProfile | undefined {
     const row = this.db
-      .prepare(
-        "SELECT id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id FROM ssh_keys WHERE id = ?"
-      )
+      .prepare(`SELECT ${SSH_KEY_COLUMNS} FROM ssh_keys WHERE id = ?`)
       .get(id) as SshKeyRow | undefined;
     return row ? rowToSshKey(row) : undefined;
   }
@@ -3367,24 +3273,10 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
     this.db
       .prepare(
         `
-        INSERT INTO ssh_keys (id, name, key_content_ref, passphrase_ref, key_type, key_bits, key_comment, fingerprint, public_key_line, created_at, updated_at, resource_id, uuid_in_scope, origin_kind, origin_scope_key, origin_workspace_id, copied_from_resource_id)
-        VALUES (@id, @name, @key_content_ref, @passphrase_ref, @key_type, @key_bits, @key_comment, @fingerprint, @public_key_line, @created_at, @updated_at, @resource_id, @uuid_in_scope, @origin_kind, @origin_scope_key, @origin_workspace_id, @copied_from_resource_id)
+        INSERT INTO ssh_keys (${SSH_KEY_COLUMNS})
+        VALUES (${SSH_KEY_VALUES})
         ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          key_content_ref = excluded.key_content_ref,
-          passphrase_ref = excluded.passphrase_ref,
-          key_type = excluded.key_type,
-          key_bits = excluded.key_bits,
-          key_comment = excluded.key_comment,
-          fingerprint = excluded.fingerprint,
-          public_key_line = excluded.public_key_line,
-          updated_at = excluded.updated_at,
-          resource_id = excluded.resource_id,
-          uuid_in_scope = excluded.uuid_in_scope,
-          origin_kind = excluded.origin_kind,
-          origin_scope_key = excluded.origin_scope_key,
-          origin_workspace_id = excluded.origin_workspace_id,
-          copied_from_resource_id = excluded.copied_from_resource_id
+          ${SSH_KEY_UPSERT_SET}
       `
       )
       .run({
