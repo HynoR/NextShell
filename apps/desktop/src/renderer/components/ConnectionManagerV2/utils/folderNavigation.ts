@@ -71,6 +71,7 @@ export interface VisibleConnectionsInput {
   includeSubfolders: boolean;
 }
 
+/** D18 后未接线:网格自己按"当前这一层"分段,`includeSubfolders` 这个口径已经没有入口。 */
 export const listVisibleConnections = ({
   folderId,
   folders,

@@ -10,6 +10,7 @@ import {
 import { App as AntdApp, Checkbox, Input, Select, Typography } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import type { AgentPromptRequest, ConnectionUpsertInput } from "@nextshell/shared";
+import type { SettingsSection } from "./components/settings-center/types";
 import { WorkspaceLayout } from "./components/WorkspaceLayout";
 import { AppSkeleton } from "./components/LoadingSkeletons";
 import { useConnectionManager } from "./hooks/useConnectionManager";
@@ -83,6 +84,8 @@ export const App = () => {
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerFocusConnectionId, setManagerFocusConnectionId] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 深链进设置中心的目标节(C4)。undefined = 普通打开,停在用户上次看的那一节。
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>();
   const [managerModalLoaded, setManagerModalLoaded] = useState(false);
   const [settingsModalLoaded, setSettingsModalLoaded] = useState(false);
   const [transferPanelCollapsed, setTransferPanelCollapsed] = useState(false);
@@ -663,7 +666,13 @@ export const App = () => {
     setManagerOpen(true);
   }, []);
 
+  /**
+   * 本地终端(A1)。管理器是目前唯一的入口,新标签会被弹窗盖住,所以顺手关掉它——
+   * 与「双击一行直连」同一个语义:动作发生在主界面,管理器就该让开。
+   */
   const handleOpenLocalTerminal = useCallback(() => {
+    setManagerOpen(false);
+    setManagerFocusConnectionId(undefined);
     void startLocalSession();
   }, [startLocalSession]);
 
@@ -672,6 +681,15 @@ export const App = () => {
   }, [loadConnections]);
 
   const handleOpenSettings = useCallback(() => {
+    setSettingsSection(undefined);
+    setSettingsOpen(true);
+  }, []);
+
+  /** 从管理器深链到设置中心的某一节(C4)。两个弹窗不叠着开,先关管理器。 */
+  const handleOpenSettingsSection = useCallback((section: SettingsSection) => {
+    setManagerOpen(false);
+    setManagerFocusConnectionId(undefined);
+    setSettingsSection(section);
     setSettingsOpen(true);
   }, []);
 
@@ -786,6 +804,7 @@ export const App = () => {
           bottomTab={bottomTab}
           onLoadConnections={handleLoadConnections}
           onOpenManager={handleOpenManager}
+          onOpenManagerForConnection={handleOpenManagerForConnection}
           onOpenSettings={handleOpenSettings}
           onActivateConnection={activateConnection}
           onTreeConnect={handleTreeConnect}
@@ -820,6 +839,7 @@ export const App = () => {
               connections={connections}
               sshKeys={sshKeys}
               proxies={proxies}
+              focusConnectionId={managerFocusConnectionId}
               onClose={() => {
                 setManagerOpen(false);
                 setManagerFocusConnectionId(undefined);
@@ -827,6 +847,8 @@ export const App = () => {
               onConnectConnection={async (connectionId: string) => {
                 await startSession(connectionId);
               }}
+              onOpenLocalTerminal={handleOpenLocalTerminal}
+              onOpenSettingsSection={handleOpenSettingsSection}
               onReloadConnections={loadConnections}
               onReloadSshKeys={loadSshKeys}
               onReloadProxies={loadProxies}
@@ -836,7 +858,11 @@ export const App = () => {
 
         {settingsModalLoaded ? (
           <Suspense fallback={null}>
-            <LazySettingsCenterModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+            <LazySettingsCenterModal
+              open={settingsOpen}
+              initialSection={settingsSection}
+              onClose={() => setSettingsOpen(false)}
+            />
           </Suspense>
         ) : null}
       </div>

@@ -1292,6 +1292,13 @@ export class CloudSyncManager {
         backspaceMode: connection.backspaceMode,
         deleteMode: connection.deleteMode,
         groupPath: normalizeWorkspaceGroupPath(workspace.workspaceName, connection.groupPath),
+        // folderId 不在线协议里,是本地的目录归属。`saveConnection` 是全行 upsert
+        // (`folder_id = connection.folderId ?? null`),这里不兜底的话每次 pull 都会把云连接
+        // 的目录清空,连接在树上掉回根,而 groupPath 还写着目录名——两边直接分叉。
+        folderId: existing?.folderId,
+        // agentAccess 同理:也不在线协议里,`saveConnection` 绑的是 `agentAccess ?? "off"`。
+        // 不兜底的话每次 pull 都会把用户授予 agent 的访问权限悄悄降回 off。
+        agentAccess: existing?.agentAccess,
         tags: [...connection.tags],
         notes: connection.notes,
         favorite: connection.favorite,

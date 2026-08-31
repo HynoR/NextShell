@@ -316,10 +316,13 @@ export class ConnectionService {
     // folderId is the local source of truth; groupPath is the projection the cloud-sync
     // wire format, the MCP tool schema and export files still read. Callers that predate
     // folders (import, quick connect, auth rewrites) keep passing a path instead.
-    const safeGroupPath =
-      input.folderId !== undefined
-        ? this.deriveGroupPathFromFolder(input.folderId, origin)
-        : normalizeGroupPath(input.groupPath);
+    // An explicit `null` means "move to the top level" — distinct from an omitted field,
+    // which keeps whatever folder the connection already sits in.
+    const folderIdProvided = input.folderId !== undefined;
+    const nextFolderId = folderIdProvided ? (input.folderId ?? undefined) : current?.folderId;
+    const safeGroupPath = folderIdProvided
+      ? this.deriveGroupPathFromFolder(nextFolderId, origin)
+      : normalizeGroupPath(input.groupPath);
 
     const profile: ConnectionProfile = {
       id,
@@ -339,7 +342,7 @@ export class ConnectionService {
       backspaceMode: input.backspaceMode,
       deleteMode: input.deleteMode,
       groupPath: safeGroupPath,
-      folderId: input.folderId ?? current?.folderId,
+      folderId: nextFolderId,
       tags: input.tags,
       notes: input.notes,
       favorite: input.favorite,

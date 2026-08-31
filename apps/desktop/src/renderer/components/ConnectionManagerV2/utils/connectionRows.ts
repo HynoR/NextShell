@@ -20,6 +20,39 @@ const AUTH_LABELS: Record<ConnectionProfile["authType"], string> = {
   agent: "Agent"
 };
 
+
+/** 根目录默认只显示这么多台——1000+ 连接全量渲染会把刚打开的界面卡住,而且没人从全量列表里找机器。 */
+export const RECENT_ROOT_LIMIT = 30;
+
+const timeOf = (value: string | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+/**
+ * 「最近连接」视图的选取:连过的按最后连接时间倒序;不足 limit 时用最近创建的补齐,
+ * 这样新导入的一批机器在还没连过时也不会给出一张空列表。
+ */
+export const selectRecentConnections = (
+  connections: readonly ConnectionProfile[],
+  limit: number
+): ConnectionProfile[] => {
+  const connected: ConnectionProfile[] = [];
+  const never: ConnectionProfile[] = [];
+  for (const connection of connections) {
+    (connection.lastConnectedAt ? connected : never).push(connection);
+  }
+  connected.sort(
+    (a, b) =>
+      timeOf(b.lastConnectedAt) - timeOf(a.lastConnectedAt) || a.name.localeCompare(b.name)
+  );
+  never.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt) || a.name.localeCompare(b.name));
+  return [...connected, ...never].slice(0, limit);
+};
+
 export const buildConnectionRow = (
   connection: ConnectionProfile,
   sshKeys: readonly SshKeyProfile[]
@@ -66,6 +99,18 @@ const compareLastConnected = (left: ConnectionProfile, right: ConnectionProfile)
   return rightAt - leftAt;
 };
 
+/**
+ * 创建时间。它永远有值,所以按字面时间序比:asc = 最早在前,和表头的 ▲ 一致
+ * (lastConnected 因为"从未连接"要沉底,才用了另一套口径)。解析不出来的当作最早。
+ */
+const compareCreatedAt = (left: ConnectionProfile, right: ConnectionProfile): number => {
+  const leftAt = Date.parse(left.createdAt);
+  const rightAt = Date.parse(right.createdAt);
+  const leftValue = Number.isNaN(leftAt) ? Number.NEGATIVE_INFINITY : leftAt;
+  const rightValue = Number.isNaN(rightAt) ? Number.NEGATIVE_INFINITY : rightAt;
+  return leftValue === rightValue ? 0 : leftValue - rightValue;
+};
+
 export const sortConnectionRows = (
   rows: readonly ConnectionRow[],
   sort: ConnectionSort
@@ -73,6 +118,10 @@ export const sortConnectionRows = (
   const sorted = [...rows].sort((left, right) => {
     if (sort.key === "address") {
       return compareText(left.address, right.address);
+    }
+    if (sort.key === "createdAt") {
+      const byTime = compareCreatedAt(left.connection, right.connection);
+      return byTime !== 0 ? byTime : compareText(left.connection.name, right.connection.name);
     }
     if (sort.key === "lastConnected") {
       const byTime = compareLastConnected(left.connection, right.connection);

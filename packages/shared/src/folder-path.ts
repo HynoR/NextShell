@@ -1,4 +1,5 @@
 import { LOCAL_DEFAULT_SCOPE_KEY } from "../../core/src/index";
+import { normalizeGroupPath } from "./constants";
 
 /**
  * 目录树 → `groupPath` 字符串的投影。
@@ -65,6 +66,50 @@ export interface DeriveGroupPathInput {
   /** 根→叶顺序的目录名。 */
   folderNames: readonly string[];
 }
+
+export interface ParseGroupPathOptions {
+  /**
+   * 是否剥掉线格式前缀。**没有默认值,调用方必须显式选**:
+   * - `true` —— 路径来自导出文件 / 云快照 / 历史 `/import` 常量,前缀是线格式,必须剥;
+   * - `false` —— 路径是字面目录名链(目录扫描导入按磁盘相对路径拼出来的那种),一段都不能剥:
+   *   用户把顶层目录叫 `server` 是完全合法的,默认剥会把那一整层吞掉。
+   */
+  stripWirePrefix: boolean;
+}
+
+/**
+ * `groupPath` → 目录名链,`deriveGroupPath` 的逆投影。
+ *
+ * 剥掉的是**线格式前缀**,不是用户建的目录:本地 `/server`、云 `/workspace/<slug>`,
+ * 以及历史导出文件里还带着的 `/import`(迁移 25 已把库里的 `/import/a/b` 提升为顶层 `a/b`,
+ * 但别人手里的旧导出文件不会跟着变)。
+ *
+ * 认不出前缀时整条路径都当目录名——宁可多建一层,也不能把用户组织好的结构吞掉。
+ *
+ * 分隔符按 `normalizeGroupPath` 同款规则折算:Windows 侧拼出来的 `\a\b` 与 `/a/b` 必须切成
+ * 同一条链,否则整条路径会被当成一个名字里带 `\` 的目录,而目录名根本不允许带 `\`。
+ */
+export const parseGroupPathSegments = (
+  groupPath: string | undefined,
+  options: ParseGroupPathOptions
+): string[] => {
+  const segments = normalizeGroupPath(groupPath)
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (!options.stripWirePrefix) {
+    return segments;
+  }
+  const [first] = segments;
+  if (first === "workspace") {
+    // `/workspace/<slug>` 两段才是根;只写了 `/workspace` 时同样一个目录都没有。
+    return segments.slice(2);
+  }
+  if (first === "server" || first === "import") {
+    return segments.slice(1);
+  }
+  return segments;
+};
 
 export const deriveGroupPath = ({
   scopeKey,

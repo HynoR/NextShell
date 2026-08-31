@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import type { Key } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
+import type { DragEvent, Key } from "react";
 import { Button, Tooltip, Tree } from "antd";
 import type { TreeDataNode, TreeProps } from "antd";
 import type { ConnectionFolder, ConnectionProfile } from "@nextshell/core";
@@ -9,6 +9,11 @@ import {
   isSelfOrAncestor,
   type FolderTreeNode
 } from "../utils/folderTree";
+import {
+  CONNECTION_DRAG_MIME,
+  isInternalConnectionDrag,
+  parseConnectionDragIds
+} from "../utils/managerDrop";
 import { PointerMenu, type PointerMenuItem } from "./PointerMenu";
 
 interface FolderTreeProps {
@@ -18,28 +23,45 @@ interface FolderTreeProps {
   connections: ConnectionProfile[];
   currentFolderId?: string;
   onSelectFolder: (folderId: string | undefined) => void;
+  /** 中栏当前是「最近连接」视图——树上的选中高亮要让位给顶部的固定入口。 */
+  recentActive: boolean;
+  onSelectRecent: () => void;
   onCreateFolder: (parentId: string | undefined) => void;
   onRenameFolder: (folder: ConnectionFolder) => void;
   onDeleteFolder: (folder: ConnectionFolder) => void;
   onMoveFolder: (folderId: string, parentId: string | undefined) => void;
+  /** 同级排序:把 dragId 放到 dropId 的前/后。 */
+  onReorderFolder: (dragId: string, dropId: string, placeAfter: boolean) => void;
+  /** 把一批连接拖到某个目录(根节点为 undefined = 顶层)。 */
+  onDropConnections: (connectionIds: string[], folderId: string | undefined) => void;
+  /** 对该目录递归下的全部连接批量绑定认证。 */
+  onBatchBindAuth: (folder: ConnectionFolder) => void;
 }
 
 /**
- * 经典树形目录导航(替换钻取式)。选中某个目录 = 查看该子树的连接;根节点即"全部"。
- * 拖目录到目录上可以改层级;右键提供新建子目录/重命名/删除。
+ * 经典树形目录导航(D9′ 追认)。它仍是主导航:点一个目录 = 中栏网格钻到那一层。
+ * 拖目录到目录上改层级、拖到缝隙里改同级顺序;拖连接磁贴到节点上 = 移动连接。
+ *
+ * 「含子目录」开关随平铺视图一并废止(D18):网格是钻取式的,"当前这一层"是它唯一的口径。
  */
-export const FolderTree = ({
+const FolderTreeInner = ({
   rootLabel,
   folders,
   connections,
+  recentActive,
+  onSelectRecent,
   currentFolderId,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
-  onMoveFolder
+  onMoveFolder,
+  onReorderFolder,
+  onDropConnections,
+  onBatchBindAuth
 }: FolderTreeProps) => {
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([FOLDER_TREE_ROOT_KEY]);
+  const [dropKey, setDropKey] = useState<string>();
   const [menu, setMenu] = useState<{ x: number; y: number; items: PointerMenuItem[] } | null>(
     null
   );
@@ -85,71 +107,146 @@ export const FolderTree = ({
     [onSelectFolder]
   );
 
+  const buildMenuItems = useCallback(
+    (folder: ConnectionFolder | undefined): PointerMenuItem[] =>
+      !folder
+        ? [
+            {
+              key: "create",
+              label: "新建目录",
+              icon: "ri-folder-add-line",
+              onSelect: () => onCreateFolder(undefined)
+            }
+          ]
+        : [
+            {
+              key: "create",
+              label: "新建子目录",
+              icon: "ri-folder-add-line",
+              onSelect: () => onCreateFolder(folder.id)
+            },
+            {
+              key: "rename",
+              label: "重命名",
+              icon: "ri-pencil-line",
+              onSelect: () => onRenameFolder(folder)
+            },
+            {
+              key: "bindAuth",
+              label: "批量绑定认证（含子目录）",
+              icon: "ri-key-2-line",
+              onSelect: () => onBatchBindAuth(folder)
+            },
+            {
+              key: "delete",
+              label: "删除目录",
+              icon: "ri-delete-bin-line",
+              danger: true,
+              onSelect: () => onDeleteFolder(folder)
+            }
+          ],
+    [onBatchBindAuth, onCreateFolder, onDeleteFolder, onRenameFolder]
+  );
+
   const handleRightClick = useCallback<NonNullable<TreeProps["onRightClick"]>>(
     ({ event, node }) => {
       const key = String(node.key);
-      const folder = folderById.get(key);
-      const items: PointerMenuItem[] =
-        key === FOLDER_TREE_ROOT_KEY || !folder
-          ? [
-              {
-                key: "create",
-                label: "新建目录",
-                icon: "ri-folder-add-line",
-                onSelect: () => onCreateFolder(undefined)
-              }
-            ]
-          : [
-              {
-                key: "create",
-                label: "新建子目录",
-                icon: "ri-folder-add-line",
-                onSelect: () => onCreateFolder(folder.id)
-              },
-              {
-                key: "rename",
-                label: "重命名",
-                icon: "ri-pencil-line",
-                onSelect: () => onRenameFolder(folder)
-              },
-              {
-                key: "delete",
-                label: "删除目录",
-                icon: "ri-delete-bin-line",
-                danger: true,
-                onSelect: () => onDeleteFolder(folder)
-              }
-            ];
-      setMenu({ x: event.clientX, y: event.clientY, items });
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: buildMenuItems(key === FOLDER_TREE_ROOT_KEY ? undefined : folderById.get(key))
+      });
     },
-    [folderById, onCreateFolder, onDeleteFolder, onRenameFolder]
+    [buildMenuItems, folderById]
   );
 
   const handleDrop = useCallback<NonNullable<TreeProps["onDrop"]>>(
     (info) => {
       const dragKey = String(info.dragNode.key);
-      const dropKey = String(info.node.key);
+      const dropNodeKey = String(info.node.key);
       if (dragKey === FOLDER_TREE_ROOT_KEY) {
         return;
       }
-      // 落在节点上 = 成为其子目录;落在缝隙 = 与该节点同级。
-      let parentId: string | undefined;
-      if (!info.dropToGap) {
-        parentId = dropKey === FOLDER_TREE_ROOT_KEY ? undefined : dropKey;
-      } else {
-        parentId =
-          dropKey === FOLDER_TREE_ROOT_KEY ? undefined : folderById.get(dropKey)?.parentId;
-      }
       const dragged = folderById.get(dragKey);
-      if (!dragged || (dragged.parentId ?? undefined) === parentId) {
+      if (!dragged) {
         return;
       }
-      if (isSelfOrAncestor(dragKey, parentId, folders)) {
+
+      // 落在节点上 = 成为其子目录。
+      if (!info.dropToGap) {
+        const parentId = dropNodeKey === FOLDER_TREE_ROOT_KEY ? undefined : dropNodeKey;
+        if ((dragged.parentId ?? undefined) === parentId) {
+          return;
+        }
+        if (isSelfOrAncestor(dragKey, parentId, folders)) {
+          return;
+        }
+        onMoveFolder(dragKey, parentId);
         return;
       }
-      onMoveFolder(dragKey, parentId);
+
+      // 落在缝隙 = 与该节点同级并排在它前/后。根节点没有同级，退回"移到顶层"。
+      if (dropNodeKey === FOLDER_TREE_ROOT_KEY) {
+        if ((dragged.parentId ?? undefined) !== undefined) {
+          onMoveFolder(dragKey, undefined);
+        }
+        return;
+      }
+      if (isSelfOrAncestor(dragKey, dropNodeKey, folders)) {
+        return;
+      }
+      // antd 给的是绝对位置,减去落点节点自身的下标才知道是"前"还是"后"。
+      const positions = info.node.pos.split("-");
+      const selfIndex = Number(positions[positions.length - 1] ?? 0);
+      onReorderFolder(dragKey, dropNodeKey, info.dropPosition - selfIndex > 0);
     },
-    [folderById, folders, onMoveFolder]
+    [folderById, folders, onMoveFolder, onReorderFolder]
+  );
+
+  const handleConnectionDragOver = useCallback((event: DragEvent<HTMLElement>, key: string) => {
+    if (!isInternalConnectionDrag(event.dataTransfer)) {
+      return;
+    }
+    // 只拦自己的拖拽类型:目录自身的拖拽和文件拖入都继续交给上层处理。
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    setDropKey(key);
+  }, []);
+
+  const handleConnectionDrop = useCallback(
+    (event: DragEvent<HTMLElement>, key: string) => {
+      setDropKey(undefined);
+      if (!isInternalConnectionDrag(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = parseConnectionDragIds(event.dataTransfer.getData(CONNECTION_DRAG_MIME));
+      if (ids.length > 0) {
+        onDropConnections(ids, key === FOLDER_TREE_ROOT_KEY ? undefined : key);
+      }
+    },
+    [onDropConnections]
+  );
+
+  const titleRender = useCallback<NonNullable<TreeProps["titleRender"]>>(
+    (node) => {
+      const key = String(node.key);
+      // treeData 里的 title 都是元素，但类型上还允许函数形态，两种都接住。
+      const title = typeof node.title === "function" ? node.title(node) : node.title;
+      return (
+        <div
+          className={`cm2-tree-drop${key === dropKey ? " cm2-tree-drop--active" : ""}`}
+          onDragOver={(event) => handleConnectionDragOver(event, key)}
+          onDragLeave={() => setDropKey((previous) => (previous === key ? undefined : previous))}
+          onDrop={(event) => handleConnectionDrop(event, key)}
+        >
+          {title}
+        </div>
+      );
+    },
+    [dropKey, handleConnectionDragOver, handleConnectionDrop]
   );
 
   return (
@@ -166,12 +263,21 @@ export const FolderTree = ({
           />
         </Tooltip>
       </div>
+      <button
+        type="button"
+        className={`cm2-recent-entry${recentActive ? " cm2-recent-entry--active" : ""}`}
+        onClick={onSelectRecent}
+      >
+        <i className="ri-time-line" aria-hidden="true" />
+        最近连接
+      </button>
       <div className="cm2-folder-tree">
         <Tree
           blockNode
           showIcon
           treeData={treeData}
-          selectedKeys={[currentFolderId ?? FOLDER_TREE_ROOT_KEY]}
+          titleRender={titleRender}
+          selectedKeys={recentActive ? [] : [currentFolderId ?? FOLDER_TREE_ROOT_KEY]}
           expandedKeys={expandedKeys}
           onExpand={setExpandedKeys}
           onSelect={handleSelect}
@@ -186,3 +292,7 @@ export const FolderTree = ({
     </div>
   );
 };
+
+// 目录树在管理器里每次渲染都要重建整棵 treeData;它跟搜索框、选中态毫无关系,
+// 不包 memo 的话每敲一个字都会连带重画一遍。
+export const FolderTree = memo(FolderTreeInner);

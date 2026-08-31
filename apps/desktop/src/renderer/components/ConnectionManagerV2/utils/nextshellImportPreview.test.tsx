@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX } from "../../../../../../../packages/shared/src/index";
-import { buildNextShellImportPreviewQueue, getImportFileName } from "./nextshellImportPreview";
+import {
+  buildNextShellImportPreviewQueue,
+  getImportFileName,
+  resolveImportGroupPathFormat
+} from "./nextshellImportPreview";
 
 const createEntry = (name: string, host: string, username: string) => ({
   name,
@@ -95,5 +99,18 @@ describe("nextshell import preview queue", () => {
   test("derives filenames from both posix and windows paths", () => {
     expect(getImportFileName("/tmp/a.json")).toBe("a.json");
     expect(getImportFileName("C:\\temp\\b.json")).toBe("b.json");
+  });
+});
+
+describe("resolveImportGroupPathFormat", () => {
+  // 目录扫描拼出来的是磁盘相对路径：顶层文件夹叫 server 完全合法，剥前缀会吞掉一整层。
+  test("目录扫描导入按字面路径处理", () => {
+    expect(resolveImportGroupPathFormat("directory")).toBe("literal");
+  });
+
+  // 文件/云快照里的 groupPath 是线格式（/server、/workspace/<slug>、/import），必须剥前缀。
+  test("单文件导入与没有来源标记的批次都按线格式处理", () => {
+    expect(resolveImportGroupPathFormat("file")).toBe("wire");
+    expect(resolveImportGroupPathFormat(undefined)).toBe("wire");
   });
 });

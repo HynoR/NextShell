@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { App as AntdApp, Modal, Radio, Select, Table, Tag } from "antd";
 import type {
+  ConnectionFolder,
   ConnectionImportEntry,
   ConnectionProfile,
   ImportConflictPolicy,
@@ -9,14 +10,25 @@ import type {
 import { LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import { filterResourcesByOriginScope } from "@nextshell/shared";
 import { formatErrorMessage } from "../utils/errorMessage";
+import { buildFolderPathLabels } from "./ConnectionManagerV2/utils/folderTree";
+import { resolveImportGroupPathFormat } from "./ConnectionManagerV2/utils/nextshellImportPreview";
 
 interface ConnectionImportModalProps {
   open: boolean;
   entries: ConnectionImportEntry[];
   existingConnections: ConnectionProfile[];
   sshKeys: SshKeyProfile[];
+  /** 本地作用域的目录——导入执行链路只写本地。 */
+  folders?: ConnectionFolder[];
+  /** 打开导入时用户所在的目录,作为默认落点。 */
+  defaultTargetFolderId?: string;
   sourceName?: string;
   sourceProgress?: string;
+  /**
+   * 这批 entry 是从哪儿来的。目录扫描出来的 `groupPath` 是磁盘上的字面目录路径,
+   * 不能按线格式剥前缀——`groupPathFormat` 就是靠它决定的。省略按文件(线格式)处理。
+   */
+  sourceKind?: "file" | "directory";
   onClose: () => void;
   onImported: () => Promise<void>;
 }
@@ -26,8 +38,11 @@ export const ConnectionImportModal = ({
   entries,
   existingConnections,
   sshKeys,
+  folders,
+  defaultTargetFolderId,
   sourceName,
   sourceProgress,
+  sourceKind,
   onClose,
   onImported
 }: ConnectionImportModalProps) => {
@@ -35,10 +50,23 @@ export const ConnectionImportModal = ({
   const [conflictPolicy, setConflictPolicy] = useState<ImportConflictPolicy>("skip");
   const [importing, setImporting] = useState(false);
   const [keyBindings, setKeyBindings] = useState<Record<number, string>>({});
+  const [targetFolderId, setTargetFolderId] = useState<string | undefined>(defaultTargetFolderId);
 
   useEffect(() => {
     setKeyBindings({});
   }, [entries]);
+
+  // 队列里换到下一个文件时也要复位，否则上一份文件选的落点会悄悄套在下一份上。
+  useEffect(() => {
+    setTargetFolderId(defaultTargetFolderId);
+  }, [defaultTargetFolderId, entries]);
+
+  const folderOptions = useMemo(() => {
+    const labels = buildFolderPathLabels(folders ?? []);
+    return (folders ?? [])
+      .map((folder) => ({ value: folder.id, label: labels.get(folder.id) ?? folder.name }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [folders]);
 
   const existingSet = useMemo(() => {
     const set = new Set<string>();
@@ -213,7 +241,10 @@ export const ConnectionImportModal = ({
             monitorSession: e.monitorSession
           };
         }),
-        conflictPolicy
+        conflictPolicy,
+        targetFolderId,
+        // 目录扫描来的 groupPath 是磁盘上的字面路径，剥线格式前缀会吞掉一整层目录。
+        groupPathFormat: resolveImportGroupPathFormat(sourceKind)
       });
 
       const parts: string[] = [];
@@ -259,8 +290,16 @@ export const ConnectionImportModal = ({
           来源：{sourceName}
         </div>
       ) : null}
-      <div style={{ marginBottom: 12 }}>
-        <span style={{ marginRight: 12 }}>冲突处理：</span>
+      <div
+        style={{
+          marginBottom: 12,
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12
+        }}
+      >
+        <span>冲突处理：</span>
         <Radio.Group
           value={conflictPolicy}
           onChange={(e) => setConflictPolicy(e.target.value)}
@@ -270,6 +309,18 @@ export const ConnectionImportModal = ({
           <Radio.Button value="overwrite">覆盖已有</Radio.Button>
           <Radio.Button value="duplicate">创建副本</Radio.Button>
         </Radio.Group>
+        <span>目标文件夹：</span>
+        {/* 文件里的分组结构会在这个目录之下重建；留空则重建在根目录。 */}
+        <Select
+          size="small"
+          allowClear
+          style={{ minWidth: 220 }}
+          placeholder="根目录"
+          value={targetFolderId}
+          onChange={(value) => setTargetFolderId(value ?? undefined)}
+          options={folderOptions}
+          notFoundContent="本地还没有目录"
+        />
       </div>
 
       <Table

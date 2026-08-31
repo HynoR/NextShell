@@ -4,10 +4,32 @@ import {
   enrichImportEntry,
   mapFinalShellAuth,
   matchSshKeyRef,
+  materializeFolderChain,
   parseFinalShellImport,
   parseNextShellImport,
-  resolveImportedAuth
+  resolveImportedAuth,
+  type ImportFolderNode,
+  type ImportFolderStore
 } from "./import-export";
+
+/** 内存假仓储：better-sqlite3 是 Electron ABI，单测里跑不了真实目录表。 */
+const createFolderStore = (
+  seed: ImportFolderNode[] = []
+): ImportFolderStore & { nodes: ImportFolderNode[]; created: string[] } => {
+  const nodes = [...seed];
+  const created: string[] = [];
+  return {
+    nodes,
+    created,
+    list: () => nodes,
+    create: (name, parentId) => {
+      const node: ImportFolderNode = { id: `f${nodes.length + 1}`, name, parentId };
+      nodes.push(node);
+      created.push(name);
+      return node;
+    }
+  };
+};
 
 const createNextShellExport = (
   groupPath: string,
@@ -81,6 +103,72 @@ describe("connection import parsers", () => {
 
     expect(entries[0]?.authType).toBe("privateKey");
     expect(entries[0]?.sshKeyRef).toEqual({ name: "ops-ed25519", fingerprint: "SHA256:abc" });
+  });
+});
+
+describe("materializeFolderChain", () => {
+  test("creates one folder per segment and returns the leaf", () => {
+    const store = createFolderStore();
+    const leaf = materializeFolderChain(["prod", "asia"], undefined, store);
+
+    expect(store.created).toEqual(["prod", "asia"]);
+    expect(store.nodes).toEqual([
+      { id: "f1", name: "prod", parentId: undefined },
+      { id: "f2", name: "asia", parentId: "f1" }
+    ]);
+    expect(leaf).toBe("f2");
+  });
+
+  test("returns the root folder unchanged for an empty chain", () => {
+    const store = createFolderStore();
+    expect(materializeFolderChain([], undefined, store)).toBeUndefined();
+    expect(materializeFolderChain([], "root", store)).toBe("root");
+    expect(store.created).toEqual([]);
+  });
+
+  // 重复导入同一份文件不能每次都多出一整套同名目录——库里的唯一索引也会直接拒掉第二次。
+  test("reuses an existing folder with the same name under the same parent", () => {
+    const store = createFolderStore([
+      { id: "existing", name: "prod" },
+      { id: "other", name: "prod", parentId: "existing" }
+    ]);
+    const leaf = materializeFolderChain(["prod", "asia"], undefined, store);
+
+    expect(leaf).toBe("f3");
+    expect(store.created).toEqual(["asia"]);
+    expect(store.nodes.find((node) => node.id === "f3")?.parentId).toBe("existing");
+  });
+
+  test("is idempotent across repeated imports of the same structure", () => {
+    const store = createFolderStore();
+    const first = materializeFolderChain(["prod", "asia"], undefined, store);
+    const second = materializeFolderChain(["prod", "asia"], undefined, store);
+
+    expect(second).toBe(first);
+    expect(store.created).toEqual(["prod", "asia"]);
+  });
+
+  // 同名但在不同父目录下是两个不同的目录，不能被复用逻辑合并掉。
+  test("does not reuse a same-named folder that lives under a different parent", () => {
+    const store = createFolderStore([{ id: "elsewhere", name: "asia", parentId: "somewhere" }]);
+    const leaf = materializeFolderChain(["asia"], undefined, store);
+
+    expect(leaf).toBe("f2");
+    expect(store.created).toEqual(["asia"]);
+  });
+
+  test("hangs the whole chain under the given root folder", () => {
+    const store = createFolderStore();
+    const leaf = materializeFolderChain(["prod"], "root", store);
+
+    expect(store.nodes[0]).toEqual({ id: "f1", name: "prod", parentId: "root" });
+    expect(leaf).toBe("f1");
+  });
+
+  test("skips blank segments instead of creating a nameless folder", () => {
+    const store = createFolderStore();
+    expect(materializeFolderChain(["prod", "  ", "db"], undefined, store)).toBe("f2");
+    expect(store.created).toEqual(["prod", "db"]);
   });
 });
 

@@ -53,6 +53,7 @@ import { NetworkToolService } from "./network-tool-service";
 import { CommandService } from "./command-service";
 import { BackupPasswordService } from "./backup-password-service";
 import { ConnectionService } from "./connection-service";
+import { ConnectionFolderService } from "./connection-folder-service";
 import { ImportExportService } from "./import-export-service";
 import { CloudSyncManager } from "./cloud-sync-manager";
 import { ResourceOperationsService } from "./resource-operations-service";
@@ -780,6 +781,7 @@ export const createServiceContainer = async (
   const importExportSvc = new ImportExportService({
     connections,
     sshKeyRepo,
+    connectionFolders: folderRepo,
     vault,
     upsertConnection: (input) => connectionSvc.upsertConnection(input),
     appendAuditLogIfEnabled
@@ -881,11 +883,20 @@ export const createServiceContainer = async (
   });
   cloudSyncManager.initialize();
 
+  // 目录写操作要跟着重投影子孙连接的 groupPath(云同步线协议/MCP schema/导出文件都读它),
+  // 所以 IPC 走这层服务而不是裸仓储;只需要投影的其他服务继续直接用 folderRepo。
+  const folderSvc = new ConnectionFolderService({
+    folders: folderRepo,
+    connections,
+    listCloudWorkspaces: () => cloudSyncManager?.listWorkspaces() ?? []
+  });
+
   // Resource Operations Service
   const resourceOpsSvc = new ResourceOperationsService({
     connections,
     sshKeyRepo,
     proxyRepo,
+    connectionFolders: folderRepo,
     vault,
     cloudSyncManager,
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
@@ -1212,7 +1223,7 @@ export const createServiceContainer = async (
     cloudSync: cloudSyncManager,
     resourceOps: resourceOpsSvc,
     agentMcp: agentMcpSvc,
-    connectionFolders: folderRepo,
+    connectionFolders: folderSvc,
 
     // Orchestration
     removeConnection: async (id) => {

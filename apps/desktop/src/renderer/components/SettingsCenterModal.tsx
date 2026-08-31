@@ -25,17 +25,22 @@ import {
 
 interface SettingsCenterModalProps {
   open: boolean;
+  /**
+   * 打开时直接停在哪一节。云同步/回收站迁进设置中心后(D8),连接管理器需要能深链过来——
+   * 否则用户只知道"它们在设置里",得自己在 12 个节里翻。省略时沿用上次看的那一节。
+   */
+  initialSection?: SettingsSection;
   onClose: () => void;
 }
 
-export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps) => {
+export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsCenterModalProps) => {
   const { message, modal } = AntdApp.useApp();
   const preferences = usePreferencesStore((s) => s.preferences);
   const loading = usePreferencesStore((s) => s.loading);
   const initialize = usePreferencesStore((s) => s.initialize);
   const updatePreferences = usePreferencesStore((s) => s.updatePreferences);
 
-  const [activeSection, setActiveSection] = useState<SettingsSection>("window");
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? "window");
 
   // ─── Local state mirrors (synced from store) ────────────────────────
   const [uploadDefaultDir, setUploadDefaultDir] = useState(preferences.transfer.uploadDefaultDir);
@@ -110,6 +115,13 @@ export const SettingsCenterModal = ({ open, onClose }: SettingsCenterModalProps)
     if (!open) return;
     void initialize();
   }, [initialize, open]);
+
+  // 弹窗首次打开后一直挂着（保留关闭动画与内部状态），所以 useState 的初值只生效一次——
+  // 深链必须在每次打开时重新定位。没给 initialSection 就不动，保留用户上次看的那一节。
+  useEffect(() => {
+    if (!open || !initialSection) return;
+    setActiveSection(initialSection);
+  }, [initialSection, open]);
 
   useEffect(() => {
     if (!open) return;

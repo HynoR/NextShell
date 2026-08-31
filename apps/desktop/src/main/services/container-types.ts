@@ -7,7 +7,7 @@ import type {
   SessionDescriptor,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
-import type { ConnectionFolderRepository } from "../../../../../packages/storage/src/index";
+import type { ConnectionFolderService } from "./connection-folder-service";
 import type { SshShellChannel, SshConnection } from "../../../../../packages/ssh/src/index";
 import type { IPty } from "node-pty";
 import type { SystemMonitorController } from "./monitor/system-monitor-controller";
@@ -127,8 +127,12 @@ export interface ServiceContainer {
   readonly terminalIntegration: TerminalIntegrationService;
   readonly cloudSync: CloudSyncManager;
   readonly resourceOps: ResourceOperationsService;
-  /** 连接目录的实体仓储;目录是纯数据,没有需要编排的跨服务逻辑,所以直接暴露仓储。 */
-  readonly connectionFolders: ConnectionFolderRepository;
+  /**
+   * 连接目录。仓储面之外还要编排一件事:rename/move/remove 之后重投影该作用域内所有连接的
+   * `groupPath`(云同步线协议、MCP schema、导出文件都读这个投影),所以这里暴露的是服务而
+   * 不是裸仓储。
+   */
+  readonly connectionFolders: ConnectionFolderService;
   /** MCP endpoint for agents. Dark until `preferences.agent.enabled` is true. */
   readonly agentMcp: AgentMcpService;
 

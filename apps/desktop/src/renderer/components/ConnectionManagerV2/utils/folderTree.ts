@@ -133,6 +133,67 @@ export const buildFolderPathLabels = (
   return labels;
 };
 
+/** 某一层的目录,按树上显示的顺序(sortIndex 优先,同值按名称)。 */
+export const listSiblingFolders = (
+  parentId: string | undefined,
+  folders: readonly ConnectionFolder[]
+): ConnectionFolder[] => {
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  return folders
+    .filter((folder) => {
+      const effectiveParent =
+        folder.parentId && byId.has(folder.parentId) ? folder.parentId : undefined;
+      return effectiveParent === parentId;
+    })
+    .sort(compareFolders);
+};
+
+export interface FolderReorderStep {
+  id: string;
+  sortIndex: number;
+}
+
+/**
+ * 把 dragId 插到 dropId 的前/后,算出该层需要写回的 (id, sortIndex)。
+ *
+ * 整层重编号 0..n-1 而不是只改被拖的那个:目录创建时 sortIndex 一律是 0,只改一个会得到
+ * 一堆并列的 0,顺序又退回按名称排——用户拖了但看不出任何变化。返回值只含真正变了的项,
+ * 免得为没动的目录白发 IPC。dragId 与 dropId 同一个、或 dropId 不存在时返回空计划。
+ */
+export const planSiblingReorder = ({
+  folders,
+  dragId,
+  dropId,
+  placeAfter
+}: {
+  folders: readonly ConnectionFolder[];
+  dragId: string;
+  dropId: string;
+  placeAfter: boolean;
+}): FolderReorderStep[] => {
+  const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const dragged = byId.get(dragId);
+  const dropTarget = byId.get(dropId);
+  if (!dragged || !dropTarget || dragId === dropId) {
+    return [];
+  }
+  const targetParentId =
+    dropTarget.parentId && byId.has(dropTarget.parentId) ? dropTarget.parentId : undefined;
+
+  const ordered = listSiblingFolders(targetParentId, folders)
+    .map((folder) => folder.id)
+    .filter((id) => id !== dragId);
+  const anchor = ordered.indexOf(dropId);
+  if (anchor < 0) {
+    return [];
+  }
+  ordered.splice(placeAfter ? anchor + 1 : anchor, 0, dragId);
+
+  return ordered
+    .map((id, index) => ({ id, sortIndex: index }))
+    .filter((step) => byId.get(step.id)?.sortIndex !== step.sortIndex);
+};
+
 /** 判断 dragId 是否为 targetId 的祖先(或就是它自己)——这样的移动会把子树挂到自己里面。 */
 export const isSelfOrAncestor = (
   dragId: string,

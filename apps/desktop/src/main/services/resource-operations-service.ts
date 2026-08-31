@@ -19,26 +19,25 @@ import type {
   OriginKind
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
+import { deriveGroupPath, resolveFolderNames } from "@nextshell/shared";
+import type { ResourceCopyConnectionInput } from "@nextshell/shared";
 import type { CloudSyncManager } from "./cloud-sync-manager";
 import type { EncryptedSecretVault } from "@nextshell/security";
 import type {
   CachedConnectionRepository,
   CachedProxyRepository,
-  CachedSshKeyRepository
+  CachedSshKeyRepository,
+  ConnectionFolderRepository
 } from "@nextshell/storage";
 
 // ── Input types ─────────────────────────────────────────────────────────────
 
-export interface CopyConnectionInput {
-  /** ID of the source connection to copy */
-  sourceId: string;
-  /** Target origin kind */
-  targetOriginKind: OriginKind;
-  /** Target workspace ID (required if targetOriginKind is "cloud") */
-  targetWorkspaceId?: string;
-  /** Optional new group sub-path within the target zone */
-  targetGroupSubPath?: string;
-}
+/**
+ * 复制入参 = IPC 契约本体(`resourceCopyConnectionSchema` 的 z.infer)。
+ *
+ * 以前这里是一份手抄的同名接口,契约加字段时它不会报错,新字段在服务里被静默丢掉。
+ */
+export type CopyConnectionInput = ResourceCopyConnectionInput;
 
 export interface DeleteConnectionInput {
   id: string;
@@ -62,6 +61,7 @@ export interface ResourceOperationsDeps {
   connections: CachedConnectionRepository;
   sshKeyRepo: CachedSshKeyRepository;
   proxyRepo: CachedProxyRepository;
+  connectionFolders: ConnectionFolderRepository;
   vault: EncryptedSecretVault;
   cloudSyncManager: CloudSyncManager | undefined;
   saveRecycleBinEntry: (entry: RecycleBinEntry) => void;
@@ -117,12 +117,7 @@ export class ResourceOperationsService {
       }
     }
 
-    // Determine group path
-    const zone = input.targetOriginKind === "cloud" ? "workspace" : "server";
-    const subPath = input.targetGroupSubPath ?? "";
-    const groupPath = subPath
-      ? `/${zone}${subPath.startsWith("/") ? subPath : "/" + subPath}`
-      : `/${zone}`;
+    const target = this.resolveCopyTarget(input, targetScope);
 
     const now = new Date().toISOString();
     const copied: ConnectionProfile = {
@@ -136,7 +131,9 @@ export class ResourceOperationsService {
       strictHostKeyChecking: source.strictHostKeyChecking,
       sshKeyId: newSshKeyId,
       proxyId: newProxyId,
-      groupPath,
+      groupPath: target.groupPath,
+      // 源目录属于源作用域,原样带过来会指向目标域里根本不存在的目录 id。
+      folderId: target.folderId,
       tags: [...(source.tags ?? [])],
       notes: source.notes,
       favorite: false,
@@ -671,25 +668,74 @@ export class ResourceOperationsService {
   /**
    * 恢复目标的根路径。云资源必须落到 `/workspace/<slug>`:只写 `/workspace` 的话树会为它
    * 造出一个名为 "workspace" 的幽灵根节点。
+   *
+   * slug 规则只有一份:`deriveGroupPath`。workspace 查不到时它按本地根投影,与旧实现
+   * 「找不到就退回 /server」一致。
    */
-  private restoreRootPath(target: { originKind: OriginKind; workspaceId?: string }): string {
+  private restoreRootPath(target: {
+    scopeKey: string;
+    originKind: OriginKind;
+    workspaceId?: string;
+  }): string {
+    return deriveGroupPath({
+      scopeKey: target.scopeKey,
+      workspaceName: this.resolveWorkspaceName(target),
+      folderNames: []
+    });
+  }
+
+  /**
+   * 复制落点。`targetFolderId` 必须属于**目标**作用域:拿本地目录去投影一条云连接会算出
+   * `/server/...`,同步会把它看成换了分组;反过来则会给本地连接安上 `/workspace/<slug>`。
+   * 所以这里校验目录归属并按目录链投影 groupPath;没传时才退回旧的路径字符串行为。
+   */
+  private resolveCopyTarget(
+    input: CopyConnectionInput,
+    targetScope: { scopeKey: string; originKind: OriginKind; workspaceId?: string }
+  ): { groupPath: string; folderId?: string } {
+    if (input.targetFolderId) {
+      const folders = this.deps.connectionFolders.list(targetScope.scopeKey);
+      if (!folders.some((folder) => folder.id === input.targetFolderId)) {
+        throw new Error("目标目录不存在或不属于目标作用域");
+      }
+      return {
+        folderId: input.targetFolderId,
+        groupPath: deriveGroupPath({
+          scopeKey: targetScope.scopeKey,
+          workspaceName: this.resolveWorkspaceName(targetScope),
+          folderNames: resolveFolderNames(input.targetFolderId, folders)
+        })
+      };
+    }
+
+    const subPath = input.targetGroupSubPath ?? "";
+    if (!subPath) {
+      // 复制到作用域根。云 scope 的根是 `/workspace/<slug>`,拼 `/workspace` 会造出一个
+      // 名为 "workspace" 的幽灵根节点(folder-path.ts 明令禁止的形状)。
+      return {
+        groupPath: deriveGroupPath({
+          scopeKey: targetScope.scopeKey,
+          workspaceName: this.resolveWorkspaceName(targetScope),
+          folderNames: []
+        })
+      };
+    }
+    const zone = input.targetOriginKind === "cloud" ? "workspace" : "server";
+    return {
+      groupPath: `/${zone}${subPath.startsWith("/") ? subPath : "/" + subPath}`
+    };
+  }
+
+  private resolveWorkspaceName(target: {
+    originKind: OriginKind;
+    workspaceId?: string;
+  }): string | undefined {
     if (target.originKind !== "cloud" || !target.workspaceId) {
-      return "/server";
+      return undefined;
     }
-    const workspace = this.deps.cloudSyncManager
+    return this.deps.cloudSyncManager
       ?.listWorkspaces()
-      .find((item) => item.id === target.workspaceId);
-    if (!workspace) {
-      return "/server";
-    }
-    const slug =
-      workspace.workspaceName
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9._-]+/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "") || "workspace";
-    return `/workspace/${slug}`;
+      .find((item) => item.id === target.workspaceId)?.workspaceName;
   }
 
   private resolveScope(

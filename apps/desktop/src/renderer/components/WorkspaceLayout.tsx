@@ -334,6 +334,11 @@ interface WorkspaceLayoutProps {
   bottomTab: string;
   onLoadConnections: () => void;
   onOpenManager: () => void;
+  /**
+   * 打开管理器并定位到某条连接(A6)。原来的调用方是侧栏连接树,树在 7b2bd8a 删掉之后
+   * 这条链路一直断着;标签右键菜单是它现在唯一的自然入口——右键的就是"这一台机器"。
+   */
+  onOpenManagerForConnection: (connectionId: string) => void;
   onOpenSettings: () => void;
   onActivateConnection: (connectionId: string) => void;
   onTreeConnect: (connectionId: string) => void;
@@ -384,6 +389,7 @@ const WorkspaceLayoutComponent = ({
   bottomTab,
   onLoadConnections,
   onOpenManager,
+  onOpenManagerForConnection,
   onOpenSettings,
   onActivateConnection,
   onTreeConnect,
@@ -1201,7 +1207,13 @@ const WorkspaceLayoutComponent = ({
                     session={contextMenuSession}
                     displayTitle={contextMenuSessionTitle ?? contextMenuSession.title}
                     onClose={() => setSessionContextMenu(null)}
-                    onOpenManager={onOpenManager}
+                    // 右键的是「这个标签」，所以顺手定位到它对应的连接；本地终端这类
+                    // 没有连接的标签退回普通打开。
+                    onOpenManager={() =>
+                      contextMenuSession.connectionId
+                        ? onOpenManagerForConnection(contextMenuSession.connectionId)
+                        : onOpenManager()
+                    }
                     onRename={(session) => {
                       void handlePromptRenameSession(session);
                     }}

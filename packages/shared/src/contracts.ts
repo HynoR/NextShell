@@ -60,10 +60,13 @@ export const connectionUpsertSchema = z
     password: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
     sshKeyId: z.string().uuid().optional(),
     /**
-     * 目标目录。给了它就由它派生 groupPath；没给则沿用传入的 groupPath（旧调用方：
-     * 导入、快速连接、认证改写）。
+     * 目标目录。三态：
+     * - uuid   → 移到该目录，并由它派生 groupPath；
+     * - `null` → 显式移到顶层（拖到目录树根节点、编辑器里清空「目录」都走它）；
+     * - 省略   → 沿用已存目录与传入的 groupPath（旧调用方：导入、快速连接、认证改写）。
+     * 没有 `null` 这一档时「移回顶层」会被 `?? current.folderId` 静默吃掉。
      */
-    folderId: z.string().uuid().optional(),
+    folderId: z.string().uuid().nullable().optional(),
     hostFingerprint: z.preprocess(trimToOptionalString, z.string().min(1).optional()),
     strictHostKeyChecking: z.boolean().default(false),
     proxyId: z.string().uuid().optional(),
@@ -1269,7 +1272,20 @@ export const connectionImportExecuteSchema = z.object({
       monitorSession: z.boolean().default(false)
     })
   ),
-  conflictPolicy: z.enum(["skip", "overwrite", "duplicate"]).default("skip")
+  conflictPolicy: z.enum(["skip", "overwrite", "duplicate"]).default("skip"),
+  /**
+   * 导入落点。每条 entry 的 groupPath 会被物化成真实目录链,整条链挂在这个目录之下;
+   * 省略则挂在本地根。目录必须存在且属于本地作用域——导入执行链路只写本地。
+   */
+  targetFolderId: z.string().uuid().optional(),
+  /**
+   * `entries[].groupPath` 的来源格式,决定物化目录链前剥不剥线格式前缀:
+   * - `wire`(省略时的行为)——路径来自导出文件 / 云快照 / FinalShell 的 `/import/finalshell`
+   *   常量,`/server`、`/workspace/<slug>`、`/import` 是线格式前缀,必须剥掉;
+   * - `literal`——路径由目录扫描导入按磁盘相对路径拼出,没有任何前缀,一段都不能剥:
+   *   用户把顶层目录叫 `server` 完全合法,剥掉会吞掉一整层。
+   */
+  groupPathFormat: z.enum(["wire", "literal"]).optional()
 });
 
 export type ConnectionListQueryInput = z.infer<typeof connectionListQuerySchema>;
@@ -1600,6 +1616,12 @@ export const resourceCopyConnectionSchema = z.object({
   sourceId: z.string().trim().min(1),
   targetOriginKind: z.enum(["local", "cloud"]),
   targetWorkspaceId: z.string().trim().min(1).optional(),
+  /**
+   * 目标作用域内的目录 id。目录才是落点的真相,groupPath 由它投影出来——只传名字的话
+   * 嵌套目录 `a/b` 会丢掉 `a`,复制落点与所选不符。
+   */
+  targetFolderId: z.string().uuid().optional(),
+  /** 旧调用方的路径字符串写法。仅在没有 targetFolderId 时生效。 */
   targetGroupSubPath: z.string().trim().max(500).optional()
 });
 

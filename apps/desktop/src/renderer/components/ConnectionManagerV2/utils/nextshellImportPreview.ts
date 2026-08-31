@@ -12,6 +12,18 @@ interface BuildNextShellImportPreviewQueueOptions {
   promptImportDecryptionPassword: (fileName: string, promptText: string) => Promise<string | null>;
 }
 
+/**
+ * 这一批 entry 的 `groupPath` 该按哪种格式解释,决定主进程物化目录链前剥不剥前缀:
+ * - 目录扫描导入(`sourceKind === "directory"`)的路径是磁盘上的相对目录,**一段都不能剥**——
+ *   用户把顶层文件夹取名叫 `server` 完全合法,按线格式剥掉会静默吞掉一整层目录;
+ * - 其余来源(导出文件、云快照、FinalShell 的 `/import/finalshell`)都是线格式,前缀必须剥。
+ *
+ * 省略这个字段主进程按 `wire` 走,也就是现行为;所以只有目录那条路径需要显式改口。
+ */
+export const resolveImportGroupPathFormat = (
+  sourceKind: ImportPreviewBatch["sourceKind"]
+): "wire" | "literal" => (sourceKind === "directory" ? "literal" : "wire");
+
 export const getImportFileName = (filePath: string): string => {
   const normalized = filePath.replace(/\\/g, "/");
   const splitIndex = normalized.lastIndexOf("/");

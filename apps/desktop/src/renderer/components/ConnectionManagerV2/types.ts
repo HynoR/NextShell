@@ -2,20 +2,26 @@ import type { ConnectionImportEntry, ConnectionProfile } from "@nextshell/core";
 
 export type ResourceTab = "connections" | "keys" | "proxies";
 
-/** 表格可显示的列。默认只开前四列,其余进「列…」下拉。 */
+/**
+ * 表格可显示的列。默认开前五列(D17:「备注」进默认列),其余进「列…」下拉。
+ * 这里的键序同时是「列…」下拉重新勾选时的插入序,所以它必须等于期望的显示顺序。
+ */
 export type ConnectionColumnKey =
   | "name"
   | "address"
   | "username"
   | "auth"
+  | "notes"
   | "tags"
-  | "lastConnected";
+  | "lastConnected"
+  | "createdAt";
 
 export const DEFAULT_CONNECTION_COLUMNS: ConnectionColumnKey[] = [
   "name",
   "address",
   "username",
-  "auth"
+  "auth",
+  "notes"
 ];
 
 export const CONNECTION_COLUMN_LABELS: Record<ConnectionColumnKey, string> = {
@@ -23,11 +29,13 @@ export const CONNECTION_COLUMN_LABELS: Record<ConnectionColumnKey, string> = {
   address: "主机:端口",
   username: "用户名",
   auth: "认证方式",
+  notes: "备注",
   tags: "标签",
-  lastConnected: "最后连接"
+  lastConnected: "最后连接",
+  createdAt: "创建时间"
 };
 
-export type ConnectionSortKey = "name" | "address" | "lastConnected";
+export type ConnectionSortKey = "name" | "address" | "lastConnected" | "createdAt";
 
 export interface ConnectionSort {
   key: ConnectionSortKey;
@@ -49,9 +57,12 @@ export interface ImportPreviewBatch {
 }
 
 /**
- * 批量绑定认证的目标。`group` 分支按 groupPath 前缀匹配，是主进程既有的契约形态；
- * V2 只构造 `connections`——作用域切换器保证选区同域，不需要再按路径圈定。
+ * 批量绑定认证的目标。主进程的契约里还留着按 groupPath 前缀匹配的 `group` 分支，
+ * 但 V2 只构造 `connections`：按目录批量绑定也是先把该目录递归下的连接 id 收集出来再传，
+ * 这样"选中的一批"与"某个目录下的一批"走同一条校验(同作用域、同一批 id)。
  */
-export type BatchAuthTarget =
-  | { type: "connections"; connectionIds: string[]; label: string }
-  | { type: "group"; groupPath: string; label: string };
+export interface BatchAuthTarget {
+  type: "connections";
+  connectionIds: string[];
+  label: string;
+}

@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import type { RefObject } from "react";
 import { Button, Collapse, Form, Input, InputNumber, Select, Switch } from "antd";
 import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
@@ -6,6 +7,53 @@ import { buildFolderPathLabels } from "../utils/folderTree";
 
 export interface ConnectionEditorValues extends ConnectionUpsertInput {
   folderId?: string;
+}
+
+/** 保存后是否顺带开会话。「保存并连接」与双击行同语义：成功即关闭整个管理器。 */
+export type ConnectionEditorSubmitIntent = "save" | "saveAndConnect";
+
+/** 四个折叠区的 key，同时是 Collapse 的受控 activeKey 取值。 */
+export type EditorSectionKey = "security" | "network" | "terminal" | "meta";
+
+/**
+ * 折叠区内的字段 → 所在折叠区。常驻字段(名称/主机/端口/用户名/认证方式/密钥/密码/目录)
+ * 刻意不在表里——它们本来就可见,校验失败时不需要展开任何区块。
+ */
+export const EDITOR_SECTION_BY_FIELD: Record<string, EditorSectionKey> = {
+  hostFingerprint: "security",
+  strictHostKeyChecking: "security",
+  proxyId: "network",
+  keepAliveEnabled: "network",
+  keepAliveIntervalSec: "network",
+  terminalEncoding: "terminal",
+  backspaceMode: "terminal",
+  deleteMode: "terminal",
+  monitorSession: "terminal",
+  tags: "meta",
+  favorite: "meta",
+  agentAccess: "meta",
+  notes: "meta"
+};
+
+/** antd 的 errorFields 形状裁到本模块用得上的部分，测试可以直接构造。 */
+export interface EditorErrorField {
+  readonly name: readonly (string | number)[];
+}
+
+/**
+ * 取第一个出错字段所在的折叠区。常驻字段、未知字段、空错误列表都返回 undefined
+ * ——「不需要展开任何东西」，而不是报错。
+ */
+export const resolveEditorErrorSection = (
+  errorFields: readonly EditorErrorField[]
+): EditorSectionKey | undefined => {
+  const first = errorFields[0]?.name[0];
+  return typeof first === "string" ? EDITOR_SECTION_BY_FIELD[first] : undefined;
+};
+
+/** 供外部在内联新建密钥后把新 id 写回表单。表单实例留在组件内部——换连接靠整体重挂载重置。 */
+export interface ConnectionEditorHandle {
+  selectSshKey: (sshKeyId: string) => void;
 }
 
 interface ConnectionEditorProps {
@@ -19,9 +67,12 @@ interface ConnectionEditorProps {
   revealedPassword?: string;
   revealingPassword: boolean;
   onRevealPassword: () => void;
-  onSubmit: (values: ConnectionEditorValues) => void;
+  onSubmit: (values: ConnectionEditorValues, intent: ConnectionEditorSubmitIntent) => void;
   onCancel: () => void;
   onCreateKey: () => void;
+  /** 表单被改动时上报 true，挂载时上报 false；调用方据此决定要不要「放弃未保存的修改」确认。 */
+  onDirtyChange?: (dirty: boolean) => void;
+  editorRef?: RefObject<ConnectionEditorHandle | null>;
 }
 
 /**
@@ -40,7 +91,9 @@ export const ConnectionEditor = ({
   onRevealPassword,
   onSubmit,
   onCancel,
-  onCreateKey
+  onCreateKey,
+  onDirtyChange,
+  editorRef
 }: ConnectionEditorProps) => {
   const [form] = Form.useForm<ConnectionEditorValues>();
   // 首帧就用 `initialValues` 给全值，而不是等 effect 里 setFieldsValue：后者会先渲染一遍空表单，
@@ -83,6 +136,58 @@ export const ConnectionEditor = ({
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [folders]);
 
+  // 折叠区受控：校验失败时要能从外部把出错的那一区展开。
+  const [activeSections, setActiveSections] = useState<string[]>([]);
+  // 两个提交按钮共用父组件的 saving，用它记住该由谁转圈；真正的意图按调用点字面传，不读它。
+  const [pressedIntent, setPressedIntent] = useState<ConnectionEditorSubmitIntent>("save");
+
+  // 挂载即复位脏标记：换连接是整体重挂载，上一条的脏标记不能带过来。
+  useEffect(() => {
+    onDirtyChange?.(false);
+  }, [onDirtyChange]);
+
+  useImperativeHandle(
+    editorRef,
+    () => ({
+      selectSshKey: (sshKeyId: string) => {
+        // 连值带错一起写：setFieldValue 不会重跑校验，「请选择密钥」会一直挂在那。
+        form.setFields([{ name: "sshKeyId", value: sshKeyId, errors: [] }]);
+        onDirtyChange?.(true);
+      }
+    }),
+    [form, onDirtyChange]
+  );
+
+  const focusFirstError = useCallback(
+    (errorFields: readonly EditorErrorField[]) => {
+      const section = resolveEditorErrorSection(errorFields);
+      if (section) {
+        setActiveSections((previous) =>
+          previous.includes(section) ? previous : [...previous, section]
+        );
+      }
+      const name = errorFields[0]?.name;
+      if (!name) {
+        return;
+      }
+      // 折叠区是上面这次 setState 才展开的，DOM 要等下一帧；同帧滚动会落空。
+      window.requestAnimationFrame(() => {
+        form.scrollToField([...name], { behavior: "smooth", block: "center" });
+      });
+    },
+    [form]
+  );
+
+  const handleSaveAndConnect = useCallback(() => {
+    setPressedIntent("saveAndConnect");
+    form
+      .validateFields()
+      .then((values) => onSubmit(values, "saveAndConnect"))
+      .catch((info: { errorFields?: EditorErrorField[] }) =>
+        focusFirstError(info?.errorFields ?? [])
+      );
+  }, [focusFirstError, form, onSubmit]);
+
   return (
     <Form
       form={form}
@@ -90,7 +195,15 @@ export const ConnectionEditor = ({
       layout="vertical"
       requiredMark={false}
       className="cm2-editor"
-      onFinish={onSubmit}
+      onValuesChange={() => onDirtyChange?.(true)}
+      onFinish={(values) => {
+        setPressedIntent("save");
+        onSubmit(values, "save");
+      }}
+      onFinishFailed={(info) => {
+        setPressedIntent("save");
+        focusFirstError(info.errorFields);
+      }}
     >
       <div className="cm2-editor-body">
         <Form.Item label="名称" name="name">
@@ -196,6 +309,8 @@ export const ConnectionEditor = ({
           ghost
           size="small"
           className="cm2-editor-sections"
+          activeKey={activeSections}
+          onChange={(keys) => setActiveSections(Array.isArray(keys) ? keys : [keys])}
           items={[
             {
               key: "security",
@@ -309,7 +424,21 @@ export const ConnectionEditor = ({
       </div>
 
       <footer className="cm2-detail-foot">
-        <Button type="primary" htmlType="submit" loading={saving}>
+        <Button
+          type="primary"
+          loading={saving && pressedIntent === "saveAndConnect"}
+          disabled={saving}
+          onClick={handleSaveAndConnect}
+        >
+          保存并连接
+        </Button>
+        {/* 保留原生 submit：输入框里按回车走的是它，语义必须是「只保存」。 */}
+        <Button
+          htmlType="submit"
+          loading={saving && pressedIntent === "save"}
+          disabled={saving}
+          onClick={() => setPressedIntent("save")}
+        >
           保存
         </Button>
         <Button onClick={onCancel} disabled={saving}>

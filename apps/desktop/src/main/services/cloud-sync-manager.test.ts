@@ -499,6 +499,128 @@ describe("CloudSyncManager workspace repo sync", () => {
   });
 });
 
+describe("CloudSyncManager applyWorkspaceSnapshot", () => {
+  type ApplySnapshot = (
+    workspace: CloudSyncWorkspaceProfile,
+    workspacePassword: string,
+    snapshot: WorkspaceRepoSnapshot
+  ) => Promise<void>;
+
+  // folderId 不在线协议里,是本地的目录归属;saveConnection 是全行 upsert,重建 profile 时
+  // 漏掉这个键就等于每次 pull 都把云连接的目录清空。
+  test("keeps the local folderId of an existing cloud connection across a pull", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName
+    });
+    const existing: ConnectionProfile = {
+      id: "local-id-1",
+      name: "Prod",
+      host: "old.example.com",
+      port: 22,
+      username: "root",
+      authType: "agent",
+      strictHostKeyChecking: false,
+      groupPath: "/workspace/prod-team/asia",
+      folderId: "folder-asia",
+      tags: [],
+      favorite: false,
+      monitorSession: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      createdAt: now,
+      updatedAt: now,
+      resourceId: `${scopeKey}-conn-1`,
+      uuidInScope: "conn-1",
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: workspace.id
+    } as ConnectionProfile;
+    const state = createMutableState(workspace, { connections: [existing] });
+    const manager = new CloudSyncManager(createMutableDeps(state));
+
+    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      repoSnapshot(workspace.id, "remote-snapshot", [
+        snapshotConnection("conn-1", "Prod", "new.example.com")
+      ])
+    );
+
+    const applied = state.connections.find((connection) => connection.uuidInScope === "conn-1");
+    expect(applied?.host).toBe("new.example.com");
+    expect(applied?.folderId).toBe("folder-asia");
+  });
+
+  // agentAccess 同样不在线协议里:全行 upsert 绑的是 `agentAccess ?? "off"`,漏掉这个键
+  // 等于每次 pull 都把用户授予 agent 的访问权限悄悄降回 off。
+  test("keeps the local agentAccess of an existing cloud connection across a pull", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName
+    });
+    const existing: ConnectionProfile = {
+      id: "local-id-2",
+      name: "Prod",
+      host: "old.example.com",
+      port: 22,
+      username: "root",
+      authType: "agent",
+      strictHostKeyChecking: false,
+      groupPath: "/workspace/prod-team",
+      agentAccess: "full",
+      tags: [],
+      favorite: false,
+      monitorSession: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      createdAt: now,
+      updatedAt: now,
+      resourceId: `${scopeKey}-conn-2`,
+      uuidInScope: "conn-2",
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: workspace.id
+    } as ConnectionProfile;
+    const state = createMutableState(workspace, { connections: [existing] });
+    const manager = new CloudSyncManager(createMutableDeps(state));
+
+    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      repoSnapshot(workspace.id, "remote-snapshot", [
+        snapshotConnection("conn-2", "Prod", "new.example.com")
+      ])
+    );
+
+    const applied = state.connections.find((connection) => connection.uuidInScope === "conn-2");
+    expect(applied?.host).toBe("new.example.com");
+    expect(applied?.agentAccess).toBe("full");
+  });
+
+  test("leaves folderId empty for a connection this device has never seen", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const state = createMutableState(workspace);
+    const manager = new CloudSyncManager(createMutableDeps(state));
+
+    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      repoSnapshot(workspace.id, "remote-snapshot", [
+        snapshotConnection("conn-new", "New", "new.example.com")
+      ])
+    );
+
+    expect(state.connections[0]?.folderId).toBeUndefined();
+  });
+});
+
 describe("CloudSyncManager workspace command sync", () => {
   test("preserves both local and remote command edits when both sides changed", async () => {
     const workspace = { ...createWorkspace(), enabled: true };

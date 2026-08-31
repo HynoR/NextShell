@@ -203,6 +203,35 @@ export class CachedConnectionRepository implements ConnectionRepository {
     }
   }
 
+  /** 只改 groupPath 一列(目录改名/移动/删除后的重投影),缓存里同步替换那一条。 */
+  updateConnectionGroupPath(id: string, groupPath: string): void {
+    this.inner.updateConnectionGroupPath(id, groupPath);
+    const cached = this.connById?.get(id);
+    if (!cached) {
+      return;
+    }
+    const next: ConnectionProfile = { ...cached, groupPath };
+    this.connById?.set(id, next);
+    if (this.connList) {
+      const idx = this.connList.findIndex((c) => c.id === id);
+      if (idx >= 0) {
+        this.connList[idx] = next;
+      }
+    }
+  }
+
+  /**
+   * 丢弃连接缓存,下次读取重新从库里加载。
+   *
+   * 目录删除走的是 `DELETE FROM connection_folders`,`connections.folder_id` 由外键
+   * `ON DELETE SET NULL` 级联清空——这一步绕过了本缓存,不重读的话内存里那份还挂在
+   * 一个已经不存在的目录上。
+   */
+  invalidateConnections(): void {
+    this.connList = undefined;
+    this.connById = undefined;
+  }
+
   remove(id: string): void {
     this.inner.remove(id);
     if (this.connList) {

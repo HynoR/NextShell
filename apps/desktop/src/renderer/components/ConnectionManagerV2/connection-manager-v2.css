@@ -6,10 +6,83 @@
  * 这里只消费。按钮/菜单/输入等控件一律用 antd 组件，本文件只负责布局与少量单元格样式。
  */
 .cm2-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-surface);
+}
+
+/* 拖入期间禁掉文本选中，否则拖过表格会顺手把行文字刷成选区。 */
+.cm2-shell--drop-target {
+  user-select: none;
+}
+
+/* pointer-events: none —— 遮罩绝不能吃掉 drop 事件本身。 */
+.cm2-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  background: color-mix(
+    in srgb,
+    var(--bg-surface) 78%,
+    color-mix(in srgb, var(--accent) 18%, transparent)
+  );
+}
+
+.cm2-drop-overlay-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  min-width: 280px;
+  padding: 22px 28px;
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  background: var(--bg-elevated, var(--bg-surface));
+  text-align: center;
+}
+
+.cm2-drop-overlay-card i {
+  font-size: 26px;
+  color: var(--accent);
+}
+
+.cm2-drop-overlay-card span {
+  font-size: var(--fs-sm, 12px);
+  color: var(--t3);
+}
+
+.cm2-toolbar-import {
+  display: inline-flex;
+}
+
+/*
+ * D4 的拖角缩放手柄。z-index 压过表格但低于拖入遮罩(那个是 pointer-events: none，不抢事件)。
+ * touch-action: none —— 触控板/触屏上不加这条,浏览器会把拖拽当成滚动手势吃掉。
+ */
+.cm2-dialog-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 9;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 3px,
+    var(--border) 3px 4px
+  );
+}
+
+.cm2-dialog-resize:hover {
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--accent) 3px 4px);
 }
 
 .cm2-title {
@@ -53,16 +126,22 @@
   overflow: hidden;
 }
 
-/* 独占一条 6px 的 grid 轨道；拖动时只改 --cm2-folder-w，不触发 React 重渲。 */
+/* 独占一条 6px 的 grid 轨道；拖动时只改 --cm2-folder-w / --cm2-detail-w，不触发 React 重渲。 */
 .cm2-resizer {
   cursor: col-resize;
   background: transparent;
   border-left: 1px solid var(--border);
+  touch-action: none;
 }
 
 .cm2-resizer:hover,
 .cm2-resizer:active {
   background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* 右栏那条：分隔线由 .cm2-detail-col 自己的 border-left 画，这里再画一条就成了双线。 */
+.cm2-resizer--flush {
+  border-left: none;
 }
 
 /* ── 目录树 ─────────────────────────────────────────────── */
@@ -89,6 +168,34 @@
   color: var(--t3);
 }
 
+/* 左栏顶部的固定入口:默认视图就是它,与目录树选中态互斥。 */
+.cm2-recent-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 6px 0;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--t2);
+  font: inherit;
+  font-size: var(--fs-base);
+  text-align: left;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.cm2-recent-entry:hover {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+
+.cm2-recent-entry--active {
+  background: var(--accent-dim);
+  color: var(--t1);
+}
+
 .cm2-folder-tree {
   flex: 1;
   min-height: 0;
@@ -105,7 +212,22 @@
   padding-bottom: 2px;
 }
 
+/* 图标(行内)后面跟着 titleRender 的块级 drop 包裹层会被挤成两行——强制同行。 */
 .cm2-folder-tree .ant-tree .ant-tree-node-content-wrapper {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  line-height: 24px;
+}
+
+.cm2-folder-tree .ant-tree .ant-tree-iconEle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cm2-folder-tree .ant-tree .ant-tree-title {
+  flex: 1;
   min-width: 0;
 }
 
@@ -134,7 +256,22 @@
   line-height: 16px;
 }
 
-/* ── 中栏：工具条 + 表格 ────────────────────────────────── */
+/* 每个节点标题外面包一层，用来接住"把连接拖到这个目录"的 drop。必须保持行内 flex，
+   块级会把它顶到图标下一行。 */
+.cm2-tree-drop {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.cm2-tree-drop--active {
+  outline: 1px dashed var(--accent);
+  outline-offset: 1px;
+  background: var(--accent-dim);
+}
+
+/* ── 中栏：工具条 + 网格 ────────────────────────────────── */
 
 .cm2-main {
   display: flex;
@@ -144,6 +281,11 @@
   overflow: hidden;
 }
 
+/*
+ * 补回「本地终端」和「更多」之后这一行的命令变多了，而中栏宽度现在由两条分隔条决定、
+ * 可以被拖得很窄。不换行的话最右边的按钮会被裁掉——宁可占两行也不能有点不到的命令。
+ */
+/* 单行工具条:次要命令全部图标化后一行放得下,不再 wrap 成两层。 */
 .cm2-toolbar {
   display: flex;
   align-items: center;
@@ -155,11 +297,212 @@
 
 .cm2-search {
   flex: 1;
-  min-width: 120px;
+  min-width: 160px;
+  max-width: 420px;
 }
 
 .cm2-search-icon {
   color: var(--t3);
+}
+
+/* ── 中栏:路径栏 + 图标网格(D18) ──────────────────────── */
+
+/* 取代旧的「最近连接 / 全部」切换条:左边是钻取路径,右边是排序(网格没有表头可放)。 */
+.cm2-pathbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 8px 3px 12px;
+  border-bottom: 1px solid var(--border-dim);
+  flex-shrink: 0;
+}
+
+.cm2-pathbar-trail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.cm2-pathbar-seg {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cm2-pathbar-sep {
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.cm2-pathbar-link {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--t2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.cm2-pathbar-link:hover {
+  background: var(--bg-hover);
+  color: var(--t1);
+}
+
+.cm2-pathbar-link--current {
+  color: var(--t1);
+  font-weight: 500;
+}
+
+.cm2-pathbar-search {
+  font-size: var(--fs-sm);
+  color: var(--t3);
+  padding-left: 2px;
+}
+
+.cm2-pathbar-sort {
+  flex-shrink: 0;
+  min-width: 104px;
+}
+
+.cm2-grid-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 16px;
+}
+
+.cm2-grid-section + .cm2-grid-section {
+  margin-top: 14px;
+}
+
+.cm2-grid-title {
+  margin: 0 0 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-dim);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--t3);
+}
+
+/*
+ * auto-fill + minmax:栏宽被拖窄时自动减少列数,永远不出横向滚动条。110px 是磁贴宽度的
+ * 下限——再窄两行名称就装不下一个常见主机名了。
+ */
+.cm2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 4px;
+}
+
+/*
+ * 整块磁贴都是点击目标(D18 的核心诉求:实测"表格行按钮太小,跟玩 FPS 一样得非常准")。
+ * 所以它是一个 button 而不是带内嵌按钮的容器——命中区域就是看得见的那一块。
+ */
+/* 视口外磁贴跳过渲染:浏览几百台的目录时靠它保持流畅,等价于零成本的虚拟化。 */
+.cm2-tile {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--t1);
+  font: inherit;
+  font-size: var(--fs-base);
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cm2-tile:hover {
+  background: var(--bg-hover);
+}
+
+.cm2-tile--selected {
+  background: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.cm2-tile--focused {
+  border-color: var(--accent);
+}
+
+/* 拖着连接悬在目录磁贴上。虚线与左树的 drop 提示同一套语言。 */
+.cm2-tile--drop {
+  background: var(--accent-dim);
+  border-style: dashed;
+  border-color: var(--accent);
+}
+
+.cm2-tile-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  font-size: 44px;
+  line-height: 1;
+  color: var(--t2);
+}
+
+.cm2-tile--folder .cm2-tile-icon {
+  color: var(--accent);
+}
+
+/* 两行封顶:一行装不下常见的 `xx-prod-db-01`,三行会让磁贴高度参差不齐。 */
+.cm2-tile-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  max-width: 100%;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.cm2-tile-sub {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-xs);
+  color: var(--t3);
+}
+
+/* 未绑定密钥的角标。压在图标右下角,不占名称的位置。 */
+.cm2-tile-warn {
+  position: absolute;
+  right: 4px;
+  bottom: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--err);
+  background: var(--bg-base);
+  border-radius: 50%;
+}
+
+.cm2-grid-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin: 0;
+  color: var(--t3);
+  font-size: var(--fs-sm);
 }
 
 /* 表格的滚动容器。普通表在这里滚（表头 sticky）；虚拟表自己管理表体滚动，撑满即可。 */
@@ -211,6 +554,50 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+/* 目录行:整行加粗一点点，跟连接行在同一张表里也能一眼分开。 */
+.cm2-cell-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.cm2-cell-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm2-row--folder > td,
+.cm2-table .ant-table-tbody-virtual .cm2-row--folder .ant-table-cell {
+  background: var(--bg-elevated);
+}
+
+.cm2-row--drop-target > td,
+.cm2-table .ant-table-tbody-virtual .cm2-row--drop-target .ant-table-cell {
+  background: var(--accent-dim);
+}
+
+.cm2-cell-notes {
+  color: var(--t2);
+}
+
+/* 拖多条连接时跟随指针的标签。挂在 body 上，只在拖拽那一瞬间存在。 */
+.cm2-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .cm2-star {
@@ -327,8 +714,10 @@
   font-size: var(--fs-xs);
 }
 
+/* 右栏现在可以被拖到 260px，密钥详情又有四个按钮：不换行就会横向溢出。 */
 .cm2-detail-foot {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 14px;
   border-top: 1px solid var(--border-dim);
@@ -398,6 +787,35 @@
   margin: 0;
   color: var(--t3);
   font-size: var(--fs-sm);
+}
+
+/* 树形表格的展开 caret(替换 antd 默认的 +/- 方块)。 */
+.cm2-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-right: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.cm2-expand > i {
+  transition: transform 0.15s ease;
+}
+
+.cm2-expand--open > i {
+  transform: rotate(90deg);
+}
+
+.cm2-expand--leaf {
+  cursor: default;
 }
 
 .cm2-modal-field {

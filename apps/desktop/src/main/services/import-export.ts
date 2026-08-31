@@ -113,6 +113,76 @@ export const enrichImportEntry = (
   };
 };
 
+// ─── Import folder materialization ───────────────────────────────────────────
+
+export interface ImportFolderNode {
+  id: string;
+  name: string;
+  parentId?: string;
+}
+
+/**
+ * 物化目录链需要的最小仓储面。抽成端口是为了让"同名复用"这条逻辑脱离 SQLite 测试
+ * (better-sqlite3 是 Electron ABI,单测里跑不起来)。
+ */
+export interface ImportFolderStore {
+  /** 目标作用域下已知的全部目录,含本批刚建出来的。 */
+  list: () => readonly ImportFolderNode[];
+  create: (name: string, parentId: string | undefined) => ImportFolderNode;
+  /**
+   * 丢掉缓存、重新从库里读该作用域的目录。只在 create 撞唯一索引后调用:那说明缓存已经
+   * 落后于库,`list()` 再问一遍也还是那份旧快照。没实现时退回 `list()`。
+   */
+  refresh?: () => readonly ImportFolderNode[];
+}
+
+const findSibling = (
+  folders: readonly ImportFolderNode[],
+  parentId: string | undefined,
+  name: string
+): ImportFolderNode | undefined =>
+  folders.find((folder) => (folder.parentId ?? undefined) === parentId && folder.name === name);
+
+/**
+ * 把目录名链物化成真实目录,返回叶目录 id;链为空时原样返回 `rootFolderId`。
+ *
+ * 同一个 parent 下同名即复用——否则每导入一次同一份文件,树里就多出一整套同名目录,
+ * 而库里 `(scope_key, parent_id, name)` 上的唯一索引会让第二条直接报错。
+ *
+ * 缓存有可能已经落后于库(并发导入、或别处刚建了同名目录):create 撞唯一索引时重读一次,
+ * 找到同 parent 同名的就复用;还是不行才把错误换成用户看得懂的文案往上抛。
+ */
+export const materializeFolderChain = (
+  segments: readonly string[],
+  rootFolderId: string | undefined,
+  store: ImportFolderStore
+): string | undefined => {
+  let parentId = rootFolderId;
+  for (const segment of segments) {
+    const name = segment.trim();
+    if (!name) {
+      continue;
+    }
+    const existing = findSibling(store.list(), parentId, name);
+    if (existing) {
+      parentId = existing.id;
+      continue;
+    }
+    try {
+      parentId = store.create(name, parentId).id;
+    } catch (error) {
+      const refreshed = store.refresh ? store.refresh() : store.list();
+      const reused = findSibling(refreshed, parentId, name);
+      if (!reused) {
+        // 用户看到的是这句;原始错误挂在 cause 上,不然唯一索引之外的失败原因会整条丢掉。
+        throw new Error(`目录「${name}」创建冲突，请重试导入`, { cause: error });
+      }
+      parentId = reused.id;
+    }
+  }
+  return parentId;
+};
+
 // ─── Format detection ────────────────────────────────────────────────────────
 
 export const isNextShellFormat = (data: unknown): data is ConnectionExportFile => {

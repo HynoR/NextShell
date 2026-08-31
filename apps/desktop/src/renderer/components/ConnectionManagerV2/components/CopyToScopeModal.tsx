@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App as AntdApp, Modal, Select } from "antd";
 import type { ConnectionFolder } from "@nextshell/core";
 import { formatErrorMessage } from "../../../utils/errorMessage";
+import { describeCopyOutcome } from "../utils/connectionMove";
+import { buildFolderPathLabels } from "../utils/folderTree";
 import type { ManagerScope } from "../utils/scopes";
 
 interface CopyToScopeModalProps {
@@ -37,13 +39,19 @@ export const CopyToScopeModal = ({
   const [folderId, setFolderId] = useState<string>();
   const [copying, setCopying] = useState(false);
 
+  // 只在"打开"这个瞬间复位。`targets` 派生自 workspaces，云同步每来一次 onStatus/onApplied
+  // 都会换一个新引用——按值变化复位的话，弹窗开着时用户选好的目标会被静默打回默认。
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!open) {
-      return;
+    if (open && !wasOpenRef.current) {
+      setTargetKey(targets[0]?.key);
+      setFolderId(undefined);
+    } else if (open && targetKey === undefined) {
+      // 打开时 workspace 列表还没拉到：等它到了补一个默认值，但绝不覆盖用户已经选的。
+      setTargetKey(targets[0]?.key);
     }
-    setTargetKey(targets[0]?.key);
-    setFolderId(undefined);
-  }, [open, targets]);
+    wasOpenRef.current = open;
+  }, [open, targetKey, targets]);
 
   useEffect(() => {
     if (!open || !targetKey) {
@@ -58,28 +66,60 @@ export const CopyToScopeModal = ({
 
   const target = targets.find((scope) => scope.key === targetKey);
 
+  // 下拉必须显示全路径：只显示 name 时不同深度的同名目录无法区分，用户选完也不知道选中了哪个。
+  const folderOptions = useMemo(() => {
+    const labels = buildFolderPathLabels(folders);
+    return folders
+      .map((folder) => ({ value: folder.id, label: labels.get(folder.id) ?? folder.name }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [folders]);
+
+  /**
+   * 逐条复制。和拖拽移动一样会出现"成功一半":首错就整个 catch 掉的话，用户既不知道
+   * 已经进去了几个，也不知道要不要重来——只能自己去目标作用域里数。所以逐条 try/catch
+   * 计数，最后如实报数。
+   */
   const handleCopy = async () => {
     if (!target) {
       return;
     }
     setCopying(true);
+    let copied = 0;
+    let failure: unknown;
     try {
       for (const sourceId of connectionIds) {
-        await window.nextshell.resourceOps.copyConnection({
-          sourceId,
-          targetOriginKind: target.kind,
-          targetWorkspaceId: target.workspaceId,
-          targetGroupSubPath: folders.find((folder) => folder.id === folderId)?.name
-        });
+        try {
+          await window.nextshell.resourceOps.copyConnection({
+            sourceId,
+            targetOriginKind: target.kind,
+            targetWorkspaceId: target.workspaceId,
+            // 传 id 而不是名字：嵌套目录 a/b 只传 "b" 会落到目标域的另一个位置（或根）。
+            targetFolderId: folderId
+          });
+          copied += 1;
+        } catch (error) {
+          failure = error;
+        }
       }
-      message.success(`已复制 ${connectionIds.length} 个连接到「${target.label}」`);
-      await onCopied();
-      onClose();
-    } catch (error) {
-      message.error(`复制失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
       setCopying(false);
     }
+
+    const failed = connectionIds.length - copied;
+    // 哪怕只成功了一条，目标域的列表也已经变了，必须刷新。
+    await onCopied();
+    if (failed === 0) {
+      message.success(describeCopyOutcome({ copied, failed, targetLabel: target.label }));
+      onClose();
+      return;
+    }
+    // 有失败就不关弹窗：目标作用域/目录还留在原处，用户可以直接重试。
+    message.error(
+      `${describeCopyOutcome({ copied, failed, targetLabel: target.label })}：${formatErrorMessage(
+        failure,
+        "请稍后重试"
+      )}`
+    );
   };
 
   return (
@@ -90,8 +130,10 @@ export const CopyToScopeModal = ({
       cancelText="取消"
       confirmLoading={copying}
       okButtonProps={{ disabled: !target || connectionIds.length === 0 }}
+      // 复制已经在逐条发了：中途关掉弹窗停不下这个循环，只会让用户以为取消成功。
+      cancelButtonProps={{ disabled: copying }}
       onOk={() => void handleCopy()}
-      onCancel={onClose}
+      onCancel={copying ? undefined : onClose}
       destroyOnHidden
       width={460}
     >
@@ -120,8 +162,8 @@ export const CopyToScopeModal = ({
             allowClear
             placeholder="顶层"
             value={folderId}
-            onChange={setFolderId}
-            options={folders.map((folder) => ({ value: folder.id, label: folder.name }))}
+            onChange={(value) => setFolderId(value ?? undefined)}
+            options={folderOptions}
             notFoundContent="目标作用域下还没有目录"
           />
         </label>

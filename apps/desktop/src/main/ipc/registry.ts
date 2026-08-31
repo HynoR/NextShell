@@ -824,6 +824,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "新建目录",
     dispatch: (services, input) => services.connectionFolders.create(input)
   }),
+  // rename/move/remove 之后 ConnectionFolderService 会重投影该作用域内所有连接的 groupPath
+  // ——那是云同步线协议、MCP schema 与导出文件共同读的派生值,不跟着改名字就会推送旧路径。
   define({
     channel: IPCChannel.ConnectionFolderRename,
     schema: connectionFolderRenameSchema,
@@ -846,7 +848,8 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.ConnectionFolderRemove,
     schema: connectionFolderRemoveSchema,
     label: "目录删除",
-    // Children cascade; the connections inside are only detached, never deleted.
+    // Children cascade; the connections inside are only detached, never deleted —
+    // and detached connections get re-projected back to their scope root.
     dispatch: (services, input) => {
       services.connectionFolders.remove(input.id);
       return { ok: true as const };

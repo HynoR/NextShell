@@ -8,6 +8,7 @@ import type {
   ConnectionProfile,
   ExportedConnection
 } from "@nextshell/core";
+import { LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
 import type {
   ConnectionExportInput,
   ConnectionExportBatchInput,
@@ -19,16 +20,28 @@ import type {
   ConnectionImportExecuteInput,
   ConnectionUpsertInput
 } from "@nextshell/shared";
-import { CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX } from "@nextshell/shared";
+import {
+  CONNECTION_IMPORT_DECRYPT_PROMPT_PREFIX,
+  LOCAL_GROUP_PATH_ROOT,
+  parseGroupPathSegments,
+  resolveOriginScopeKey
+} from "@nextshell/shared";
 import type { EncryptedSecretVault } from "@nextshell/security";
-import type { CachedConnectionRepository, CachedSshKeyRepository } from "@nextshell/storage";
+import type {
+  CachedConnectionRepository,
+  CachedSshKeyRepository,
+  ConnectionFolderRepository
+} from "@nextshell/storage";
 import {
   enrichImportEntry,
   isFinalShellFormat,
   isNextShellFormat,
+  materializeFolderChain,
   parseFinalShellImport,
   parseNextShellImport,
   resolveImportedAuth,
+  type ImportFolderNode,
+  type ImportFolderStore,
   type SshKeyMatchCandidate
 } from "./import-export";
 import {
@@ -41,6 +54,7 @@ import { scanConnectionImportDirectory } from "./connection-import-directory";
 interface ImportExportServiceOptions {
   connections: CachedConnectionRepository;
   sshKeyRepo: CachedSshKeyRepository;
+  connectionFolders: ConnectionFolderRepository;
   vault: EncryptedSecretVault;
   upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   appendAuditLogIfEnabled: (payload: {
@@ -59,6 +73,7 @@ const trimBomAndWhitespace = (value: string): string => value.replace(/^\uFEFF/,
 export class ImportExportService {
   private readonly connections: CachedConnectionRepository;
   private readonly sshKeyRepo: CachedSshKeyRepository;
+  private readonly connectionFolders: ConnectionFolderRepository;
   private readonly vault: EncryptedSecretVault;
   private readonly upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
   private readonly appendAuditLogIfEnabled: ImportExportServiceOptions["appendAuditLogIfEnabled"];
@@ -66,6 +81,7 @@ export class ImportExportService {
   constructor(options: ImportExportServiceOptions) {
     this.connections = options.connections;
     this.sshKeyRepo = options.sshKeyRepo;
+    this.connectionFolders = options.connectionFolders;
     this.vault = options.vault;
     this.upsertConnection = options.upsertConnection;
     this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
@@ -260,27 +276,50 @@ export class ImportExportService {
       errors: []
     };
 
-    const allConnections = this.connections.list({});
+    // 导入执行链路只写本地作用域,所以冲突候选也只能在本地里找。跨作用域匹配的话，一条
+    // 同 host 的云连接会被当成"已存在"，overwrite 就变成拿本地目录去改写云资源——投影链路
+    // 直接抛"目标目录不存在"，整条 entry 失败。云侧撞同 host 应该照常新建一条本地连接。
+    const localConnections = this.connections
+      .list({})
+      .filter((connection) => resolveOriginScopeKey(connection) === LOCAL_DEFAULT_SCOPE_KEY);
     const keyCandidates = this.loadSshKeyMatchCandidates();
+    // 目录先于任何一条 entry 校验:targetFolderId 不合法时整批拒绝，不能一半落根一半落目录。
+    const folderStore = this.createImportFolderStore(input.targetFolderId);
+    // 目录扫描导入的 groupPath 是磁盘相对路径,没有线格式前缀;剥掉首段会把用户叫
+    // `server` 的顶层目录整层吞掉。省略时按导出文件的线格式处理(老调用方的行为)。
+    const stripWirePrefix = input.groupPathFormat !== "literal";
 
     for (const entry of input.entries) {
       try {
-        const existing = allConnections.find(
+        const existing = localConnections.find(
           (c) => c.host === entry.host && c.port === entry.port && c.username === entry.username
         );
-        const upsertInput = this.toImportedUpsertInput(entry, keyCandidates, existing?.id);
 
-        if (existing) {
-          if (input.conflictPolicy === "skip") {
-            result.skipped++;
-            continue;
-          }
-          if (input.conflictPolicy === "overwrite") {
-            await this.upsertConnection(upsertInput);
-            result.overwritten++;
-            this.notePasswordUnavailable(result, upsertInput.authType, entry.password);
-            continue;
-          }
+        if (existing && input.conflictPolicy === "skip") {
+          // 目录物化必须排在冲突判定之后:整批 skip 时一个目录都不该建出来。
+          result.skipped++;
+          continue;
+        }
+
+        // V2 的树完全按 folderId 摆放，groupPath 只是投影：不物化目录，导入进来的连接
+        // 无论原本在哪一层都会平铺到根，用户组织好的结构在界面上直接消失。
+        const folderId = materializeFolderChain(
+          parseGroupPathSegments(entry.groupPath, { stripWirePrefix }),
+          input.targetFolderId,
+          folderStore
+        );
+        const upsertInput = this.toImportedUpsertInput(
+          entry,
+          keyCandidates,
+          existing?.id,
+          folderId
+        );
+
+        if (existing && input.conflictPolicy === "overwrite") {
+          await this.upsertConnection(upsertInput);
+          result.overwritten++;
+          this.notePasswordUnavailable(result, upsertInput.authType, entry.password);
+          continue;
         }
 
         await this.upsertConnection({ ...upsertInput, id: undefined });
@@ -419,10 +458,54 @@ export class ImportExportService {
       .map((key) => ({ id: key.id, name: key.name, fingerprint: key.fingerprint }));
   }
 
+  /**
+   * 导入执行链路只写本地作用域，所以目录也只在本地物化。
+   *
+   * 目录一次性载入内存后靠 cache 增量维护：每条 entry 都回查一次数据库不只是慢，还看不见
+   * 本批刚建出来的目录，同一层会被重复创建到撞唯一索引。
+   */
+  private createImportFolderStore(targetFolderId: string | undefined): ImportFolderStore {
+    if (targetFolderId) {
+      const target = this.connectionFolders.getById(targetFolderId);
+      if (!target || target.scopeKey !== LOCAL_DEFAULT_SCOPE_KEY) {
+        throw new Error("目标目录不存在或不属于本地作用域");
+      }
+    }
+    const load = (): ImportFolderNode[] =>
+      this.connectionFolders
+        .list(LOCAL_DEFAULT_SCOPE_KEY)
+        .map((folder) => ({ id: folder.id, name: folder.name, parentId: folder.parentId }));
+    const cache: ImportFolderNode[] = load();
+    return {
+      list: () => cache,
+      // 唯一索引撞车说明缓存已经落后于库(并发导入/别处刚建了同名目录),重读一次再复用。
+      refresh: () => {
+        cache.length = 0;
+        cache.push(...load());
+        return cache;
+      },
+      create: (name, parentId) => {
+        const created = this.connectionFolders.create({
+          scopeKey: LOCAL_DEFAULT_SCOPE_KEY,
+          name,
+          parentId
+        });
+        const node: ImportFolderNode = {
+          id: created.id,
+          name: created.name,
+          parentId: created.parentId
+        };
+        cache.push(node);
+        return node;
+      }
+    };
+  }
+
   private toImportedUpsertInput(
     entry: ConnectionImportExecuteInput["entries"][number],
     keys: readonly SshKeyMatchCandidate[],
-    existingId?: string
+    existingId?: string,
+    folderId?: string
   ): ConnectionUpsertInput {
     const resolved = resolveImportedAuth(entry, keys);
     return {
@@ -437,7 +520,13 @@ export class ImportExportService {
       strictHostKeyChecking: false,
       keepAliveEnabled: entry.keepAliveEnabled,
       keepAliveIntervalSec: entry.keepAliveIntervalSec,
-      groupPath: entry.groupPath,
+      // 显式 null 才是"移回顶层";省略在 upsert 里是"别动目录"——overwrite 一条已在某个目录
+      // 里的连接时那意味着 folderId 留在旧目录、groupPath 却被下面这行改成了根，两边分叉。
+      folderId: folderId ?? null,
+      // 有 folderId 时 upsert 会按目录链重新投影 groupPath，这里给的值用不上；没有目录
+      // (整条链都被剥成了前缀)时必须落回本地根，否则一份云导出的 `/workspace/<slug>`
+      // 会原样进本地库，同步会把它当成那个 workspace 的资源。
+      groupPath: folderId ? entry.groupPath : LOCAL_GROUP_PATH_ROOT,
       tags: entry.tags,
       notes: entry.notes,
       favorite: entry.favorite,

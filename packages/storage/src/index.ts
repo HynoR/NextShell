@@ -1776,6 +1776,12 @@ export interface ProxyRepository {
 export interface ConnectionRepository {
   list: (query: ConnectionListQuery) => ConnectionProfile[];
   save: (connection: ConnectionProfile) => void;
+  /**
+   * 只改 `group_path` 一列。目录改名/移动/删除后要给整个作用域重投影 groupPath,走
+   * `save()` 的全行 upsert 会把调用方手里那份(可能已经过时的)ConnectionProfile 整体写回,
+   * 把别处刚改过的字段一起覆盖掉。
+   */
+  updateConnectionGroupPath: (id: string, groupPath: string) => void;
   remove: (id: string) => void;
   getById: (id: string) => ConnectionProfile | undefined;
   seedIfEmpty: (connections: ConnectionProfile[]) => void;
@@ -2083,6 +2089,10 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         ssh_key_resource_id: connection.sshKeyResourceId ?? null,
         copied_from_resource_id: connection.copiedFromResourceId ?? null
       });
+  }
+
+  updateConnectionGroupPath(id: string, groupPath: string): void {
+    this.db.prepare("UPDATE connections SET group_path = ? WHERE id = ?").run(groupPath, id);
   }
 
   remove(id: string): void {

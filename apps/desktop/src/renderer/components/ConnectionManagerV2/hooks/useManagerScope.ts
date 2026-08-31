@@ -81,13 +81,18 @@ export const useManagerScope = ({ open, onError }: UseManagerScopeOptions): Mana
     setFolders([]);
   }, []);
 
-  return {
-    scopes,
-    activeScope,
-    selectScope,
-    folders,
-    reloadFolders,
-    currentFolderId,
-    enterFolder: setCurrentFolderId
-  };
+  // 必须 memo:调用方把整个返回值当 effect 依赖(外部定位那条就是),每次渲染新建一个对象
+  // 会让那些 effect 每帧都跑一遍——轻则白跑,重则和自己的 setState 组成重渲循环。
+  return useMemo(
+    () => ({
+      scopes,
+      activeScope,
+      selectScope,
+      folders,
+      reloadFolders,
+      currentFolderId,
+      enterFolder: setCurrentFolderId
+    }),
+    [activeScope, currentFolderId, folders, reloadFolders, scopes, selectScope]
+  );
 };

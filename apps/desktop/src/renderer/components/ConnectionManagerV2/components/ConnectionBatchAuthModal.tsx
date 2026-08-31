@@ -33,9 +33,6 @@ interface BatchAuthFormValues {
 const getConnectionScopeKey = (connection: ConnectionProfile): string =>
   resolveOriginScopeKey(connection);
 
-const isUnderGroupPath = (connection: ConnectionProfile, groupPath: string): boolean =>
-  connection.groupPath === groupPath || connection.groupPath.startsWith(`${groupPath}/`);
-
 const authTypeLabel: Record<AuthType, string> = {
   password: "密码",
   interactive: "交互式",
@@ -60,11 +57,8 @@ export const ConnectionBatchAuthModal = ({
     if (!target) {
       return [];
     }
-    if (target.type === "connections") {
-      const idSet = new Set(target.connectionIds);
-      return connections.filter((connection) => idSet.has(connection.id));
-    }
-    return connections.filter((connection) => isUnderGroupPath(connection, target.groupPath));
+    const idSet = new Set(target.connectionIds);
+    return connections.filter((connection) => idSet.has(connection.id));
   }, [connections, target]);
 
   const scopeKeys = useMemo(
@@ -134,10 +128,7 @@ export const ConnectionBatchAuthModal = ({
           : { authType: "agent" };
 
     const payload: ConnectionBatchAuthUpdateInput = {
-      target:
-        target.type === "connections"
-          ? { type: "connections", connectionIds: target.connectionIds }
-          : { type: "group", groupPath: target.groupPath },
+      target: { type: "connections", connectionIds: target.connectionIds },
       auth
     };
 

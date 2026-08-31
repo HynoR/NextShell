@@ -3,6 +3,7 @@ import type { ConnectionProfile, SshKeyProfile } from "@nextshell/core";
 import {
   buildConnectionRow,
   filterConnectionRows,
+  selectRecentConnections,
   sortConnectionRows,
   type ConnectionRow
 } from "./connectionRows";
@@ -120,6 +121,52 @@ describe("sortConnectionRows", () => {
     sortConnectionRows(rows, { key: "name", direction: "desc" });
     expect(rows.map((row) => row.connection.name)).toEqual(original);
   });
+
+  // A8/D17：创建时间排序。它永远有值，所以 asc 就是字面的"最早在前"，和表头箭头一致。
+  describe("createdAt", () => {
+    const byCreated = rowsOf([
+      conn({ id: "mid", name: "mid", createdAt: "2026-02-01T00:00:00.000Z" }),
+      conn({ id: "old", name: "old", createdAt: "2026-01-01T00:00:00.000Z" }),
+      conn({ id: "new", name: "new", createdAt: "2026-03-01T00:00:00.000Z" })
+    ]);
+
+    test("asc 最早在前，desc 反过来", () => {
+      expect(
+        sortConnectionRows(byCreated, { key: "createdAt", direction: "asc" }).map(
+          (r) => r.connection.id
+        )
+      ).toEqual(["old", "mid", "new"]);
+      expect(
+        sortConnectionRows(byCreated, { key: "createdAt", direction: "desc" }).map(
+          (r) => r.connection.id
+        )
+      ).toEqual(["new", "mid", "old"]);
+    });
+
+    test("同一时刻按名称兜底，顺序不会随输入抖动", () => {
+      const sameMoment = rowsOf([
+        conn({ id: "b", name: "beta", createdAt: "2026-01-01T00:00:00.000Z" }),
+        conn({ id: "a", name: "alpha", createdAt: "2026-01-01T00:00:00.000Z" })
+      ]);
+      expect(
+        sortConnectionRows(sameMoment, { key: "createdAt", direction: "asc" }).map(
+          (r) => r.connection.name
+        )
+      ).toEqual(["alpha", "beta"]);
+    });
+
+    test("解析不出来的时间戳不会把顺序搅乱", () => {
+      const broken = rowsOf([
+        conn({ id: "ok", name: "ok", createdAt: "2026-01-01T00:00:00.000Z" }),
+        conn({ id: "bad", name: "bad", createdAt: "not-a-date" })
+      ]);
+      expect(
+        sortConnectionRows(broken, { key: "createdAt", direction: "asc" }).map(
+          (r) => r.connection.id
+        )
+      ).toEqual(["bad", "ok"]);
+    });
+  });
 });
 
 describe("filterConnectionRows", () => {
@@ -147,5 +194,42 @@ describe("filterConnectionRows", () => {
 
   test("ignores case", () => {
     expect(filterConnectionRows(rows, "PROD-DB").map((r) => r.connection.id)).toEqual(["a"]);
+  });
+});
+
+describe("selectRecentConnections", () => {
+  const conn = (id: string, lastConnectedAt?: string, createdAt = "2026-01-01T00:00:00Z") =>
+    ({ id, name: id, lastConnectedAt, createdAt }) as never;
+
+  test("连过的按最后连接时间倒序排在前面", () => {
+    const picked = selectRecentConnections(
+      [
+        conn("old", "2026-01-01T00:00:00Z"),
+        conn("new", "2026-08-01T00:00:00Z"),
+        conn("mid", "2026-05-01T00:00:00Z")
+      ],
+      2
+    );
+    expect(picked.map((c: { id: string }) => c.id)).toEqual(["new", "mid"]);
+  });
+
+  test("不足上限时用最近创建的补齐", () => {
+    const picked = selectRecentConnections(
+      [
+        conn("never-old", undefined, "2026-02-01T00:00:00Z"),
+        conn("connected", "2026-06-01T00:00:00Z"),
+        conn("never-new", undefined, "2026-07-01T00:00:00Z")
+      ],
+      2
+    );
+    expect(picked.map((c: { id: string }) => c.id)).toEqual(["connected", "never-new"]);
+  });
+
+  test("坏时间戳不炸,按 0 处理并落到名称序", () => {
+    const picked = selectRecentConnections(
+      [conn("b", "not-a-date"), conn("a", "also-bad")],
+      5
+    );
+    expect(picked.map((c: { id: string }) => c.id)).toEqual(["a", "b"]);
   });
 });
