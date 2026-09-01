@@ -32,7 +32,6 @@ await (async () => {
   const next = "new-password";
   let currentMeta = await createMasterKeyMeta(original);
   let unlockedPassword = original;
-  const rememberCalls: string[] = [];
 
   await changeMasterPassword({
     oldPassword: original,
@@ -43,9 +42,6 @@ await (async () => {
     },
     setMasterPassword: (password) => {
       unlockedPassword = password;
-    },
-    rememberPasswordBestEffort: async (password, phase) => {
-      rememberCalls.push(`${phase}:${password}`);
     }
   });
 
@@ -55,7 +51,6 @@ await (async () => {
     !(await verifyMasterPassword(original, currentMeta)),
     "old password should not verify updated meta"
   );
-  assert(rememberCalls[0] === `change:${next}`, "should remember new password with change phase");
 })();
 
 await (async () => {
@@ -72,8 +67,7 @@ await (async () => {
     },
     setMasterPassword: (value) => {
       unlockedPassword = value;
-    },
-    rememberPasswordBestEffort: async () => {}
+    }
   });
 
   assert(unlockedPassword === password, "same password update should still keep unlocked");
@@ -89,8 +83,7 @@ await (async () => {
         newPassword: "next-password",
         getMasterKeyMeta: () => currentMeta,
         saveMasterKeyMeta: () => {},
-        setMasterPassword: () => {},
-        rememberPasswordBestEffort: async () => {}
+        setMasterPassword: () => {}
       }),
     "原密码错误"
   );

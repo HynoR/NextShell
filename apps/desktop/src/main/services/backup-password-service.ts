@@ -1,20 +1,12 @@
-import type {
-  BackupArchiveMeta,
-  BackupConflictPolicy,
-  RestoreConflictPolicy
-} from "@nextshell/core";
 import type { EncryptedSecretVault, KeytarPasswordCache } from "@nextshell/security";
 import {
-  APP_SECRET_PURPOSE,
   createMasterKeyMeta,
   clearDerivedKeyCache,
-  MASTER_PASSWORD_SECRET_ID,
   MASTER_PASSWORD_SECRET_REF,
   verifyMasterPassword
 } from "@nextshell/security";
 import type { CachedConnectionRepository } from "@nextshell/storage";
 
-import type { BackupService } from "./backup-service";
 import type { DeviceKeyStatus } from "./device-key-provider";
 import { changeMasterPassword } from "./master-password-change";
 import { normalizeError } from "./container-utils";
@@ -28,7 +20,6 @@ interface BackupPasswordServiceOptions {
   getCredentialStoreStatus: () => DeviceKeyStatus;
   reauthorizeCredentialStore: () => void;
   getDeviceKeyHex: () => Promise<string>;
-  backupService: BackupService;
   getMasterPassword: () => string | undefined;
   setMasterPassword: (password: string | undefined) => void;
   tryRecallMasterPassword: () => Promise<void>;
@@ -36,23 +27,6 @@ interface BackupPasswordServiceOptions {
 
 export class BackupPasswordService {
   constructor(private readonly options: BackupPasswordServiceOptions) {}
-
-  async backupList(): Promise<BackupArchiveMeta[]> {
-    return this.options.backupService.list();
-  }
-
-  async backupRun(conflictPolicy: BackupConflictPolicy): Promise<{ ok: true; fileName?: string }> {
-    await this.ensureRecalled();
-    return this.options.backupService.run(conflictPolicy);
-  }
-
-  async backupRestore(
-    archiveId: string,
-    conflictPolicy: RestoreConflictPolicy
-  ): Promise<{ ok: true }> {
-    await this.ensureRecalled();
-    return this.options.backupService.restore(archiveId, conflictPolicy);
-  }
 
   /**
    * The master password is recalled from the keychain on demand rather than at
@@ -72,29 +46,6 @@ export class BackupPasswordService {
     }
   }
 
-  private async rememberPasswordBestEffort(
-    password: string,
-    phase: "set" | "unlock" | "change"
-  ): Promise<void> {
-    const prefs = this.options.connections.getAppPreferences();
-    if (!prefs.backup.rememberPassword) {
-      return;
-    }
-    try {
-      await this.options.vault.storeCredential(
-        MASTER_PASSWORD_SECRET_ID,
-        password,
-        APP_SECRET_PURPOSE
-      );
-    } catch (error) {
-      const reason = normalizeError(error);
-      logger.warn("[Security] failed to remember master password", {
-        phase,
-        reason
-      });
-    }
-  }
-
   private getMasterKeyMetaOrThrow() {
     const meta = this.options.connections.getMasterKeyMeta();
     if (!meta) {
@@ -107,7 +58,6 @@ export class BackupPasswordService {
     const meta = await createMasterKeyMeta(password);
     this.options.connections.saveMasterKeyMeta(meta);
     this.options.setMasterPassword(password);
-    await this.rememberPasswordBestEffort(password, "set");
     return { ok: true };
   }
 
@@ -117,7 +67,6 @@ export class BackupPasswordService {
       throw new Error("主密码错误。");
     }
     this.options.setMasterPassword(password);
-    await this.rememberPasswordBestEffort(password, "unlock");
     return { ok: true };
   }
 
@@ -129,9 +78,7 @@ export class BackupPasswordService {
       saveMasterKeyMeta: (meta) => this.options.connections.saveMasterKeyMeta(meta),
       setMasterPassword: (password) => {
         this.options.setMasterPassword(password);
-      },
-      rememberPasswordBestEffort: (password, phase) =>
-        this.rememberPasswordBestEffort(password, phase)
+      }
     });
   }
 
@@ -178,7 +125,6 @@ export class BackupPasswordService {
         throw new Error("主密码错误。");
       }
       this.options.setMasterPassword(input);
-      await this.rememberPasswordBestEffort(input, "unlock");
       return input;
     }
     const cached = this.options.getMasterPassword();

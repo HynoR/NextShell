@@ -5,7 +5,6 @@ export type SettingsSection =
   | "command"
   | "terminal"
   | "network"
-  | "backup"
   | "cloudSync"
   | "recycleBin"
   | "security"

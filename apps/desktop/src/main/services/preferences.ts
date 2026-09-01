@@ -209,25 +209,6 @@ export const mergePreferences = (
         current.ssh.keepAliveIntervalSec
       )
     },
-    backup: {
-      remotePath:
-        patch.backup?.remotePath !== undefined
-          ? patch.backup.remotePath
-          : current.backup.remotePath,
-      rclonePath:
-        patch.backup?.rclonePath !== undefined
-          ? patch.backup.rclonePath
-          : current.backup.rclonePath,
-      defaultBackupConflictPolicy:
-        patch.backup?.defaultBackupConflictPolicy ?? current.backup.defaultBackupConflictPolicy,
-      defaultRestoreConflictPolicy:
-        patch.backup?.defaultRestoreConflictPolicy ?? current.backup.defaultRestoreConflictPolicy,
-      rememberPassword: patch.backup?.rememberPassword ?? current.backup.rememberPassword,
-      lastBackupAt:
-        patch.backup?.lastBackupAt !== undefined
-          ? patch.backup.lastBackupAt
-          : current.backup.lastBackupAt
-    },
     connectionManager: {
       // 尺寸由契约层夹过范围，这里只做“没给就保持原值”。
       dialogWidth: patch.connectionManager?.dialogWidth ?? current.connectionManager.dialogWidth,

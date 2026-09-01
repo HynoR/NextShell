@@ -63,9 +63,6 @@ import {
   sftpEditStopSchema,
   sftpEditOpenBuiltinSchema,
   sftpEditSaveBuiltinSchema,
-  backupListSchema,
-  backupRunSchema,
-  backupRestoreSchema,
   cloudSyncWorkspaceListSchema,
   cloudSyncWorkspaceAddSchema,
   cloudSyncWorkspaceUpdateSchema,
@@ -645,28 +642,7 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
       services.monitors.getNetworkConnections(input.connectionId, input.port)
   }),
 
-  // ─── Backup & Master Password ─────────────────────────────────────────────
-  define({
-    channel: IPCChannel.BackupList,
-    schema: backupListSchema,
-    label: "备份列表",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.backupPassword.backupList()
-  }),
-  define({
-    channel: IPCChannel.BackupRun,
-    schema: backupRunSchema,
-    label: "执行备份",
-    coerceEmptyPayload: true,
-    dispatch: (services, input) => services.backupPassword.backupRun(input.conflictPolicy)
-  }),
-  define({
-    channel: IPCChannel.BackupRestore,
-    schema: backupRestoreSchema,
-    label: "还原存档",
-    dispatch: (services, input) =>
-      services.backupPassword.backupRestore(input.archiveId, input.conflictPolicy)
-  }),
+  // ─── Master Password ──────────────────────────────────────────────────────
   define({
     channel: IPCChannel.MasterPasswordSet,
     schema: masterPasswordSetSchema,

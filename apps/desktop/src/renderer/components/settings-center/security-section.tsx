@@ -1,6 +1,5 @@
 import { Badge, Button, Checkbox, Input, Skeleton, Space, Tag, Typography } from "antd";
-import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-components";
-import type { SaveFn } from "./types";
+import { SettingsCard, SettingsRow } from "./shared-components";
 
 export const SecuritySection = ({
   pwdStatus,
@@ -13,8 +12,6 @@ export const SecuritySection = ({
   changeConfirmPwd,
   changeAckRisk,
   changeBusy,
-  backupRememberPassword,
-  loading,
   setPwdInput,
   setPwdConfirm,
   setChangeOldPwd,
@@ -25,8 +22,7 @@ export const SecuritySection = ({
   onUnlockPassword,
   onChangePassword,
   onClearRemembered,
-  onReauthorizeCredentialStore,
-  save
+  onReauthorizeCredentialStore
 }: {
   pwdStatus: { isSet: boolean; isUnlocked: boolean; canRememberPassword: boolean };
   pwdStatusLoading: boolean;
@@ -38,8 +34,6 @@ export const SecuritySection = ({
   changeConfirmPwd: string;
   changeAckRisk: boolean;
   changeBusy: boolean;
-  backupRememberPassword: boolean;
-  loading: boolean;
   setPwdInput: (v: string) => void;
   setPwdConfirm: (v: string) => void;
   setChangeOldPwd: (v: string) => void;
@@ -51,7 +45,6 @@ export const SecuritySection = ({
   onChangePassword: () => void;
   onClearRemembered: () => void;
   onReauthorizeCredentialStore: () => void;
-  save: SaveFn;
 }) => (
   <>
     <SettingsCard title="主密码" description="用于数据备份、导出加密默认填充和连接密码查看授权">
@@ -119,13 +112,6 @@ export const SecuritySection = ({
           {pwdStatus.isSet && <Button onClick={onClearRemembered}>清除已记住的主密码</Button>}
         </Space>
       </SettingsRow>
-
-      <SettingsSwitchRow
-        label="记住主密码（本机加密存储）"
-        checked={backupRememberPassword}
-        disabled={loading || !pwdStatus.canRememberPassword}
-        onChange={(v) => save({ backup: { rememberPassword: v } })}
-      />
 
       {pwdStatus.isSet && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed var(--border)" }}>

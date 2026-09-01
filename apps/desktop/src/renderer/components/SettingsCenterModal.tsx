@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { App as AntdApp, Modal } from "antd";
 import { usePreferencesStore } from "../store/usePreferencesStore";
-import type { BackupArchiveMeta } from "@nextshell/core";
 import { formatErrorMessage } from "../utils/errorMessage";
 import {
   type SettingsSection,
@@ -15,7 +14,6 @@ import {
   CommandSection,
   TerminalSection,
   NetworkSection,
-  BackupSection,
   CloudSyncSection,
   RecycleBinSection,
   SecuritySection,
@@ -34,7 +32,7 @@ interface SettingsCenterModalProps {
 }
 
 export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsCenterModalProps) => {
-  const { message, modal } = AntdApp.useApp();
+  const { message } = AntdApp.useApp();
   const preferences = usePreferencesStore((s) => s.preferences);
   const loading = usePreferencesStore((s) => s.loading);
   const initialize = usePreferencesStore((s) => s.initialize);
@@ -74,16 +72,7 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     )
   );
 
-  // ─── Backup state ───────────────────────────────────────────────────
-  const [backupRemotePath, setBackupRemotePath] = useState(preferences.backup.remotePath);
-  const [rclonePath, setRclonePath] = useState(preferences.backup.rclonePath);
   const [nexttracePath, setNexttracePath] = useState(preferences.traceroute.nexttracePath);
-  const [backupConflictPolicy, setBackupConflictPolicy] = useState<"skip" | "force">(
-    preferences.backup.defaultBackupConflictPolicy
-  );
-  const [restoreConflictPolicy, setRestoreConflictPolicy] = useState<"skip_older" | "force">(
-    preferences.backup.defaultRestoreConflictPolicy
-  );
 
   const [pwdStatus, setPwdStatus] = useState<{
     isSet: boolean;
@@ -100,12 +89,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
   const [changeConfirmPwd, setChangeConfirmPwd] = useState("");
   const [changeAckRisk, setChangeAckRisk] = useState(false);
   const [changeBusy, setChangeBusy] = useState(false);
-
-  const [backupRunning, setBackupRunning] = useState(false);
-  const [archiveList, setArchiveList] = useState<BackupArchiveMeta[]>([]);
-  const [archiveListVisible, setArchiveListVisible] = useState(false);
-  const [archiveListLoading, setArchiveListLoading] = useState(false);
-  const [restoring, setRestoring] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -141,11 +124,7 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
       )
     );
     setAppBackgroundImagePath(preferences.window.backgroundImagePath);
-    setBackupRemotePath(preferences.backup.remotePath);
-    setRclonePath(preferences.backup.rclonePath);
     setNexttracePath(preferences.traceroute.nexttracePath);
-    setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
-    setRestoreConflictPolicy(preferences.backup.defaultRestoreConflictPolicy);
     setChangeOldPwd("");
     setChangeNewPwd("");
     setChangeConfirmPwd("");
@@ -217,7 +196,7 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     [save, message]
   );
 
-  // ─── Password & backup handlers ───────────────────────────────────
+  // ─── Password handlers ─────────────────────────────────────────────
   const handleSetPassword = async (): Promise<void> => {
     if (!pwdInput || pwdInput.length < 6) {
       message.warning("主密码至少需要 6 个字符。");
@@ -334,55 +313,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     }
   };
 
-  const handleRunBackup = async (): Promise<void> => {
-    setBackupRunning(true);
-    try {
-      const result = await window.nextshell.backup.run({ conflictPolicy: backupConflictPolicy });
-      message.success(result.fileName ? `备份完成: ${result.fileName}` : "备份完成");
-    } catch (error) {
-      message.error(`备份失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-    } finally {
-      setBackupRunning(false);
-    }
-  };
-
-  const handleListArchives = async (): Promise<void> => {
-    setArchiveListVisible(true);
-    setArchiveListLoading(true);
-    try {
-      const list = await window.nextshell.backup.list();
-      setArchiveList(list);
-    } catch (error) {
-      message.error(`获取备份列表失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-    } finally {
-      setArchiveListLoading(false);
-    }
-  };
-
-  const handleRestore = async (archiveId: string): Promise<void> => {
-    modal.confirm({
-      title: "确认还原",
-      content: "还原操作会在下次启动时覆盖当前数据库。确定继续？",
-      okText: "确认还原",
-      cancelText: "取消",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        setRestoring(archiveId);
-        try {
-          await window.nextshell.backup.restore({
-            archiveId,
-            conflictPolicy: restoreConflictPolicy
-          });
-          message.success("还原文件已准备，重启应用后生效。");
-        } catch (error) {
-          message.error(`还原失败：${formatErrorMessage(error, "请检查数据备份配置")}`);
-        } finally {
-          setRestoring(null);
-        }
-      }
-    });
-  };
-
   // ─── Memoized section content ───────────────────────────────────────
   const sectionContent = useMemo(() => {
     switch (activeSection) {
@@ -407,8 +337,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
             changeConfirmPwd={changeConfirmPwd}
             changeAckRisk={changeAckRisk}
             changeBusy={changeBusy}
-            backupRememberPassword={preferences.backup.rememberPassword}
-            loading={loading}
             setPwdInput={setPwdInput}
             setPwdConfirm={setPwdConfirm}
             setChangeOldPwd={setChangeOldPwd}
@@ -420,7 +348,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
             onChangePassword={() => void handleChangePassword()}
             onClearRemembered={() => void handleClearRemembered()}
             onReauthorizeCredentialStore={() => void handleReauthorizeCredentialStore()}
-            save={save}
           />
         );
       case "window":
@@ -516,36 +443,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
           />
         );
 
-      case "backup":
-        return (
-          <BackupSection
-            loading={loading}
-            backupRemotePath={backupRemotePath}
-            rclonePath={rclonePath}
-            backupConflictPolicy={backupConflictPolicy}
-            restoreConflictPolicy={restoreConflictPolicy}
-            pwdStatus={pwdStatus}
-            pwdStatusKnown={pwdStatusKnown}
-            backupRunning={backupRunning}
-            archiveList={archiveList}
-            archiveListVisible={archiveListVisible}
-            archiveListLoading={archiveListLoading}
-            restoring={restoring}
-            lastBackupAt={preferences.backup.lastBackupAt ?? undefined}
-            setBackupRemotePath={setBackupRemotePath}
-            setRclonePath={setRclonePath}
-            setBackupConflictPolicy={setBackupConflictPolicy}
-            setRestoreConflictPolicy={setRestoreConflictPolicy}
-            setArchiveListVisible={setArchiveListVisible}
-            onOpenSecurity={() => setActiveSection("security")}
-            onRunBackup={() => void handleRunBackup()}
-            onListArchives={() => void handleListArchives()}
-            onRestore={(id) => void handleRestore(id)}
-            save={save}
-            message={message}
-          />
-        );
-
       case "agent":
         return <AgentSection />;
 
@@ -566,10 +463,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     localShell,
     appBackgroundImagePath,
     nexttracePath,
-    backupRemotePath,
-    rclonePath,
-    backupConflictPolicy,
-    restoreConflictPolicy,
     pwdStatus,
     pwdStatusKnown,
     pwdStatusLoading,
@@ -581,15 +474,9 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     changeConfirmPwd,
     changeAckRisk,
     changeBusy,
-    backupRunning,
-    archiveList,
-    archiveListVisible,
-    archiveListLoading,
-    restoring,
     save,
     pickDirectory,
-    message,
-    modal
+    message
   ]);
 
   return (

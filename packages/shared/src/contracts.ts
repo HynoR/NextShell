@@ -35,8 +35,6 @@ export const proxyTypeSchema = z.enum(["socks4", "socks5"]);
 export const terminalEncodingSchema = z.enum(["utf-8", "gb18030", "gbk", "big5"]);
 export const backspaceModeSchema = z.enum(["ascii-backspace", "ascii-delete"]);
 export const deleteModeSchema = z.enum(["vt220-delete", "ascii-delete", "ascii-backspace"]);
-export const backupConflictPolicySchema = z.enum(["skip", "force"]);
-export const restoreConflictPolicySchema = z.enum(["skip_older", "force"]);
 export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
 export const localShellModeSchema = z.enum(["preset", "custom"]);
 export const localShellPresetSchema = z.enum(["system", "powershell", "cmd", "zsh", "sh", "bash"]);
@@ -557,20 +555,6 @@ export const appPreferencesSchema = z
           .default(DEFAULT_APP_PREFERENCES.ssh.keepAliveIntervalSec)
       })
       .default(DEFAULT_APP_PREFERENCES.ssh),
-    backup: z
-      .object({
-        remotePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.remotePath),
-        rclonePath: z.string().default(DEFAULT_APP_PREFERENCES.backup.rclonePath),
-        defaultBackupConflictPolicy: backupConflictPolicySchema.default(
-          DEFAULT_APP_PREFERENCES.backup.defaultBackupConflictPolicy
-        ),
-        defaultRestoreConflictPolicy: restoreConflictPolicySchema.default(
-          DEFAULT_APP_PREFERENCES.backup.defaultRestoreConflictPolicy
-        ),
-        rememberPassword: z.boolean().default(DEFAULT_APP_PREFERENCES.backup.rememberPassword),
-        lastBackupAt: z.string().nullable().default(DEFAULT_APP_PREFERENCES.backup.lastBackupAt)
-      })
-      .default(DEFAULT_APP_PREFERENCES.backup),
     window: z
       .object({
         appearance: windowAppearanceSchema.default(DEFAULT_APP_PREFERENCES.window.appearance),
@@ -754,16 +738,6 @@ export const appPreferencesPatchSchema = z.object({
       keepAliveIntervalSec: z.coerce.number().int().min(5).max(600).optional()
     })
     .optional(),
-  backup: z
-    .object({
-      remotePath: z.string().optional(),
-      rclonePath: z.string().optional(),
-      defaultBackupConflictPolicy: backupConflictPolicySchema.optional(),
-      defaultRestoreConflictPolicy: restoreConflictPolicySchema.optional(),
-      rememberPassword: z.boolean().optional(),
-      lastBackupAt: z.string().nullable().optional()
-    })
-    .optional(),
   window: z
     .object({
       appearance: windowAppearanceSchema.optional(),
@@ -892,17 +866,6 @@ export const sftpTransferStatusEventSchema = z.object({
 
 export const sftpTransferCancelSchema = z.object({
   taskId: z.string().uuid()
-});
-
-export const backupListSchema = z.object({});
-
-export const backupRunSchema = z.object({
-  conflictPolicy: backupConflictPolicySchema.default("skip")
-});
-
-export const backupRestoreSchema = z.object({
-  archiveId: z.string().min(1),
-  conflictPolicy: restoreConflictPolicySchema.default("skip_older")
 });
 
 export const masterPasswordSetSchema = z
@@ -1331,9 +1294,6 @@ export type TerminalProgressInput = z.infer<typeof terminalProgressSchema>;
 export type TerminalNotificationActionEvent = z.infer<typeof terminalNotificationActionEventSchema>;
 export type SftpTransferStatusEvent = z.infer<typeof sftpTransferStatusEventSchema>;
 export type SftpTransferCancelInput = z.infer<typeof sftpTransferCancelSchema>;
-export type BackupListInput = z.infer<typeof backupListSchema>;
-export type BackupRunInput = z.infer<typeof backupRunSchema>;
-export type BackupRestoreInput = z.infer<typeof backupRestoreSchema>;
 export type MasterPasswordSetInput = z.infer<typeof masterPasswordSetSchema>;
 export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchema>;
 export type MasterPasswordClearRememberedInput = z.infer<

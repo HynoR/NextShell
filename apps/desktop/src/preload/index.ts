@@ -214,11 +214,6 @@ const api: NextShellApi = {
     upsert: (payload) => invoke(IPCChannel.SavedCommandUpsert, payload),
     remove: (payload) => invoke(IPCChannel.SavedCommandRemove, payload)
   },
-  backup: {
-    list: () => invoke(IPCChannel.BackupList, {}),
-    run: (payload) => invoke(IPCChannel.BackupRun, payload ?? {}),
-    restore: (payload) => invoke(IPCChannel.BackupRestore, payload)
-  },
   cloudSync: {
     workspaceList: () => invoke(IPCChannel.CloudSyncWorkspaceList, {}),
     workspaceAdd: (payload) => invoke(IPCChannel.CloudSyncWorkspaceAdd, payload),

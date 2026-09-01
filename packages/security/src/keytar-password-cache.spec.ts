@@ -40,20 +40,20 @@ const makeKeytar = (seed: Record<string, string> = {}): FakeKeytar => {
 
 describe("KeytarPasswordCache", () => {
   test("hits the keychain once and serves later reads from memory", async () => {
-    const keytar = makeKeytar({ "NextShell/backup-password": "s3cret" });
-    const cache = new KeytarPasswordCache("NextShell", "backup-password", {
+    const keytar = makeKeytar({ "NextShell/test-secret": "s3cret" });
+    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
       keytar: keytar.module
     });
 
     expect(await cache.recall()).toBe("s3cret");
     expect(await cache.recall()).toBe("s3cret");
     expect(await cache.recall()).toBe("s3cret");
-    expect(keytar.reads).toEqual(["NextShell/backup-password"]);
+    expect(keytar.reads).toEqual(["NextShell/test-secret"]);
   });
 
   test("memoizes a missing item so repeated misses do not re-prompt", async () => {
     const keytar = makeKeytar();
-    const cache = new KeytarPasswordCache("NextShell", "backup-password", {
+    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
       keytar: keytar.module
     });
 
@@ -74,7 +74,7 @@ describe("KeytarPasswordCache", () => {
 
   test("does not memoize a failed read", async () => {
     let calls = 0;
-    const cache = new KeytarPasswordCache("NextShell", "backup-password", {
+    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
       keytar: {
         getPassword: async () => {
           calls += 1;
@@ -92,7 +92,7 @@ describe("KeytarPasswordCache", () => {
 
   test("remember and clear keep the memo in sync without re-reading", async () => {
     const keytar = makeKeytar();
-    const cache = new KeytarPasswordCache("NextShell", "backup-password", {
+    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
       keytar: keytar.module
     });
 
@@ -133,13 +133,13 @@ describe("KeytarPasswordCache", () => {
   });
 
   test("invalidate forces the next recall back to the keychain", async () => {
-    const keytar = makeKeytar({ "NextShell/backup-password": "one" });
-    const cache = new KeytarPasswordCache("NextShell", "backup-password", {
+    const keytar = makeKeytar({ "NextShell/test-secret": "one" });
+    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
       keytar: keytar.module
     });
 
     expect(await cache.recall()).toBe("one");
-    keytar.store.set("NextShell/backup-password", "two");
+    keytar.store.set("NextShell/test-secret", "two");
     expect(await cache.recall()).toBe("one");
 
     cache.invalidate();

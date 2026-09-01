@@ -561,8 +561,6 @@ export interface ScopedCommandItem extends SavedCommand {
   workspaceName?: string;
 }
 
-export type BackupConflictPolicy = "skip" | "force";
-export type RestoreConflictPolicy = "skip_older" | "force";
 export type WindowAppearance = "system" | "light" | "dark";
 export interface AppPreferences {
   transfer: {
@@ -618,15 +616,6 @@ export interface AppPreferences {
     keepAliveEnabled: boolean;
     /** Keepalive 间隔（秒） */
     keepAliveIntervalSec: number;
-  };
-  backup: {
-    remotePath: string;
-    /** 留空表示直接使用 PATH 中的 rclone（macOS/Linux），Windows 用户可填绝对路径 */
-    rclonePath: string;
-    defaultBackupConflictPolicy: BackupConflictPolicy;
-    defaultRestoreConflictPolicy: RestoreConflictPolicy;
-    rememberPassword: boolean;
-    lastBackupAt: string | null;
   };
   window: {
     appearance: WindowAppearance;
@@ -735,14 +724,6 @@ export interface AppPreferencesPatch {
     keepAliveEnabled?: boolean;
     keepAliveIntervalSec?: number;
   };
-  backup?: {
-    remotePath?: string;
-    rclonePath?: string;
-    defaultBackupConflictPolicy?: BackupConflictPolicy;
-    defaultRestoreConflictPolicy?: RestoreConflictPolicy;
-    rememberPassword?: boolean;
-    lastBackupAt?: string | null;
-  };
   window?: {
     appearance?: WindowAppearance;
     minimizeToTray?: boolean;
@@ -781,16 +762,6 @@ export interface AppPreferencesPatch {
     allowedLocalRoots?: string[];
     execTimeoutSec?: number;
   };
-}
-
-export interface BackupArchiveMeta {
-  id: string;
-  timestamp: string;
-  deviceId: string;
-  appVersion: string;
-  hash: string;
-  fileName: string;
-  sizeBytes: number;
 }
 
 export interface SecretStoreEntry {
@@ -935,14 +906,6 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   ssh: {
     keepAliveEnabled: true,
     keepAliveIntervalSec: 15
-  },
-  backup: {
-    remotePath: "",
-    rclonePath: "",
-    defaultBackupConflictPolicy: "skip",
-    defaultRestoreConflictPolicy: "skip_older",
-    rememberPassword: true,
-    lastBackupAt: null
   },
   window: {
     appearance: "system",

@@ -527,7 +527,6 @@ const cloneDefaultPreferences = (): AppPreferences => {
     commandCenter: { ...DEFAULT_APP_PREFERENCES_VALUE.commandCenter },
     terminal: { ...DEFAULT_APP_PREFERENCES_VALUE.terminal },
     ssh: { ...DEFAULT_APP_PREFERENCES_VALUE.ssh },
-    backup: { ...DEFAULT_APP_PREFERENCES_VALUE.backup },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
     connectionManager: { ...DEFAULT_APP_PREFERENCES_VALUE.connectionManager },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
@@ -699,34 +698,6 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.ssh.keepAliveIntervalSec <= 600
             ? parsed.ssh.keepAliveIntervalSec
             : fallback.ssh.keepAliveIntervalSec
-      },
-      backup: {
-        remotePath:
-          typeof parsed.backup?.remotePath === "string"
-            ? parsed.backup.remotePath
-            : fallback.backup.remotePath,
-        rclonePath:
-          typeof parsed.backup?.rclonePath === "string"
-            ? parsed.backup.rclonePath
-            : fallback.backup.rclonePath,
-        defaultBackupConflictPolicy:
-          parsed.backup?.defaultBackupConflictPolicy === "skip" ||
-          parsed.backup?.defaultBackupConflictPolicy === "force"
-            ? parsed.backup.defaultBackupConflictPolicy
-            : fallback.backup.defaultBackupConflictPolicy,
-        defaultRestoreConflictPolicy:
-          parsed.backup?.defaultRestoreConflictPolicy === "skip_older" ||
-          parsed.backup?.defaultRestoreConflictPolicy === "force"
-            ? parsed.backup.defaultRestoreConflictPolicy
-            : fallback.backup.defaultRestoreConflictPolicy,
-        rememberPassword:
-          typeof parsed.backup?.rememberPassword === "boolean"
-            ? parsed.backup.rememberPassword
-            : fallback.backup.rememberPassword,
-        lastBackupAt:
-          typeof parsed.backup?.lastBackupAt === "string"
-            ? parsed.backup.lastBackupAt
-            : fallback.backup.lastBackupAt
       },
       window: {
         appearance:
@@ -1773,7 +1744,6 @@ export interface ConnectionRepository {
   saveKeychainNoticeAcknowledged: () => void;
   getSecretStore: () => SecretStoreDB;
   clearTemplateParams: (commandId: string) => void;
-  backupDatabase: (targetPath: string) => Promise<void>;
   getDbPath: () => string;
   close: () => void;
 }
@@ -3014,10 +2984,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
 
   clearTemplateParams(commandId: string): void {
     this.db.prepare("DELETE FROM command_template_params WHERE command_id = ?").run(commandId);
-  }
-
-  async backupDatabase(targetPath: string): Promise<void> {
-    await this.db.backup(targetPath);
   }
 
   getDbPath(): string {

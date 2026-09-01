@@ -631,12 +631,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
     return this.inner.getSecretStore();
   }
 
-  backupDatabase(targetPath: string): Promise<void> {
-    // 备份前先落盘所有脏数据
-    this.flush();
-    return this.inner.backupDatabase(targetPath);
-  }
-
   getDbPath(): string {
     return this.inner.getDbPath();
   }

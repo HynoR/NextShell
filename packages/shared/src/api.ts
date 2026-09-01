@@ -1,5 +1,4 @@
 import type {
-  BackupArchiveMeta,
   BatchCommandExecutionResult,
   CommandExecutionResult,
   CommandHistoryEntry,
@@ -38,9 +37,6 @@ import type {
   ConnectionFolderRenameInput,
   ConnectionFolderReorderInput,
   DebugLogEntry,
-  BackupListInput,
-  BackupRestoreInput,
-  BackupRunInput,
   CommandBatchExecInput,
   CommandExecInput,
   ConnectionBatchAuthUpdateInput,
@@ -302,11 +298,6 @@ export interface NextShellApi {
     upsert: (payload: SavedCommandUpsertInput) => Promise<SavedCommand>;
     remove: (payload: SavedCommandRemoveInput) => Promise<{ ok: true }>;
   };
-  backup: {
-    list: (payload?: BackupListInput) => Promise<BackupArchiveMeta[]>;
-    run: (payload: BackupRunInput) => Promise<{ ok: true; fileName?: string }>;
-    restore: (payload: BackupRestoreInput) => Promise<{ ok: true }>;
-  };
   cloudSync: {
     workspaceList: () => Promise<CloudSyncWorkspaceProfile[]>;
     workspaceAdd: (payload: CloudSyncWorkspaceAddInput) => Promise<CloudSyncWorkspaceProfile>;
@@ -484,9 +475,6 @@ export interface IpcInvokeMethods {
   [IPCChannel.SftpEditList]: NextShellApi["sftp"]["editList"];
   [IPCChannel.SftpEditOpenBuiltin]: NextShellApi["sftp"]["editOpenBuiltin"];
   [IPCChannel.SftpEditSaveBuiltin]: NextShellApi["sftp"]["editSaveBuiltin"];
-  [IPCChannel.BackupList]: NextShellApi["backup"]["list"];
-  [IPCChannel.BackupRun]: NextShellApi["backup"]["run"];
-  [IPCChannel.BackupRestore]: NextShellApi["backup"]["restore"];
   [IPCChannel.MasterPasswordSet]: NextShellApi["masterPassword"]["setPassword"];
   [IPCChannel.MasterPasswordUnlock]: NextShellApi["masterPassword"]["unlockPassword"];
   [IPCChannel.MasterPasswordChange]: NextShellApi["masterPassword"]["changePassword"];

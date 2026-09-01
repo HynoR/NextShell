@@ -39,7 +39,6 @@ import {
 } from "../../../../../packages/storage/src/index";
 import { DeviceKeyProvider } from "./device-key-provider";
 import { RemoteEditManager } from "./remote-edit-manager";
-import { BackupService, applyPendingRestore } from "./backup-service";
 import { logger } from "../logger";
 import { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import { normalizeError } from "./container-utils";
@@ -81,8 +80,6 @@ export const createServiceContainer = async (
   const dataDir = path.join(options.userDataDir, STORAGE_DIRECTORY_NAME);
   fs.mkdirSync(dataDir, { recursive: true });
   const dbPath = path.join(dataDir, "nextshell.db");
-
-  applyPendingRestore(dataDir, dbPath);
 
   const rawRepo = new SQLiteConnectionRepository(dbPath);
   const connections = new CachedConnectionRepository(rawRepo);
@@ -153,8 +150,7 @@ export const createServiceContainer = async (
 
   // Deliberately lazy: reading this at startup costs a keychain authorization
   // prompt on every launch, even for users who never touch backup/reveal. Every
-  // consumer (masterPasswordStatus, resolveMasterPassword, backupRun,
-  // backupRestore) awaits this before relying on masterPassword.
+  // consumers await this before relying on masterPassword.
   const tryRecallMasterPassword = async (): Promise<void> => {
     if (masterPassword) return;
     const meta = connections.getMasterKeyMeta();
@@ -166,12 +162,6 @@ export const createServiceContainer = async (
       logger.info("[Security] recalled remembered master password");
     }
   };
-
-  const backupService = new BackupService({
-    dataDir,
-    repo: connections,
-    getMasterPassword: () => masterPassword
-  });
 
   const broadcastToAllWindows = (channel: string, payload: unknown): void => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -692,7 +682,6 @@ export const createServiceContainer = async (
     getCredentialStoreStatus: () => deviceKeyProvider.getStatus(),
     reauthorizeCredentialStore: () => deviceKeyProvider.reauthorize(),
     getDeviceKeyHex: async () => (await deviceKeyProvider.get()).toString("hex"),
-    backupService,
     getMasterPassword: () => masterPassword,
     setMasterPassword: (p) => {
       masterPassword = p;

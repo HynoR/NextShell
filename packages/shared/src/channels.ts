@@ -58,9 +58,6 @@ export const IPCChannel = {
   SftpEditSaveBuiltin: "nextshell:sftp:edit:save-builtin",
   SftpTransferStatus: "nextshell:sftp:transfer:status",
   SftpTransferCancel: "nextshell:sftp:transfer:cancel",
-  BackupList: "nextshell:backup:list",
-  BackupRun: "nextshell:backup:run",
-  BackupRestore: "nextshell:backup:restore",
   // ── Cloud Sync: Workspace Management ──
   CloudSyncWorkspaceList: "nextshell:cloud-sync:workspace:list",
   CloudSyncWorkspaceAdd: "nextshell:cloud-sync:workspace:add",

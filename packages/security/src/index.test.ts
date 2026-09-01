@@ -3,9 +3,7 @@ import {
   __setScryptImplForTesting,
   clearDerivedKeyCache,
   createMasterKeyMeta,
-  decryptBackupPayload,
   deriveKey,
-  encryptBackupPayload,
   verifyMasterPassword
 } from "./index";
 
@@ -51,13 +49,6 @@ await (async () => {
     !(await verifyMasterPassword("wrong-password", meta)),
     "wrong password should fail verification"
   );
-})();
-
-await (async () => {
-  const payload = Buffer.from("backup-payload", "utf8");
-  const encrypted = await encryptBackupPayload(payload, "backup-password");
-  const decrypted = await decryptBackupPayload(encrypted, "backup-password");
-  assertBufferEquals(decrypted, payload, "backup payload should round-trip");
 })();
 
 await withMockedScrypt(

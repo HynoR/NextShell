@@ -21,7 +21,6 @@ import type {
   CachedSshKeyRepository,
   CachedProxyRepository
 } from "../../../../../packages/storage/src/index";
-import type { BackupService } from "./backup-service";
 import type { RemoteEditManager } from "./remote-edit-manager";
 import type {
   ActiveSession,
@@ -56,7 +55,6 @@ export interface ServiceContext {
   setMasterPassword: (password: string | undefined) => void;
 
   // ─── Services ───────────────────────────────────────────────────────────
-  backupService: BackupService;
   remoteEditManager: RemoteEditManager;
 
   // ─── Connection Pool ────────────────────────────────────────────────────

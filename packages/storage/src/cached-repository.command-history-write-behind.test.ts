@@ -56,7 +56,6 @@ const createRepositoryStub = (
         remoteEdit: {},
         commandCenter: {},
         ssh: {},
-        backup: {},
         window: {},
         traceroute: {}
       }) as never,
@@ -67,7 +66,6 @@ const createRepositoryStub = (
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
     clearTemplateParams: () => {},
-    backupDatabase: async () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
   } satisfies Partial<ConnectionRepository> & { pushCalls: string[] };

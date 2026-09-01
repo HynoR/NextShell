@@ -5,15 +5,12 @@ import {
   verifyMasterPassword
 } from "../../../../../packages/security/src/index";
 
-type PasswordChangePhase = "set" | "unlock" | "change";
-
 interface ChangeMasterPasswordOptions {
   oldPassword: string;
   newPassword: string;
   getMasterKeyMeta: () => MasterKeyMeta | undefined;
   saveMasterKeyMeta: (meta: MasterKeyMeta) => void;
   setMasterPassword: (password: string) => void;
-  rememberPasswordBestEffort: (password: string, phase: PasswordChangePhase) => Promise<void>;
 }
 
 export const changeMasterPassword = async (
@@ -27,12 +24,10 @@ export const changeMasterPassword = async (
     throw new Error("原密码错误，请重试。");
   }
 
-  const sameAsOld = options.oldPassword === options.newPassword;
   clearDerivedKeyCache();
   const nextMeta = await createMasterKeyMeta(options.newPassword);
   options.saveMasterKeyMeta(nextMeta);
   options.setMasterPassword(options.newPassword);
-  await options.rememberPasswordBestEffort(options.newPassword, "change");
 
   return { ok: true };
 };
