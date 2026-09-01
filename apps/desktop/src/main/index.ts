@@ -268,39 +268,8 @@ app.whenReady().then(async () => {
     logger.error("[App] unhandledRejection", reason);
   });
 
-  // Dev runs execute the unsigned Electron binary from node_modules, which is a
-  // different code identity than the packaged app. Sharing one keychain item
-  // between them makes macOS re-prompt every time the other binary touches it,
-  // so give dev its own item and adopt the shared one on first run.
   const serviceContainerPromise = createServiceContainer({
-    userDataDir: app.getPath("userData"),
-    keytarServiceName: app.isPackaged ? "NextShell" : "NextShell (Dev)",
-    keytarFallbackServiceName: app.isPackaged ? undefined : "NextShell",
-    // macOS is the only platform that shows an authorization dialog here
-    // (Windows uses DPAPI, which never prompts), and the difference between
-    // "Allow" and "Always Allow" decides whether it comes back every launch.
-    onBeforeKeychainAccess:
-      process.platform === "darwin"
-        ? async () => {
-            const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-            const options: Electron.MessageBoxOptions = {
-              type: "info",
-              message: "NextShell 需要访问系统钥匙串",
-              detail:
-                "用于读取保护已保存密码的加密密钥。\n\n" +
-                "接下来 macOS 会弹出授权窗口，请选择「始终允许」。\n" +
-                "如果选「允许」，每次启动都会再问一次。",
-              buttons: ["继续"],
-              defaultId: 0,
-              noLink: true
-            };
-            if (parent && !parent.isDestroyed()) {
-              await dialog.showMessageBox(parent, options);
-              return;
-            }
-            await dialog.showMessageBox(options);
-          }
-        : undefined
+    userDataDir: app.getPath("userData")
   });
 
   // Deny renderer permission requests by default (Electron allows all without

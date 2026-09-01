@@ -431,7 +431,7 @@ describe("ConnectionEditor", () => {
         onCreateKey={noop}
       />
     );
-    expect(html).toContain("输入主密码查看");
+    expect(html).toContain("查看明文密码");
 
     const forNew = renderToStaticMarkup(
       <ConnectionEditor
@@ -446,7 +446,7 @@ describe("ConnectionEditor", () => {
         onCreateKey={noop}
       />
     );
-    expect(forNew).not.toContain("输入主密码查看");
+    expect(forNew).not.toContain("查看明文密码");
   });
 });
 

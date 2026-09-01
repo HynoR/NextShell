@@ -868,39 +868,6 @@ export const sftpTransferCancelSchema = z.object({
   taskId: z.string().uuid()
 });
 
-export const masterPasswordSetSchema = z
-  .object({
-    password: z.string().min(6, "数据备份密码至少6个字符"),
-    confirmPassword: z.string().min(1)
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "两次输入的密码不一致",
-    path: ["confirmPassword"]
-  });
-
-export const masterPasswordUnlockSchema = z.object({
-  password: z.string().min(1)
-});
-
-export const masterPasswordClearRememberedSchema = z.object({});
-
-export const masterPasswordStatusSchema = z.object({});
-
-export const masterPasswordGetCachedSchema = z.object({});
-
-export const credentialStoreReauthorizeSchema = z.object({});
-
-export const masterPasswordChangeSchema = z
-  .object({
-    oldPassword: z.string().min(1, "原密码不能为空"),
-    newPassword: z.string().min(6, "新密码至少6个字符"),
-    confirmPassword: z.string().min(1)
-  })
-  .refine((data) => data.newPassword === data.confirmPassword, {
-    message: "两次输入的新密码不一致",
-    path: ["confirmPassword"]
-  });
-
 // ─── Agent 接入（应用内 MCP 端点）────────────────────────────────────────────
 
 export const agentClientKindSchema = z.enum(["claude-code", "claude-desktop", "cursor", "generic"]);
@@ -1167,8 +1134,7 @@ export const connectionExportBatchSchema = z.object({
 });
 
 export const connectionRevealPasswordSchema = z.object({
-  connectionId: z.string().uuid(),
-  masterPassword: z.preprocess(trimToOptionalString, z.string().min(1).optional())
+  connectionId: z.string().uuid()
 });
 
 export const connectionImportPreviewSchema = z.object({
@@ -1294,15 +1260,6 @@ export type TerminalProgressInput = z.infer<typeof terminalProgressSchema>;
 export type TerminalNotificationActionEvent = z.infer<typeof terminalNotificationActionEventSchema>;
 export type SftpTransferStatusEvent = z.infer<typeof sftpTransferStatusEventSchema>;
 export type SftpTransferCancelInput = z.infer<typeof sftpTransferCancelSchema>;
-export type MasterPasswordSetInput = z.infer<typeof masterPasswordSetSchema>;
-export type MasterPasswordUnlockInput = z.infer<typeof masterPasswordUnlockSchema>;
-export type MasterPasswordClearRememberedInput = z.infer<
-  typeof masterPasswordClearRememberedSchema
->;
-export type MasterPasswordStatusInput = z.infer<typeof masterPasswordStatusSchema>;
-export type CredentialStoreReauthorizeInput = z.infer<typeof credentialStoreReauthorizeSchema>;
-export type MasterPasswordGetCachedInput = z.infer<typeof masterPasswordGetCachedSchema>;
-export type MasterPasswordChangeInput = z.infer<typeof masterPasswordChangeSchema>;
 export type SshKeyListInput = z.infer<typeof sshKeyListSchema>;
 export type ConnectionFolderListInput = z.infer<typeof connectionFolderListSchema>;
 export type ConnectionFolderCreateInput = z.infer<typeof connectionFolderCreateSchema>;
@@ -1370,26 +1327,6 @@ export interface ConnectionBatchAuthUpdateResult {
   updated: number;
   failed: number;
   errors: string[];
-}
-
-export interface MasterPasswordStatusResult {
-  isSet: boolean;
-  isUnlocked: boolean;
-  /**
-   * Whether a remembered master password can be stored. It no longer depends on
-   * the OS keychain being present — only on the credential store being usable.
-   */
-  canRememberPassword: boolean;
-}
-
-export interface CredentialStoreReauthorizeResult {
-  ok: true;
-  /** False when the OS prompt was refused again. */
-  authorized: boolean;
-}
-
-export interface MasterPasswordCachedResult {
-  available: boolean;
 }
 
 export interface ConnectionRevealPasswordResult {

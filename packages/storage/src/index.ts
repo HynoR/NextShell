@@ -18,7 +18,6 @@ import type {
   ConnectionFolder,
   ConnectionListQuery,
   ConnectionProfile,
-  MasterKeyMeta,
   OriginKind,
   ProxyProfile,
   SavedCommand,
@@ -1535,6 +1534,14 @@ const migrations: MigrationDefinition[] = [
     apply: (db) => {
       db.exec("DROP TABLE IF EXISTS audit_logs;");
     }
+  },
+  {
+    version: 28,
+    name: "drop_master_password",
+    apply: (db) => {
+      db.exec("DELETE FROM app_settings WHERE key = 'master_key_meta';");
+      db.exec("DELETE FROM secret_store WHERE id = 'master-password';");
+    }
   }
 ];
 
@@ -1735,13 +1742,8 @@ export interface ConnectionRepository {
   saveRecycleBinEntry: (entry: RecycleBinEntry) => void;
   removeRecycleBinEntry: (id: string) => void;
   clearRecycleBin: () => number;
-  getMasterKeyMeta: () => MasterKeyMeta | undefined;
-  saveMasterKeyMeta: (meta: MasterKeyMeta) => void;
   getDeviceKey: () => string | undefined;
   saveDeviceKey: (key: string) => void;
-  clearDeviceKey: () => void;
-  getKeychainNoticeAcknowledged: () => boolean;
-  saveKeychainNoticeAcknowledged: () => void;
   getSecretStore: () => SecretStoreDB;
   clearTemplateParams: (commandId: string) => void;
   getDbPath: () => string;
@@ -2871,51 +2873,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     return result.changes;
   }
 
-  getMasterKeyMeta(): MasterKeyMeta | undefined {
-    const row = this.db
-      .prepare("SELECT key, value_json, updated_at FROM app_settings WHERE key = ?")
-      .get("master_key_meta") as AppSettingRow | undefined;
-
-    if (!row?.value_json) {
-      return undefined;
-    }
-
-    try {
-      const parsed = JSON.parse(row.value_json) as Partial<MasterKeyMeta>;
-      if (
-        typeof parsed.salt === "string" &&
-        typeof parsed.n === "number" &&
-        typeof parsed.r === "number" &&
-        typeof parsed.p === "number" &&
-        typeof parsed.verifier === "string"
-      ) {
-        return parsed as MasterKeyMeta;
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  saveMasterKeyMeta(meta: MasterKeyMeta): void {
-    const now = new Date().toISOString();
-    this.db
-      .prepare(
-        `
-        INSERT INTO app_settings (key, value_json, updated_at)
-        VALUES (@key, @value_json, @updated_at)
-        ON CONFLICT(key) DO UPDATE SET
-          value_json = excluded.value_json,
-          updated_at = excluded.updated_at
-      `
-      )
-      .run({
-        key: "master_key_meta",
-        value_json: JSON.stringify(meta),
-        updated_at: now
-      });
-  }
-
   getDeviceKey(): string | undefined {
     const row = this.db
       .prepare("SELECT value_json FROM app_settings WHERE key = ?")
@@ -2940,39 +2897,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
          updated_at = excluded.updated_at`
       )
       .run({ key: "device_key", value_json: JSON.stringify(key), updated_at: now });
-  }
-
-  clearDeviceKey(): void {
-    this.db.prepare("DELETE FROM app_settings WHERE key = ?").run("device_key");
-  }
-
-  getKeychainNoticeAcknowledged(): boolean {
-    const row = this.db
-      .prepare("SELECT value_json FROM app_settings WHERE key = ?")
-      .get("keychain_notice_acknowledged") as { value_json: string } | undefined;
-    if (!row?.value_json) return false;
-    try {
-      return JSON.parse(row.value_json) === true;
-    } catch {
-      return false;
-    }
-  }
-
-  saveKeychainNoticeAcknowledged(): void {
-    const now = new Date().toISOString();
-    this.db
-      .prepare(
-        `INSERT INTO app_settings (key, value_json, updated_at)
-       VALUES (@key, @value_json, @updated_at)
-       ON CONFLICT(key) DO UPDATE SET
-         value_json = excluded.value_json,
-         updated_at = excluded.updated_at`
-      )
-      .run({
-        key: "keychain_notice_acknowledged",
-        value_json: JSON.stringify(true),
-        updated_at: now
-      });
   }
 
   getSecretStore(): SecretStoreDB {

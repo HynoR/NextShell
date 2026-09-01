@@ -165,6 +165,24 @@ export class ConnectionService {
     return this.options.connections.list(query);
   }
 
+  async revealConnectionPassword(connectionId: string): Promise<{ password: string }> {
+    const connection = this.options.connections.getById(connectionId);
+    if (!connection) {
+      throw new Error("连接不存在。");
+    }
+    if (connection.authType !== "password" && connection.authType !== "interactive") {
+      throw new Error("该连接未使用密码或交互式认证。");
+    }
+    if (!connection.credentialRef) {
+      throw new Error("该连接未保存登录密码。");
+    }
+    const password = await this.options.vault.readCredential(connection.credentialRef);
+    if (!password) {
+      throw new Error("该连接未保存登录密码。");
+    }
+    return { password };
+  }
+
   private getConnectionScopeKey(connection: ConnectionProfile): string {
     return resolveOriginScopeKey(connection);
   }

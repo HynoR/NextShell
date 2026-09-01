@@ -3,37 +3,26 @@ import { KeytarPasswordCache } from "./index";
 
 interface FakeKeytar {
   module: {
-    setPassword: (service: string, account: string, password: string) => Promise<void>;
     getPassword: (service: string, account: string) => Promise<string | null>;
     deletePassword: (service: string, account: string) => Promise<boolean>;
   };
   reads: string[];
-  writes: string[];
   store: Map<string, string>;
 }
 
 const makeKeytar = (seed: Record<string, string> = {}): FakeKeytar => {
   const store = new Map<string, string>(Object.entries(seed));
   const reads: string[] = [];
-  const writes: string[] = [];
   return {
     store,
     reads,
-    writes,
     module: {
       getPassword: async (service, account) => {
         const key = `${service}/${account}`;
         reads.push(key);
         return store.get(key) ?? null;
       },
-      setPassword: async (service, account, password) => {
-        const key = `${service}/${account}`;
-        writes.push(key);
-        store.set(key, password);
-      },
-      deletePassword: async (service, account) => {
-        return store.delete(`${service}/${account}`);
-      }
+      deletePassword: async (service, account) => store.delete(`${service}/${account}`)
     }
   };
 };
@@ -45,7 +34,6 @@ describe("KeytarPasswordCache", () => {
       keytar: keytar.module
     });
 
-    expect(await cache.recall()).toBe("s3cret");
     expect(await cache.recall()).toBe("s3cret");
     expect(await cache.recall()).toBe("s3cret");
     expect(keytar.reads).toEqual(["NextShell/test-secret"]);
@@ -81,7 +69,6 @@ describe("KeytarPasswordCache", () => {
           if (calls === 1) throw new Error("keychain denied");
           return "later";
         },
-        setPassword: async () => {},
         deletePassword: async () => true
       }
     });
@@ -90,60 +77,15 @@ describe("KeytarPasswordCache", () => {
     expect(await cache.recall()).toBe("later");
   });
 
-  test("remember and clear keep the memo in sync without re-reading", async () => {
-    const keytar = makeKeytar();
-    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
-      keytar: keytar.module
-    });
+  test("deletes the keychain item and memoizes the empty result", async () => {
+    const keytar = makeKeytar({ "NextShell/device-key": "old-key" });
+    const cache = new KeytarPasswordCache("NextShell", "device-key", { keytar: keytar.module });
 
-    await cache.remember("new-password");
-    expect(await cache.recall()).toBe("new-password");
-    expect(keytar.reads).toHaveLength(0);
-
+    expect(await cache.recall()).toBe("old-key");
     await cache.clear();
+
+    expect(keytar.store.has("NextShell/device-key")).toBe(false);
     expect(await cache.recall()).toBeUndefined();
-    expect(keytar.reads).toHaveLength(0);
-  });
-
-  test("adopts the fallback service item and copies it into the primary", async () => {
-    const keytar = makeKeytar({ "NextShell/device-key": "shared-key" });
-    const cache = new KeytarPasswordCache("NextShell (Dev)", "device-key", {
-      keytar: keytar.module,
-      fallbackService: "NextShell"
-    });
-
-    expect(await cache.recall()).toBe("shared-key");
-    // Copied over, so the next launch only touches the dev-owned item.
-    expect(keytar.store.get("NextShell (Dev)/device-key")).toBe("shared-key");
-    expect(keytar.writes).toEqual(["NextShell (Dev)/device-key"]);
-  });
-
-  test("prefers the primary item over the fallback", async () => {
-    const keytar = makeKeytar({
-      "NextShell (Dev)/device-key": "dev-key",
-      "NextShell/device-key": "shared-key"
-    });
-    const cache = new KeytarPasswordCache("NextShell (Dev)", "device-key", {
-      keytar: keytar.module,
-      fallbackService: "NextShell"
-    });
-
-    expect(await cache.recall()).toBe("dev-key");
-    expect(keytar.reads).toEqual(["NextShell (Dev)/device-key"]);
-  });
-
-  test("invalidate forces the next recall back to the keychain", async () => {
-    const keytar = makeKeytar({ "NextShell/test-secret": "one" });
-    const cache = new KeytarPasswordCache("NextShell", "test-secret", {
-      keytar: keytar.module
-    });
-
-    expect(await cache.recall()).toBe("one");
-    keytar.store.set("NextShell/test-secret", "two");
-    expect(await cache.recall()).toBe("one");
-
-    cache.invalidate();
-    expect(await cache.recall()).toBe("two");
-    expect(keytar.reads).toHaveLength(2);
+    expect(keytar.reads).toHaveLength(1);
   });
 });

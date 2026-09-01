@@ -7,7 +7,6 @@ export type SettingsSection =
   | "network"
   | "cloudSync"
   | "recycleBin"
-  | "security"
   | "agent"
   | "about";
 

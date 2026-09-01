@@ -74,13 +74,6 @@ import {
   cloudSyncListConflictsSchema,
   cloudSyncTestConnectionSchema,
   cloudSyncResolveConflictSchema,
-  masterPasswordSetSchema,
-  masterPasswordUnlockSchema,
-  masterPasswordChangeSchema,
-  masterPasswordClearRememberedSchema,
-  masterPasswordStatusSchema,
-  masterPasswordGetCachedSchema,
-  credentialStoreReauthorizeSchema,
   sshKeyListSchema,
   connectionFolderCreateSchema,
   connectionFolderListSchema,
@@ -210,8 +203,7 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     channel: IPCChannel.ConnectionRevealPassword,
     schema: connectionRevealPasswordSchema,
     label: "查看连接密码",
-    dispatch: (services, input) =>
-      services.backupPassword.revealConnectionPassword(input.connectionId, input.masterPassword)
+    dispatch: (services, input) => services.connections.revealConnectionPassword(input.connectionId)
   }),
   define({
     channel: IPCChannel.ConnectionImportPreview,
@@ -640,55 +632,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "网络连接查询",
     dispatch: (services, input) =>
       services.monitors.getNetworkConnections(input.connectionId, input.port)
-  }),
-
-  // ─── Master Password ──────────────────────────────────────────────────────
-  define({
-    channel: IPCChannel.MasterPasswordSet,
-    schema: masterPasswordSetSchema,
-    label: "设置主密码",
-    dispatch: (services, input) => services.backupPassword.masterPasswordSet(input.password)
-  }),
-  define({
-    channel: IPCChannel.MasterPasswordUnlock,
-    schema: masterPasswordUnlockSchema,
-    label: "解锁主密码",
-    dispatch: (services, input) => services.backupPassword.masterPasswordUnlock(input.password)
-  }),
-  define({
-    channel: IPCChannel.MasterPasswordChange,
-    schema: masterPasswordChangeSchema,
-    label: "修改主密码",
-    dispatch: (services, input) =>
-      services.backupPassword.masterPasswordChange(input.oldPassword, input.newPassword)
-  }),
-  define({
-    channel: IPCChannel.MasterPasswordClearRemembered,
-    schema: masterPasswordClearRememberedSchema,
-    label: "清除记住的主密码",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.backupPassword.masterPasswordClearRemembered()
-  }),
-  define({
-    channel: IPCChannel.MasterPasswordStatus,
-    schema: masterPasswordStatusSchema,
-    label: "主密码状态查询",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.backupPassword.masterPasswordStatus()
-  }),
-  define({
-    channel: IPCChannel.MasterPasswordGetCached,
-    schema: masterPasswordGetCachedSchema,
-    label: "获取主密码缓存",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.backupPassword.masterPasswordGetCached()
-  }),
-  define({
-    channel: IPCChannel.CredentialStoreReauthorize,
-    schema: credentialStoreReauthorizeSchema,
-    label: "重新授权凭据库",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.backupPassword.credentialStoreReauthorize()
   }),
 
   // ─── Cloud Sync ───────────────────────────────────────────────────────────

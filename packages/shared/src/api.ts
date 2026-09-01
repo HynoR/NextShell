@@ -55,12 +55,6 @@ import type {
   ConnectionImportDirectoryPreviewResult,
   ConnectionImportFinalShellPreviewInput,
   ConnectionImportPreviewInput,
-  MasterPasswordCachedResult,
-  MasterPasswordChangeInput,
-  MasterPasswordClearRememberedInput,
-  MasterPasswordGetCachedInput,
-  CredentialStoreReauthorizeInput,
-  CredentialStoreReauthorizeResult,
   AgentClientConfigResult,
   AgentCopyClientConfigInput,
   AgentExportMcpbInput,
@@ -80,10 +74,6 @@ import type {
   AgentSessionFocusEvent,
   AgentSetHaltedInput,
   AgentStatusInput,
-  MasterPasswordSetInput,
-  MasterPasswordStatusInput,
-  MasterPasswordStatusResult,
-  MasterPasswordUnlockInput,
   ConnectionRemoveInput,
   ConnectionUpsertInput,
   DialogOpenDirectoryInput,
@@ -319,18 +309,6 @@ export interface NextShellApi {
     onStatus: (listener: (event: CloudSyncManagerStatusEvent) => void) => SessionEventUnsubscribe;
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
   };
-  masterPassword: {
-    setPassword: (payload: MasterPasswordSetInput) => Promise<{ ok: true }>;
-    unlockPassword: (payload: MasterPasswordUnlockInput) => Promise<{ ok: true }>;
-    changePassword: (payload: MasterPasswordChangeInput) => Promise<{ ok: true }>;
-    clearRemembered: (payload?: MasterPasswordClearRememberedInput) => Promise<{ ok: true }>;
-    passwordStatus: (payload?: MasterPasswordStatusInput) => Promise<MasterPasswordStatusResult>;
-    getCached: (payload?: MasterPasswordGetCachedInput) => Promise<MasterPasswordCachedResult>;
-    /** Retry a keychain read that was previously refused. */
-    reauthorizeCredentialStore: (
-      payload?: CredentialStoreReauthorizeInput
-    ) => Promise<CredentialStoreReauthorizeResult>;
-  };
   agent: {
     /** 端点状态：是否启用、socket 路径、TCP 端口、token、已连客户端、endpoint.json 路径 */
     status: (payload?: AgentStatusInput) => Promise<AgentEndpointStatus>;
@@ -475,13 +453,6 @@ export interface IpcInvokeMethods {
   [IPCChannel.SftpEditList]: NextShellApi["sftp"]["editList"];
   [IPCChannel.SftpEditOpenBuiltin]: NextShellApi["sftp"]["editOpenBuiltin"];
   [IPCChannel.SftpEditSaveBuiltin]: NextShellApi["sftp"]["editSaveBuiltin"];
-  [IPCChannel.MasterPasswordSet]: NextShellApi["masterPassword"]["setPassword"];
-  [IPCChannel.MasterPasswordUnlock]: NextShellApi["masterPassword"]["unlockPassword"];
-  [IPCChannel.MasterPasswordChange]: NextShellApi["masterPassword"]["changePassword"];
-  [IPCChannel.MasterPasswordClearRemembered]: NextShellApi["masterPassword"]["clearRemembered"];
-  [IPCChannel.MasterPasswordStatus]: NextShellApi["masterPassword"]["passwordStatus"];
-  [IPCChannel.MasterPasswordGetCached]: NextShellApi["masterPassword"]["getCached"];
-  [IPCChannel.CredentialStoreReauthorize]: NextShellApi["masterPassword"]["reauthorizeCredentialStore"];
   [IPCChannel.AgentStatus]: NextShellApi["agent"]["status"];
   [IPCChannel.AgentEnable]: NextShellApi["agent"]["enable"];
   [IPCChannel.AgentDisable]: NextShellApi["agent"]["disable"];

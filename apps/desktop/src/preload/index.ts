@@ -33,16 +33,6 @@ const invoke = <C extends IpcInvokeChannel>(
   payload: IpcInvokePayload<C>
 ): Promise<IpcInvokeResult<C>> => ipcRenderer.invoke(channel, payload);
 
-const masterPasswordApi: NextShellApi["masterPassword"] = {
-  setPassword: (payload) => invoke(IPCChannel.MasterPasswordSet, payload),
-  unlockPassword: (payload) => invoke(IPCChannel.MasterPasswordUnlock, payload),
-  changePassword: (payload) => invoke(IPCChannel.MasterPasswordChange, payload),
-  clearRemembered: () => invoke(IPCChannel.MasterPasswordClearRemembered, {}),
-  passwordStatus: () => invoke(IPCChannel.MasterPasswordStatus, {}),
-  getCached: () => invoke(IPCChannel.MasterPasswordGetCached, {}),
-  reauthorizeCredentialStore: () => invoke(IPCChannel.CredentialStoreReauthorize, {})
-};
-
 const ackStreamDelivery = (payload: StreamDeliveryAckInput): Promise<{ ok: true }> => {
   return invoke(IPCChannel.StreamDeliveryAck, payload);
 };
@@ -245,7 +235,6 @@ const api: NextShellApi = {
       };
     }
   },
-  masterPassword: masterPasswordApi,
   agent: {
     status: () => invoke(IPCChannel.AgentStatus, {}),
     enable: () => invoke(IPCChannel.AgentEnable, {}),

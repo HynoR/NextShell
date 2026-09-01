@@ -72,14 +72,6 @@ export const IPCChannel = {
   CloudSyncResolveConflict: "nextshell:cloud-sync:resolve-conflict",
   CloudSyncStatusEvent: "nextshell:cloud-sync:status:event",
   CloudSyncAppliedEvent: "nextshell:cloud-sync:applied:event",
-  MasterPasswordSet: "nextshell:master-password:set",
-  MasterPasswordUnlock: "nextshell:master-password:unlock",
-  MasterPasswordClearRemembered: "nextshell:master-password:clear-remembered",
-  MasterPasswordStatus: "nextshell:master-password:status",
-  MasterPasswordGetCached: "nextshell:master-password:get-cached",
-  MasterPasswordChange: "nextshell:master-password:change",
-  CredentialStoreReauthorize: "nextshell:credential-store:reauthorize",
-
   // ── Agent 接入（应用内 MCP 端点）──
   AgentStatus: "nextshell:agent:status",
   AgentEnable: "nextshell:agent:enable",

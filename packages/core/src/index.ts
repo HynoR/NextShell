@@ -775,14 +775,6 @@ export interface SecretStoreEntry {
   updatedAt: string;
 }
 
-export interface MasterKeyMeta {
-  salt: string;
-  n: number;
-  r: number;
-  p: number;
-  verifier: string;
-}
-
 export interface CommandTemplateParam {
   id: string;
   commandId: string;

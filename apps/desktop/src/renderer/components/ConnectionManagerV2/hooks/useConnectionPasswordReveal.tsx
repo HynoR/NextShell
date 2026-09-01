@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { App as AntdApp, Input } from "antd";
+import { App as AntdApp } from "antd";
 import type { ConnectionProfile } from "@nextshell/core";
 import { formatErrorMessage } from "../../../utils/errorMessage";
 
@@ -42,71 +42,7 @@ export const useConnectionPasswordReveal = ({
     };
   }, []);
 
-  const getMasterPasswordAvailability = useCallback(async (): Promise<boolean> => {
-    try {
-      const result = await window.nextshell.masterPassword.getCached();
-      return result.available;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  const promptMasterPasswordForReveal = useCallback(
-    (unlocked: boolean): Promise<string | null> => {
-      return new Promise((resolve) => {
-        let password = "";
-        let settled = false;
-        const settle = (value: string | null): void => {
-          if (settled) return;
-          settled = true;
-          resolve(value);
-        };
-
-        modal.confirm({
-          title: "查看登录密码",
-          okText: "查看",
-          cancelText: "取消",
-          content: (
-            <div style={{ display: "grid", gap: 8 }}>
-              {unlocked ? (
-                <div style={{ fontSize: 12, color: "var(--t3)" }}>
-                  主密码已解锁，直接确认即可查看登录密码。
-                </div>
-              ) : (
-                <>
-                  <div style={{ fontSize: 12, color: "var(--t3)" }}>
-                    主密码未解锁，请输入主密码后查看。
-                  </div>
-                  <Input.Password
-                    placeholder="请输入主密码"
-                    onChange={(event) => {
-                      password = event.target.value;
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          ),
-          onOk: async () => {
-            if (unlocked) {
-              settle("");
-              return;
-            }
-            const trimmed = password.trim();
-            if (!trimmed) {
-              message.warning("请输入主密码。");
-              throw new Error("empty-master-password");
-            }
-            settle(trimmed);
-          },
-          onCancel: () => settle(null)
-        });
-      });
-    },
-    [message, modal]
-  );
-
-  const handleRevealConnectionPassword = useCallback(async () => {
+  const handleRevealConnectionPassword = useCallback(() => {
     if (!selectedConnection || !primarySelectedId) {
       return;
     }
@@ -118,38 +54,37 @@ export const useConnectionPasswordReveal = ({
       return;
     }
 
-    const unlocked = await getMasterPasswordAvailability();
-    const inputPassword = await promptMasterPasswordForReveal(unlocked);
-    if (inputPassword === null) {
-      return;
-    }
-
-    try {
-      setRevealingLoginPassword(true);
-      const result = await window.nextshell.connection.revealPassword(
-        inputPassword
-          ? { connectionId: primarySelectedId, masterPassword: inputPassword }
-          : { connectionId: primarySelectedId }
-      );
-      setRevealedLoginPassword(result.password);
-      if (revealPasswordTimeoutRef.current) {
-        clearTimeout(revealPasswordTimeoutRef.current);
+    modal.confirm({
+      title: "确认显示明文密码？",
+      content: "密码将在当前窗口中显示，30 秒后自动隐藏。",
+      okText: "显示密码",
+      cancelText: "取消",
+      onOk: async () => {
+        try {
+          setRevealingLoginPassword(true);
+          const result = await window.nextshell.connection.revealPassword({
+            connectionId: primarySelectedId
+          });
+          setRevealedLoginPassword(result.password);
+          if (revealPasswordTimeoutRef.current) {
+            clearTimeout(revealPasswordTimeoutRef.current);
+          }
+          revealPasswordTimeoutRef.current = setTimeout(() => {
+            setRevealedLoginPassword(undefined);
+            revealPasswordTimeoutRef.current = undefined;
+          }, 30_000);
+          message.success("已显示登录密码，30 秒后自动隐藏。");
+        } catch (error) {
+          message.error(`查看登录密码失败：${formatErrorMessage(error, "请稍后重试")}`);
+        } finally {
+          setRevealingLoginPassword(false);
+        }
       }
-      revealPasswordTimeoutRef.current = setTimeout(() => {
-        setRevealedLoginPassword(undefined);
-        revealPasswordTimeoutRef.current = undefined;
-      }, 30_000);
-      message.success("已显示登录密码，30 秒后自动隐藏。");
-    } catch (error) {
-      message.error(`查看登录密码失败：${formatErrorMessage(error, "请检查主密码")}`);
-    } finally {
-      setRevealingLoginPassword(false);
-    }
+    });
   }, [
-    getMasterPasswordAvailability,
     message,
+    modal,
     primarySelectedId,
-    promptMasterPasswordForReveal,
     selectedConnection
   ]);
 

@@ -224,7 +224,6 @@ async (page) => {
         exec: async () => ({ ok: true, stdout: "", stderr: "", exitCode: 0 }),
         execBatch: async () => ({ results: [] })
       },
-      audit: { clear: async () => ({ ok: true, deleted: 0 }) },
       settings: {
         // Deliberate: the preferences store falls back to
         // DEFAULT_APP_PREFERENCES when settings.get rejects, so the mock does
@@ -273,7 +272,6 @@ async (page) => {
         upsert: async (p) => p,
         remove: () => ok
       },
-      backup: { list: async () => [], run: () => ok, restore: () => ok },
       cloudSync: {
         workspaceList: async () => [],
         workspaceAdd: async (p) => p,
@@ -288,15 +286,6 @@ async (page) => {
         resolveConflict: () => ok,
         onStatus: () => () => {},
         onApplied: () => () => {}
-      },
-      masterPassword: {
-        setPassword: () => ok,
-        unlockPassword: () => ok,
-        changePassword: () => ok,
-        clearRemembered: () => ok,
-        passwordStatus: async () => ({ configured: false, unlocked: false, remembered: false }),
-        getCached: async () => ({ cached: false }),
-        reauthorizeCredentialStore: async () => ({ ok: true, status: "available" })
       },
       agent: {
         status: async () => agentStatus,

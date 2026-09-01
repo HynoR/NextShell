@@ -13,8 +13,7 @@ import type {
   SettingsUpdateInput
 } from "../../../../../packages/shared/src/index";
 import type {
-  EncryptedSecretVault,
-  KeytarPasswordCache
+  EncryptedSecretVault
 } from "../../../../../packages/security/src/index";
 import type {
   CachedConnectionRepository,
@@ -41,7 +40,6 @@ import type { NetworkTool } from "./monitor/network-monitor-controller";
 export interface ServiceContext {
   // ─── Options ────────────────────────────────────────────────────────────
   dataDir: string;
-  keytarServiceName: string;
 
   // ─── Repositories ───────────────────────────────────────────────────────
   connections: CachedConnectionRepository;
@@ -50,9 +48,6 @@ export interface ServiceContext {
 
   // ─── Security ───────────────────────────────────────────────────────────
   vault: EncryptedSecretVault;
-  keytarCache: KeytarPasswordCache;
-  getMasterPassword: () => string | undefined;
-  setMasterPassword: (password: string | undefined) => void;
 
   // ─── Services ───────────────────────────────────────────────────────────
   remoteEditManager: RemoteEditManager;
@@ -116,6 +111,4 @@ export interface ServiceContext {
   debugSenders: Set<WebContents>;
   emitDebugLog: (entry: DebugLogEntry) => void;
 
-  // ─── Try recall master password ─────────────────────────────────────────
-  tryRecallMasterPassword: () => Promise<void>;
 }

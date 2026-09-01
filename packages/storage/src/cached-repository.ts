@@ -11,7 +11,6 @@
  *  | Saved Commands    | 内存数组       | write-through                    |
  *  | Template Params   | 内存数组       | write-through + invalidate       |
  *  | Migrations        | 内存数组       | 只读（静态，应用启动后不变）     |
- *  | Master Key Meta   | 内存单例       | write-through                    |
  *
  * close() 会先 flush 所有脏数据再关闭底层数据库。
  */
@@ -29,7 +28,6 @@ import {
   type CommandHistoryEntry,
   type ConnectionListQuery,
   type ConnectionProfile,
-  type MasterKeyMeta,
   type ProxyProfile,
   type SavedCommand,
   type SshKeyProfile
@@ -99,12 +97,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
 
   // ── Saved commands cache ─────────────────────────────────────────────────
   private savedCache: SavedCommand[] | undefined;
-
-  // ── Master key meta cache ────────────────────────────────────────────────
-  private mkMeta: { loaded: boolean; value: MasterKeyMeta | undefined } = {
-    loaded: false,
-    value: undefined
-  };
 
   // ── Device key cache ─────────────────────────────────────────────────────
   private deviceKeyCache: { loaded: boolean; value: string | undefined } = {
@@ -582,22 +574,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
     this.inner.clearTemplateParams(commandId);
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Master Key Meta – 内存单例，write-through
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  getMasterKeyMeta(): MasterKeyMeta | undefined {
-    if (!this.mkMeta.loaded) {
-      this.mkMeta = { loaded: true, value: this.inner.getMasterKeyMeta() };
-    }
-    return this.mkMeta.value;
-  }
-
-  saveMasterKeyMeta(meta: MasterKeyMeta): void {
-    this.inner.saveMasterKeyMeta(meta);
-    this.mkMeta = { loaded: true, value: meta };
-  }
-
   getDeviceKey(): string | undefined {
     if (!this.deviceKeyCache.loaded) {
       this.deviceKeyCache = { loaded: true, value: this.inner.getDeviceKey() };
@@ -608,19 +584,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
   saveDeviceKey(key: string): void {
     this.inner.saveDeviceKey(key);
     this.deviceKeyCache = { loaded: true, value: key };
-  }
-
-  clearDeviceKey(): void {
-    this.inner.clearDeviceKey();
-    this.deviceKeyCache = { loaded: true, value: undefined };
-  }
-
-  getKeychainNoticeAcknowledged(): boolean {
-    return this.inner.getKeychainNoticeAcknowledged();
-  }
-
-  saveKeychainNoticeAcknowledged(): void {
-    this.inner.saveKeychainNoticeAcknowledged();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

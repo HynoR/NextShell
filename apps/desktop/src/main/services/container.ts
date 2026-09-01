@@ -21,12 +21,8 @@ import type {
   SftpTransferStatusEvent
 } from "../../../../../packages/shared/src/index";
 import {
-  APP_SECRET_PURPOSE,
   EncryptedSecretVault,
-  KeytarPasswordCache,
-  MASTER_PASSWORD_SECRET_ID,
-  MASTER_PASSWORD_SECRET_REF,
-  verifyMasterPassword
+  KeytarPasswordCache
 } from "../../../../../packages/security/src/index";
 import {
   SQLiteConnectionRepository,
@@ -49,7 +45,6 @@ import { PreferencesDialogService } from "./preferences-dialog-service";
 import { TerminalIntegrationService } from "./terminal-integration-service";
 import { NetworkToolService } from "./network-tool-service";
 import { CommandService } from "./command-service";
-import { BackupPasswordService } from "./backup-password-service";
 import { ConnectionService } from "./connection-service";
 import { ConnectionFolderService } from "./connection-folder-service";
 import { ImportExportService } from "./import-export-service";
@@ -68,7 +63,7 @@ import { AgentTransferTracker } from "./mcp/transfers";
 const cloudSyncWorkspacePasswordRef = (workspaceId: string): string =>
   `secret://cloud-sync-ws-${workspaceId}`;
 
-/** SQLite and backups live here; the MCP discovery file deliberately does not. */
+/** SQLite data lives here; the MCP discovery file deliberately does not. */
 const STORAGE_DIRECTORY_NAME = "storage";
 
 // Re-export for consumers (index.ts, register.ts)
@@ -90,78 +85,22 @@ export const createServiceContainer = async (
   const folderRepo = new SQLiteConnectionFolderRepository(rawRepo.getDb());
 
   // ─── Device Key ──────────────────────────────────────────────────────────
-  // The device key encrypts every stored credential. Keep it OUT of the SQLite
-  // database (where the ciphertext also lives) by storing it in the OS keychain
-  // via keytar — otherwise copying nextshell.db yields both key and ciphertext.
-  // Fall back to DB storage only when the keychain is unavailable.
-  const deviceKeyStore = new KeytarPasswordCache(
-    options.keytarServiceName ?? "NextShell",
-    "device-key",
-    { fallbackService: options.keytarFallbackServiceName }
-  );
+  // The device key encrypts every stored credential and is authoritative in
+  // SQLite. A legacy keychain item is drained once when the database is empty.
+  const deviceKeyStore = new KeytarPasswordCache("NextShell", "device-key");
   // Resolved lazily: reading it eagerly would prompt for keychain authorization
   // on every launch, including sessions that never open a stored credential.
-  // The notice is shown at most once per install, hence the persisted flag.
-  const { onBeforeKeychainAccess } = options;
   const deviceKeyProvider = new DeviceKeyProvider({
     store: deviceKeyStore,
     db: {
       getLegacy: () => connections.getDeviceKey(),
-      saveLegacy: (key) => connections.saveDeviceKey(key),
-      clearLegacy: () => connections.clearDeviceKey()
-    },
-    onBeforeKeychainAccess: onBeforeKeychainAccess
-      ? async () => {
-          if (connections.getKeychainNoticeAcknowledged()) return;
-          await onBeforeKeychainAccess();
-          connections.saveKeychainNoticeAcknowledged();
-        }
-      : undefined
+      saveLegacy: (key) => connections.saveDeviceKey(key)
+    }
   });
 
   const vault = new EncryptedSecretVault(connections.getSecretStore(), () =>
     deviceKeyProvider.get()
   );
-
-  // ─── Master Password ────────────────────────────────────────────────────
-  // A remembered master password lives in the local secret store, encrypted
-  // with the device key. It used to have its own keychain item, which cost a
-  // second authorization prompt per launch and bought nothing: it sat next to
-  // the device key, so whoever could read one could read the other.
-  const keytarServiceName = options.keytarServiceName ?? "NextShell";
-  const legacyMasterPasswordItem = new KeytarPasswordCache(keytarServiceName, undefined, {
-    fallbackService: options.keytarFallbackServiceName
-  });
-  let masterPassword: string | undefined;
-
-  const recallRememberedMasterPassword = async (): Promise<string | undefined> => {
-    const stored = await vault.readCredential(MASTER_PASSWORD_SECRET_REF);
-    if (stored) return stored;
-
-    // Pre-migration install: adopt the old keychain item, then delete it so the
-    // prompt it causes is paid exactly once, ever.
-    const legacy = await legacyMasterPasswordItem.recall();
-    if (!legacy) return undefined;
-    await vault.storeCredential(MASTER_PASSWORD_SECRET_ID, legacy, APP_SECRET_PURPOSE);
-    await legacyMasterPasswordItem.clear();
-    logger.info("[Security] migrated remembered master password out of the system keychain");
-    return legacy;
-  };
-
-  // Deliberately lazy: reading this at startup costs a keychain authorization
-  // prompt on every launch, even for users who never touch backup/reveal. Every
-  // consumers await this before relying on masterPassword.
-  const tryRecallMasterPassword = async (): Promise<void> => {
-    if (masterPassword) return;
-    const meta = connections.getMasterKeyMeta();
-    if (!meta) return;
-    const remembered = await recallRememberedMasterPassword();
-    if (!remembered) return;
-    if (await verifyMasterPassword(remembered, meta)) {
-      masterPassword = remembered;
-      logger.info("[Security] recalled remembered master password");
-    }
-  };
 
   const broadcastToAllWindows = (channel: string, payload: unknown): void => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -675,20 +614,6 @@ export const createServiceContainer = async (
     sendSessionStatus
   });
 
-  const backupPasswordSvc = new BackupPasswordService({
-    connections,
-    vault,
-    keytarCache: legacyMasterPasswordItem,
-    getCredentialStoreStatus: () => deviceKeyProvider.getStatus(),
-    reauthorizeCredentialStore: () => deviceKeyProvider.reauthorize(),
-    getDeviceKeyHex: async () => (await deviceKeyProvider.get()).toString("hex"),
-    getMasterPassword: () => masterPassword,
-    setMasterPassword: (p) => {
-      masterPassword = p;
-    },
-    tryRecallMasterPassword
-  });
-
   let cloudSyncManager: CloudSyncManager | undefined;
 
   const commandSvc = new CommandService({
@@ -1132,7 +1057,6 @@ export const createServiceContainer = async (
     monitors: monitorSvc,
     commands: commandSvc,
     sftp: sftpSvc,
-    backupPassword: backupPasswordSvc,
     networkTools: networkToolSvc,
     preferences: prefsSvc,
     terminalIntegration: terminalIntegrationSvc,

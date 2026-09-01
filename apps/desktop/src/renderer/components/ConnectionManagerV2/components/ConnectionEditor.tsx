@@ -63,7 +63,7 @@ interface ConnectionEditorProps {
   sshKeys: SshKeyProfile[];
   proxies: ProxyProfile[];
   saving: boolean;
-  /** 已保存的登录密码，输入主密码后才由主进程返回；30 秒后自动清空。 */
+  /** 已保存的登录密码由主进程返回；30 秒后自动清空。 */
   revealedPassword?: string;
   revealingPassword: boolean;
   onRevealPassword: () => void;
@@ -287,7 +287,7 @@ export const ConnectionEditor = ({
                     loading={revealingPassword}
                     onClick={onRevealPassword}
                   >
-                    {revealingPassword ? "验证中…" : "输入主密码查看"}
+                    {revealingPassword ? "读取中…" : "查看明文密码"}
                   </Button>
                 )}
               </Form.Item>

@@ -91,8 +91,6 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
         traceroute: {}
       }) as never,
     saveAppPreferences: (preferences) => preferences,
-    getMasterKeyMeta: () => undefined,
-    saveMasterKeyMeta: () => {},
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,

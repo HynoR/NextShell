@@ -1,10 +1,7 @@
 import {
   __resetScryptImplForTesting,
   __setScryptImplForTesting,
-  clearDerivedKeyCache,
-  createMasterKeyMeta,
-  deriveKey,
-  verifyMasterPassword
+  deriveKey
 } from "./index";
 
 const assert = (condition: boolean, message: string): void => {
@@ -28,88 +25,18 @@ const withMockedScrypt = async (
   ) => Promise<Buffer>,
   run: () => Promise<void>
 ): Promise<void> => {
-  clearDerivedKeyCache();
   __setScryptImplForTesting(impl);
   try {
     await run();
   } finally {
-    clearDerivedKeyCache();
     __resetScryptImplForTesting();
   }
 };
 
-await (async () => {
-  const metaPromise = createMasterKeyMeta("correct-password");
-  assert(metaPromise instanceof Promise, "createMasterKeyMeta should return a Promise");
-  const meta = await metaPromise;
-
-  assert(typeof meta.salt === "string" && meta.salt.length > 0, "meta should include salt");
-  assert(await verifyMasterPassword("correct-password", meta), "correct password should verify");
-  assert(
-    !(await verifyMasterPassword("wrong-password", meta)),
-    "wrong password should fail verification"
-  );
-})();
-
 await withMockedScrypt(
   async () => createFakeDerivedKey(1),
   async () => {
-    const salt = Buffer.from("same-salt");
-    const first = await deriveKey("cached-password", salt);
-    const second = await deriveKey("cached-password", salt);
-    assertBufferEquals(first, second, "sequential calls should reuse cached derived key");
+    const derived = await deriveKey("password", Buffer.from("salt"));
+    assertBufferEquals(derived, createFakeDerivedKey(1), "deriveKey should return the scrypt key");
   }
 );
-
-await (async () => {
-  let calls = 0;
-  await withMockedScrypt(
-    async () => {
-      calls += 1;
-      return createFakeDerivedKey(calls);
-    },
-    async () => {
-      const salt = Buffer.from("concurrent-salt");
-      const [first, second] = await Promise.all([
-        deriveKey("parallel-password", salt),
-        deriveKey("parallel-password", salt)
-      ]);
-
-      assert(calls === 1, "concurrent deriveKey calls should share one scrypt invocation");
-      assertBufferEquals(first, second, "concurrent calls should resolve to the same derived key");
-    }
-  );
-})();
-
-await (async () => {
-  let calls = 0;
-  await withMockedScrypt(
-    async () => {
-      calls += 1;
-      return createFakeDerivedKey(calls);
-    },
-    async () => {
-      await deriveKey("scoped-password", Buffer.from("salt-a"));
-      await deriveKey("scoped-password", Buffer.from("salt-b"));
-      await deriveKey("scoped-password", Buffer.from("salt-a"), 32768);
-      assert(calls === 3, "different salts or params should not share cache entries");
-    }
-  );
-})();
-
-await (async () => {
-  let calls = 0;
-  await withMockedScrypt(
-    async () => {
-      calls += 1;
-      return createFakeDerivedKey(calls);
-    },
-    async () => {
-      const salt = Buffer.from("clear-salt");
-      await deriveKey("clearable-password", salt);
-      clearDerivedKeyCache();
-      await deriveKey("clearable-password", salt);
-      assert(calls === 2, "clearing cache should force a new derivation");
-    }
-  );
-})();

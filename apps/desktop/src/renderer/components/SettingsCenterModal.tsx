@@ -16,7 +16,6 @@ import {
   NetworkSection,
   CloudSyncSection,
   RecycleBinSection,
-  SecuritySection,
   AgentSection,
   AboutSection
 } from "./settings-center";
@@ -74,22 +73,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
 
   const [nexttracePath, setNexttracePath] = useState(preferences.traceroute.nexttracePath);
 
-  const [pwdStatus, setPwdStatus] = useState<{
-    isSet: boolean;
-    isUnlocked: boolean;
-    canRememberPassword: boolean;
-  }>({ isSet: false, isUnlocked: false, canRememberPassword: false });
-  const [pwdStatusLoading, setPwdStatusLoading] = useState(false);
-  const [pwdStatusKnown, setPwdStatusKnown] = useState(false);
-  const [pwdInput, setPwdInput] = useState("");
-  const [pwdConfirm, setPwdConfirm] = useState("");
-  const [pwdBusy, setPwdBusy] = useState(false);
-  const [changeOldPwd, setChangeOldPwd] = useState("");
-  const [changeNewPwd, setChangeNewPwd] = useState("");
-  const [changeConfirmPwd, setChangeConfirmPwd] = useState("");
-  const [changeAckRisk, setChangeAckRisk] = useState(false);
-  const [changeBusy, setChangeBusy] = useState(false);
-
   useEffect(() => {
     if (!open) return;
     void initialize();
@@ -125,43 +108,12 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     );
     setAppBackgroundImagePath(preferences.window.backgroundImagePath);
     setNexttracePath(preferences.traceroute.nexttracePath);
-    setChangeOldPwd("");
-    setChangeNewPwd("");
-    setChangeConfirmPwd("");
-    setChangeAckRisk(false);
   }, [open, preferences]);
 
   useEffect(() => {
     const next = resolvePresetByColors(terminalBackgroundColor, terminalForegroundColor);
     setTerminalThemePreset((cur) => (cur === next ? cur : next));
   }, [terminalBackgroundColor, terminalForegroundColor]);
-
-  useEffect(() => {
-    if (!open) return;
-    setPwdStatusLoading(true);
-    setPwdStatusKnown(false);
-    void (async () => {
-      try {
-        const status = await window.nextshell.masterPassword.passwordStatus();
-        setPwdStatus(status);
-        setPwdStatusKnown(true);
-      } catch {
-        /* ignore */
-      } finally {
-        setPwdStatusLoading(false);
-      }
-    })();
-  }, [open]);
-
-  const refreshPasswordStatus = useCallback(async () => {
-    try {
-      const status = await window.nextshell.masterPassword.passwordStatus();
-      setPwdStatus(status);
-      setPwdStatusKnown(true);
-    } catch {
-      /* noop */
-    }
-  }, []);
 
   // ─── Immediate-save helpers ─────────────────────────────────────────
   const save = useCallback(
@@ -196,123 +148,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     [save, message]
   );
 
-  // ─── Password handlers ─────────────────────────────────────────────
-  const handleSetPassword = async (): Promise<void> => {
-    if (!pwdInput || pwdInput.length < 6) {
-      message.warning("主密码至少需要 6 个字符。");
-      return;
-    }
-    if (pwdInput !== pwdConfirm) {
-      message.warning("两次输入的密码不一致。");
-      return;
-    }
-    setPwdBusy(true);
-    try {
-      await window.nextshell.masterPassword.setPassword({
-        password: pwdInput,
-        confirmPassword: pwdConfirm
-      });
-      message.success("主密码已设置");
-      setPwdInput("");
-      setPwdConfirm("");
-      await refreshPasswordStatus();
-    } catch (error) {
-      message.error(`设置密码失败：${formatErrorMessage(error, "请检查输入内容")}`);
-    } finally {
-      setPwdBusy(false);
-    }
-  };
-
-  const handleUnlockPassword = async (): Promise<void> => {
-    if (!pwdInput) {
-      message.warning("请输入主密码。");
-      return;
-    }
-    setPwdBusy(true);
-    try {
-      await window.nextshell.masterPassword.unlockPassword({ password: pwdInput });
-      message.success("主密码已解锁");
-      setPwdInput("");
-      setPwdConfirm("");
-      await refreshPasswordStatus();
-    } catch (error) {
-      message.error(`解锁密码失败：${formatErrorMessage(error, "请检查密码是否正确")}`);
-    } finally {
-      setPwdBusy(false);
-    }
-  };
-
-  const handleClearRemembered = async (): Promise<void> => {
-    try {
-      await window.nextshell.masterPassword.clearRemembered();
-      message.success("已清除记住的主密码");
-      await refreshPasswordStatus();
-    } catch (error) {
-      message.error(`清除失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  };
-
-  const handleReauthorizeCredentialStore = async (): Promise<void> => {
-    try {
-      const result = await window.nextshell.masterPassword.reauthorizeCredentialStore();
-      if (result.authorized) {
-        message.success("钥匙串授权成功，已保存的密码恢复可用");
-      } else {
-        message.warning("钥匙串授权仍被拒绝，请在系统弹窗中选择「始终允许」");
-      }
-      await refreshPasswordStatus();
-    } catch (error) {
-      message.error(`重新授权失败：${formatErrorMessage(error, "请稍后重试")}`);
-    }
-  };
-
-  const handleChangePassword = async (): Promise<void> => {
-    if (!changeOldPwd) {
-      message.warning("请输入原密码。");
-      return;
-    }
-    if (!changeNewPwd || changeNewPwd.length < 6) {
-      message.warning("新密码至少需要 6 个字符。");
-      return;
-    }
-    if (changeNewPwd !== changeConfirmPwd) {
-      message.warning("两次输入的新密码不一致。");
-      return;
-    }
-    if (!changeAckRisk) {
-      message.warning("请先确认已知晓修改主密码对数据备份的影响。");
-      return;
-    }
-
-    const sameAsOld = changeOldPwd === changeNewPwd;
-    if (sameAsOld) {
-      message.warning("新密码与原密码相同，将按原密码重新设置。");
-    }
-
-    setChangeBusy(true);
-    try {
-      await window.nextshell.masterPassword.changePassword({
-        oldPassword: changeOldPwd,
-        newPassword: changeNewPwd,
-        confirmPassword: changeConfirmPwd
-      });
-      if (sameAsOld) {
-        message.success("主密码已更新（与原密码相同）。");
-      } else {
-        message.success("主密码已修改。旧备份可能无法还原，请重新备份。");
-      }
-      setChangeOldPwd("");
-      setChangeNewPwd("");
-      setChangeConfirmPwd("");
-      setChangeAckRisk(false);
-      await refreshPasswordStatus();
-    } catch (error) {
-      message.error(`修改主密码失败：${formatErrorMessage(error, "请检查输入内容")}`);
-    } finally {
-      setChangeBusy(false);
-    }
-  };
-
   // ─── Memoized section content ───────────────────────────────────────
   const sectionContent = useMemo(() => {
     switch (activeSection) {
@@ -324,32 +159,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
       case "recycleBin":
         return <RecycleBinSection />;
 
-      case "security":
-        return (
-          <SecuritySection
-            pwdStatus={pwdStatus}
-            pwdStatusLoading={pwdStatusLoading}
-            pwdInput={pwdInput}
-            pwdConfirm={pwdConfirm}
-            pwdBusy={pwdBusy}
-            changeOldPwd={changeOldPwd}
-            changeNewPwd={changeNewPwd}
-            changeConfirmPwd={changeConfirmPwd}
-            changeAckRisk={changeAckRisk}
-            changeBusy={changeBusy}
-            setPwdInput={setPwdInput}
-            setPwdConfirm={setPwdConfirm}
-            setChangeOldPwd={setChangeOldPwd}
-            setChangeNewPwd={setChangeNewPwd}
-            setChangeConfirmPwd={setChangeConfirmPwd}
-            setChangeAckRisk={setChangeAckRisk}
-            onSetPassword={() => void handleSetPassword()}
-            onUnlockPassword={() => void handleUnlockPassword()}
-            onChangePassword={() => void handleChangePassword()}
-            onClearRemembered={() => void handleClearRemembered()}
-            onReauthorizeCredentialStore={() => void handleReauthorizeCredentialStore()}
-          />
-        );
       case "window":
         return (
           <WindowSection
@@ -463,17 +272,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     localShell,
     appBackgroundImagePath,
     nexttracePath,
-    pwdStatus,
-    pwdStatusKnown,
-    pwdStatusLoading,
-    pwdInput,
-    pwdConfirm,
-    pwdBusy,
-    changeOldPwd,
-    changeNewPwd,
-    changeConfirmPwd,
-    changeAckRisk,
-    changeBusy,
     save,
     pickDirectory,
     message

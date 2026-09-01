@@ -19,7 +19,6 @@ import type { SessionService } from "./session-service";
 import type { MonitorService } from "./monitor-service";
 import type { CommandService } from "./command-service";
 import type { SftpService } from "./sftp-service";
-import type { BackupPasswordService } from "./backup-password-service";
 import type { NetworkToolService } from "./network-tool-service";
 import type { PreferencesDialogService } from "./preferences-dialog-service";
 import type { TerminalIntegrationService } from "./terminal-integration-service";
@@ -59,18 +58,6 @@ export interface CreateServiceContainerOptions {
    * search path, so the container derives both locations from this one root.
    */
   userDataDir: string;
-  keytarServiceName?: string;
-  /**
-   * Keychain service to adopt secrets from when `keytarServiceName` has no item
-   * yet. Used by dev builds, which own a separate keychain item so they stop
-   * fighting the packaged app's ACL over a shared one.
-   */
-  keytarFallbackServiceName?: string;
-  /**
-   * Awaited right before the first OS keychain read. Lets the main process warn
-   * the user about the authorization dialog that is about to appear.
-   */
-  onBeforeKeychainAccess?: () => Promise<void>;
 }
 
 // ─── Monitor types ─────────────────────────────────────────────────────────
@@ -121,7 +108,6 @@ export interface ServiceContainer {
   readonly monitors: MonitorService;
   readonly commands: CommandService;
   readonly sftp: SftpService;
-  readonly backupPassword: BackupPasswordService;
   readonly networkTools: NetworkToolService;
   readonly preferences: PreferencesDialogService;
   readonly terminalIntegration: TerminalIntegrationService;

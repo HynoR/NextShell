@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  KeychainAccessDeniedError,
   resolveDeviceKey,
   type DeviceKeyDbAccess,
   type DeviceKeyStore
@@ -18,166 +17,61 @@ const makeDb = (initial?: string): DeviceKeyDbAccess & { value: string | undefin
     getLegacy: () => value,
     saveLegacy: (key) => {
       value = key;
-    },
-    clearLegacy: () => {
-      value = undefined;
     }
   };
 };
 
 describe("resolveDeviceKey", () => {
-  test("migrates a legacy plaintext DB key into the keychain and purges the DB", async () => {
+  test("uses the database key without touching the keychain", async () => {
     const legacy = "b".repeat(64);
     const db = makeDb(legacy);
-    let remembered: string | undefined;
-    const store: DeviceKeyStore = {
-      isAvailable: () => true,
-      recall: async () => undefined,
-      remember: async (key) => {
-        remembered = key;
-      }
-    };
-
-    const result = await resolveDeviceKey(store, db, generate);
-
-    expect(result.deviceKeyHex).toBe(legacy); // reuse existing key so credentials still decrypt
-    expect(result.storedIn).toBe("keychain");
-    expect(result.migratedFromDatabase).toBe(true);
-    expect(remembered).toBe(legacy); // now in keychain
-    expect(db.value).toBeUndefined(); // plaintext purged
-  });
-
-  test("uses the keychain key when present and clears stale DB plaintext", async () => {
-    const keychainKey = "c".repeat(64);
-    const staleDb = "d".repeat(64);
-    const db = makeDb(staleDb);
-    const store: DeviceKeyStore = {
-      isAvailable: () => true,
-      recall: async () => keychainKey,
-      remember: async () => {
-        throw new Error("should not be called");
-      }
-    };
-
-    const result = await resolveDeviceKey(store, db, generate);
-
-    expect(result.deviceKeyHex).toBe(keychainKey);
-    expect(result.storedIn).toBe("keychain");
-    expect(result.migratedFromDatabase).toBe(false);
-    expect(db.value).toBeUndefined();
-  });
-
-  test("mints a fresh key in the keychain on a clean install", async () => {
-    const db = makeDb(undefined);
-    let remembered: string | undefined;
-    const store: DeviceKeyStore = {
-      isAvailable: () => true,
-      recall: async () => undefined,
-      remember: async (key) => {
-        remembered = key;
-      }
-    };
-
-    const result = await resolveDeviceKey(store, db, generate);
-
-    expect(result.deviceKeyHex).toBe(FIXED_KEY);
-    expect(result.storedIn).toBe("keychain");
-    expect(result.migratedFromDatabase).toBe(false);
-    expect(remembered).toBe(FIXED_KEY);
-    expect(db.value).toBeUndefined(); // never written to DB
-  });
-
-  test("degrades to DB storage when the keychain is unavailable", async () => {
-    const db = makeDb(undefined);
-    const store: DeviceKeyStore = {
-      isAvailable: () => false,
-      recall: async () => undefined,
-      remember: async () => {
-        throw new Error("should not be called");
-      }
-    };
-
-    const result = await resolveDeviceKey(store, db, generate);
-
-    expect(result.deviceKeyHex).toBe(FIXED_KEY);
-    expect(result.storedIn).toBe("database");
-    expect(db.value).toBe(FIXED_KEY); // persisted to DB as the only backing store
-  });
-
-  test("falls back to the existing DB key when a runtime keychain call throws", async () => {
-    const legacy = "e".repeat(64);
-    const db = makeDb(legacy);
+    let recalls = 0;
     const store: DeviceKeyStore = {
       isAvailable: () => true,
       recall: async () => {
-        throw new Error("keychain access denied");
+        recalls += 1;
+        return "c".repeat(64);
       },
-      remember: async () => {
-        throw new Error("keychain access denied");
+      clear: async () => {}
+    };
+
+    const result = await resolveDeviceKey(store, db, generate);
+
+    expect(result).toEqual({ deviceKeyHex: legacy, storedIn: "database" });
+    expect(recalls).toBe(0);
+  });
+
+  test("drains a legacy keychain key into the database and deletes it", async () => {
+    const db = makeDb();
+    let cleared = 0;
+    const store: DeviceKeyStore = {
+      isAvailable: () => true,
+      recall: async () => FIXED_KEY,
+      clear: async () => {
+        cleared += 1;
       }
     };
 
     const result = await resolveDeviceKey(store, db, generate);
 
-    expect(result.deviceKeyHex).toBe(legacy); // existing credentials still decrypt
-    expect(result.storedIn).toBe("database");
-    expect(db.value).toBe(legacy); // legacy key left intact, not cleared
+    expect(result).toEqual({ deviceKeyHex: FIXED_KEY, storedIn: "database" });
+    expect(db.value).toBe(FIXED_KEY);
+    expect(cleared).toBe(1);
   });
 
-  test("refuses to mint a replacement key when a denied read leaves nothing to fall back on", async () => {
-    const db = makeDb(undefined); // already migrated: no plaintext copy left
-    let remembered = false;
+  test("creates a database key when the legacy keychain read is denied", async () => {
+    const db = makeDb();
     const store: DeviceKeyStore = {
       isAvailable: () => true,
       recall: async () => {
         throw new Error("User denied keychain access");
       },
-      remember: async () => {
-        remembered = true;
-      }
-    };
-
-    await expect(resolveDeviceKey(store, db, generate)).rejects.toBeInstanceOf(
-      KeychainAccessDeniedError
-    );
-    // A fresh key here would silently orphan every stored credential.
-    expect(db.value).toBeUndefined();
-    expect(remembered).toBe(false);
-  });
-
-  test("degrades to DB storage when the keychain is empty but unwritable", async () => {
-    const db = makeDb(undefined);
-    const store: DeviceKeyStore = {
-      isAvailable: () => true,
-      recall: async () => undefined,
-      remember: async () => {
-        throw new Error("keychain is read-only");
-      }
+      clear: async () => {}
     };
 
     const result = await resolveDeviceKey(store, db, generate);
 
-    // Nothing was in the keychain, so nothing can be orphaned by using the DB.
-    expect(result.deviceKeyHex).toBe(FIXED_KEY);
-    expect(result.storedIn).toBe("database");
+    expect(result).toEqual({ deviceKeyHex: FIXED_KEY, storedIn: "database" });
     expect(db.value).toBe(FIXED_KEY);
-  });
-
-  test("keeps the legacy DB key when the keychain is empty but unwritable", async () => {
-    const legacy = "f".repeat(64);
-    const db = makeDb(legacy);
-    const store: DeviceKeyStore = {
-      isAvailable: () => true,
-      recall: async () => undefined,
-      remember: async () => {
-        throw new Error("keychain is read-only");
-      }
-    };
-
-    const result = await resolveDeviceKey(store, db, generate);
-
-    expect(result.deviceKeyHex).toBe(legacy);
-    expect(result.storedIn).toBe("database");
-    expect(db.value).toBe(legacy); // not cleared — it is the only copy left
   });
 });
