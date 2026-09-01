@@ -98,8 +98,7 @@ const createService = (folders: ConnectionFolder[]) => {
     } as unknown as CloudSyncManager,
     saveRecycleBinEntry: () => undefined,
     listRecycleBinEntries: () => [],
-    removeRecycleBinEntry: () => undefined,
-    appendAuditLog: () => undefined
+    removeRecycleBinEntry: () => undefined
   });
 
   return { service, saved };

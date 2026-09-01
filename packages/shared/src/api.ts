@@ -28,7 +28,6 @@ import type {
 import type {
   AppPreferences,
   AppPreferencesPatchInput,
-  AuditClearInput,
   ConnectionFolderCreateInput,
   SshKeyGenerateInput,
   SshKeyUsageInput,
@@ -252,9 +251,6 @@ export interface NextShellApi {
     exec: (payload: CommandExecInput) => Promise<CommandExecutionResult>;
     execBatch: (payload: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   };
-  audit: {
-    clear: (payload?: AuditClearInput) => Promise<{ ok: true; deleted: number }>;
-  };
   settings: {
     get: () => Promise<AppPreferences>;
     update: (payload: AppPreferencesPatchInput) => Promise<AppPreferences>;
@@ -464,7 +460,6 @@ export interface IpcInvokeMethods {
   [IPCChannel.MonitorNetworkConnections]: NextShellApi["monitor"]["getNetworkConnections"];
   [IPCChannel.CommandExec]: NextShellApi["command"]["exec"];
   [IPCChannel.CommandBatchExec]: NextShellApi["command"]["execBatch"];
-  [IPCChannel.AuditClear]: NextShellApi["audit"]["clear"];
   [IPCChannel.SftpList]: NextShellApi["sftp"]["list"];
   [IPCChannel.SftpListLocal]: NextShellApi["sftp"]["listLocal"];
   [IPCChannel.SftpUpload]: NextShellApi["sftp"]["upload"];

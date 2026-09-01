@@ -19,7 +19,6 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   window: { ...prefs.window },
   connectionManager: { ...prefs.connectionManager },
   traceroute: { ...prefs.traceroute },
-  audit: { ...prefs.audit },
   agent: {
     ...prefs.agent,
     allowedLocalRoots: [...prefs.agent.allowedLocalRoots]
@@ -164,7 +163,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       window: { ...prev.window, ...(patch.window ?? {}) },
       connectionManager: { ...prev.connectionManager, ...(patch.connectionManager ?? {}) },
       traceroute: { ...prev.traceroute, ...(patch.traceroute ?? {}) },
-      audit: { ...prev.audit, ...(patch.audit ?? {}) },
       agent: { ...prev.agent, ...(patch.agent ?? {}) }
     };
     set({ preferences: optimistic });

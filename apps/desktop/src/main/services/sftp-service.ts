@@ -44,13 +44,6 @@ export interface SftpServiceOptions {
   getConnectionOrThrow: (id: string) => ConnectionProfile;
   ensureConnection: (connectionId: string) => Promise<SshConnection>;
   remoteEditManager: RemoteEditManager;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
   sendTransferStatus: (sender: WebContents | undefined, payload: SftpTransferStatusEvent) => void;
 }
 
@@ -58,7 +51,6 @@ export class SftpService {
   private readonly getConnectionOrThrow: SftpServiceOptions["getConnectionOrThrow"];
   private readonly ensureConnection: SftpServiceOptions["ensureConnection"];
   private readonly remoteEditManager: RemoteEditManager;
-  private readonly appendAuditLogIfEnabled: SftpServiceOptions["appendAuditLogIfEnabled"];
   private readonly sendTransferStatus: SftpServiceOptions["sendTransferStatus"];
   /** In-flight cancellable transfers, keyed by task id. */
   private readonly activeTransfers = new Map<string, AbortController>();
@@ -67,7 +59,6 @@ export class SftpService {
     this.getConnectionOrThrow = options.getConnectionOrThrow;
     this.ensureConnection = options.ensureConnection;
     this.remoteEditManager = options.remoteEditManager;
-    this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.sendTransferStatus = options.sendTransferStatus;
   }
 
@@ -147,23 +138,10 @@ export class SftpService {
         })
       ]);
 
-      this.appendAuditLogIfEnabled({
-        action: "sftp.init_ready",
-        level: "info",
-        connectionId,
-        message: "SFTP warmup completed after SSH session open"
-      });
       return undefined;
     } catch (error) {
       const reason = normalizeError(error);
       logger.warn("[SFTP] warmup failed", { connectionId, reason });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.init_failed",
-        level: "warn",
-        connectionId,
-        message: "SFTP warmup failed after SSH session open",
-        metadata: { reason }
-      });
       return `SSH 已连接，但 SFTP 初始化失败：${reason}`;
     } finally {
       if (timeout) {
@@ -284,13 +262,6 @@ export class SftpService {
         status: "success",
         progress: 100
       });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.upload",
-        level: "info",
-        connectionId,
-        message: "Uploaded file to remote host",
-        metadata: { localPath, remotePath }
-      });
       return { ok: true };
     } catch (error) {
       const cancelled = isTransferCancelledError(error);
@@ -356,13 +327,6 @@ export class SftpService {
         remotePath,
         status: "success",
         progress: 100
-      });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.download",
-        level: "info",
-        connectionId,
-        message: "Downloaded file from remote host",
-        metadata: { remotePath, localPath }
       });
       return { ok: true };
     } catch (error) {
@@ -538,17 +502,6 @@ export class SftpService {
         status: "success",
         progress: 100
       });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.upload.packed",
-        level: "info",
-        connectionId,
-        message: "Uploaded packed files to remote host",
-        metadata: {
-          localPaths: resolvedLocalPaths,
-          remoteDir: normalizedRemoteDir,
-          archiveName: finalArchiveName
-        }
-      });
       return { ok: true };
     } catch (error) {
       const cancelled = isTransferCancelledError(error);
@@ -704,17 +657,6 @@ export class SftpService {
         remotePath: remoteDisplayPath,
         status: "success",
         progress: 100
-      });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.download.packed",
-        level: "info",
-        connectionId,
-        message: "Downloaded packed files from remote host",
-        metadata: {
-          remoteDir: normalizedRemoteDir,
-          entryNames: normalizedEntryNames,
-          localArchivePath
-        }
       });
       return { ok: true, localArchivePath };
     } catch (error) {
@@ -918,19 +860,6 @@ export class SftpService {
         status: "success",
         progress: 100
       });
-      this.appendAuditLogIfEnabled({
-        action: "sftp.transfer.packed",
-        level: "info",
-        connectionId: sourceConnectionId,
-        message: "Transferred packed files between remote hosts",
-        metadata: {
-          sourceConnectionId,
-          sourceDir: normalizedSourceDir,
-          targetConnectionId,
-          targetDir: normalizedTargetDir,
-          entryNames: normalizedEntryNames
-        }
-      });
       return { ok: true };
     } catch (error) {
       this.sendTransferStatus(sender, {
@@ -964,13 +893,6 @@ export class SftpService {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
     await connection.mkdir(pathName, true);
-    this.appendAuditLogIfEnabled({
-      action: "sftp.mkdir",
-      level: "info",
-      connectionId,
-      message: "Created remote directory",
-      metadata: { pathName }
-    });
     return { ok: true };
   }
 
@@ -982,13 +904,6 @@ export class SftpService {
     this.getConnectionOrThrow(connectionId);
     const connection = await this.ensureConnection(connectionId);
     await connection.rename(fromPath, toPath);
-    this.appendAuditLogIfEnabled({
-      action: "sftp.rename",
-      level: "warn",
-      connectionId,
-      message: "Renamed remote path",
-      metadata: { fromPath, toPath }
-    });
     return { ok: true };
   }
 
@@ -1004,13 +919,6 @@ export class SftpService {
       type === "directory" ? "directory" : type === "link" ? "link" : "file";
 
     await connection.remove(targetPath, normalizedType);
-    this.appendAuditLogIfEnabled({
-      action: "sftp.delete",
-      level: "warn",
-      connectionId,
-      message: "Deleted remote path",
-      metadata: { targetPath, type: normalizedType }
-    });
     return { ok: true };
   }
 
@@ -1021,66 +929,16 @@ export class SftpService {
     sender: WebContents
   ): Promise<{ editId: string; localPath: string }> {
     this.getConnectionOrThrow(connectionId);
-    try {
-      const result = await this.remoteEditManager.open(
-        connectionId,
-        remotePath,
-        editorCommand,
-        sender
-      );
-      this.appendAuditLogIfEnabled({
-        action: "sftp.edit_open",
-        level: "info",
-        connectionId,
-        message: "Opened remote file for live editing",
-        metadata: { remotePath, editId: result.editId }
-      });
-      return result;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      const enriched = error as {
-        source?: string;
-        code?: string;
-        requestedCommand?: string;
-        resolvedCommand?: string;
-      };
-      this.appendAuditLogIfEnabled({
-        action: "sftp.edit_open_failed",
-        level: "error",
-        connectionId,
-        message: "Failed to open remote file for live editing",
-        metadata: {
-          remotePath,
-          editorCommand,
-          reason,
-          commandSource: enriched.source,
-          code: enriched.code,
-          requestedCommand: enriched.requestedCommand,
-          resolvedCommand: enriched.resolvedCommand
-        }
-      });
-      throw error;
-    }
+    return this.remoteEditManager.open(connectionId, remotePath, editorCommand, sender);
   }
 
   async stopRemoteEdit(editId: string): Promise<{ ok: true }> {
     await this.remoteEditManager.stop(editId);
-    this.appendAuditLogIfEnabled({
-      action: "sftp.edit_stop",
-      level: "info",
-      message: "Stopped remote file live editing",
-      metadata: { editId }
-    });
     return { ok: true };
   }
 
   async stopAllRemoteEdits(): Promise<{ ok: true }> {
     await this.remoteEditManager.stopAll();
-    this.appendAuditLogIfEnabled({
-      action: "sftp.edit_stop_all",
-      level: "info",
-      message: "Stopped all remote file live editing sessions"
-    });
     return { ok: true };
   }
 

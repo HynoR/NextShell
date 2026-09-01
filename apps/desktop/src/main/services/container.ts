@@ -40,7 +40,6 @@ import {
 import { DeviceKeyProvider } from "./device-key-provider";
 import { RemoteEditManager } from "./remote-edit-manager";
 import { BackupService, applyPendingRestore } from "./backup-service";
-import { resolveAuditRuntime } from "./audit-runtime";
 import { logger } from "../logger";
 import { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import { normalizeError } from "./container-utils";
@@ -174,30 +173,6 @@ export const createServiceContainer = async (
     getMasterPassword: () => masterPassword
   });
 
-  // ─── Audit ───────────────────────────────────────────────────────────────
-  /**
-   * Read per call rather than captured at boot, so toggling audit no longer
-   * needs a restart. An enabled agent endpoint forces capture on: exposing the
-   * hosts to an agent without a trail is not an option the user gets.
-   */
-  const isAuditCaptureEnabled = (): boolean => {
-    const prefs = connections.getAppPreferences();
-    return prefs.audit.enabled || prefs.agent.enabled;
-  };
-  const auditRuntime = resolveAuditRuntime(connections.getAppPreferences().audit);
-  const appendAuditLogDirect = connections.appendAuditLog.bind(connections);
-
-  const appendAuditLogIfEnabled = (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }): void => {
-    if (!isAuditCaptureEnabled()) return;
-    appendAuditLogDirect(payload);
-  };
-
   const broadcastToAllWindows = (channel: string, payload: unknown): void => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) window.webContents.send(channel, payload);
@@ -215,34 +190,6 @@ export const createServiceContainer = async (
    * event to tell agent-owned tasks apart from user-owned ones.
    */
   const agentTransfers = new AgentTransferTracker();
-
-  // Audit purge
-  const purgeExpiredAuditLogs = (allowWhenDisabled = false): void => {
-    try {
-      if (!isAuditCaptureEnabled() && !allowWhenDisabled) return;
-      const prefs = connections.getAppPreferences();
-      const days = prefs.audit.retentionDays;
-      if (days > 0) {
-        const deleted = connections.purgeExpiredAuditLogs(days);
-        if (deleted > 0)
-          logger.info(`[Audit] purged ${deleted} expired audit log(s) (retention=${days}d)`);
-      }
-    } catch (error) {
-      logger.warn("[Audit] failed to purge expired logs", error);
-    }
-  };
-
-  if (auditRuntime.runStartupPurge) {
-    const prefs = connections.getAppPreferences();
-    if (prefs.audit.retentionDays > 0) purgeExpiredAuditLogs(true);
-  }
-  // `runStartupPurge` is exactly "a retention window is configured"; the timer
-  // hangs off that alone because every tick re-reads the capture state, so
-  // enabling audit (or the agent endpoint) at runtime starts purging too.
-  const auditPurgeTimer =
-    auditRuntime.runStartupPurge || auditRuntime.runPeriodicPurge
-      ? setInterval(purgeExpiredAuditLogs, 6 * 3600_000)
-      : undefined;
 
   // ─── Shared State ────────────────────────────────────────────────────────
   const activeSessions = new Map<string, ActiveSession>();
@@ -455,13 +402,6 @@ export const createServiceContainer = async (
         ...latest,
         hostFingerprint: fingerprint,
         updatedAt: new Date().toISOString()
-      });
-      appendAuditLogIfEnabled({
-        action: "connection.host_fingerprint_pinned",
-        level: "info",
-        connectionId,
-        message: "Pinned host key fingerprint on first connect (TOFU)",
-        metadata: { fingerprint }
       });
       logger.info("[Security] pinned host fingerprint (TOFU)", { connectionId, fingerprint });
     } catch (error) {
@@ -701,8 +641,7 @@ export const createServiceContainer = async (
 
   // ─── Sub-Service Instantiation ───────────────────────────────────────────
   const prefsSvc = new PreferencesDialogService({
-    connections,
-    auditEnabledForSession: isAuditCaptureEnabled()
+    connections
   });
 
   const terminalIntegrationSvc = new TerminalIntegrationService();
@@ -714,7 +653,6 @@ export const createServiceContainer = async (
     getConnectionOrThrow,
     resolveConnectOptions: (profile) => resolveConnectOptions(profile),
     activeSessions,
-    appendAuditLogIfEnabled,
     debugSenders: prefsSvc.debugSenders,
     emitDebugLog: (entry) => prefsSvc.emitDebugLog(entry),
     emitSystemSnapshot: (sender, snapshot) => {
@@ -729,7 +667,6 @@ export const createServiceContainer = async (
     getConnectionOrThrow,
     ensureConnection,
     remoteEditManager,
-    appendAuditLogIfEnabled,
     sendTransferStatus
   });
 
@@ -745,7 +682,6 @@ export const createServiceContainer = async (
     remoteEditManager,
     monitorStates: monitorSvc.monitorStates,
     getCloudSyncManager: () => cloudSyncManager,
-    appendAuditLogIfEnabled,
     sendSessionStatus
   });
 
@@ -761,8 +697,7 @@ export const createServiceContainer = async (
     setMasterPassword: (p) => {
       masterPassword = p;
     },
-    tryRecallMasterPassword,
-    appendAuditLogIfEnabled
+    tryRecallMasterPassword
   });
 
   let cloudSyncManager: CloudSyncManager | undefined;
@@ -774,8 +709,7 @@ export const createServiceContainer = async (
     listWorkspaces: () => connections.listCloudSyncWorkspaces(),
     markWorkspaceCommandsDirty: (workspaceId) => {
       cloudSyncManager?.markWorkspaceCommandsDirty(workspaceId);
-    },
-    appendAuditLogIfEnabled
+    }
   });
 
   const importExportSvc = new ImportExportService({
@@ -783,8 +717,7 @@ export const createServiceContainer = async (
     sshKeyRepo,
     connectionFolders: folderRepo,
     vault,
-    upsertConnection: (input) => connectionSvc.upsertConnection(input),
-    appendAuditLogIfEnabled
+    upsertConnection: (input) => connectionSvc.upsertConnection(input)
   });
 
   const sessionSvc = new SessionService({
@@ -794,7 +727,6 @@ export const createServiceContainer = async (
     acquireTerminalConnection,
     retainConnection,
     closeConnectionIfIdle,
-    appendAuditLogIfEnabled,
     sendSessionStatus,
     sessionDataDispatcher,
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
@@ -901,8 +833,7 @@ export const createServiceContainer = async (
     cloudSyncManager,
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
     listRecycleBinEntries: () => connections.listRecycleBinEntries(),
-    removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
-    appendAuditLog: (payload) => appendAuditLogIfEnabled(payload)
+    removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id)
   });
 
   // ─── Agent (MCP) Endpoint ────────────────────────────────────────────────
@@ -1041,7 +972,7 @@ export const createServiceContainer = async (
       };
     },
     execCommand: (connectionId, command, options) =>
-      commandSvc.execCommand(connectionId, command, { ...options, audit: false }),
+      commandSvc.execCommand(connectionId, command, options),
     writeRemoteFile: async (connectionId, remotePath, content) => {
       const connection = await ensureConnection(connectionId);
       await connection.writeFileContent(remotePath, content);
@@ -1133,9 +1064,6 @@ export const createServiceContainer = async (
       if (Notification.isSupported()) new Notification({ title, body }).show();
     },
     emitActivity: (event) => broadcastToAllWindows(IPCChannel.AgentActivityEvent, event),
-    // Unconditional on purpose: agent activity is audited even when the user
-    // turned audit capture off (isAuditCaptureEnabled also forces it on).
-    appendAuditLog: appendAuditLogDirect,
     getPreferences: () => prefsSvc.getAppPreferences(),
     tokenStore: {
       read: () => connections.getJsonSetting<string>("agent.mcp.token") ?? null,
@@ -1174,7 +1102,6 @@ export const createServiceContainer = async (
   // ─── Dispose ─────────────────────────────────────────────────────────────
   const dispose = async (): Promise<void> => {
     connections.flush();
-    if (auditPurgeTimer) clearInterval(auditPurgeTimer);
     prefsSvc.dispose();
 
     // First: stop accepting agent traffic, and unlink the socket plus the
@@ -1230,7 +1157,7 @@ export const createServiceContainer = async (
       // 1. Snapshot to recycle bin + DB remove + push tombstone + delete credentials
       await resourceOpsSvc.deleteConnection({ id });
       // 2. Clean up runtime state (sessions, monitors, SSH connections)
-      await connectionSvc.removeConnectionRecord(id, { skipAudit: true });
+      await connectionSvc.removeConnectionRecord(id);
       return { ok: true as const };
     },
 

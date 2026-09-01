@@ -14,21 +14,18 @@ describe("CommandService agent execution options", () => {
       stderr: "before\u001eNEXTSHELL_CWD=/srv/real\u001fafter",
       exitCode: 0
     }));
-    const audit = vi.fn();
     const service = new CommandService({
       connections: {} as CachedConnectionRepository,
       getConnectionOrThrow: () => profile,
       ensureConnection: async () => ({ exec } as unknown as SshConnection),
       listWorkspaces: () => [],
-      markWorkspaceCommandsDirty: () => undefined,
-      appendAuditLogIfEnabled: audit
+      markWorkspaceCommandsDirty: () => undefined
     });
     const controller = new AbortController();
 
     const result = await service.execCommand(profile.id, "pwd", {
       cwd: "/srv/user's app",
-      signal: controller.signal,
-      audit: false
+      signal: controller.signal
     });
 
     expect(exec).toHaveBeenCalledOnce();
@@ -39,6 +36,5 @@ describe("CommandService agent execution options", () => {
     expect(result.cwd).toBe("/srv/real");
     expect(result.stderr).toBe("beforeafter");
     expect(result.command).toBe("pwd");
-    expect(audit).not.toHaveBeenCalled();
   });
 });

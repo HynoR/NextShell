@@ -5,7 +5,6 @@ import {
   type IpcInvokeChannel,
   type IpcInvokePayload,
   type IpcInvokeResult,
-  auditClearSchema,
   commandBatchExecSchema,
   commandExecSchema,
   connectionBatchAuthUpdateSchema,
@@ -377,7 +376,7 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
       services.monitors.selectSystemNetworkInterface(input.connectionId, input.networkInterface)
   }),
 
-  // ─── Commands & Audit ─────────────────────────────────────────────────────
+  // ─── Commands ─────────────────────────────────────────────────────────────
   define({
     channel: IPCChannel.CommandExec,
     schema: commandExecSchema,
@@ -390,14 +389,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "批量命令执行",
     dispatch: (services, input) => services.commands.execBatchCommand(input)
   }),
-  define({
-    channel: IPCChannel.AuditClear,
-    schema: auditClearSchema,
-    label: "审计日志清空",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.connections.clearAuditLogs()
-  }),
-
   // ─── SFTP ─────────────────────────────────────────────────────────────────
   define({
     channel: IPCChannel.SftpList,

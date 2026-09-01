@@ -67,13 +67,6 @@ export interface ResourceOperationsDeps {
   saveRecycleBinEntry: (entry: RecycleBinEntry) => void;
   listRecycleBinEntries: () => RecycleBinEntry[];
   removeRecycleBinEntry: (id: string) => void;
-  appendAuditLog: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
 }
 
 // ── Service ─────────────────────────────────────────────────────────────────
@@ -164,19 +157,6 @@ export class ResourceOperationsService {
       this.deps.cloudSyncManager.pushConnectionUpsert(copied);
     }
 
-    this.deps.appendAuditLog({
-      action: "resource.copy",
-      level: "info",
-      connectionId: copied.id,
-      message: `Copied connection "${source.name}" to ${input.targetOriginKind}`,
-      metadata: {
-        sourceId: source.id,
-        targetId: copied.id,
-        targetOriginKind: input.targetOriginKind,
-        copiedFromResourceId: copied.copiedFromResourceId
-      }
-    });
-
     return copied;
   }
 
@@ -237,13 +217,6 @@ export class ResourceOperationsService {
       await vault.deleteCredential(conn.credentialRef).catch(() => {});
     }
 
-    this.deps.appendAuditLog({
-      action: "resource.delete",
-      level: "warn",
-      connectionId: input.id,
-      message: `Deleted connection "${conn.name}" to recycle bin`,
-      metadata: { reason, originKind: conn.originKind }
-    });
   }
 
   // ── Delete SSH Key ──────────────────────────────────────────────────
@@ -314,12 +287,6 @@ export class ResourceOperationsService {
     if (key.keyContentRef) await vault.deleteCredential(key.keyContentRef).catch(() => {});
     if (key.passphraseRef) await vault.deleteCredential(key.passphraseRef).catch(() => {});
 
-    this.deps.appendAuditLog({
-      action: "resource.delete_ssh_key",
-      level: "warn",
-      message: `Deleted SSH key "${key.name}" to recycle bin`,
-      metadata: { originKind: key.originKind }
-    });
   }
 
   // ── Recycle Bin Operations ──────────────────────────────────────────
@@ -412,13 +379,6 @@ export class ResourceOperationsService {
       // Remove from recycle bin
       this.deps.removeRecycleBinEntry(entry.id);
 
-      this.deps.appendAuditLog({
-        action: "resource.restore",
-        level: "info",
-        connectionId: restored.id,
-        message: `Restored connection "${restored.name}" from recycle bin as new copy`
-      });
-
       return restored;
     } else {
       // SSH key restore — re-store credentials from snapshot
@@ -464,12 +424,6 @@ export class ResourceOperationsService {
       // Remove from recycle bin
       this.deps.removeRecycleBinEntry(entry.id);
 
-      this.deps.appendAuditLog({
-        action: "resource.restore_ssh_key",
-        level: "info",
-        message: `Restored SSH key "${restored.name}" from recycle bin as new copy`
-      });
-
       return restored;
     }
   }
@@ -481,11 +435,6 @@ export class ResourceOperationsService {
   purgeRecycleBinEntry(id: string): void {
     this.deps.removeRecycleBinEntry(id);
 
-    this.deps.appendAuditLog({
-      action: "resource.purge",
-      level: "warn",
-      message: `Permanently purged recycle bin entry ${id}`
-    });
   }
 
   // ── Private helpers ─────────────────────────────────────────────────

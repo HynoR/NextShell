@@ -117,8 +117,7 @@ const createService = (folders: ConnectionFolderRepository, existing: Connection
     upsertConnection: async (input) => {
       upserts.push(input);
       return { id: "saved" } as unknown as ConnectionProfile;
-    },
-    appendAuditLogIfEnabled: () => undefined
+    }
   });
   return { service, upserts };
 };

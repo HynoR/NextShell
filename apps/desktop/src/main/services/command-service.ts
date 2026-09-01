@@ -29,21 +29,12 @@ interface CommandServiceOptions {
   ) => Promise<SshConnection>;
   listWorkspaces: () => CloudSyncWorkspaceProfile[];
   markWorkspaceCommandsDirty: (workspaceId: string) => void;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
 }
 
 export interface CommandExecutionOptions {
   cwd?: string;
   signal?: AbortSignal;
   authOverride?: import("@nextshell/shared").SessionAuthOverrideInput;
-  /** AgentGateway writes its own redacted agent.exec record. */
-  audit?: boolean;
 }
 
 const quotePosix = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -56,7 +47,6 @@ export class CommandService {
   private readonly ensureConnection: CommandServiceOptions["ensureConnection"];
   private readonly listWorkspaces: () => CloudSyncWorkspaceProfile[];
   private readonly markWorkspaceCommandsDirty: (workspaceId: string) => void;
-  private readonly appendAuditLogIfEnabled: CommandServiceOptions["appendAuditLogIfEnabled"];
 
   constructor(options: CommandServiceOptions) {
     this.connections = options.connections;
@@ -64,7 +54,6 @@ export class CommandService {
     this.ensureConnection = options.ensureConnection;
     this.listWorkspaces = options.listWorkspaces;
     this.markWorkspaceCommandsDirty = options.markWorkspaceCommandsDirty;
-    this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
   }
 
   async execCommand(
@@ -99,15 +88,6 @@ export class CommandService {
       executedAt: new Date().toISOString(),
       ...(actualCwd ? { cwd: actualCwd } : {})
     };
-    if (options.audit !== false) {
-      this.appendAuditLogIfEnabled({
-        action: "command.exec",
-        level: result.exitCode === 0 ? "info" : "warn",
-        connectionId,
-        message: "Executed command on remote host",
-        metadata: { command, exitCode: result.exitCode }
-      });
-    }
     return execution;
   }
 
@@ -209,19 +189,6 @@ export class CommandService {
       failedCount,
       results: results.sort((a, b) => a.connectionId.localeCompare(b.connectionId))
     };
-    this.appendAuditLogIfEnabled({
-      action: "command.exec_batch",
-      level: failedCount > 0 ? "warn" : "info",
-      message: "Executed batch command",
-      metadata: {
-        command: input.command,
-        total: summary.total,
-        successCount,
-        failedCount,
-        retryCount: input.retryCount,
-        maxConcurrency: input.maxConcurrency
-      }
-    });
     return summary;
   }
 

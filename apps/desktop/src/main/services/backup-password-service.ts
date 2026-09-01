@@ -32,13 +32,6 @@ interface BackupPasswordServiceOptions {
   getMasterPassword: () => string | undefined;
   setMasterPassword: (password: string | undefined) => void;
   tryRecallMasterPassword: () => Promise<void>;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
 }
 
 export class BackupPasswordService {
@@ -99,12 +92,6 @@ export class BackupPasswordService {
         phase,
         reason
       });
-      this.options.appendAuditLogIfEnabled({
-        action: "master_password.cache_failed",
-        level: "warn",
-        message: "Failed to remember master password",
-        metadata: { phase, reason }
-      });
     }
   }
 
@@ -121,11 +108,6 @@ export class BackupPasswordService {
     this.options.connections.saveMasterKeyMeta(meta);
     this.options.setMasterPassword(password);
     await this.rememberPasswordBestEffort(password, "set");
-    this.options.appendAuditLogIfEnabled({
-      action: "master_password.set",
-      level: "info",
-      message: "Master password configured"
-    });
     return { ok: true };
   }
 
@@ -149,10 +131,7 @@ export class BackupPasswordService {
         this.options.setMasterPassword(password);
       },
       rememberPasswordBestEffort: (password, phase) =>
-        this.rememberPasswordBestEffort(password, phase),
-      appendAuditLog: (payload) => {
-        this.options.appendAuditLogIfEnabled(payload);
-      }
+        this.rememberPasswordBestEffort(password, phase)
     });
   }
 
@@ -188,12 +167,6 @@ export class BackupPasswordService {
       await this.options.tryRecallMasterPassword();
     }
     const available = this.options.getMasterPassword() !== undefined;
-    this.options.appendAuditLogIfEnabled({
-      action: "master_password.cached_status_query",
-      level: "warn",
-      message: "Queried cached master password availability",
-      metadata: { available }
-    });
     return { available };
   }
 
@@ -257,15 +230,6 @@ export class BackupPasswordService {
     if (!password) {
       throw new Error("该连接未保存登录密码。");
     }
-    this.options.appendAuditLogIfEnabled({
-      action: "connection.password_reveal",
-      level: "warn",
-      connectionId,
-      message: "Revealed saved connection password",
-      metadata: {
-        via: providedMasterPassword?.trim() ? "master-password-input" : "master-password-cache"
-      }
-    });
     return { password };
   }
 }

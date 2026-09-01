@@ -22,12 +22,10 @@ const DEBUG_MAX_PENDING = 50;
 
 export interface PreferencesDialogServiceOptions {
   connections: CachedConnectionRepository;
-  auditEnabledForSession: boolean;
 }
 
 export class PreferencesDialogService {
   private readonly connections: CachedConnectionRepository;
-  private readonly auditEnabledForSession: boolean;
 
   readonly debugSenders = new Set<WebContents>();
   private debugPending: DebugLogEntry[] = [];
@@ -35,7 +33,6 @@ export class PreferencesDialogService {
 
   constructor(options: PreferencesDialogServiceOptions) {
     this.connections = options.connections;
-    this.auditEnabledForSession = options.auditEnabledForSession;
   }
 
   // ---------------------------------------------------------------------------
@@ -53,10 +50,6 @@ export class PreferencesDialogService {
 
     if (patch.window?.appearance !== undefined) {
       applyAppearanceToAllWindows(saved.window.appearance);
-    }
-
-    if (patch.audit?.retentionDays !== undefined && this.auditEnabledForSession) {
-      this.purgeExpiredAuditLogs();
     }
 
     return saved;
@@ -236,20 +229,4 @@ export class PreferencesDialogService {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private purgeExpiredAuditLogs(allowWhenDisabled = false): void {
-    try {
-      if (!this.auditEnabledForSession && !allowWhenDisabled) return;
-
-      const prefs = this.connections.getAppPreferences();
-      const days = prefs.audit.retentionDays;
-      if (days > 0) {
-        const deleted = this.connections.purgeExpiredAuditLogs(days);
-        if (deleted > 0) {
-          logger.info(`[Audit] purged ${deleted} expired audit log(s) (retention=${days}d)`);
-        }
-      }
-    } catch (error) {
-      logger.warn("[Audit] failed to purge expired logs", error);
-    }
-  }
 }

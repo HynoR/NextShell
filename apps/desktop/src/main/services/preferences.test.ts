@@ -15,23 +15,6 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
 
 (() => {
   const merged = mergePreferences(DEFAULT_APP_PREFERENCES, {
-    audit: {
-      enabled: true
-    }
-  });
-
-  assert(
-    merged.audit.enabled === true,
-    "mergePreferences should update audit enabled when only enabled is patched"
-  );
-  assert(
-    merged.audit.retentionDays === DEFAULT_APP_PREFERENCES.audit.retentionDays,
-    "mergePreferences should preserve audit retentionDays when omitted"
-  );
-})();
-
-(() => {
-  const merged = mergePreferences(DEFAULT_APP_PREFERENCES, {
     window: {
       leftSidebarDefaultCollapsed: true,
       bottomWorkbenchDefaultCollapsed: true

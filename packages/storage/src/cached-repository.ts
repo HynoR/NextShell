@@ -10,14 +10,12 @@
  *  | Command History   | 有序 Map + 快照 | write-behind（0.5 s debounce）  |
  *  | Saved Commands    | 内存数组       | write-through                    |
  *  | Template Params   | 内存数组       | write-through + invalidate       |
- *  | Audit Logs        | 不缓存读       | write-behind 队列（30 s / 50条） |
  *  | Migrations        | 内存数组       | 只读（静态，应用启动后不变）     |
  *  | Master Key Meta   | 内存单例       | write-through                    |
  *
  * close() 会先 flush 所有脏数据再关闭底层数据库。
  */
 
-import { randomUUID } from "node:crypto";
 import {
   MAX_COMMAND_HISTORY_ENTRIES,
   type AppPreferences,
@@ -28,7 +26,6 @@ import {
   type CloudSyncPendingOp,
   type CloudSyncWorkspaceProfile,
   type RecycleBinEntry,
-  type AuditLogRecord,
   type CommandHistoryEntry,
   type ConnectionListQuery,
   type ConnectionProfile,
@@ -40,7 +37,6 @@ import {
 import type { SecretStoreDB } from "../../security/src/index";
 import type {
   ConnectionRepository,
-  AppendAuditLogInput,
   SshKeyRepository,
   ProxyRepository
 } from "./index";
@@ -57,10 +53,6 @@ interface BatchedCommandHistoryWriter {
   applyCommandHistoryBatch: (mutations: CommandHistoryMutation[]) => void;
 }
 
-interface BatchedAuditLogWriter {
-  appendAuditLogs: (payloads: AppendAuditLogInput[]) => void;
-}
-
 const compareCommandHistoryForEviction = (
   left: CommandHistoryEntry,
   right: CommandHistoryEntry
@@ -73,14 +65,6 @@ const compareCommandHistoryForEviction = (
 };
 
 // ── Tuning constants ────────────────────────────────────────────────────────
-/** 审计日志批量写入间隔 (ms) */
-const AUDIT_FLUSH_INTERVAL_MS = 30_000;
-/** 审计日志队列超过此数量时立即刷盘 */
-const AUDIT_FLUSH_THRESHOLD = 50;
-/** 审计日志内存缓冲上限，超出时丢弃最旧项 */
-const AUDIT_BUFFER_CAPACITY = 1_000;
-/** 审计日志达到阈值后的异步 flush 延迟 (ms) */
-const AUDIT_FLUSH_SOON_DELAY_MS = 10;
 /** 命令历史写入 debounce 延迟 (ms) */
 const COMMAND_HISTORY_FLUSH_DELAY_MS = 500;
 /** 偏好设置写入 debounce 延迟 (ms) */
@@ -93,12 +77,6 @@ const hasBatchedCommandHistoryWriter = (
     typeof (repository as Partial<BatchedCommandHistoryWriter>).applyCommandHistoryBatch ===
     "function"
   );
-};
-
-const hasBatchedAuditLogWriter = (
-  repository: ConnectionRepository
-): repository is ConnectionRepository & BatchedAuditLogWriter => {
-  return typeof (repository as Partial<BatchedAuditLogWriter>).appendAuditLogs === "function";
 };
 
 export class CachedConnectionRepository implements ConnectionRepository {
@@ -134,17 +112,8 @@ export class CachedConnectionRepository implements ConnectionRepository {
     value: undefined
   };
 
-  // ── Audit log write-behind queue ─────────────────────────────────────────
-  private auditBuf: AppendAuditLogInput[] = [];
-  private auditTimer: ReturnType<typeof setInterval> | undefined;
-  private auditSoonTimer: ReturnType<typeof setTimeout> | undefined;
-
   constructor(inner: ConnectionRepository) {
     this.inner = inner;
-    this.auditTimer = setInterval(
-      () => this.flushAuditLogsFromTimer("interval"),
-      AUDIT_FLUSH_INTERVAL_MS
-    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -614,81 +583,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Audit Logs – write-behind 队列
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  appendAuditLog(payload: AppendAuditLogInput): AuditLogRecord {
-    // 在内存中生成返回值（调用方均不使用返回值，仅满足接口）
-    const record: AuditLogRecord = {
-      id: randomUUID(),
-      action: payload.action,
-      level: payload.level,
-      connectionId: payload.connectionId,
-      message: payload.message,
-      metadata: payload.metadata,
-      createdAt: new Date().toISOString()
-    };
-    if (this.auditBuf.length >= AUDIT_BUFFER_CAPACITY) {
-      this.auditBuf.shift();
-    }
-    this.auditBuf.push(payload);
-    if (this.auditBuf.length >= AUDIT_FLUSH_THRESHOLD) {
-      this.scheduleAuditLogFlushSoon();
-    }
-    return record;
-  }
-
-  clearAuditLogs(): number {
-    this.auditBuf = [];
-    return this.inner.clearAuditLogs();
-  }
-
-  purgeExpiredAuditLogs(retentionDays: number): number {
-    this.flushAuditLogs();
-    return this.inner.purgeExpiredAuditLogs(retentionDays);
-  }
-
-  private flushAuditLogs(): void {
-    if (this.auditBuf.length === 0) return;
-    const batch = this.auditBuf.splice(0);
-    try {
-      if (hasBatchedAuditLogWriter(this.inner)) {
-        this.inner.appendAuditLogs(batch);
-        return;
-      }
-
-      for (const payload of batch) {
-        this.inner.appendAuditLog(payload);
-      }
-    } catch (error) {
-      this.auditBuf.unshift(...batch);
-      throw error;
-    }
-  }
-
-  private scheduleAuditLogFlushSoon(): void {
-    if (this.auditSoonTimer) {
-      return;
-    }
-
-    this.auditSoonTimer = setTimeout(() => {
-      this.auditSoonTimer = undefined;
-      this.flushAuditLogsFromTimer("threshold");
-    }, AUDIT_FLUSH_SOON_DELAY_MS);
-  }
-
-  private flushAuditLogsFromTimer(trigger: "interval" | "threshold"): void {
-    try {
-      this.flushAuditLogs();
-    } catch (error) {
-      console.warn(`[Storage] audit log flush failed (${trigger})`, error);
-      if (trigger === "threshold" && this.auditBuf.length > 0) {
-        this.scheduleAuditLogFlushSoon();
-      }
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
   // Master Key Meta – 内存单例，write-through
   // ═══════════════════════════════════════════════════════════════════════════
 
@@ -751,7 +645,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
   flush(): void {
     this.flushPreferences();
     this.flushCommandHistory();
-    this.flushAuditLogs();
   }
 
   /** flush + 关闭底层数据库连接。 */
@@ -759,8 +652,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
     this.flush();
     if (this.prefTimer) clearTimeout(this.prefTimer);
     if (this.histTimer) clearTimeout(this.histTimer);
-    if (this.auditSoonTimer) clearTimeout(this.auditSoonTimer);
-    if (this.auditTimer) clearInterval(this.auditTimer);
     this.inner.close();
   }
 }

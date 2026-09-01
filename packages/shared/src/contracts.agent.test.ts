@@ -43,7 +43,6 @@ const baseConnection = {
 (() => {
   // Preferences persisted before this feature existed carry no agent block.
   const parsed = appPreferencesSchema.safeParse({
-    audit: { enabled: true, retentionDays: 30 }
   });
 
   assert(parsed.success, "appPreferencesSchema should accept preferences without an agent block");

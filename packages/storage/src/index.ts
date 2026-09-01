@@ -14,7 +14,6 @@ import type {
   CloudSyncPendingOp,
   CloudSyncWorkspaceProfile,
   RecycleBinEntry,
-  AuditLogRecord,
   CommandHistoryEntry,
   ConnectionFolder,
   ConnectionListQuery,
@@ -243,14 +242,6 @@ interface MigrationDefinition {
   apply: (db: Database.Database) => void;
 }
 
-export interface AppendAuditLogInput {
-  action: string;
-  level: "info" | "warn" | "error";
-  connectionId?: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-}
-
 export type CommandHistoryMutationInput =
   { type: "push"; command: string } | { type: "remove"; command: string } | { type: "clear" };
 
@@ -270,80 +261,6 @@ const fromJSON = (value: string): string[] => {
   } catch {
     return [];
   }
-};
-
-const toMetadataJSON = (value: Record<string, unknown> | undefined): string | null => {
-  if (!value) {
-    return null;
-  }
-
-  return JSON.stringify(value);
-};
-
-// ─── Audit Metadata Redaction ────────────────────────────────────────────────
-// Audit metadata frequently carries raw command strings (e.g. `mysql -pSECRET`,
-// `curl -H 'Authorization: Bearer TOKEN'`). Mask inline secrets before they are
-// persisted so a leaked database does not become a second exposure surface.
-
-const AUDIT_REDACTED = "«redacted»";
-
-const SENSITIVE_VALUE_RULES: Array<{ re: RegExp; replace: string }> = [
-  // PEM private key blocks
-  {
-    re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
-    replace: AUDIT_REDACTED
-  },
-  // Authorization: Bearer <token> (or a bare "Bearer <token>")
-  { re: /(bearer\s+)[A-Za-z0-9._\-+/=]+/gi, replace: `$1${AUDIT_REDACTED}` },
-  // key=value / key: value for sensitive identifiers
-  {
-    re: /\b(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth)\b(\s*[=:]\s*)("?)([^\s"']+)\3/gi,
-    replace: `$1$2${AUDIT_REDACTED}`
-  },
-  // --password=<secret> / --token <secret>
-  { re: /(--(?:password|token)[=\s])[^\s'"]+/gi, replace: `$1${AUDIT_REDACTED}` },
-  // mysql/redis style inline -p<secret> / -a<secret> (flag immediately followed by value)
-  { re: /(^|\s)(-[pa])[^\s'"]+/g, replace: `$1$2${AUDIT_REDACTED}` }
-];
-
-const SENSITIVE_KEY =
-  /^(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth(?:orization)?)$/i;
-
-const redactAuditString = (input: string): string => {
-  let out = input;
-  for (const rule of SENSITIVE_VALUE_RULES) {
-    out = out.replace(rule.re, rule.replace);
-  }
-  return out;
-};
-
-const redactAuditValue = (value: unknown): unknown => {
-  if (typeof value === "string") {
-    return redactAuditString(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map(redactAuditValue);
-  }
-  if (value && typeof value === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      result[key] =
-        typeof child === "string" && SENSITIVE_KEY.test(key)
-          ? AUDIT_REDACTED
-          : redactAuditValue(child);
-    }
-    return result;
-  }
-  return value;
-};
-
-export const redactAuditMetadata = (
-  metadata: Record<string, unknown> | undefined
-): Record<string, unknown> | undefined => {
-  if (!metadata) {
-    return undefined;
-  }
-  return redactAuditValue(metadata) as Record<string, unknown>;
 };
 
 const parseGroupPath = (raw: string | null | undefined): string => {
@@ -614,7 +531,6 @@ const cloneDefaultPreferences = (): AppPreferences => {
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
     connectionManager: { ...DEFAULT_APP_PREFERENCES_VALUE.connectionManager },
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
-    audit: { ...DEFAULT_APP_PREFERENCES_VALUE.audit },
     agent: {
       ...DEFAULT_APP_PREFERENCES_VALUE.agent,
       allowedLocalRoots: [...DEFAULT_APP_PREFERENCES_VALUE.agent.allowedLocalRoots]
@@ -937,19 +853,6 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.traceroute?.showTracerouteTab === "boolean"
             ? parsed.traceroute.showTracerouteTab
             : fallback.traceroute.showTracerouteTab
-      },
-      audit: {
-        enabled:
-          typeof parsed.audit?.enabled === "boolean"
-            ? parsed.audit.enabled
-            : fallback.audit.enabled,
-        retentionDays:
-          typeof parsed.audit?.retentionDays === "number" &&
-          Number.isInteger(parsed.audit.retentionDays) &&
-          parsed.audit.retentionDays >= 0 &&
-          parsed.audit.retentionDays <= 365
-            ? parsed.audit.retentionDays
-            : fallback.audit.retentionDays
       },
       agent: {
         enabled:
@@ -1654,6 +1557,13 @@ const migrations: MigrationDefinition[] = [
         "CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);"
       );
     }
+  },
+  {
+    version: 27,
+    name: "drop_audit_logs",
+    apply: (db) => {
+      db.exec("DROP TABLE IF EXISTS audit_logs;");
+    }
   }
 ];
 
@@ -1785,9 +1695,6 @@ export interface ConnectionRepository {
   remove: (id: string) => void;
   getById: (id: string) => ConnectionProfile | undefined;
   seedIfEmpty: (connections: ConnectionProfile[]) => void;
-  appendAuditLog: (payload: AppendAuditLogInput) => AuditLogRecord;
-  clearAuditLogs: () => number;
-  purgeExpiredAuditLogs: (retentionDays: number) => number;
   listCommandHistory: () => CommandHistoryEntry[];
   pushCommandHistory: (command: string) => CommandHistoryEntry;
   removeCommandHistory: (command: string) => void;
@@ -2115,110 +2022,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     }
 
     return rowToConnection(row);
-  }
-
-  appendAuditLog(payload: AppendAuditLogInput): AuditLogRecord {
-    const record: AuditLogRecord = {
-      id: randomUUID(),
-      action: payload.action,
-      level: payload.level,
-      connectionId: payload.connectionId,
-      message: payload.message,
-      metadata: redactAuditMetadata(payload.metadata),
-      createdAt: new Date().toISOString()
-    };
-
-    this.db
-      .prepare(
-        `
-        INSERT INTO audit_logs (
-          id,
-          action,
-          level,
-          connection_id,
-          message,
-          metadata_json,
-          created_at
-        ) VALUES (
-          @id,
-          @action,
-          @level,
-          @connection_id,
-          @message,
-          @metadata_json,
-          @created_at
-        )
-      `
-      )
-      .run({
-        id: record.id,
-        action: record.action,
-        level: record.level,
-        connection_id: record.connectionId ?? null,
-        message: record.message,
-        metadata_json: toMetadataJSON(record.metadata),
-        created_at: record.createdAt
-      });
-
-    return record;
-  }
-
-  appendAuditLogs(payloads: AppendAuditLogInput[]): void {
-    if (payloads.length === 0) {
-      return;
-    }
-
-    const insertAuditLog = this.db.prepare(
-      `
-        INSERT INTO audit_logs (
-          id,
-          action,
-          level,
-          connection_id,
-          message,
-          metadata_json,
-          created_at
-        ) VALUES (
-          @id,
-          @action,
-          @level,
-          @connection_id,
-          @message,
-          @metadata_json,
-          @created_at
-        )
-      `
-    );
-
-    const tx = this.db.transaction((batch: AppendAuditLogInput[]) => {
-      for (const payload of batch) {
-        insertAuditLog.run({
-          id: randomUUID(),
-          action: payload.action,
-          level: payload.level,
-          connection_id: payload.connectionId ?? null,
-          message: payload.message,
-          metadata_json: toMetadataJSON(redactAuditMetadata(payload.metadata)),
-          created_at: new Date().toISOString()
-        });
-      }
-    });
-
-    tx(payloads);
-  }
-
-  clearAuditLogs(): number {
-    const result = this.db.prepare("DELETE FROM audit_logs").run();
-    return result.changes;
-  }
-
-  purgeExpiredAuditLogs(retentionDays: number): number {
-    if (retentionDays <= 0) return 0;
-    const cutoff = new Date(Date.now() - retentionDays * 86_400_000).toISOString();
-    const result = this.db
-      .prepare("DELETE FROM audit_logs WHERE created_at < @cutoff")
-      .run({ cutoff });
-    return result.changes;
   }
 
   private readonly MAX_COMMAND_HISTORY = 500;

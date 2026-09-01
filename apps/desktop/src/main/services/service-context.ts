@@ -100,15 +100,7 @@ export interface ServiceContext {
   assertVisibleTerminalAlive: (connectionId: string) => void;
   establishHiddenConnection: (connectionId: string, tag: string) => Promise<SshConnection>;
 
-  // ─── Audit / Preferences ────────────────────────────────────────────────
-  auditEnabledForSession: boolean;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
+  // ─── Preferences ────────────────────────────────────────────────────────
   getAppPreferences: () => AppPreferences;
   saveAppPreferencesPatch: (patch: SettingsUpdateInput) => AppPreferences;
 
@@ -125,9 +117,6 @@ export interface ServiceContext {
   // ─── Debug Logging ──────────────────────────────────────────────────────
   debugSenders: Set<WebContents>;
   emitDebugLog: (entry: DebugLogEntry) => void;
-
-  // ─── Audit Purge ────────────────────────────────────────────────────────
-  auditPurgeTimer: ReturnType<typeof setInterval> | undefined;
 
   // ─── Try recall master password ─────────────────────────────────────────
   tryRecallMasterPassword: () => Promise<void>;

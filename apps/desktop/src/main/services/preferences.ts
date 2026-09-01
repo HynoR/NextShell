@@ -298,16 +298,6 @@ export const mergePreferences = (
           ? patch.traceroute.showTracerouteTab
           : current.traceroute.showTracerouteTab
     },
-    audit: {
-      enabled: patch.audit?.enabled !== undefined ? patch.audit.enabled : current.audit.enabled,
-      retentionDays:
-        patch.audit?.retentionDays !== undefined &&
-        Number.isInteger(patch.audit.retentionDays) &&
-        patch.audit.retentionDays >= 0 &&
-        patch.audit.retentionDays <= 365
-          ? patch.audit.retentionDays
-          : current.audit.retentionDays
-    },
     agent: {
       enabled: patch.agent?.enabled !== undefined ? patch.agent.enabled : current.agent.enabled,
       socketEnabled:

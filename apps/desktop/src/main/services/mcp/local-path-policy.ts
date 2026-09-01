@@ -26,7 +26,7 @@ export interface LocalPathDecision {
   allowed: boolean;
   /** Absolute, `~`-expanded, `..`-collapsed and symlink-resolved. */
   resolved: string;
-  /** User-facing sentence; shown in the confirmation dialog and the audit log. */
+  /** User-facing sentence shown in the confirmation dialog. */
   reason: string;
 }
 

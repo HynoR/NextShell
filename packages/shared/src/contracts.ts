@@ -185,7 +185,7 @@ export const sessionWriteSchema = z.object({
    * "protocol" marks writes the client generates on the user's behalf (OSC
    * query replies, clipboard read answers). "agent" marks MCP-driven injection,
    * which the main process never accepts over this channel — it is produced
-   * inside the main process and only ever appears on the outbound audit path.
+   * inside the main process and only ever appears on the outbound activity path.
    * Only "user" writes represent real keystrokes, which is what shell-integration
    * injection must not collide with, and what preempts agent injection.
    * Optional so every existing caller keeps defaulting to "user".
@@ -311,8 +311,6 @@ export const commandBatchExecSchema = z.object({
   maxConcurrency: z.coerce.number().int().min(1).max(50).default(5),
   retryCount: z.coerce.number().int().min(0).max(5).default(1)
 });
-
-export const auditClearSchema = z.object({});
 
 export const sftpListSchema = z.object({
   connectionId: z.string().uuid(),
@@ -660,17 +658,6 @@ export const appPreferencesSchema = z
         showTracerouteTab: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.showTracerouteTab)
       })
       .default(DEFAULT_APP_PREFERENCES.traceroute),
-    audit: z
-      .object({
-        enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.audit.enabled),
-        retentionDays: z.coerce
-          .number()
-          .int()
-          .min(0)
-          .max(365)
-          .default(DEFAULT_APP_PREFERENCES.audit.retentionDays)
-      })
-      .default(DEFAULT_APP_PREFERENCES.audit),
     agent: z
       .object({
         enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.enabled),
@@ -811,12 +798,6 @@ export const appPreferencesPatchSchema = z.object({
       language: z.enum(["cn", "en"]).optional(),
       powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional(),
       showTracerouteTab: z.boolean().optional()
-    })
-    .optional(),
-  audit: z
-    .object({
-      enabled: z.boolean().optional(),
-      retentionDays: z.coerce.number().int().min(0).max(365).optional()
     })
     .optional(),
   agent: z
@@ -1315,7 +1296,6 @@ export type MonitorNetworkStopInput = z.infer<typeof monitorNetworkStopSchema>;
 export type MonitorNetworkConnectionsInput = z.infer<typeof monitorNetworkConnectionsSchema>;
 export type CommandExecInput = z.infer<typeof commandExecSchema>;
 export type CommandBatchExecInput = z.infer<typeof commandBatchExecSchema>;
-export type AuditClearInput = z.infer<typeof auditClearSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;

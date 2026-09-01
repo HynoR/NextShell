@@ -67,8 +67,6 @@ const createService = (connections: ConnectionProfile[], sshKeys: SshKeyProfile[
       secrets.set(key.passphraseRef, "passphrase");
     }
   }
-  const audit: Array<{ action: string; level: "info" | "warn" | "error"; message: string }> = [];
-
   const service = new ConnectionService({
     connections: {
       list: () => Array.from(connectionMap.values()),
@@ -104,13 +102,10 @@ const createService = (connections: ConnectionProfile[], sshKeys: SshKeyProfile[
     closeConnectionIfIdle: async () => undefined,
     remoteEditManager: {} as any,
     monitorStates: new Map(),
-    appendAuditLogIfEnabled: (payload) => {
-      audit.push(payload);
-    },
     sendSessionStatus: () => undefined
   });
 
-  return { service, connectionMap, secrets, audit };
+  return { service, connectionMap, secrets };
 };
 
 describe("ConnectionService batch auth update", () => {

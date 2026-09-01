@@ -33,8 +33,6 @@ await (async () => {
   let currentMeta = await createMasterKeyMeta(original);
   let unlockedPassword = original;
   const rememberCalls: string[] = [];
-  const auditRecords: Array<{ action: string; level: string; metadata?: Record<string, unknown> }> =
-    [];
 
   await changeMasterPassword({
     oldPassword: original,
@@ -48,9 +46,6 @@ await (async () => {
     },
     rememberPasswordBestEffort: async (password, phase) => {
       rememberCalls.push(`${phase}:${password}`);
-    },
-    appendAuditLog: (record) => {
-      auditRecords.push(record);
     }
   });
 
@@ -61,15 +56,12 @@ await (async () => {
     "old password should not verify updated meta"
   );
   assert(rememberCalls[0] === `change:${next}`, "should remember new password with change phase");
-  assert(auditRecords[0]?.action === "master_password.change", "should append change audit log");
-  assert(auditRecords[0]?.metadata?.["sameAsOld"] === false, "audit should mark sameAsOld=false");
 })();
 
 await (async () => {
   const password = "same-password";
   let currentMeta = await createMasterKeyMeta(password);
   let unlockedPassword = password;
-  const auditRecords: Array<{ metadata?: Record<string, unknown> }> = [];
 
   await changeMasterPassword({
     oldPassword: password,
@@ -81,14 +73,10 @@ await (async () => {
     setMasterPassword: (value) => {
       unlockedPassword = value;
     },
-    rememberPasswordBestEffort: async () => {},
-    appendAuditLog: (record) => {
-      auditRecords.push(record);
-    }
+    rememberPasswordBestEffort: async () => {}
   });
 
   assert(unlockedPassword === password, "same password update should still keep unlocked");
-  assert(auditRecords[0]?.metadata?.["sameAsOld"] === true, "audit should mark sameAsOld=true");
 })();
 
 await (async () => {
@@ -102,8 +90,7 @@ await (async () => {
         getMasterKeyMeta: () => currentMeta,
         saveMasterKeyMeta: () => {},
         setMasterPassword: () => {},
-        rememberPasswordBestEffort: async () => {},
-        appendAuditLog: () => {}
+        rememberPasswordBestEffort: async () => {}
       }),
     "原密码错误"
   );

@@ -52,13 +52,6 @@ export interface ConnectionServiceOptions {
   remoteEditManager: RemoteEditManager;
   monitorStates: Map<string, MonitorState>;
   getCloudSyncManager?: () => CloudSyncManager | undefined;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
 }
 
@@ -250,7 +243,6 @@ export class ConnectionService {
       sshKeyRepo,
       proxyRepo,
       vault,
-      appendAuditLogIfEnabled,
       disposeAllMonitorSessions
     } = this.options;
 
@@ -371,21 +363,6 @@ export class ConnectionService {
     if (!profile.monitorSession) {
       await disposeAllMonitorSessions(profile.id);
     }
-    appendAuditLogIfEnabled({
-      action: "connection.upsert",
-      level: "info",
-      connectionId: profile.id,
-      message: current ? "Updated connection profile" : "Created connection profile",
-      metadata: {
-        authType: profile.authType,
-        strictHostKeyChecking: profile.strictHostKeyChecking,
-        hasSshKey: Boolean(profile.sshKeyId),
-        hasProxy: Boolean(profile.proxyId),
-        terminalEncoding: profile.terminalEncoding,
-        backspaceMode: profile.backspaceMode,
-        deleteMode: profile.deleteMode
-      }
-    });
     return profile;
   }
 
@@ -426,26 +403,10 @@ export class ConnectionService {
       }
     }
 
-    this.options.appendAuditLogIfEnabled({
-      action: "connection.batch_auth_update",
-      level: result.failed > 0 ? "warn" : "info",
-      message: `Batch updated auth for ${result.updated}/${result.total} connections`,
-      metadata: {
-        targetType: input.target.type,
-        authType: input.auth.authType,
-        total: result.total,
-        updated: result.updated,
-        failed: result.failed
-      }
-    });
-
     return result;
   }
 
-  async removeConnectionRecord(
-    id: string,
-    options?: { skipAudit?: boolean }
-  ): Promise<{ ok: true }> {
+  async removeConnectionRecord(id: string): Promise<{ ok: true }> {
     const {
       activeSessions,
       connections,
@@ -453,7 +414,6 @@ export class ConnectionService {
       remoteEditManager,
       closeConnectionIfIdle,
       monitorStates,
-      appendAuditLogIfEnabled,
       sendSessionStatus
     } = this.options;
 
@@ -482,14 +442,6 @@ export class ConnectionService {
     await closeConnectionIfIdle(id);
     connections.remove(id);
     monitorStates.delete(id);
-    if (!options?.skipAudit) {
-      appendAuditLogIfEnabled({
-        action: "connection.remove",
-        level: "warn",
-        connectionId: id,
-        message: "Connection profile deleted"
-      });
-    }
     return { ok: true };
   }
 
@@ -718,7 +670,7 @@ export class ConnectionService {
     connectionId: string,
     authOverride: SessionAuthOverrideInput
   ): Promise<string | undefined> {
-    const { sshKeyRepo, vault, appendAuditLogIfEnabled } = this.options;
+    const { sshKeyRepo, vault } = this.options;
 
     const latest = this.getConnectionOrThrow(connectionId);
 
@@ -786,22 +738,8 @@ export class ConnectionService {
         connectionId,
         reason
       });
-      appendAuditLogIfEnabled({
-        action: "connection.auth_override_persist_failed",
-        level: "warn",
-        connectionId,
-        message: "SSH auth override could not be persisted",
-        metadata: {
-          reason
-        }
-      });
       return "认证成功，但自动保存凭据失败，请在连接管理器中手动保存。";
     }
   }
 
-  // ── Audit Logs ────────────────────────────────────────────────────
-
-  clearAuditLogs(): { ok: true; deleted: number } {
-    return { ok: true, deleted: this.options.connections.clearAuditLogs() };
-  }
 }

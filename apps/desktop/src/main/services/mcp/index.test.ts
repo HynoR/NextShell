@@ -95,7 +95,6 @@ const baseDeps = (
   notifyUser: () => undefined,
   emitActivity: () => undefined,
   respondToPrompt: () => undefined,
-  appendAuditLog: () => undefined,
   getPreferences: preferences,
   ...overrides
 });

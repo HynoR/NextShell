@@ -91,7 +91,7 @@ const SYSTEM_MONITOR_LINGER_MS = 30_000;
  *
  * Cancellation is bound to the attempt object instead of the connection id, so
  * a close that happens while attempt N is dialing can never kill attempt N+1
- * that a different subscriber started right afterwards (audit #6).
+ * that a different subscriber started right afterwards.
  */
 interface HiddenConnectAttempt {
   cancelled: boolean;
@@ -104,13 +104,6 @@ export interface MonitorServiceOptions {
   getConnectionOrThrow: (id: string) => ConnectionProfile;
   resolveConnectOptions: (profile: ConnectionProfile) => Promise<SshConnectOptions>;
   activeSessions: Map<string, ActiveSession>;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
   debugSenders: Set<WebContents>;
   emitDebugLog: (entry: DebugLogEntry) => void;
   /** Direct guarded webContents.send of a snapshot payload (no ack protocol). */
@@ -145,7 +138,7 @@ export class MonitorService {
   private readonly adhocSessionRuntimes = new Map<string, AdhocSessionRuntime>();
   private readonly adhocSessionPromises = new Map<string, Promise<AdhocSessionRuntime>>();
 
-  // ─── Subscribers (audit A5) ──────────────────────────────────────────────
+  // ─── Subscribers ──────────────────────────────────────────────────────────
   // Runtime/hidden connection stay pooled per connection; the *demand* is
   // reference counted per subscriber (= renderer session id), so closing one
   // pane no longer kills the monitors of the other tabs on the same host.
@@ -185,7 +178,6 @@ export class MonitorService {
     profile: ConnectionProfile
   ) => Promise<SshConnectOptions>;
   private readonly activeSessions: Map<string, ActiveSession>;
-  private readonly appendAuditLogIfEnabled: MonitorServiceOptions["appendAuditLogIfEnabled"];
   private readonly debugSenders: Set<WebContents>;
   private readonly emitDebugLog: (entry: DebugLogEntry) => void;
   private readonly emitSystemSnapshot: (sender: WebContents, snapshot: MonitorSnapshot) => void;
@@ -198,7 +190,6 @@ export class MonitorService {
     this.getConnectionOrThrow = options.getConnectionOrThrow;
     this.resolveConnectOptions = options.resolveConnectOptions;
     this.activeSessions = options.activeSessions;
-    this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.debugSenders = options.debugSenders;
     this.emitDebugLog = options.emitDebugLog;
     this.emitSystemSnapshot = options.emitSystemSnapshot;
@@ -1354,13 +1345,6 @@ export class MonitorService {
         `kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`
       );
     }
-    this.appendAuditLogIfEnabled({
-      action: "monitor.process_kill",
-      level: "warn",
-      connectionId,
-      message: `Sent ${signal} to PID ${pid}`,
-      metadata: { pid, signal }
-    });
     return { ok: true };
   }
 

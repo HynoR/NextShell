@@ -6,7 +6,6 @@ import type { AgentPromptResponse } from "@nextshell/shared";
 import {
   AgentGateway,
   normalizeRemotePath,
-  type AgentAuditEntry,
   type AgentClientIdentity,
   type AgentGatewayDeps,
   type AgentRemoteFileStat,
@@ -174,12 +173,10 @@ const fileStat = (overrides: Partial<AgentRemoteFileStat> = {}): AgentRemoteFile
 
 interface Harness {
   gateway: AgentGateway;
-  audits: AgentAuditEntry[];
   deps: AgentGatewayDeps;
 }
 
 const createHarness = (overrides: Partial<AgentGatewayDeps> = {}, limits = {}): Harness => {
-  const audits: AgentAuditEntry[] = [];
   const deps: AgentGatewayDeps = {
     listConnections: () => [
       grantedFull,
@@ -247,13 +244,10 @@ const createHarness = (overrides: Partial<AgentGatewayDeps> = {}, limits = {}): 
     }),
     notifyUser: () => undefined,
     emitActivity: () => undefined,
-    appendAuditLog: (entry) => {
-      audits.push(entry);
-    },
     getPreferences: () => DEFAULT_APP_PREFERENCES,
     ...overrides
   };
-  return { gateway: new AgentGateway(deps, { limits }), audits, deps };
+  return { gateway: new AgentGateway(deps, { limits }), deps };
 };
 
 describe("host authorization", () => {
@@ -348,8 +342,8 @@ describe("limits and failure paths", () => {
     expect(promptUser).toHaveBeenCalledOnce();
   });
 
-  test("rate limiting kicks in per client and is audited", async () => {
-    const { gateway, audits } = createHarness({}, { callsPerMinute: 2 });
+  test("rate limiting kicks in per client", async () => {
+    const { gateway } = createHarness({}, { callsPerMinute: 2 });
 
     expect((await gateway.listHosts(CLIENT, {})).ok).toBe(true);
     expect((await gateway.listHosts(CLIENT, {})).ok).toBe(true);
@@ -358,7 +352,6 @@ describe("limits and failure paths", () => {
     expect(third.ok).toBe(false);
     if (third.ok) return;
     expect(third.error.code).toBe("rate_limited");
-    expect(audits.at(-1)?.metadata?.result).toBe("rate_limited");
 
     // Re-running `initialize` mints a new session id; the budget must not follow it.
     const sameClientNewSession = await gateway.listHosts({ ...CLIENT, id: "session-2" }, {});
@@ -750,7 +743,7 @@ describe("command search", () => {
     expect(historyReader).not.toHaveBeenCalled();
   });
 
-  test("redacts the credential shapes the shared audit redactor lets through", async () => {
+  test("redacts common credential shapes from agent output", async () => {
     const leaky = [
       "export DB_PASSWORD=hunter2",
       "export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI",
@@ -781,32 +774,6 @@ describe("command search", () => {
     ]) {
       expect(serialized).not.toContain(secret);
     }
-  });
-});
-
-describe("auditing", () => {
-  test("every call lands one agent.<tool> entry with redacted params", async () => {
-    const { gateway, audits } = createHarness();
-
-    await gateway.listHosts(CLIENT, { query: "prod" });
-    await gateway.describeHost(CLIENT, { target: "prod-hk" });
-
-    expect(audits.map((entry) => entry.action)).toEqual(["agent.host_list", "agent.host_describe"]);
-    expect(audits[1]?.connectionId).toBe(grantedFull.id);
-    expect(audits[1]?.metadata?.client).toBe("claude-code");
-    expect(audits[1]?.metadata?.result).toBe("ok");
-  });
-
-  test("agent exec audit and response redact command-line secrets", async () => {
-    const { gateway, audits } = createHarness();
-    const result = await gateway.execCommand(CLIENT, {
-      target: "prod-hk",
-      command: "echo DB_PASSWORD=hunter2"
-    });
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.command).not.toContain("hunter2");
-    expect(JSON.stringify(audits.at(-1)?.metadata)).not.toContain("hunter2");
   });
 });
 

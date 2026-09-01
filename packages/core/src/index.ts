@@ -515,16 +515,6 @@ export interface MigrationRecord {
   appliedAt: string;
 }
 
-export interface AuditLogRecord {
-  id: string;
-  action: string;
-  level: "info" | "warn" | "error";
-  connectionId?: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-  createdAt: string;
-}
-
 export interface CommandExecutionResult {
   connectionId: string;
   command: string;
@@ -682,12 +672,6 @@ export interface AppPreferences {
     /** 是否在终端下方显示路由追踪标签卡片 */
     showTracerouteTab: boolean;
   };
-  audit: {
-    /** 是否启用审计日志记录 */
-    enabled: boolean;
-    /** 审计日志保留天数，0 表示永不清理 */
-    retentionDays: number;
-  };
   agent: {
     /**
      * Agent（MCP）端点总开关。默认关闭：关闭时主进程不监听任何 socket 或端口，
@@ -786,10 +770,6 @@ export interface AppPreferencesPatch {
     language?: "cn" | "en";
     powProvider?: "api.nxtrace.org" | "sakura";
     showTracerouteTab?: boolean;
-  };
-  audit?: {
-    enabled?: boolean;
-    retentionDays?: number;
   };
   agent?: {
     enabled?: boolean;
@@ -991,10 +971,6 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     language: "cn",
     powProvider: "api.nxtrace.org",
     showTracerouteTab: true
-  },
-  audit: {
-    enabled: false,
-    retentionDays: 7
   },
   agent: {
     enabled: false,

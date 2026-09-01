@@ -34,17 +34,6 @@ const createRepositoryStub = (
     remove: () => {},
     getById: () => undefined,
     seedIfEmpty: () => {},
-    appendAuditLog: (payload) => ({
-      id: `audit-${payload.action}`,
-      action: payload.action,
-      level: payload.level,
-      connectionId: payload.connectionId,
-      message: payload.message,
-      metadata: payload.metadata,
-      createdAt: new Date().toISOString()
-    }),
-    clearAuditLogs: () => 0,
-    purgeExpiredAuditLogs: () => 0,
     listCommandHistory: () => store.map((entry) => ({ ...entry })),
     pushCommandHistory: (command) => {
       pushCalls.push(command);
@@ -69,8 +58,7 @@ const createRepositoryStub = (
         ssh: {},
         backup: {},
         window: {},
-        traceroute: {},
-        audit: {}
+        traceroute: {}
       }) as never,
     saveAppPreferences: (preferences) => preferences,
     getMasterKeyMeta: () => undefined,

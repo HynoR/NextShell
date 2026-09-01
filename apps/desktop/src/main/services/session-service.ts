@@ -42,16 +42,9 @@ export interface SessionServiceOptions {
    * `activeSessions` only learns about the session once the shell is up, so
    * without this a concurrently closing last tab would close the client out
    * from under it.
-   */
+  */
   retainConnection: (connectionId: string) => () => void;
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
   ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
@@ -74,7 +67,6 @@ export class SessionService {
   private readonly acquireTerminalConnection: SessionServiceOptions["acquireTerminalConnection"];
   private readonly retainConnection: (connectionId: string) => () => void;
   private readonly closeConnectionIfIdle: (connectionId: string) => Promise<void>;
-  private readonly appendAuditLogIfEnabled: SessionServiceOptions["appendAuditLogIfEnabled"];
   private readonly sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   private readonly sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
   private readonly ensureSystemMonitorRuntime: (
@@ -102,7 +94,6 @@ export class SessionService {
     this.acquireTerminalConnection = options.acquireTerminalConnection;
     this.retainConnection = options.retainConnection;
     this.closeConnectionIfIdle = options.closeConnectionIfIdle;
-    this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
     this.sendSessionStatus = options.sendSessionStatus;
     this.sessionDataDispatcher = options.sessionDataDispatcher;
     this.ensureSystemMonitorRuntime = options.ensureSystemMonitorRuntime;
@@ -294,16 +285,6 @@ export class SessionService {
         reason: connectedReason
       });
 
-      this.appendAuditLogIfEnabled({
-        action: "session.open",
-        level: "info",
-        connectionId,
-        message: "SSH session opened",
-        metadata: {
-          sessionId: descriptor.id
-        }
-      });
-
       return descriptor;
     } catch (error) {
       const rawReason = normalizeError(error);
@@ -320,16 +301,6 @@ export class SessionService {
           reason
         });
       }
-      this.appendAuditLogIfEnabled({
-        action: "session.open_failed",
-        level: "error",
-        connectionId,
-        message: "SSH session failed to open",
-        metadata: {
-          reason,
-          authRequired: Boolean(authReason)
-        }
-      });
       throw new Error(reason);
     } finally {
       releaseChannelSlot?.();
@@ -424,16 +395,6 @@ export class SessionService {
         status: "connected"
       });
 
-      this.appendAuditLogIfEnabled({
-        action: "session.local_open",
-        level: "info",
-        message: "Local terminal session opened",
-        metadata: {
-          sessionId: descriptor.id,
-          shell: shellLaunch.command
-        }
-      });
-
       return descriptor;
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Failed to open local shell";
@@ -445,15 +406,6 @@ export class SessionService {
         sessionId: descriptor.id,
         status: "failed",
         reason
-      });
-      this.appendAuditLogIfEnabled({
-        action: "session.local_open_failed",
-        level: "error",
-        message: "Local terminal session failed to open",
-        metadata: {
-          sessionId: descriptor.id,
-          reason
-        }
       });
       throw new Error(reason);
     }
@@ -537,12 +489,6 @@ export class SessionService {
         status: "disconnected"
       });
 
-      this.appendAuditLogIfEnabled({
-        action: "session.local_close",
-        level: "info",
-        message: "Local terminal session closed",
-        metadata: { sessionId }
-      });
       return { ok: true };
     }
 
@@ -555,14 +501,6 @@ export class SessionService {
     this.sendSessionStatus(active.sender, {
       sessionId,
       status: "disconnected"
-    });
-
-    this.appendAuditLogIfEnabled({
-      action: "session.close",
-      level: "info",
-      connectionId: active.connectionId,
-      message: "SSH session closed",
-      metadata: { sessionId }
     });
 
     await this.closeConnectionIfIdle(active.connectionId);
@@ -634,12 +572,6 @@ export class SessionService {
       this.activeSessions.delete(sessionId);
       drained.descriptor.status = status;
       this.sendSessionStatus(drained.sender, { sessionId, status, reason });
-      this.appendAuditLogIfEnabled({
-        action: "session.local_close",
-        level: status === "failed" ? "error" : "info",
-        message: "Local terminal session closed",
-        metadata: { sessionId, reason }
-      });
     });
   }
 }

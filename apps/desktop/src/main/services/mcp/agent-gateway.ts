@@ -16,7 +16,6 @@ import type {
   AgentPromptResponse,
   SessionAuthOverrideInput
 } from "@nextshell/shared";
-import { redactAuditMetadata } from "@nextshell/storage";
 import { classifyCommandRisk, type CommandRiskAssessment } from "@nextshell/terminal";
 
 import {
@@ -72,7 +71,7 @@ export interface AgentToolError {
   code: AgentErrorCode;
   /**
    * Agent-facing text. Never carries a raw exception message, stack, host
-   * connection string or key path — those only ever reach the audit log.
+   * connection string or key path — those are never exposed to the agent.
    */
   message: string;
   /** Populated for `ambiguous`, so the agent can ask the user to pick. */
@@ -287,14 +286,6 @@ export interface AgentLocalFileStat {
 
 // ─── Dependencies ───────────────────────────────────────────────────────────
 
-export interface AgentAuditEntry {
-  action: string;
-  level: "info" | "warn" | "error";
-  connectionId?: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-}
-
 /**
  * Narrow view of the main-process services the gateway needs. Kept as an
  * interface (rather than `ServiceContainer`) so the authorization surface
@@ -394,8 +385,6 @@ export interface AgentGatewayDeps {
   promptUser: (request: Omit<AgentPromptRequest, "id">) => Promise<AgentPromptResponse>;
   notifyUser: (title: string, message: string) => void;
   emitActivity: (event: AgentActivityEvent) => void;
-  /** Must append unconditionally — agent activity is audited even when the user disabled audit capture. */
-  appendAuditLog: (entry: AgentAuditEntry) => void;
   getPreferences: () => AppPreferences;
   now?: () => number;
 }
@@ -462,13 +451,19 @@ const accessLevelOf = (connection: ConnectionProfile): AgentAccessLevel =>
 const isAgentVisible = (connection: ConnectionProfile): boolean =>
   accessLevelOf(connection) !== "off";
 
-/**
- * Patterns the shared audit redactor misses, verified against real command
- * lines: `DB_PASSWORD=x` (its `\bpass` boundary never matches after `_`),
- * `scheme://user:pass@host`, `-u user:pass`, and a quoted value glued to the
- * flag (`-p'x'`, which its unquoted `-p<value>` rule skips).
- */
+/** Keep command text safe before returning it through the agent endpoint. */
 const COMMAND_SECRET_RULES: Array<{ re: RegExp; replace: string }> = [
+  {
+    re: /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,
+    replace: AGENT_REDACTED
+  },
+  { re: /(bearer\s+)[A-Za-z0-9._\-+/=]+/gi, replace: `$1${AGENT_REDACTED}` },
+  {
+    re: /\b(pass(?:word|wd)?|pwd|token|secret|api[_-]?key|access[_-]?key|passphrase|auth)\b(\s*[=:]\s*)("?)([^\s"']+)\3/gi,
+    replace: `$1$2${AGENT_REDACTED}`
+  },
+  { re: /(--(?:password|token)[=\s])[^\s'"]+/gi, replace: `$1${AGENT_REDACTED}` },
+  { re: /(^|\s)(-[pa])[^\s'"]+/g, replace: `$1$2${AGENT_REDACTED}` },
   // FOO_PASSWORD=secret / AWS_SECRET_ACCESS_KEY=secret / api-key="secret"
   {
     re: /([A-Za-z0-9_.-]*(?:pass(?:word|wd)?|pwd|secret|token|api[_-]?key|access[_-]?key|passphrase|credential|auth)[A-Za-z0-9_.-]*\s*=\s*)("[^"]*"|'[^']*'|[^\s]+)/gi,
@@ -500,15 +495,8 @@ const COMMAND_SECRET_RULES: Array<{ re: RegExp; replace: string }> = [
   }
 ];
 
-/**
- * Layered on top of the shared audit redactor rather than replacing it: neither
- * set is complete, and command text is the one agent-facing surface where a
- * miss means a plaintext credential leaves the app.
- */
 const redactText = (value: string): string => {
-  const redacted = redactAuditMetadata({ value });
-  const base = redacted?.value;
-  let out = typeof base === "string" ? base : AGENT_REDACTED;
+  let out = value;
   for (const rule of COMMAND_SECRET_RULES) {
     out = out.replace(rule.re, rule.replace);
   }
@@ -651,7 +639,7 @@ const looksBinary = (bytes: Buffer): boolean => {
  * The single authorization surface for MCP tool calls. Tools never touch the
  * service container directly: every call goes through `execute`, which applies
  * host authorization, rate limiting, per-host concurrency, a timeout, output
- * truncation and audit logging.
+ * truncation and activity events.
  */
 export class AgentGateway {
   private readonly deps: AgentGatewayDeps;
@@ -843,37 +831,6 @@ export class AgentGateway {
     return Math.min(millis, this.limits.maxCallTimeoutMs);
   }
 
-  private audit(
-    client: AgentClientIdentity,
-    tool: string,
-    params: Record<string, unknown>,
-    outcome: { code: "ok" | AgentErrorCode; connectionId?: string; level: "info" | "warn" }
-  ): void {
-    try {
-      const safeParams = {
-        ...params,
-        ...(typeof params.command === "string" ? { command: redactText(params.command) } : {})
-      };
-      this.deps.appendAuditLog({
-        action: `agent.${tool}`,
-        level: outcome.level,
-        connectionId: outcome.connectionId,
-        message: `Agent tool ${tool} → ${outcome.code}`,
-        metadata: {
-          client: client.name ?? "unknown",
-          clientVersion: client.version ?? "unknown",
-          clientSessionId: client.id,
-          transport: client.transport,
-          tool,
-          params: redactAuditMetadata(safeParams) ?? {},
-          result: outcome.code
-        }
-      });
-    } catch {
-      // Audit must never break a tool call.
-    }
-  }
-
   private emitActivity(
     client: AgentClientIdentity,
     id: string,
@@ -893,7 +850,7 @@ export class AgentGateway {
         createdAt: new Date(this.now()).toISOString()
       });
     } catch {
-      // Activity rendering is best-effort; authorization/audit remain authoritative.
+      // Activity rendering is best-effort; authorization remains authoritative.
     }
   }
 
@@ -923,7 +880,7 @@ export class AgentGateway {
 
   /**
    * Rate limit → client approval → per-host concurrency → preflight → timeout →
-   * error sanitization → audit.
+   * error sanitization → activity.
    *
    * Rate limiting deliberately runs *first*, ahead of anything that can open a
    * dialog: every user-facing prompt this call may raise (client approval,
@@ -959,14 +916,12 @@ export class AgentGateway {
         message:
           "Agent access is halted from NextShell's Agent panel. Ask the user to resume it before retrying."
       };
-      this.audit(client, tool, params, { code: error.code, connectionId, level: "warn" });
       this.emitActivity(client, activityId, tool, "failed", connectionId, "halted");
       return { ok: false, error };
     }
 
     const rateError = this.checkRateLimit(client.rateKey);
     if (rateError) {
-      this.audit(client, tool, params, { code: rateError.code, connectionId, level: "warn" });
       this.emitActivity(client, activityId, tool, "failed", connectionId, rateError.code);
       return { ok: false, error: rateError };
     }
@@ -976,7 +931,6 @@ export class AgentGateway {
         code: "forbidden",
         message: "The user did not approve this MCP client"
       };
-      this.audit(client, tool, params, { code: error.code, connectionId, level: "warn" });
       this.emitActivity(
         client,
         activityId,
@@ -995,7 +949,6 @@ export class AgentGateway {
           code: "busy",
           message: `Too many concurrent calls against this host (limit ${this.limits.perHostConcurrency})`
         };
-        this.audit(client, tool, params, { code: error.code, connectionId, level: "warn" });
         this.emitActivity(client, activityId, tool, "failed", connectionId, error.code);
         return { ok: false, error };
       }
@@ -1019,7 +972,6 @@ export class AgentGateway {
         }, timeoutMs);
       });
       const data = await Promise.race([task(controller.signal), timeout]);
-      this.audit(client, tool, params, { code: "ok", connectionId, level: "info" });
       const exitCode =
         typeof data === "object" && data !== null && "exitCode" in data
           ? String((data as { exitCode: unknown }).exitCode)
@@ -1035,7 +987,6 @@ export class AgentGateway {
       return { ok: true, data };
     } catch (error) {
       const toolError = error instanceof AgentToolFailure ? error.toolError : classifyError(error);
-      this.audit(client, tool, params, { code: toolError.code, connectionId, level: "warn" });
       this.emitActivity(
         client,
         activityId,
@@ -1079,11 +1030,9 @@ export class AgentGateway {
         message:
           "Agent access is halted from NextShell's Agent panel. Ask the user to resume it before retrying."
       };
-      this.audit(client, tool, params, { code: halted.code, connectionId, level: "warn" });
       return { ok: false, error: halted };
     }
     const reported = this.checkRateLimit(client.rateKey) ?? error;
-    this.audit(client, tool, params, { code: reported.code, connectionId, level: "warn" });
     return { ok: false, error: reported };
   }
 

@@ -155,9 +155,6 @@ const api: NextShellApi = {
     exec: (payload) => invoke(IPCChannel.CommandExec, payload),
     execBatch: (payload) => invoke(IPCChannel.CommandBatchExec, payload)
   },
-  audit: {
-    clear: (payload) => invoke(IPCChannel.AuditClear, payload ?? {})
-  },
   settings: {
     get: () => invoke(IPCChannel.SettingsGet, {}),
     update: (payload) => invoke(IPCChannel.SettingsUpdate, payload)

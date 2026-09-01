@@ -57,13 +57,6 @@ interface ImportExportServiceOptions {
   connectionFolders: ConnectionFolderRepository;
   vault: EncryptedSecretVault;
   upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
-  appendAuditLogIfEnabled: (payload: {
-    action: string;
-    level: "info" | "warn" | "error";
-    connectionId?: string;
-    message: string;
-    metadata?: Record<string, unknown>;
-  }) => void;
 }
 
 const ENCRYPTED_EXPORT_PREFIX = "b64##";
@@ -76,7 +69,6 @@ export class ImportExportService {
   private readonly connectionFolders: ConnectionFolderRepository;
   private readonly vault: EncryptedSecretVault;
   private readonly upsertConnection: (input: ConnectionUpsertInput) => Promise<ConnectionProfile>;
-  private readonly appendAuditLogIfEnabled: ImportExportServiceOptions["appendAuditLogIfEnabled"];
 
   constructor(options: ImportExportServiceOptions) {
     this.connections = options.connections;
@@ -84,7 +76,6 @@ export class ImportExportService {
     this.connectionFolders = options.connectionFolders;
     this.vault = options.vault;
     this.upsertConnection = options.upsertConnection;
-    this.appendAuditLogIfEnabled = options.appendAuditLogIfEnabled;
   }
 
   // ---------------------------------------------------------------------------
@@ -142,13 +133,6 @@ export class ImportExportService {
 
     fs.writeFileSync(result.filePath, fileContent, "utf-8");
 
-    this.appendAuditLogIfEnabled({
-      action: "connection.export",
-      level: "info",
-      message: `Exported ${exportedConnections.length} connections`,
-      metadata: { filePath: result.filePath, count: exportedConnections.length, encrypted }
-    });
-
     return { ok: true, filePath: result.filePath };
   }
 
@@ -165,13 +149,6 @@ export class ImportExportService {
       directoryPath: input.directoryPath,
       encryptionPassword: input.encryptionPassword,
       buildExportedConnection
-    });
-
-    this.appendAuditLogIfEnabled({
-      action: "connection.export.batch",
-      level: "info",
-      message: `Batch exported ${result.exported}/${result.total} connections`,
-      metadata: { ...result }
     });
 
     return result;
@@ -331,13 +308,6 @@ export class ImportExportService {
         result.errors.push(`${entry.name} (${entry.host}:${entry.port}): ${reason}`);
       }
     }
-
-    this.appendAuditLogIfEnabled({
-      action: "connection.import",
-      level: "info",
-      message: `Imported connections: ${result.created} created, ${result.overwritten} overwritten, ${result.skipped} skipped, ${result.failed} failed`,
-      metadata: { ...result }
-    });
 
     return result;
   }

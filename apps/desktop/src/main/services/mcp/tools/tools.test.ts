@@ -159,7 +159,6 @@ const deps: AgentGatewayDeps = {
   getTransfer: () => undefined,
   cancelTransfer: () => false,
   runningTransferCount: () => 0,
-  appendAuditLog: () => undefined,
   getPreferences: () => DEFAULT_APP_PREFERENCES
 };
 

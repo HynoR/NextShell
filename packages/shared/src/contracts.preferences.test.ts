@@ -8,16 +8,6 @@ const assert = (condition: boolean, message: string): void => {
 };
 
 (() => {
-  assert(
-    DEFAULT_APP_PREFERENCES.audit.enabled === false,
-    "audit should default to disabled in core defaults"
-  );
-
-  const parsed = appPreferencesSchema.parse({});
-  assert(parsed.audit.enabled === false, "audit should default to disabled in schema parsing");
-})();
-
-(() => {
   const parsed = appPreferencesSchema.safeParse({
     window: {
       appearance: "system",

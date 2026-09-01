@@ -1,5 +1,4 @@
 import { Badge, Button, Checkbox, Input, Skeleton, Space, Tag, Typography } from "antd";
-import { AuditRetentionDaysInput } from "../AuditRetentionDaysInput";
 import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-components";
 import type { SaveFn } from "./types";
 
@@ -16,11 +15,6 @@ export const SecuritySection = ({
   changeBusy,
   backupRememberPassword,
   loading,
-  auditEnabled,
-  auditRetentionDays,
-  clearingAuditLogs,
-  setAuditEnabled,
-  setAuditRetentionDays,
   setPwdInput,
   setPwdConfirm,
   setChangeOldPwd,
@@ -32,7 +26,6 @@ export const SecuritySection = ({
   onChangePassword,
   onClearRemembered,
   onReauthorizeCredentialStore,
-  onClearAuditLogs,
   save
 }: {
   pwdStatus: { isSet: boolean; isUnlocked: boolean; canRememberPassword: boolean };
@@ -47,11 +40,6 @@ export const SecuritySection = ({
   changeBusy: boolean;
   backupRememberPassword: boolean;
   loading: boolean;
-  auditEnabled: boolean;
-  auditRetentionDays: number;
-  clearingAuditLogs: boolean;
-  setAuditEnabled: (v: boolean) => void;
-  setAuditRetentionDays: (v: number) => void;
   setPwdInput: (v: string) => void;
   setPwdConfirm: (v: string) => void;
   setChangeOldPwd: (v: string) => void;
@@ -63,7 +51,6 @@ export const SecuritySection = ({
   onChangePassword: () => void;
   onClearRemembered: () => void;
   onReauthorizeCredentialStore: () => void;
-  onClearAuditLogs: () => void;
   save: SaveFn;
 }) => (
   <>
@@ -193,43 +180,5 @@ export const SecuritySection = ({
       )}
     </SettingsCard>
 
-    <SettingsCard title="审计日志" description="默认关闭，仅在你明确启用后才记录新的操作日志">
-      <SettingsSwitchRow
-        label="启用审计日志"
-        hint="切换结果在下次启动应用后生效"
-        checked={auditEnabled}
-        disabled={loading}
-        onChange={(value) => {
-          setAuditEnabled(value);
-          save({ audit: { enabled: value } });
-        }}
-      />
-      <SettingsRow label="日志保留天数" hint="设为 0 表示永不清理">
-        <AuditRetentionDaysInput
-          value={auditRetentionDays}
-          disabled={loading || !auditEnabled}
-          onChange={(value) => {
-            setAuditRetentionDays(value);
-            save({ audit: { retentionDays: value } });
-          }}
-        />
-      </SettingsRow>
-      <SettingsRow label="历史日志">
-        <Button
-          danger
-          loading={clearingAuditLogs}
-          disabled={loading || clearingAuditLogs}
-          onClick={onClearAuditLogs}
-        >
-          清空审计日志
-        </Button>
-      </SettingsRow>
-      <div className="stg-note">
-        {auditEnabled
-          ? "审计日志已设为启用。新设置会在下次启动后开始生效，超过保留天数的日志会在启动时自动清理。"
-          : "审计日志当前未启用，不会新增记录。历史日志仍可查看和清空，保留天数仅用于启动时清理旧记录。"}
-      </div>
-      <div className="stg-note">审计日志不包含在数据备份中。</div>
-    </SettingsCard>
   </>
 );

@@ -85,10 +85,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     preferences.backup.defaultRestoreConflictPolicy
   );
 
-  const [auditEnabled, setAuditEnabled] = useState(preferences.audit.enabled);
-  const [auditRetentionDays, setAuditRetentionDays] = useState(preferences.audit.retentionDays);
-  const [clearingAuditLogs, setClearingAuditLogs] = useState(false);
-
   const [pwdStatus, setPwdStatus] = useState<{
     isSet: boolean;
     isUnlocked: boolean;
@@ -150,8 +146,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     setNexttracePath(preferences.traceroute.nexttracePath);
     setBackupConflictPolicy(preferences.backup.defaultBackupConflictPolicy);
     setRestoreConflictPolicy(preferences.backup.defaultRestoreConflictPolicy);
-    setAuditEnabled(preferences.audit.enabled);
-    setAuditRetentionDays(preferences.audit.retentionDays);
     setChangeOldPwd("");
     setChangeNewPwd("");
     setChangeConfirmPwd("");
@@ -389,31 +383,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
     });
   };
 
-  const handleClearAuditLogs = useCallback((): void => {
-    modal.confirm({
-      title: "清空审计日志",
-      content: "这会永久删除本地审计日志历史，无法恢复。确定继续？",
-      okText: "确认清空",
-      cancelText: "取消",
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        setClearingAuditLogs(true);
-        try {
-          const result = await window.nextshell.audit.clear();
-          if (result.deleted > 0) {
-            message.success(`已清空 ${result.deleted} 条审计日志。`);
-          } else {
-            message.success("没有可清空的审计日志。");
-          }
-        } catch (error) {
-          message.error(`清空审计日志失败：${formatErrorMessage(error, "请稍后重试")}`);
-        } finally {
-          setClearingAuditLogs(false);
-        }
-      }
-    });
-  }, [message, modal]);
-
   // ─── Memoized section content ───────────────────────────────────────
   const sectionContent = useMemo(() => {
     switch (activeSection) {
@@ -440,11 +409,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
             changeBusy={changeBusy}
             backupRememberPassword={preferences.backup.rememberPassword}
             loading={loading}
-            auditEnabled={auditEnabled}
-            auditRetentionDays={auditRetentionDays}
-            clearingAuditLogs={clearingAuditLogs}
-            setAuditEnabled={setAuditEnabled}
-            setAuditRetentionDays={setAuditRetentionDays}
             setPwdInput={setPwdInput}
             setPwdConfirm={setPwdConfirm}
             setChangeOldPwd={setChangeOldPwd}
@@ -456,7 +420,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
             onChangePassword={() => void handleChangePassword()}
             onClearRemembered={() => void handleClearRemembered()}
             onReauthorizeCredentialStore={() => void handleReauthorizeCredentialStore()}
-            onClearAuditLogs={handleClearAuditLogs}
             save={save}
           />
         );

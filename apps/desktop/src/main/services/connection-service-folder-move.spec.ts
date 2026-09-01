@@ -97,7 +97,6 @@ const createService = (connection: ConnectionProfile, folders: ConnectionFolder[
     closeConnectionIfIdle: async () => undefined,
     remoteEditManager: {} as never,
     monitorStates: new Map(),
-    appendAuditLogIfEnabled: () => undefined,
     sendSessionStatus: () => undefined
   });
 

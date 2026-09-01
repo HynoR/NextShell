@@ -144,7 +144,6 @@ const createHarness = (): Harness => {
     getConnectionOrThrow: () => profile,
     resolveConnectOptions: async () => ({}) as unknown as SshConnectOptions,
     activeSessions,
-    appendAuditLogIfEnabled: () => undefined,
     debugSenders: new Set<WebContents>(),
     emitDebugLog: () => undefined,
     emitSystemSnapshot: () => undefined,
