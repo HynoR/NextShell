@@ -303,13 +303,6 @@ export const commandExecSchema = z.object({
   command: z.string().trim().min(1)
 });
 
-export const commandBatchExecSchema = z.object({
-  command: z.string().trim().min(1),
-  connectionIds: z.array(z.string().uuid()).min(1).max(500),
-  maxConcurrency: z.coerce.number().int().min(1).max(50).default(5),
-  retryCount: z.coerce.number().int().min(0).max(5).default(1)
-});
-
 export const sftpListSchema = z.object({
   connectionId: z.string().uuid(),
   path: z.string().min(1)
@@ -403,7 +396,7 @@ export const savedCommandUpsertSchema = z.object({
   description: z.preprocess(trimToOptionalString, z.string().optional()),
   group: z.string().trim().min(1).default("默认"),
   command: z.string().trim().min(1),
-  isTemplate: z.boolean().default(false)
+  appendCr: z.boolean().optional()
 });
 
 export const savedCommandRemoveSchema = z.object({
@@ -488,25 +481,6 @@ export const appPreferencesSchema = z
           .default(DEFAULT_APP_PREFERENCES.remoteEdit.editorMode)
       })
       .default(DEFAULT_APP_PREFERENCES.remoteEdit),
-    commandCenter: z
-      .object({
-        rememberTemplateParams: z
-          .boolean()
-          .default(DEFAULT_APP_PREFERENCES.commandCenter.rememberTemplateParams),
-        batchMaxConcurrency: z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(50)
-          .default(DEFAULT_APP_PREFERENCES.commandCenter.batchMaxConcurrency),
-        batchRetryCount: z.coerce
-          .number()
-          .int()
-          .min(0)
-          .max(5)
-          .default(DEFAULT_APP_PREFERENCES.commandCenter.batchRetryCount)
-      })
-      .default(DEFAULT_APP_PREFERENCES.commandCenter),
     terminal: z
       .object({
         backgroundColor: terminalColorSchema.default(
@@ -683,13 +657,6 @@ export const appPreferencesPatchSchema = z.object({
     .object({
       defaultEditorCommand: z.string().optional(),
       editorMode: z.enum(["builtin", "external"]).optional()
-    })
-    .optional(),
-  commandCenter: z
-    .object({
-      rememberTemplateParams: z.boolean().optional(),
-      batchMaxConcurrency: z.coerce.number().int().min(1).max(50).optional(),
-      batchRetryCount: z.coerce.number().int().min(0).max(5).optional()
     })
     .optional(),
   terminal: z
@@ -1224,7 +1191,6 @@ export type MonitorNetworkStartInput = z.infer<typeof monitorNetworkStartSchema>
 export type MonitorNetworkStopInput = z.infer<typeof monitorNetworkStopSchema>;
 export type MonitorNetworkConnectionsInput = z.infer<typeof monitorNetworkConnectionsSchema>;
 export type CommandExecInput = z.infer<typeof commandExecSchema>;
-export type CommandBatchExecInput = z.infer<typeof commandBatchExecSchema>;
 export type SftpListInput = z.infer<typeof sftpListSchema>;
 export type SftpUploadInput = z.infer<typeof sftpUploadSchema>;
 export type SftpDownloadInput = z.infer<typeof sftpDownloadSchema>;

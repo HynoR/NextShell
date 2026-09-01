@@ -54,7 +54,6 @@ const createRepositoryStub = (
         terminal: {},
         transfer: {},
         remoteEdit: {},
-        commandCenter: {},
         ssh: {},
         window: {},
         traceroute: {}
@@ -63,7 +62,6 @@ const createRepositoryStub = (
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
-    clearTemplateParams: () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
   } satisfies Partial<ConnectionRepository> & { pushCalls: string[] };

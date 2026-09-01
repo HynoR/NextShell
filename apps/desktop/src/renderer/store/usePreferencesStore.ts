@@ -9,7 +9,6 @@ const LEGACY_MIGRATION_FLAG_KEY = "nextshell.preferences.migrated.v1";
 const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   transfer: { ...prefs.transfer },
   remoteEdit: { ...prefs.remoteEdit },
-  commandCenter: { ...prefs.commandCenter },
   terminal: {
     ...prefs.terminal,
     localShell: { ...prefs.terminal.localShell }
@@ -88,7 +87,7 @@ const buildLegacyPatch = (current: AppPreferences): AppPreferencesPatchInput | u
     };
   }
 
-  if (!patch.transfer && !patch.remoteEdit && !patch.commandCenter) {
+  if (!patch.transfer && !patch.remoteEdit) {
     setLegacyMigrated();
     return undefined;
   }
@@ -144,7 +143,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     const optimistic: AppPreferences = {
       transfer: { ...prev.transfer, ...(patch.transfer ?? {}) },
       remoteEdit: { ...prev.remoteEdit, ...(patch.remoteEdit ?? {}) },
-      commandCenter: { ...prev.commandCenter, ...(patch.commandCenter ?? {}) },
       terminal: {
         ...prev.terminal,
         ...(patch.terminal ?? {}),

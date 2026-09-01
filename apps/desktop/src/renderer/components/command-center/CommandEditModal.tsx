@@ -1,19 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
-import { Input, Modal, Space, Switch, Typography } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button, Checkbox, Input, Modal, Space, Typography } from "antd";
 import type { ScopedCommandItem } from "@nextshell/core";
 
 interface CommandEditModalProps {
   open: boolean;
   scopeLabel: string;
   editingCommand: ScopedCommandItem | null;
-  onSubmit: (values: {
-    name: string;
-    description: string;
-    group: string;
-    command: string;
-    isTemplate: boolean;
-  }) => void;
+  onSubmit: (values: { name: string; command: string; appendCr: boolean }) => void;
   onCancel: () => void;
+}
+
+interface Selection {
+  start: number;
+  end: number;
 }
 
 export const CommandEditModal = ({
@@ -24,37 +23,40 @@ export const CommandEditModal = ({
   onCancel
 }: CommandEditModalProps) => {
   const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [group, setGroup] = useState("默认");
   const [command, setCommand] = useState("");
-  const [isTemplate, setIsTemplate] = useState(false);
+  const [appendCr, setAppendCr] = useState(true);
+  const [selection, setSelection] = useState<Selection>({ start: 0, end: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    if (editingCommand) {
-      setName(editingCommand.name);
-      setDescription(editingCommand.description ?? "");
-      setGroup(editingCommand.group || "默认");
-      setCommand(editingCommand.command);
-      setIsTemplate(editingCommand.isTemplate);
-    } else {
-      setName("");
-      setDescription("");
-      setGroup("默认");
-      setCommand("");
-      setIsTemplate(false);
-    }
+    setName(editingCommand?.name ?? "");
+    setCommand(editingCommand?.command ?? "");
+    setAppendCr(editingCommand?.appendCr !== false);
+    setSelection({ start: 0, end: 0 });
   }, [open, editingCommand]);
 
+  const insertParameter = useCallback(
+    (index: number) => {
+      const value = `[#参数${index}]`;
+      const start = Math.min(selection.start, command.length);
+      const end = Math.min(Math.max(start, selection.end), command.length);
+      const next = `${command.slice(0, start)}${value}${command.slice(end)}`;
+      const cursor = start + value.length;
+      setCommand(next);
+      setSelection({ start: cursor, end: cursor });
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        textarea?.focus();
+        textarea?.setSelectionRange(cursor, cursor);
+      });
+    },
+    [command, selection]
+  );
+
   const handleOk = useCallback(() => {
-    onSubmit({
-      name: name.trim(),
-      description: description.trim(),
-      group: group.trim() || "默认",
-      command: command.trim(),
-      isTemplate
-    });
-  }, [name, description, group, command, isTemplate, onSubmit]);
+    onSubmit({ name: name.trim(), command: command.trim(), appendCr });
+  }, [appendCr, command, name, onSubmit]);
 
   return (
     <Modal
@@ -63,43 +65,56 @@ export const CommandEditModal = ({
       onOk={handleOk}
       onCancel={onCancel}
       destroyOnHidden
-      width={520}
+      width={560}
     >
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          当前作用域: {scopeLabel}
+          当前文件夹：{scopeLabel}
         </Typography.Text>
         <div>
           <Typography.Text type="secondary">名称</Typography.Text>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="命令名称" />
-        </div>
-        <div>
-          <Typography.Text type="secondary">描述（可选）</Typography.Text>
           <Input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="简要说明"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="命令名称"
           />
         </div>
         <div>
-          <Typography.Text type="secondary">分组</Typography.Text>
-          <Input value={group} onChange={(e) => setGroup(e.target.value)} placeholder="默认" />
-        </div>
-        <div>
-          <Typography.Text type="secondary">命令内容（模板可用 [#key] 占位符）</Typography.Text>
+          <Typography.Text type="secondary">命令</Typography.Text>
           <Input.TextArea
+            ref={(instance) => {
+              textareaRef.current = instance?.resizableTextArea?.textArea ?? null;
+            }}
             value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            placeholder="例如: uname -a 或 tail -n [#lines] /var/log/syslog"
-            rows={3}
+            onChange={(event) => setCommand(event.target.value)}
+            onSelect={(event) =>
+              setSelection({
+                start: event.currentTarget.selectionStart,
+                end: event.currentTarget.selectionEnd
+              })
+            }
+            onClick={(event) =>
+              setSelection({
+                start: event.currentTarget.selectionStart,
+                end: event.currentTarget.selectionEnd
+              })
+            }
+            placeholder="例如：tail -n [#行数] /var/log/system.log"
+            rows={5}
+            style={{ fontFamily: "var(--mono)" }}
           />
         </div>
-        <div>
-          <Space>
-            <Typography.Text type="secondary">模板命令（含 [#占位符] 时勾选）</Typography.Text>
-            <Switch checked={isTemplate} onChange={setIsTemplate} />
-          </Space>
-        </div>
+        <Space wrap>
+          <Typography.Text type="secondary">插入参数</Typography.Text>
+          {Array.from({ length: 5 }, (_, index) => (
+            <Button key={index} size="small" onClick={() => insertParameter(index + 1)}>
+              参数{index + 1}
+            </Button>
+          ))}
+        </Space>
+        <Checkbox checked={appendCr} onChange={(event) => setAppendCr(event.target.checked)}>
+          末尾添加回车符
+        </Checkbox>
       </Space>
     </Modal>
   );

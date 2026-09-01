@@ -1,5 +1,4 @@
 import type {
-  BatchCommandExecutionResult,
   CommandExecutionResult,
   CommandHistoryEntry,
   ConnectionImportEntry,
@@ -36,7 +35,6 @@ import type {
   ConnectionFolderRenameInput,
   ConnectionFolderReorderInput,
   DebugLogEntry,
-  CommandBatchExecInput,
   CommandExecInput,
   ConnectionBatchAuthUpdateInput,
   ConnectionBatchAuthUpdateResult,
@@ -233,7 +231,6 @@ export interface NextShellApi {
   };
   command: {
     exec: (payload: CommandExecInput) => Promise<CommandExecutionResult>;
-    execBatch: (payload: CommandBatchExecInput) => Promise<BatchCommandExecutionResult>;
   };
   settings: {
     get: () => Promise<AppPreferences>;
@@ -424,7 +421,6 @@ export interface IpcInvokeMethods {
   [IPCChannel.MonitorNetworkStop]: NextShellApi["monitor"]["stopNetwork"];
   [IPCChannel.MonitorNetworkConnections]: NextShellApi["monitor"]["getNetworkConnections"];
   [IPCChannel.CommandExec]: NextShellApi["command"]["exec"];
-  [IPCChannel.CommandBatchExec]: NextShellApi["command"]["execBatch"];
   [IPCChannel.SftpList]: NextShellApi["sftp"]["list"];
   [IPCChannel.SftpListLocal]: NextShellApi["sftp"]["listLocal"];
   [IPCChannel.SftpUpload]: NextShellApi["sftp"]["upload"];

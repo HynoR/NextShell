@@ -700,7 +700,6 @@ describe("command search", () => {
     name: "deploy",
     group: "ops",
     command,
-    isTemplate: false,
     createdAt: TIMESTAMP,
     updatedAt: TIMESTAMP
   });

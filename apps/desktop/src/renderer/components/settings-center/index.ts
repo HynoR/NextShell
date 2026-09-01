@@ -2,7 +2,6 @@ export { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-component
 export { WindowSection } from "./window-section";
 export { TransferSection } from "./transfer-section";
 export { EditorSection } from "./editor-section";
-export { CommandSection } from "./command-section";
 export { TerminalSection } from "./terminal-section";
 export { NetworkSection } from "./network-section";
 export { RecycleBinSection } from "./recycle-bin-section";

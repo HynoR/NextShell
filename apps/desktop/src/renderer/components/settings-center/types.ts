@@ -2,7 +2,6 @@ export type SettingsSection =
   | "window"
   | "transfer"
   | "editor"
-  | "command"
   | "terminal"
   | "network"
   | "cloudSync"

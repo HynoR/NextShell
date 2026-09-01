@@ -1,5 +1,4 @@
 import {
-  commandBatchExecSchema,
   sessionWriteSchema,
   sftpDownloadPackedSchema,
   sftpEditSaveBuiltinSchema,
@@ -32,24 +31,6 @@ const makeUuid = (index: number): string =>
     data: "x".repeat(1024 * 1024 + 1)
   });
   assert(!parsed.success, "sessionWriteSchema should reject data over 1MB");
-})();
-
-// ─── commandBatchExecSchema: connectionIds 上限 500 ─────────────────────────
-
-(() => {
-  const parsed = commandBatchExecSchema.safeParse({
-    command: "uptime",
-    connectionIds: Array.from({ length: 500 }, (_, index) => makeUuid(index))
-  });
-  assert(parsed.success, "commandBatchExecSchema should accept 500 connectionIds");
-})();
-
-(() => {
-  const parsed = commandBatchExecSchema.safeParse({
-    command: "uptime",
-    connectionIds: Array.from({ length: 501 }, (_, index) => makeUuid(index))
-  });
-  assert(!parsed.success, "commandBatchExecSchema should reject over 500 connectionIds");
 })();
 
 // ─── packed 传输: entryNames/localPaths 上限 500 ────────────────────────────

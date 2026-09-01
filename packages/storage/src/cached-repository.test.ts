@@ -85,7 +85,6 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
         terminal: {},
         transfer: {},
         remoteEdit: {},
-        commandCenter: {},
         ssh: {},
         window: {},
         traceroute: {}
@@ -94,7 +93,6 @@ const createRepositoryStub = (initialHistory: MutableHistoryEntry[]): Connection
     getDeviceKey: () => undefined,
     saveDeviceKey: () => {},
     getSecretStore: () => ({}) as never,
-    clearTemplateParams: () => {},
     getDbPath: () => "/tmp/test.db",
     close: () => {}
   } satisfies Partial<ConnectionRepository>;

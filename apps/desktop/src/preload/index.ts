@@ -142,8 +142,7 @@ const api: NextShellApi = {
     getNetworkConnections: (payload) => invoke(IPCChannel.MonitorNetworkConnections, payload)
   },
   command: {
-    exec: (payload) => invoke(IPCChannel.CommandExec, payload),
-    execBatch: (payload) => invoke(IPCChannel.CommandBatchExec, payload)
+    exec: (payload) => invoke(IPCChannel.CommandExec, payload)
   },
   settings: {
     get: () => invoke(IPCChannel.SettingsGet, {}),

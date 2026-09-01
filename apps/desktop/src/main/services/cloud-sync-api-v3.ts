@@ -76,7 +76,8 @@ const workspaceCommandItemSchema = z.object({
   description: z.string().optional(),
   group: z.string(),
   command: z.string(),
-  isTemplate: z.boolean(),
+  isTemplate: z.boolean().optional(),
+  appendCr: z.boolean().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });

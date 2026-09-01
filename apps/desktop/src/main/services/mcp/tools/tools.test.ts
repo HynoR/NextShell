@@ -102,7 +102,6 @@ const deps: AgentGatewayDeps = {
       name: "nginx status",
       group: "ops",
       command: "sudo systemctl status nginx",
-      isTemplate: false,
       createdAt: TIMESTAMP,
       updatedAt: TIMESTAMP
     }

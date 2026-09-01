@@ -9,7 +9,6 @@ export const SECTIONS: Array<{ key: SettingsSection; label: string; icon: string
   { key: "window", label: "窗口行为", icon: "ri-window-line" },
   { key: "transfer", label: "文件传输", icon: "ri-upload-cloud-2-line" },
   { key: "editor", label: "远端编辑", icon: "ri-code-s-slash-line" },
-  { key: "command", label: "命令中心", icon: "ri-terminal-box-line" },
   { key: "terminal", label: "终端主题", icon: "ri-palette-line" },
   { key: "network", label: "网络工具", icon: "ri-route-line" },
   { key: "cloudSync", label: "云同步", icon: "ri-git-merge-line" },

@@ -26,7 +26,6 @@ export const IPCChannel = {
   MonitorNetworkData: "nextshell:monitor:network:data",
   MonitorNetworkConnections: "nextshell:monitor:network:connections",
   CommandExec: "nextshell:command:exec",
-  CommandBatchExec: "nextshell:command:batch:exec",
   SftpList: "nextshell:sftp:list",
   SftpUpload: "nextshell:sftp:upload",
   SftpDownload: "nextshell:sftp:download",

@@ -5,7 +5,6 @@ import {
   type IpcInvokeChannel,
   type IpcInvokePayload,
   type IpcInvokeResult,
-  commandBatchExecSchema,
   commandExecSchema,
   connectionBatchAuthUpdateSchema,
   commandHistoryClearSchema,
@@ -369,12 +368,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: commandExecSchema,
     label: "命令执行",
     dispatch: (services, input) => services.commands.execCommand(input.connectionId, input.command)
-  }),
-  define({
-    channel: IPCChannel.CommandBatchExec,
-    schema: commandBatchExecSchema,
-    label: "批量命令执行",
-    dispatch: (services, input) => services.commands.execBatchCommand(input)
   }),
   // ─── SFTP ─────────────────────────────────────────────────────────────────
   define({

@@ -26,9 +26,7 @@ import type {
 import {
   DEFAULT_APP_PREFERENCES as DEFAULT_APP_PREFERENCES_VALUE,
   LOCAL_DEFAULT_SCOPE_KEY,
-  buildResourceId,
-  normalizeBatchMaxConcurrency,
-  normalizeBatchRetryCount
+  buildResourceId
 } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
 
@@ -161,7 +159,7 @@ interface WorkspaceCommandRow {
   description: string | null;
   group_name: string;
   command: string;
-  is_template: number;
+  append_cr: number;
   created_at: string;
   updated_at: string;
 }
@@ -184,7 +182,7 @@ interface SavedCommandRow {
   description: string | null;
   group_name: string;
   command: string;
-  is_template: number;
+  append_cr: number;
   created_at: string;
   updated_at: string;
 }
@@ -403,7 +401,7 @@ const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem =
   description: row.description ?? undefined,
   group: row.group_name,
   command: row.command,
-  isTemplate: row.is_template === 1,
+  appendCr: row.append_cr !== 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
@@ -420,7 +418,7 @@ const rowToSavedCommand = (row: SavedCommandRow): SavedCommand => ({
   description: row.description ?? undefined,
   group: row.group_name,
   command: row.command,
-  isTemplate: row.is_template === 1,
+  appendCr: row.append_cr !== 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at
 });
@@ -438,7 +436,6 @@ const cloneDefaultPreferences = (): AppPreferences => {
   return {
     transfer: { ...DEFAULT_APP_PREFERENCES_VALUE.transfer },
     remoteEdit: { ...DEFAULT_APP_PREFERENCES_VALUE.remoteEdit },
-    commandCenter: { ...DEFAULT_APP_PREFERENCES_VALUE.commandCenter },
     terminal: { ...DEFAULT_APP_PREFERENCES_VALUE.terminal },
     ssh: { ...DEFAULT_APP_PREFERENCES_VALUE.ssh },
     window: { ...DEFAULT_APP_PREFERENCES_VALUE.window },
@@ -494,24 +491,6 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.remoteEdit?.editorMode === "external"
             ? parsed.remoteEdit.editorMode
             : fallback.remoteEdit.editorMode
-      },
-      commandCenter: {
-        rememberTemplateParams:
-          typeof parsed.commandCenter?.rememberTemplateParams === "boolean"
-            ? parsed.commandCenter.rememberTemplateParams
-            : fallback.commandCenter.rememberTemplateParams,
-        batchMaxConcurrency: normalizeBatchMaxConcurrency(
-          typeof parsed.commandCenter?.batchMaxConcurrency === "number"
-            ? parsed.commandCenter.batchMaxConcurrency
-            : undefined,
-          fallback.commandCenter.batchMaxConcurrency
-        ),
-        batchRetryCount: normalizeBatchRetryCount(
-          typeof parsed.commandCenter?.batchRetryCount === "number"
-            ? parsed.commandCenter.batchRetryCount
-            : undefined,
-          fallback.commandCenter.batchRetryCount
-        )
       },
       terminal: {
         backgroundColor:
@@ -1470,6 +1449,15 @@ const migrations: MigrationDefinition[] = [
         );
       `);
     }
+  },
+  {
+    version: 30,
+    name: "drop_command_template_params",
+    apply: (db) => {
+      db.exec("DROP TABLE IF EXISTS command_template_params;");
+      ensureColumn(db, "saved_commands", "append_cr", "append_cr INTEGER NOT NULL DEFAULT 1");
+      ensureColumn(db, "workspace_commands", "append_cr", "append_cr INTEGER NOT NULL DEFAULT 1");
+    }
   }
 ];
 
@@ -1612,7 +1600,7 @@ export interface ConnectionRepository {
     description?: string;
     group: string;
     command: string;
-    isTemplate: boolean;
+    appendCr?: boolean;
   }) => SavedCommand;
   removeSavedCommand: (id: string) => void;
   getAppPreferences: () => AppPreferences;
@@ -1642,7 +1630,6 @@ export interface ConnectionRepository {
   getDeviceKey: () => string | undefined;
   saveDeviceKey: (key: string) => void;
   getSecretStore: () => SecretStoreDB;
-  clearTemplateParams: (commandId: string) => void;
   getDbPath: () => string;
   close: () => void;
 }
@@ -2005,7 +1992,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const group = query.group?.trim() || null;
 
     let sql = `
-      SELECT id, name, description, group_name, command, is_template, created_at, updated_at
+      SELECT id, name, description, group_name, command, append_cr, created_at, updated_at
       FROM saved_commands
       WHERE 1=1
     `;
@@ -2031,7 +2018,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     description?: string;
     group: string;
     command: string;
-    isTemplate: boolean;
+    appendCr?: boolean;
   }): SavedCommand {
     const now = new Date().toISOString();
     const id = input.id ?? randomUUID();
@@ -2041,14 +2028,14 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     this.db
       .prepare(
         `
-        INSERT INTO saved_commands (id, name, description, group_name, command, is_template, created_at, updated_at)
-        VALUES (@id, @name, @description, @groupName, @command, @isTemplate, @now, @now)
+        INSERT INTO saved_commands (id, name, description, group_name, command, append_cr, created_at, updated_at)
+        VALUES (@id, @name, @description, @groupName, @command, @appendCr, @now, @now)
         ON CONFLICT(id) DO UPDATE SET
           name = @name,
           description = @description,
           group_name = @groupName,
           command = @command,
-          is_template = @isTemplate,
+          append_cr = @appendCr,
           updated_at = @now
       `
       )
@@ -2058,13 +2045,13 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         description,
         groupName,
         command: input.command.trim(),
-        isTemplate: input.isTemplate ? 1 : 0,
+        appendCr: input.appendCr === false ? 0 : 1,
         now
       });
 
     const row = this.db
       .prepare(
-        "SELECT id, name, description, group_name, command, is_template, created_at, updated_at FROM saved_commands WHERE id = ?"
+        "SELECT id, name, description, group_name, command, append_cr, created_at, updated_at FROM saved_commands WHERE id = ?"
       )
       .get(id) as SavedCommandRow;
 
@@ -2265,7 +2252,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const rows = this.db
       .prepare(
         `
-        SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
+        SELECT id, workspace_id, name, description, group_name, command, append_cr, created_at, updated_at
         FROM workspace_commands
         WHERE workspace_id = ?
         ORDER BY group_name ASC, updated_at DESC, id ASC
@@ -2286,7 +2273,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           description,
           group_name,
           command,
-          is_template,
+          append_cr,
           created_at,
           updated_at
         ) VALUES (
@@ -2296,7 +2283,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           @description,
           @group_name,
           @command,
-          @is_template,
+          @append_cr,
           @created_at,
           @updated_at
         )
@@ -2312,7 +2299,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           description: item.description ?? null,
           group_name: item.group.trim() || "默认",
           command: item.command,
-          is_template: item.isTemplate ? 1 : 0,
+          append_cr: item.appendCr === false ? 0 : 1,
           created_at: item.createdAt,
           updated_at: item.updatedAt
         });
@@ -2333,7 +2320,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           description,
           group_name,
           command,
-          is_template,
+          append_cr,
           created_at,
           updated_at
         ) VALUES (
@@ -2343,7 +2330,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           @description,
           @group_name,
           @command,
-          @is_template,
+          @append_cr,
           @created_at,
           @updated_at
         )
@@ -2352,7 +2339,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           description = excluded.description,
           group_name = excluded.group_name,
           command = excluded.command,
-          is_template = excluded.is_template,
+          append_cr = excluded.append_cr,
           updated_at = excluded.updated_at
       `
       )
@@ -2363,7 +2350,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         description: command.description?.trim() || null,
         group_name: command.group.trim() || "默认",
         command: command.command.trim(),
-        is_template: command.isTemplate ? 1 : 0,
+        append_cr: command.appendCr === false ? 0 : 1,
         created_at: command.createdAt,
         updated_at: command.updatedAt || now
       });
@@ -2371,7 +2358,7 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const row = this.db
       .prepare(
         `
-        SELECT id, workspace_id, name, description, group_name, command, is_template, created_at, updated_at
+        SELECT id, workspace_id, name, description, group_name, command, append_cr, created_at, updated_at
         FROM workspace_commands
         WHERE workspace_id = ? AND id = ?
       `
@@ -2470,10 +2457,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
       this.secretStoreInstance = new SQLiteSecretStore(this.db);
     }
     return this.secretStoreInstance;
-  }
-
-  clearTemplateParams(commandId: string): void {
-    this.db.prepare("DELETE FROM command_template_params WHERE command_id = ?").run(commandId);
   }
 
   getDbPath(): string {

@@ -444,31 +444,6 @@ export interface MonitorSnapshot {
   capturedAt: string;
 }
 
-export interface BatchCommandTask {
-  id: string;
-  command: string;
-  connectionIds: string[];
-  createdAt: string;
-}
-
-export interface BatchCommandResultItem extends CommandExecutionResult {
-  success: boolean;
-  attempts: number;
-  durationMs: number;
-  error?: string;
-}
-
-export interface BatchCommandExecutionResult {
-  command: string;
-  startedAt: string;
-  finishedAt: string;
-  durationMs: number;
-  total: number;
-  successCount: number;
-  failedCount: number;
-  results: BatchCommandResultItem[];
-}
-
 export interface MigrationRecord {
   version: number;
   name: string;
@@ -498,7 +473,7 @@ export interface SavedCommand {
   description?: string;
   group: string;
   command: string;
-  isTemplate: boolean;
+  appendCr?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -510,7 +485,7 @@ export interface WorkspaceCommandItem {
   description?: string;
   group: string;
   command: string;
-  isTemplate: boolean;
+  appendCr?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -530,11 +505,6 @@ export interface AppPreferences {
   remoteEdit: {
     defaultEditorCommand: string;
     editorMode: "builtin" | "external";
-  };
-  commandCenter: {
-    rememberTemplateParams: boolean;
-    batchMaxConcurrency: number;
-    batchRetryCount: number;
   };
   terminal: {
     backgroundColor: string;
@@ -653,11 +623,6 @@ export interface AppPreferencesPatch {
     defaultEditorCommand?: string;
     editorMode?: "builtin" | "external";
   };
-  commandCenter?: {
-    rememberTemplateParams?: boolean;
-    batchMaxConcurrency?: number;
-    batchRetryCount?: number;
-  };
   terminal?: {
     backgroundColor?: string;
     foregroundColor?: string;
@@ -732,14 +697,6 @@ export interface SecretStoreEntry {
   tagB64: string;
   aad: string;
   createdAt: string;
-  updatedAt: string;
-}
-
-export interface CommandTemplateParam {
-  id: string;
-  commandId: string;
-  paramName: string;
-  paramValue: string;
   updatedAt: string;
 }
 
@@ -828,11 +785,6 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     defaultEditorCommand: "",
     editorMode: "builtin"
   },
-  commandCenter: {
-    rememberTemplateParams: true,
-    batchMaxConcurrency: 5,
-    batchRetryCount: 1
-  },
   terminal: {
     backgroundColor: "#000000",
     foregroundColor: "#d8eaff",
@@ -897,21 +849,4 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     allowedLocalRoots: [],
     execTimeoutSec: 60
   }
-};
-
-export const normalizeBatchMaxConcurrency = (
-  value: number | undefined,
-  fallback: number
-): number => {
-  if (!Number.isInteger(value) || (value ?? 0) < 1 || (value ?? 0) > 50) {
-    return fallback;
-  }
-  return value as number;
-};
-
-export const normalizeBatchRetryCount = (value: number | undefined, fallback: number): number => {
-  if (!Number.isInteger(value) || (value ?? 0) < 0 || (value ?? 0) > 5) {
-    return fallback;
-  }
-  return value as number;
 };

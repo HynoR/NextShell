@@ -131,7 +131,9 @@ const EditorTabDirtyDot = ({ sessionId }: { sessionId: string }) => {
 // 这个终端此刻不是只有自己在敲。
 const AgentControlBadge = ({ sessionId }: { sessionId: string }) => {
   const controlledBy = useAgentActivityStore((state) =>
-    sessionId in state.controlledSessions ? (state.controlledSessions[sessionId] ?? "未知客户端") : null
+    sessionId in state.controlledSessions
+      ? (state.controlledSessions[sessionId] ?? "未知客户端")
+      : null
   );
 
   if (controlledBy === null) {
@@ -455,16 +457,30 @@ const WorkspaceLayoutComponent = ({
   const activeTerminalSessionStatus = activeTerminalSession?.status;
 
   const handleExecuteCommand = useCallback(
-    (command: string) => {
+    (command: string, appendCr: boolean) => {
       if (!activeTerminalSessionId || activeTerminalSessionStatus !== "connected") {
         return;
       }
       window.nextshell.session
-        .write({ sessionId: activeTerminalSessionId, data: `${command}\r` })
+        .write({ sessionId: activeTerminalSessionId, data: appendCr ? `${command}\r` : command })
         .catch(() => message.error("发送命令失败"));
       recordSentCommand(activeTerminalSessionId, command);
     },
     [activeTerminalSessionId, activeTerminalSessionStatus, message]
+  );
+
+  const handleExecuteAllCommands = useCallback(
+    (command: string, appendCr: boolean) => {
+      const data = appendCr ? `${command}\r` : command;
+      const writes = sessions
+        .filter((session) => isTerminalSession(session) && session.status === "connected")
+        .map((session) => {
+          recordSentCommand(session.id, command);
+          return window.nextshell.session.write({ sessionId: session.id, data });
+        });
+      void Promise.all(writes).catch(() => message.error("发送命令失败"));
+    },
+    [message, sessions]
   );
 
   const headerSessionText = useMemo(() => {
@@ -859,11 +875,11 @@ const WorkspaceLayoutComponent = ({
         label: "命令库",
         children: (
           <CommandCenterPane
-            connection={activeConnection}
             connected={isActiveConnectionTerminalConnected}
-            connections={connections}
             sessions={sessions}
+            activeTerminalSession={activeTerminalSession}
             onExecuteCommand={handleExecuteCommand}
+            onExecuteAllCommands={handleExecuteAllCommands}
           />
         )
       },
@@ -1079,9 +1095,7 @@ const WorkspaceLayoutComponent = ({
                       : undefined;
                     const tabTooltip = sessionConnection
                       ? `${
-                          sessionConnection.username.trim()
-                            ? `${sessionConnection.username}@`
-                            : ""
+                          sessionConnection.username.trim() ? `${sessionConnection.username}@` : ""
                         }${sessionConnection.host}:${sessionConnection.port}`
                       : session.target === "local"
                         ? "本地终端"

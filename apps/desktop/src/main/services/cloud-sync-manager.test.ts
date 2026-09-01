@@ -893,7 +893,6 @@ describe("CloudSyncManager workspace command sync", () => {
     name: "Deploy",
     group: "ops",
     command: "deploy local",
-    isTemplate: false,
     createdAt: now,
     updatedAt: "2026-03-15T01:00:00.000Z"
   };

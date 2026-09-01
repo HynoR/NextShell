@@ -3,20 +3,23 @@ import type { CloudSyncWorkspaceProfile, ScopedCommandItem } from "@nextshell/co
 import { clearParamsFromStorage, getCommandStorageKey } from "../utils/commandTemplate";
 import { formatErrorMessage } from "../utils/errorMessage";
 
-type CommandScopeId = "local" | string;
+export const DEFAULT_COMMAND_FOLDER = "默认";
+export type CommandTabId = `local:${string}` | `workspace:${string}`;
 
-interface CommandGroup {
-  name: string;
-  commands: ScopedCommandItem[];
+export interface CommandTab {
+  id: CommandTabId;
+  label: string;
+  scope: "local" | "workspace";
+  group?: string;
+  workspaceId?: string;
 }
 
 interface CommandStoreState {
   allCommands: ScopedCommandItem[];
   workspaces: CloudSyncWorkspaceProfile[];
+  ephemeralFolders: string[];
   loading: boolean;
-  activeScope: CommandScopeId;
-  keyword: string;
-  groupFilter: string | undefined;
+  activeTab: CommandTabId;
 
   load: () => Promise<void>;
   upsert: (params: {
@@ -25,80 +28,87 @@ interface CommandStoreState {
     description?: string;
     group: string;
     command: string;
-    isTemplate: boolean;
+    appendCr?: boolean;
     workspaceId?: string;
   }) => Promise<boolean>;
   remove: (cmd: ScopedCommandItem) => Promise<boolean>;
-  setActiveScope: (scope: CommandScopeId) => void;
-  setKeyword: (keyword: string) => void;
-  setGroupFilter: (group: string | undefined) => void;
+  createEphemeralFolder: () => string;
+  renameLocalFolder: (oldName: string, newName: string) => Promise<boolean>;
+  removeLocalFolder: (name: string) => Promise<boolean>;
+  setActiveTab: (tab: CommandTabId) => void;
 }
 
-export function filterCommands(
-  allCommands: ScopedCommandItem[],
-  activeScope: CommandScopeId,
-  keyword: string,
-  groupFilter: string | undefined
+const localTab = (group: string): CommandTab => ({
+  id: `local:${group}`,
+  label: group,
+  scope: "local",
+  group
+});
+
+export const workspaceTab = (workspace: CloudSyncWorkspaceProfile): CommandTab => ({
+  id: `workspace:${workspace.id}`,
+  label: workspace.displayName || workspace.workspaceName,
+  scope: "workspace",
+  workspaceId: workspace.id
+});
+
+export function getCommandTabs(
+  commands: ScopedCommandItem[],
+  workspaces: CloudSyncWorkspaceProfile[],
+  ephemeralFolders: string[]
+): CommandTab[] {
+  const groups = new Set([DEFAULT_COMMAND_FOLDER, ...ephemeralFolders]);
+  for (const command of commands) {
+    if (command.scope === "local") groups.add(command.group.trim() || DEFAULT_COMMAND_FOLDER);
+  }
+  return [
+    ...Array.from(groups)
+      .sort((a, b) => a.localeCompare(b))
+      .map(localTab),
+    ...workspaces.map(workspaceTab)
+  ];
+}
+
+export function getCommandsForTab(
+  commands: ScopedCommandItem[],
+  tab: CommandTab | undefined
 ): ScopedCommandItem[] {
-  let filtered = allCommands.filter((cmd) =>
-    activeScope === "local"
-      ? cmd.scope === "local"
-      : cmd.scope === "workspace" && cmd.workspaceId === activeScope
+  if (!tab) return [];
+  const scoped = commands.filter((command) =>
+    tab.scope === "local"
+      ? command.scope === "local" && (command.group.trim() || DEFAULT_COMMAND_FOLDER) === tab.group
+      : command.scope === "workspace" && command.workspaceId === tab.workspaceId
   );
-
-  const kw = keyword.trim().toLowerCase();
-  if (kw) {
-    filtered = filtered.filter(
-      (cmd) =>
-        cmd.name.toLowerCase().includes(kw) ||
-        cmd.command.toLowerCase().includes(kw) ||
-        (cmd.description ?? "").toLowerCase().includes(kw)
-    );
-  }
-
-  if (groupFilter) {
-    filtered = filtered.filter((cmd) => (cmd.group || "默认") === groupFilter);
-  }
-
-  return filtered;
+  return scoped.sort((a, b) =>
+    tab.scope === "workspace"
+      ? `${a.group}\u0000${a.name}`.localeCompare(`${b.group}\u0000${b.name}`)
+      : a.name.localeCompare(b.name)
+  );
 }
 
-export function groupCommands(commands: ScopedCommandItem[]): CommandGroup[] {
-  const groups = new Map<string, ScopedCommandItem[]>();
-  for (const cmd of commands) {
-    const g = cmd.group || "默认";
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g)!.push(cmd);
-  }
-  return Array.from(groups.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([name, commands]) => ({ name, commands }));
-}
+const sameCommand = (left: ScopedCommandItem, right: ScopedCommandItem): boolean =>
+  left.id === right.id && left.scope === right.scope && left.workspaceId === right.workspaceId;
 
 export const useCommandStore = create<CommandStoreState>((set, get) => ({
   allCommands: [],
   workspaces: [],
+  ephemeralFolders: [],
   loading: false,
-  activeScope: "local",
-  keyword: "",
-  groupFilter: undefined,
+  activeTab: `local:${DEFAULT_COMMAND_FOLDER}`,
 
   load: async () => {
     set({ loading: true });
     try {
-      const [list, workspaceList] = await Promise.all([
+      const [allCommands, workspaces] = await Promise.all([
         window.nextshell.savedCommand.listScoped(),
         window.nextshell.cloudSync.workspaceList()
       ]);
-      const state = get();
-      const scopeStillValid =
-        state.activeScope === "local" || workspaceList.some((w) => w.id === state.activeScope);
-      set({
-        allCommands: list,
-        workspaces: workspaceList,
-        loading: false,
-        ...(scopeStillValid ? {} : { activeScope: "local" as CommandScopeId })
-      });
+      const tabs = getCommandTabs(allCommands, workspaces, get().ephemeralFolders);
+      const currentTab = get().activeTab;
+      const activeTab = tabs.some((tab) => tab.id === currentTab)
+        ? currentTab
+        : (tabs[0]?.id ?? `local:${DEFAULT_COMMAND_FOLDER}`);
+      set({ allCommands, workspaces, activeTab, loading: false });
     } catch {
       set({ loading: false });
     }
@@ -115,13 +125,8 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
   },
 
   remove: async (cmd) => {
-    const prev = [...get().allCommands];
-    set({
-      allCommands: prev.filter(
-        (item) =>
-          !(item.id === cmd.id && item.scope === cmd.scope && item.workspaceId === cmd.workspaceId)
-      )
-    });
+    const previous = get().allCommands;
+    set({ allCommands: previous.filter((item) => !sameCommand(item, cmd)) });
     clearParamsFromStorage(getCommandStorageKey(cmd));
     try {
       await window.nextshell.savedCommand.remove({
@@ -130,38 +135,77 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
       });
       return true;
     } catch {
-      set({ allCommands: prev });
+      set({ allCommands: previous });
       return false;
     }
   },
 
-  setActiveScope: (scope) => set({ activeScope: scope, keyword: "", groupFilter: undefined }),
-  setKeyword: (keyword) => set({ keyword }),
-  setGroupFilter: (groupFilter) => set({ groupFilter })
+  createEphemeralFolder: () => {
+    const folders = get().ephemeralFolders;
+    let index = 1;
+    let name = "新文件夹";
+    while (folders.includes(name)) name = `新文件夹 ${++index}`;
+    set({ ephemeralFolders: [...folders, name], activeTab: `local:${name}` });
+    return name;
+  },
+
+  renameLocalFolder: async (oldName, rawNewName) => {
+    const newName = rawNewName.trim();
+    if (!newName || oldName === newName) return Boolean(newName);
+    const commands = get().allCommands.filter(
+      (command) =>
+        command.scope === "local" && (command.group || DEFAULT_COMMAND_FOLDER) === oldName
+    );
+    try {
+      await Promise.all(
+        commands.map((command) =>
+          window.nextshell.savedCommand.upsert({
+            id: command.id,
+            name: command.name,
+            description: command.description,
+            group: newName,
+            command: command.command,
+            appendCr: command.appendCr
+          })
+        )
+      );
+      set((state) => ({
+        ephemeralFolders: state.ephemeralFolders
+          .map((folder) => (folder === oldName ? newName : folder))
+          .filter((folder, index, all) => all.indexOf(folder) === index),
+        activeTab: state.activeTab === `local:${oldName}` ? `local:${newName}` : state.activeTab
+      }));
+      await get().load();
+      return true;
+    } catch {
+      await get().load();
+      return false;
+    }
+  },
+
+  removeLocalFolder: async (name) => {
+    const commands = get().allCommands.filter(
+      (command) => command.scope === "local" && (command.group || DEFAULT_COMMAND_FOLDER) === name
+    );
+    try {
+      await Promise.all(
+        commands.map((command) => window.nextshell.savedCommand.remove({ id: command.id }))
+      );
+      set((state) => ({
+        ephemeralFolders: state.ephemeralFolders.filter((folder) => folder !== name),
+        activeTab:
+          state.activeTab === `local:${name}` ? `local:${DEFAULT_COMMAND_FOLDER}` : state.activeTab
+      }));
+      await get().load();
+      return true;
+    } catch {
+      await get().load();
+      return false;
+    }
+  },
+
+  setActiveTab: (activeTab) => set({ activeTab })
 }));
 
-// ── Pure helpers (use in useMemo, not as Zustand selectors) ──────────
-
-export function getActiveScopeLabel(
-  activeScope: CommandScopeId,
-  workspaces: CloudSyncWorkspaceProfile[]
-): string {
-  if (activeScope === "local") return "本地";
-  const ws = workspaces.find((w) => w.id === activeScope);
-  return ws ? ws.displayName || ws.workspaceName : "本地";
-}
-
-export function buildGroupOptions(
-  allCommands: ScopedCommandItem[],
-  activeScope: CommandScopeId
-): Array<{ label: string; value: string | undefined }> {
-  const scoped = filterCommands(allCommands, activeScope, "", undefined);
-  const groups = new Set<string>();
-  for (const cmd of scoped) groups.add(cmd.group || "默认");
-  return [
-    { label: "全部", value: undefined },
-    ...Array.from(groups)
-      .sort((a, b) => a.localeCompare(b))
-      .map((g) => ({ label: g, value: g }))
-  ];
-}
+export const getTabById = (tabs: CommandTab[], id: CommandTabId): CommandTab | undefined =>
+  tabs.find((tab) => tab.id === id);

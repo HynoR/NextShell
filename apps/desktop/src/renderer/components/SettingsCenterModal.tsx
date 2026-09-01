@@ -11,7 +11,6 @@ import {
   WindowSection,
   TransferSection,
   EditorSection,
-  CommandSection,
   TerminalSection,
   NetworkSection,
   CloudSyncSection,
@@ -30,7 +29,11 @@ interface SettingsCenterModalProps {
   onClose: () => void;
 }
 
-export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsCenterModalProps) => {
+export const SettingsCenterModal = ({
+  open,
+  initialSection,
+  onClose
+}: SettingsCenterModalProps) => {
   const { message } = AntdApp.useApp();
   const preferences = usePreferencesStore((s) => s.preferences);
   const loading = usePreferencesStore((s) => s.loading);
@@ -195,17 +198,6 @@ export const SettingsCenterModal = ({ open, initialSection, onClose }: SettingsC
             setEditorCommand={setEditorCommand}
             save={save}
             message={message}
-          />
-        );
-
-      case "command":
-        return (
-          <CommandSection
-            loading={loading}
-            rememberTemplateParams={preferences.commandCenter.rememberTemplateParams}
-            batchMaxConcurrency={preferences.commandCenter.batchMaxConcurrency}
-            batchRetryCount={preferences.commandCenter.batchRetryCount}
-            save={save}
           />
         );
 

@@ -9,7 +9,6 @@
  *  | Preferences       | 内存单例       | write-behind（5 s debounce）     |
  *  | Command History   | 有序 Map + 快照 | write-behind（0.5 s debounce）  |
  *  | Saved Commands    | 内存数组       | write-through                    |
- *  | Template Params   | 内存数组       | write-through + invalidate       |
  *  | Migrations        | 内存数组       | 只读（静态，应用启动后不变）     |
  *
  * close() 会先 flush 所有脏数据再关闭底层数据库。
@@ -474,7 +473,7 @@ export class CachedConnectionRepository implements ConnectionRepository {
     description?: string;
     group: string;
     command: string;
-    isTemplate: boolean;
+    appendCr?: boolean;
   }): SavedCommand {
     const result = this.inner.upsertSavedCommand(input);
     if (this.savedCache) {
@@ -493,14 +492,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
     if (this.savedCache) {
       this.savedCache = this.savedCache.filter((c) => c.id !== id);
     }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Template Params – 内存数组，write-through + invalidate
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  clearTemplateParams(commandId: string): void {
-    this.inner.clearTemplateParams(commandId);
   }
 
   getDeviceKey(): string | undefined {

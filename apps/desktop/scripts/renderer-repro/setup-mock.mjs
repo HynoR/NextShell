@@ -222,7 +222,6 @@ async (page) => {
       },
       command: {
         exec: async () => ({ ok: true, stdout: "", stderr: "", exitCode: 0 }),
-        execBatch: async () => ({ results: [] })
       },
       settings: {
         // Deliberate: the preferences store falls back to
