@@ -87,7 +87,9 @@ export const createServiceContainer = async (
   // ─── Device Key ──────────────────────────────────────────────────────────
   // The device key encrypts every stored credential and is authoritative in
   // SQLite. A legacy keychain item is drained once when the database is empty.
-  const deviceKeyStore = new KeytarPasswordCache("NextShell", "device-key");
+  const deviceKeyStore = new KeytarPasswordCache("NextShell", "device-key", {
+    fallbackService: app.isPackaged ? undefined : "NextShell (Dev)"
+  });
   // Resolved lazily: reading it eagerly would prompt for keychain authorization
   // on every launch, including sessions that never open a stored credential.
   const deviceKeyProvider = new DeviceKeyProvider({

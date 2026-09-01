@@ -393,8 +393,7 @@ const rowToWorkspaceRepoLocalState = (
   localFingerprint: row.local_fingerprint ?? undefined,
   localCommandsFingerprint: row.local_commands_fingerprint ?? undefined,
   lastSyncAt: row.last_sync_at ?? undefined,
-  lastError: row.last_error ?? undefined,
-  syncState: row.last_error ? "error" : "idle"
+  lastError: row.last_error ?? undefined
 });
 
 const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem => ({

@@ -88,4 +88,18 @@ describe("KeytarPasswordCache", () => {
     expect(await cache.recall()).toBeUndefined();
     expect(keytar.reads).toHaveLength(1);
   });
+
+  test("recalls and clears a legacy fallback service", async () => {
+    const keytar = makeKeytar({ "NextShell (Dev)/device-key": "old-key" });
+    const cache = new KeytarPasswordCache("NextShell", "device-key", {
+      fallbackService: "NextShell (Dev)",
+      keytar: keytar.module
+    });
+
+    expect(await cache.recall()).toBe("old-key");
+    await cache.clear();
+
+    expect(keytar.store.has("NextShell (Dev)/device-key")).toBe(false);
+    expect(keytar.reads).toEqual(["NextShell/device-key", "NextShell (Dev)/device-key"]);
+  });
 });

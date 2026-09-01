@@ -110,7 +110,6 @@ export interface WorkspaceRepoLocalState {
   remoteCommandsVersion?: string;
   lastSyncAt?: string;
   lastError?: string;
-  syncState: "idle" | "syncing" | "diverged" | "error" | "disabled" | "synced";
 }
 
 export interface WorkspaceRepoStatus {

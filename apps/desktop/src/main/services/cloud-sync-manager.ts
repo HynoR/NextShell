@@ -43,6 +43,10 @@ type WorkspaceRuntime = {
   diverged: boolean;
 };
 
+type WorkspaceSyncResult = WorkspaceRepoLocalState & {
+  syncState: "synced" | "diverged";
+};
+
 type ConnectionSnapshotItem = WorkspaceRepoSnapshot["connections"][number];
 type SshKeySnapshotItem = WorkspaceRepoSnapshot["sshKeys"][number];
 type ProxySnapshotItem = WorkspaceRepoSnapshot["proxies"][number];
@@ -143,22 +147,25 @@ const normalizeWorkspaceGroupPath = (workspaceName: string, groupPath: string): 
   return suffix ? `/workspace/${slug}/${suffix}` : `/workspace/${slug}`;
 };
 
-const makeDefaultLocalState = (workspaceId: string, enabled: boolean): WorkspaceRepoLocalState => ({
-  workspaceId,
-  syncState: enabled ? "idle" : "disabled"
-});
+const makeDefaultLocalState = (workspaceId: string): WorkspaceRepoLocalState => ({ workspaceId });
+
+const persistableLocalState = ({
+  syncState: _syncState,
+  ...localState
+}: WorkspaceSyncResult): WorkspaceRepoLocalState => localState;
 
 const toStatusState = (
   localState: WorkspaceRepoLocalState | undefined,
   syncing: boolean,
   enabled: boolean,
-  diverged: boolean
+  diverged: boolean,
+  lastError?: string
 ): WorkspaceRepoStatus["state"] => {
   if (!enabled) return "disabled";
   if (syncing) return "syncing";
-  if (localState?.syncState === "error") return "error";
-  if (diverged || localState?.syncState === "diverged") return "diverged";
-  if (!localState || localState.syncState === "idle") return "idle";
+  if (lastError) return "error";
+  if (diverged) return "diverged";
+  if (!localState || !localState.lastSyncAt) return "idle";
   return "synced";
 };
 
@@ -253,7 +260,7 @@ export class CloudSyncManager {
 
     await this.deps.storeWorkspacePassword(id, input.workspacePassword);
     this.deps.saveWorkspace(workspace);
-    this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(id, workspace.enabled));
+    this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(id));
     if (workspace.enabled) {
       this.startRuntime(workspace);
       await this.syncNow(id);
@@ -288,16 +295,8 @@ export class CloudSyncManager {
 
     this.deps.saveWorkspace(workspace);
     const localState =
-      this.deps.getWorkspaceRepoLocalState(workspace.id) ??
-      makeDefaultLocalState(workspace.id, workspace.enabled);
-    this.deps.saveWorkspaceRepoLocalState({
-      ...localState,
-      syncState: workspace.enabled
-        ? localState.syncState === "disabled"
-          ? "idle"
-          : localState.syncState
-        : "disabled"
-    });
+      this.deps.getWorkspaceRepoLocalState(workspace.id) ?? makeDefaultLocalState(workspace.id);
+    this.deps.saveWorkspaceRepoLocalState(localState);
 
     if (workspace.enabled) {
       this.startRuntime(workspace);
@@ -455,7 +454,8 @@ export class CloudSyncManager {
         localState,
         runtime?.syncing ?? false,
         workspace.enabled,
-        runtime?.diverged ?? false
+        runtime?.diverged ?? false,
+        localState?.lastError ?? workspace.lastError ?? undefined
       ),
       lastSyncAt: localState?.lastSyncAt ?? workspace.lastSyncAt ?? undefined,
       lastError: localState?.lastError ?? workspace.lastError ?? undefined,
@@ -469,7 +469,7 @@ export class CloudSyncManager {
       return;
     }
     if (!this.deps.getWorkspaceRepoLocalState(workspaceId)) {
-      this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(workspaceId, workspace.enabled));
+      this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(workspaceId));
     }
   }
 
@@ -502,8 +502,7 @@ export class CloudSyncManager {
       this.ensureWorkspaceBootstrapped(workspace.id);
       const credentials = await this.getCredentials(workspace);
       const localState =
-        this.deps.getWorkspaceRepoLocalState(workspace.id) ??
-        makeDefaultLocalState(workspace.id, workspace.enabled);
+        this.deps.getWorkspaceRepoLocalState(workspace.id) ?? makeDefaultLocalState(workspace.id);
       const resolve = await this.api.resolve(credentials);
       const remoteVersion = resolve.headCommitId ?? undefined;
       const commandsVersion = resolve.commandsVersion ?? undefined;
@@ -515,8 +514,7 @@ export class CloudSyncManager {
         runtime.diverged = true;
         this.deps.saveWorkspaceRepoLocalState({
           ...localState,
-          lastError: undefined,
-          syncState: "diverged"
+          lastError: undefined
         });
         this.deps.saveWorkspace({ ...workspace, lastError: null });
         return;
@@ -530,7 +528,10 @@ export class CloudSyncManager {
       );
       if (repoState.syncState === "diverged") {
         runtime.diverged = true;
-        this.deps.saveWorkspaceRepoLocalState({ ...repoState, lastError: undefined });
+        this.deps.saveWorkspaceRepoLocalState({
+          ...persistableLocalState(repoState),
+          lastError: undefined
+        });
         this.deps.saveWorkspace({ ...workspace, lastError: null });
         return;
       }
@@ -543,15 +544,17 @@ export class CloudSyncManager {
       );
       if (commandState.syncState === "diverged") {
         runtime.diverged = true;
-        this.deps.saveWorkspaceRepoLocalState({ ...commandState, lastError: undefined });
+        this.deps.saveWorkspaceRepoLocalState({
+          ...persistableLocalState(commandState),
+          lastError: undefined
+        });
         this.deps.saveWorkspace({ ...workspace, lastError: null });
         return;
       }
 
       const syncedAt = new Date().toISOString();
       const nextLocalState: WorkspaceRepoLocalState = {
-        ...commandState,
-        syncState: "synced",
+        ...persistableLocalState(commandState),
         lastSyncAt: syncedAt,
         lastError: undefined
       };
@@ -566,12 +569,10 @@ export class CloudSyncManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const localState =
-        this.deps.getWorkspaceRepoLocalState(workspace.id) ??
-        makeDefaultLocalState(workspace.id, workspace.enabled);
+        this.deps.getWorkspaceRepoLocalState(workspace.id) ?? makeDefaultLocalState(workspace.id);
       this.deps.saveWorkspaceRepoLocalState({
         ...localState,
-        lastError: message,
-        syncState: "error"
+        lastError: message
       });
       runtime.diverged = false;
       this.deps.saveWorkspace({
@@ -619,7 +620,7 @@ export class CloudSyncManager {
     localState: WorkspaceRepoLocalState,
     remoteVersion?: string,
     mode?: CloudSyncSyncMode
-  ): Promise<WorkspaceRepoLocalState> {
+  ): Promise<WorkspaceSyncResult> {
     const localFingerprint = this.workspaceFingerprint(workspace.id);
     const hasBaseline =
       localState.localFingerprint !== undefined || localState.remoteVersion !== undefined;
@@ -648,7 +649,14 @@ export class CloudSyncManager {
       workspace,
       credentials.workspacePassword
     );
-    return this.pushLocalHead(workspace, credentials, localState, localSnapshot, mode);
+    return this.pushLocalHead(
+      workspace,
+      credentials,
+      localState,
+      localSnapshot,
+      localFingerprint,
+      mode
+    );
   }
 
   private async pullRemoteHead(
@@ -656,7 +664,7 @@ export class CloudSyncManager {
     credentials: CloudSyncApiV3Credentials,
     localState: WorkspaceRepoLocalState,
     remoteVersion?: string
-  ): Promise<WorkspaceRepoLocalState> {
+  ): Promise<WorkspaceSyncResult> {
     const response = await this.api.pull(credentials, localState.remoteVersion);
     const nextRemoteVersion = response.headCommitId ?? remoteVersion;
     if (response.unchanged || !response.snapshot) {
@@ -685,8 +693,9 @@ export class CloudSyncManager {
     credentials: CloudSyncApiV3Credentials,
     localState: WorkspaceRepoLocalState,
     localSnapshot: WorkspaceRepoSnapshot,
+    localFingerprint: string,
     mode?: CloudSyncSyncMode
-  ): Promise<WorkspaceRepoLocalState> {
+  ): Promise<WorkspaceSyncResult> {
     let baseHeadCommitId = localState.remoteVersion ?? null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const response = await this.api.push(credentials, {
@@ -697,7 +706,7 @@ export class CloudSyncManager {
         return {
           ...localState,
           remoteVersion: response.headCommitId,
-          localFingerprint: this.workspaceFingerprint(workspace.id),
+          localFingerprint,
           syncState: "synced"
         };
       }
@@ -729,7 +738,7 @@ export class CloudSyncManager {
     localState: WorkspaceRepoLocalState,
     resolvedRemoteVersion?: string,
     mode?: CloudSyncSyncMode
-  ): Promise<WorkspaceRepoLocalState> {
+  ): Promise<WorkspaceSyncResult> {
     const localCommandsFingerprint = this.workspaceCommandsFingerprint(workspace.id);
     const hasBaseline =
       localState.localCommandsFingerprint !== undefined ||
@@ -776,7 +785,7 @@ export class CloudSyncManager {
     return {
       ...localState,
       remoteCommandsVersion: response.version,
-      localCommandsFingerprint: this.workspaceCommandsFingerprint(workspace.id),
+      localCommandsFingerprint,
       syncState: "synced"
     };
   }

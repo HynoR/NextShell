@@ -320,6 +320,8 @@ const KEYTAR_SERVICE = "NextShell";
 const KEYTAR_ACCOUNT = "device-key";
 
 export interface KeytarPasswordCacheOptions {
+  /** Older service name to check when the primary item is missing. */
+  fallbackService?: string;
   /** Injected keytar module (tests only). */
   keytar?: KeytarModule;
 }
@@ -328,9 +330,11 @@ export class KeytarPasswordCache {
   private readonly keytar: KeytarModule | undefined;
   private readonly service: string;
   private readonly account: string;
+  private readonly fallbackService: string | undefined;
   /** Memoized read, including a negative result — `undefined` means "not read yet". */
   private resolved: { value: string | undefined } | undefined;
   private inFlight: Promise<string | undefined> | undefined;
+  private resolvedService: string | undefined;
 
   constructor(
     service = KEYTAR_SERVICE,
@@ -340,6 +344,7 @@ export class KeytarPasswordCache {
     this.keytar = options.keytar ?? loadKeytar();
     this.service = service;
     this.account = account;
+    this.fallbackService = options.fallbackService;
   }
 
   isAvailable(): boolean {
@@ -383,11 +388,12 @@ export class KeytarPasswordCache {
       return;
     }
     try {
-      await this.keytar.deletePassword(this.service, this.account);
+      await this.keytar.deletePassword(this.resolvedService ?? this.service, this.account);
     } catch {
       // ignore if not found
     }
     this.resolved = { value: undefined };
+    this.resolvedService = undefined;
   }
 
   private async readThrough(): Promise<string | undefined> {
@@ -396,6 +402,18 @@ export class KeytarPasswordCache {
       return undefined;
     }
 
-    return (await keytar.getPassword(this.service, this.account)) ?? undefined;
+    const primary = (await keytar.getPassword(this.service, this.account)) ?? undefined;
+    if (primary) {
+      this.resolvedService = this.service;
+      return primary;
+    }
+    if (!this.fallbackService) {
+      return undefined;
+    }
+    const fallback = (await keytar.getPassword(this.fallbackService, this.account)) ?? undefined;
+    if (fallback) {
+      this.resolvedService = this.fallbackService;
+    }
+    return fallback;
   }
 }

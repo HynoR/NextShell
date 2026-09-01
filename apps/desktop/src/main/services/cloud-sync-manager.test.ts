@@ -12,6 +12,10 @@ import type {
 } from "@nextshell/core";
 import { CloudSyncManager, type CloudSyncManagerDeps } from "./cloud-sync-manager";
 
+type WorkspaceSyncResult = WorkspaceRepoLocalState & {
+  syncState: "synced" | "diverged";
+};
+
 const createWorkspace = (): CloudSyncWorkspaceProfile => ({
   id: "ws-1",
   apiBaseUrl: "https://sync.example.com/",
@@ -320,8 +324,7 @@ describe("CloudSyncManager workspace repo sync", () => {
     const localState: WorkspaceRepoLocalState = {
       workspaceId: workspace.id,
       remoteVersion: "base-version",
-      localFingerprint: "empty-local",
-      syncState: "idle"
+      localFingerprint: "empty-local"
     };
     const state = createMutableState(workspace, { localState });
 
@@ -344,7 +347,7 @@ describe("CloudSyncManager workspace repo sync", () => {
           credentials: ReturnType<typeof testCredentials>,
           localState: WorkspaceRepoLocalState,
           remoteVersion?: string
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceRepo(workspace, testCredentials(workspace), localState, "remote-version");
 
@@ -387,16 +390,19 @@ describe("CloudSyncManager workspace repo sync", () => {
     const localState: WorkspaceRepoLocalState = {
       workspaceId: workspace.id,
       remoteVersion: "base-version",
-      localFingerprint: "old-local",
-      syncState: "idle"
+      localFingerprint: "old-local"
     };
     const state = createMutableState(workspace, { localState, connections: [localConnection] });
 
     const manager = new CloudSyncManager(createMutableDeps(state));
+    const fingerprintBeforePush = (
+      manager as unknown as { workspaceFingerprint: (workspaceId: string) => string }
+    ).workspaceFingerprint(workspace.id);
     let pushedBaseHead: string | null | undefined;
     (manager as unknown as { api: unknown }).api = {
       push: async (_credentials: unknown, payload: { baseHeadCommitId?: string | null }) => {
         pushedBaseHead = payload.baseHeadCommitId;
+        state.connections = [{ ...localConnection, updatedAt: "2026-03-15T02:00:00.000Z" }];
         return { status: "accepted" as const, headCommitId: "local-version" };
       }
     };
@@ -408,13 +414,19 @@ describe("CloudSyncManager workspace repo sync", () => {
           credentials: ReturnType<typeof testCredentials>,
           localState: WorkspaceRepoLocalState,
           remoteVersion?: string
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceRepo(workspace, testCredentials(workspace), localState, "base-version");
 
     expect(pushedBaseHead).toBe("base-version");
     expect(result.syncState).toBe("synced");
     expect(result.remoteVersion).toBe("local-version");
+    expect(result.localFingerprint).toBe(fingerprintBeforePush);
+    expect(result.localFingerprint).not.toBe(
+      (
+        manager as unknown as { workspaceFingerprint: (workspaceId: string) => string }
+      ).workspaceFingerprint(workspace.id)
+    );
   });
 
   test("marks both-side changes as diverged without changing local data in auto mode", async () => {
@@ -445,8 +457,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteVersion: "base-version",
-        localFingerprint: "old-local",
-        syncState: "synced"
+        localFingerprint: "old-local"
       },
       connections: [connection]
     });
@@ -470,7 +481,7 @@ describe("CloudSyncManager workspace repo sync", () => {
           credentials: ReturnType<typeof testCredentials>,
           localState: WorkspaceRepoLocalState,
           remoteVersion?: string
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceRepo(workspace, testCredentials(workspace), state.localState!, "remote-version");
 
@@ -517,8 +528,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteVersion: "base-version",
-        localFingerprint: "old-local",
-        syncState: "synced"
+        localFingerprint: "old-local"
       },
       connections: [localConnection]
     });
@@ -539,7 +549,7 @@ describe("CloudSyncManager workspace repo sync", () => {
           localState: WorkspaceRepoLocalState,
           remoteVersion?: string,
           mode?: "cloud-wins" | "local-wins"
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceRepo(
       workspace,
@@ -581,8 +591,7 @@ describe("CloudSyncManager workspace repo sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteVersion: "base-version",
-        localFingerprint: "old-local",
-        syncState: "synced"
+        localFingerprint: "old-local"
       },
       connections: [connection]
     });
@@ -608,7 +617,7 @@ describe("CloudSyncManager workspace repo sync", () => {
             localState: WorkspaceRepoLocalState,
             remoteVersion?: string,
             mode?: "cloud-wins" | "local-wins"
-          ) => Promise<WorkspaceRepoLocalState>;
+          ) => Promise<WorkspaceSyncResult>;
         }
       ).syncWorkspaceRepo(
         workspace,
@@ -896,8 +905,7 @@ describe("CloudSyncManager workspace command sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteCommandsVersion: "base-version",
-        localCommandsFingerprint: "old-local",
-        syncState: "synced"
+        localCommandsFingerprint: "old-local"
       }
     });
     const manager = new CloudSyncManager(createMutableDeps(state));
@@ -921,7 +929,7 @@ describe("CloudSyncManager workspace command sync", () => {
           localState: WorkspaceRepoLocalState,
           resolvedRemoteVersion?: string,
           mode?: "cloud-wins" | "local-wins"
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceCommands(
       workspace,
@@ -929,8 +937,7 @@ describe("CloudSyncManager workspace command sync", () => {
       {
         workspaceId: workspace.id,
         remoteCommandsVersion: "base-version",
-        localCommandsFingerprint: "old-local",
-        syncState: "synced"
+        localCommandsFingerprint: "old-local"
       },
       "remote-version"
     );
@@ -948,8 +955,7 @@ describe("CloudSyncManager workspace command sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteCommandsVersion: "base-version",
-        localCommandsFingerprint: "old-local",
-        syncState: "synced"
+        localCommandsFingerprint: "old-local"
       }
     });
     const manager = new CloudSyncManager(createMutableDeps(state));
@@ -969,7 +975,7 @@ describe("CloudSyncManager workspace command sync", () => {
           localState: WorkspaceRepoLocalState,
           resolvedRemoteVersion?: string,
           mode?: "cloud-wins" | "local-wins"
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceCommands(
       workspace,
@@ -990,15 +996,18 @@ describe("CloudSyncManager workspace command sync", () => {
       localState: {
         workspaceId: workspace.id,
         remoteCommandsVersion: "base-version",
-        localCommandsFingerprint: "old-local",
-        syncState: "synced"
+        localCommandsFingerprint: "old-local"
       }
     });
     const manager = new CloudSyncManager(createMutableDeps(state));
+    const fingerprintBeforePush = (
+      manager as unknown as { workspaceCommandsFingerprint: (workspaceId: string) => string }
+    ).workspaceCommandsFingerprint(workspace.id);
     let pushedCommands: Array<Record<string, unknown>> = [];
     (manager as unknown as { api: unknown }).api = {
       pushCommands: async (_credentials: unknown, commands: Array<Record<string, unknown>>) => {
         pushedCommands = commands;
+        state.commands = [{ ...localCommand, updatedAt: "2026-03-15T02:00:00.000Z" }];
         return { version: "local-version" };
       }
     };
@@ -1011,7 +1020,7 @@ describe("CloudSyncManager workspace command sync", () => {
           localState: WorkspaceRepoLocalState,
           resolvedRemoteVersion?: string,
           mode?: "cloud-wins" | "local-wins"
-        ) => Promise<WorkspaceRepoLocalState>;
+        ) => Promise<WorkspaceSyncResult>;
       }
     ).syncWorkspaceCommands(
       workspace,
@@ -1023,5 +1032,11 @@ describe("CloudSyncManager workspace command sync", () => {
 
     expect(result.remoteCommandsVersion).toBe("local-version");
     expect(pushedCommands).toEqual([{ ...localCommand, workspaceId: workspace.id }]);
+    expect(result.localCommandsFingerprint).toBe(fingerprintBeforePush);
+    expect(result.localCommandsFingerprint).not.toBe(
+      (
+        manager as unknown as { workspaceCommandsFingerprint: (workspaceId: string) => string }
+      ).workspaceCommandsFingerprint(workspace.id)
+    );
   });
 });
