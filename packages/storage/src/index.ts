@@ -658,65 +658,11 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.traceroute?.nexttracePath === "string"
             ? parsed.traceroute.nexttracePath
             : fallback.traceroute.nexttracePath,
-        protocol:
-          parsed.traceroute?.protocol === "icmp" ||
-          parsed.traceroute?.protocol === "tcp" ||
-          parsed.traceroute?.protocol === "udp"
-            ? parsed.traceroute.protocol
-            : fallback.traceroute.protocol,
-        port:
-          typeof parsed.traceroute?.port === "number" &&
-          Number.isInteger(parsed.traceroute.port) &&
-          parsed.traceroute.port >= 0 &&
-          parsed.traceroute.port <= 65535
-            ? parsed.traceroute.port
-            : fallback.traceroute.port,
-        queries:
-          typeof parsed.traceroute?.queries === "number" &&
-          Number.isInteger(parsed.traceroute.queries) &&
-          parsed.traceroute.queries >= 1 &&
-          parsed.traceroute.queries <= 10
-            ? parsed.traceroute.queries
-            : fallback.traceroute.queries,
-        maxHops:
-          typeof parsed.traceroute?.maxHops === "number" &&
-          Number.isInteger(parsed.traceroute.maxHops) &&
-          parsed.traceroute.maxHops >= 1 &&
-          parsed.traceroute.maxHops <= 64
-            ? parsed.traceroute.maxHops
-            : fallback.traceroute.maxHops,
-        ipVersion:
-          parsed.traceroute?.ipVersion === "auto" ||
-          parsed.traceroute?.ipVersion === "ipv4" ||
-          parsed.traceroute?.ipVersion === "ipv6"
-            ? parsed.traceroute.ipVersion
-            : fallback.traceroute.ipVersion,
-        dataProvider:
-          parsed.traceroute?.dataProvider === "LeoMoeAPI" ||
-          parsed.traceroute?.dataProvider === "ip-api.com" ||
-          parsed.traceroute?.dataProvider === "IPInfo" ||
-          parsed.traceroute?.dataProvider === "IPInsight" ||
-          parsed.traceroute?.dataProvider === "IP.SB" ||
-          parsed.traceroute?.dataProvider === "disable-geoip"
-            ? parsed.traceroute.dataProvider
-            : fallback.traceroute.dataProvider,
-        noRdns:
-          typeof parsed.traceroute?.noRdns === "boolean"
-            ? parsed.traceroute.noRdns
-            : fallback.traceroute.noRdns,
-        language:
-          parsed.traceroute?.language === "cn" || parsed.traceroute?.language === "en"
-            ? parsed.traceroute.language
-            : fallback.traceroute.language,
         powProvider:
           parsed.traceroute?.powProvider === "api.nxtrace.org" ||
           parsed.traceroute?.powProvider === "sakura"
             ? parsed.traceroute.powProvider
-            : fallback.traceroute.powProvider,
-        showTracerouteTab:
-          typeof parsed.traceroute?.showTracerouteTab === "boolean"
-            ? parsed.traceroute.showTracerouteTab
-            : fallback.traceroute.showTracerouteTab
+            : fallback.traceroute.powProvider
       },
       agent: {
         enabled:

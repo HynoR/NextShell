@@ -14,7 +14,7 @@ type LocalAwareSessionDescriptor = SessionDescriptor & {
   connectionId?: string;
 };
 
-export type BottomTab = "files" | "commands" | "system-info" | "traceroute";
+export type BottomTab = "files" | "commands" | "system-info";
 
 export interface NetworkPoint {
   inMbps: number;
@@ -490,9 +490,6 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
     }),
   setBottomTab: (tab) =>
     set({
-      bottomTab:
-        tab === "commands" || tab === "files" || tab === "system-info" || tab === "traceroute"
-          ? tab
-          : "files"
+      bottomTab: tab === "commands" || tab === "files" || tab === "system-info" ? tab : "files"
     })
 }));

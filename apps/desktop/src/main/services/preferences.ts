@@ -225,43 +225,10 @@ export const mergePreferences = (
         patch.traceroute?.nexttracePath !== undefined
           ? patch.traceroute.nexttracePath
           : current.traceroute.nexttracePath,
-      protocol:
-        patch.traceroute?.protocol !== undefined
-          ? patch.traceroute.protocol
-          : current.traceroute.protocol,
-      port: patch.traceroute?.port !== undefined ? patch.traceroute.port : current.traceroute.port,
-      queries:
-        patch.traceroute?.queries !== undefined
-          ? patch.traceroute.queries
-          : current.traceroute.queries,
-      maxHops:
-        patch.traceroute?.maxHops !== undefined
-          ? patch.traceroute.maxHops
-          : current.traceroute.maxHops,
-      ipVersion:
-        patch.traceroute?.ipVersion !== undefined
-          ? patch.traceroute.ipVersion
-          : current.traceroute.ipVersion,
-      dataProvider:
-        patch.traceroute?.dataProvider !== undefined
-          ? patch.traceroute.dataProvider
-          : current.traceroute.dataProvider,
-      noRdns:
-        patch.traceroute?.noRdns !== undefined
-          ? patch.traceroute.noRdns
-          : current.traceroute.noRdns,
-      language:
-        patch.traceroute?.language !== undefined
-          ? patch.traceroute.language
-          : current.traceroute.language,
       powProvider:
         patch.traceroute?.powProvider !== undefined
           ? patch.traceroute.powProvider
-          : current.traceroute.powProvider,
-      showTracerouteTab:
-        patch.traceroute?.showTracerouteTab !== undefined
-          ? patch.traceroute.showTracerouteTab
-          : current.traceroute.showTracerouteTab
+          : current.traceroute.powProvider
     },
     agent: {
       enabled: patch.agent?.enabled !== undefined ? patch.agent.enabled : current.agent.enabled,

@@ -566,39 +566,9 @@ export const appPreferencesSchema = z
     traceroute: z
       .object({
         nexttracePath: z.string().default(DEFAULT_APP_PREFERENCES.traceroute.nexttracePath),
-        protocol: z
-          .enum(["icmp", "tcp", "udp"])
-          .default(DEFAULT_APP_PREFERENCES.traceroute.protocol),
-        port: z.coerce
-          .number()
-          .int()
-          .min(0)
-          .max(65535)
-          .default(DEFAULT_APP_PREFERENCES.traceroute.port),
-        queries: z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(10)
-          .default(DEFAULT_APP_PREFERENCES.traceroute.queries),
-        maxHops: z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(64)
-          .default(DEFAULT_APP_PREFERENCES.traceroute.maxHops),
-        ipVersion: z
-          .enum(["auto", "ipv4", "ipv6"])
-          .default(DEFAULT_APP_PREFERENCES.traceroute.ipVersion),
-        dataProvider: z
-          .enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"])
-          .default(DEFAULT_APP_PREFERENCES.traceroute.dataProvider),
-        noRdns: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.noRdns),
-        language: z.enum(["cn", "en"]).default(DEFAULT_APP_PREFERENCES.traceroute.language),
         powProvider: z
           .enum(["api.nxtrace.org", "sakura"])
-          .default(DEFAULT_APP_PREFERENCES.traceroute.powProvider),
-        showTracerouteTab: z.boolean().default(DEFAULT_APP_PREFERENCES.traceroute.showTracerouteTab)
+          .default(DEFAULT_APP_PREFERENCES.traceroute.powProvider)
       })
       .default(DEFAULT_APP_PREFERENCES.traceroute),
     agent: z
@@ -712,18 +682,7 @@ export const appPreferencesPatchSchema = z.object({
   traceroute: z
     .object({
       nexttracePath: z.string().optional(),
-      protocol: z.enum(["icmp", "tcp", "udp"]).optional(),
-      port: z.coerce.number().int().min(0).max(65535).optional(),
-      queries: z.coerce.number().int().min(1).max(10).optional(),
-      maxHops: z.coerce.number().int().min(1).max(64).optional(),
-      ipVersion: z.enum(["auto", "ipv4", "ipv6"]).optional(),
-      dataProvider: z
-        .enum(["LeoMoeAPI", "ip-api.com", "IPInfo", "IPInsight", "IP.SB", "disable-geoip"])
-        .optional(),
-      noRdns: z.boolean().optional(),
-      language: z.enum(["cn", "en"]).optional(),
-      powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional(),
-      showTracerouteTab: z.boolean().optional()
+      powProvider: z.enum(["api.nxtrace.org", "sakura"]).optional()
     })
     .optional(),
   agent: z

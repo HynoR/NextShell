@@ -8,6 +8,8 @@ const PING_HISTORY_CAP = 50;
 interface PingCardProps {
   /** 当前选中连接的 host，无则不显示卡片 */
   host?: string;
+  /** 打开当前连接的路由追踪抽屉 */
+  onClick?: () => void;
 }
 
 /** 折叠时展示的摘要文案 */
@@ -24,7 +26,7 @@ function summaryLine(
   return "展开以启用 Ping";
 }
 
-export const PingCard = ({ host }: PingCardProps) => {
+export const PingCard = ({ host, onClick }: PingCardProps) => {
   const [collapsed, setCollapsed] = useState(true);
   const [result, setResult] = useState<
     { ok: true; avgMs: number } | { ok: false; error: string } | null
@@ -128,20 +130,33 @@ export const PingCard = ({ host }: PingCardProps) => {
 
   return (
     <section className="monitor-panel">
-      <button
-        type="button"
-        className="monitor-panel-header"
-        onClick={() => setCollapsed((prev) => !prev)}
-      >
-        <i
-          className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
-          aria-hidden="true"
-        />
-        <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
-          Ping 延迟
-        </span>
-        {collapsed ? <span className="monitor-summary">{summaryLine(result, loading)}</span> : null}
-      </button>
+      <div className="monitor-panel-header">
+        <button
+          type="button"
+          className="shrink-0 border-0 bg-transparent p-0"
+          aria-label={collapsed ? "展开 Ping 延迟" : "折叠 Ping 延迟"}
+          onClick={() => setCollapsed((prev) => !prev)}
+        >
+          <i
+            className={collapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"}
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1 border-0 bg-transparent p-0 text-left text-[13px] text-[var(--t2)] cursor-pointer"
+          onClick={onClick}
+          title={onClick ? "查看路由" : undefined}
+          disabled={!onClick}
+        >
+          <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
+            Ping 延迟
+          </span>
+          {collapsed ? (
+            <span className="monitor-summary">{summaryLine(result, loading)}</span>
+          ) : null}
+        </button>
+      </div>
 
       {!collapsed ? (
         <div className="monitor-panel-body">

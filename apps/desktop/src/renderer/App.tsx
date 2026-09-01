@@ -742,7 +742,7 @@ export const App = () => {
 
   const handleSetBottomTab = useCallback(
     (tab: string) => {
-      if (tab === "commands" || tab === "files" || tab === "system-info" || tab === "traceroute") {
+      if (tab === "commands" || tab === "files" || tab === "system-info") {
         setBottomTab(tab);
       }
     },

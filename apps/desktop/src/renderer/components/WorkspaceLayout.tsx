@@ -9,7 +9,7 @@ import {
   useRef,
   useState
 } from "react";
-import { App as AntdApp, Tabs } from "antd";
+import { App as AntdApp, Drawer, Tabs } from "antd";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { sessionStatusLabel } from "../utils/sessionStatus";
 import {
@@ -420,9 +420,6 @@ const WorkspaceLayoutComponent = ({
 }: WorkspaceLayoutProps) => {
   const { message, modal } = AntdApp.useApp();
   const windowPreferences = usePreferencesStore((state) => state.preferences.window);
-  const showTracerouteTab = usePreferencesStore(
-    (state) => state.preferences.traceroute.showTracerouteTab ?? true
-  );
   const activeOscTitle = useSessionOscStore((state) =>
     activeSession ? state.titleBySession[activeSession.id] : undefined
   );
@@ -444,6 +441,7 @@ const WorkspaceLayoutComponent = ({
   const [terminalSearchMode, setTerminalSearchMode] = useState(false);
   const [terminalSearchTerm, setTerminalSearchTerm] = useState("");
   const [addressCopied, setAddressCopied] = useState(false);
+  const [tracerouteOpen, setTracerouteOpen] = useState(false);
   const [updateReleaseUrl, setUpdateReleaseUrl] = useState<string | null>(null);
   const [sessionContextMenu, setSessionContextMenu] = useState<SessionTabContextMenuState | null>(
     null
@@ -847,9 +845,6 @@ const WorkspaceLayoutComponent = ({
     }
   }, [bottomPanelRef]);
 
-  const effectiveBottomActiveKey =
-    bottomTab === "traceroute" && !showTracerouteTab ? "files" : bottomTab;
-
   const bottomTabItems = useMemo(() => {
     const base: Array<{
       key: string;
@@ -897,21 +892,8 @@ const WorkspaceLayoutComponent = ({
         )
       }
     ];
-    if (showTracerouteTab) {
-      base.push({
-        key: "traceroute",
-        label: "路由追踪",
-        children: (
-          <TraceroutePane
-            connection={activeConnection}
-            connected={isActiveConnectionTerminalConnected}
-          />
-        )
-      });
-    }
     return base;
   }, [
-    showTracerouteTab,
     activeConnection,
     isActiveConnectionTerminalConnected,
     followTerminalSessionId,
@@ -923,6 +905,17 @@ const WorkspaceLayoutComponent = ({
     handleExecuteCommand,
     activeConnectionConnectedTerminalSessionId
   ]);
+
+  const handleOpenTraceroute = useCallback(() => {
+    if (activeConnection?.host) {
+      setTracerouteOpen(true);
+    }
+  }, [activeConnection?.host]);
+
+  const handleCloseTraceroute = useCallback(() => {
+    setTracerouteOpen(false);
+    void window.nextshell.traceroute.stop();
+  }, []);
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -1055,7 +1048,18 @@ const WorkspaceLayoutComponent = ({
                   }
                 />
               ) : null}
-              <PingCard host={activeConnection?.host} />
+              <PingCard host={activeConnection?.host} onClick={handleOpenTraceroute} />
+              <Drawer
+                title="路由追踪"
+                open={tracerouteOpen}
+                destroyOnClose
+                onClose={handleCloseTraceroute}
+              >
+                <TraceroutePane
+                  connection={activeConnection}
+                  connected={isActiveConnectionTerminalConnected}
+                />
+              </Drawer>
               <TransferQueuePanel
                 collapsed={transferPanelCollapsed}
                 onToggle={onTransferPanelToggle}
@@ -1312,7 +1316,7 @@ const WorkspaceLayoutComponent = ({
             >
               <div className="bottom-workbench">
                 <Tabs
-                  activeKey={effectiveBottomActiveKey}
+                  activeKey={bottomTab}
                   onChange={onSetBottomTab}
                   tabBarExtraContent={{
                     right: (

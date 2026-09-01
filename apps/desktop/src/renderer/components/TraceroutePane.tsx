@@ -297,6 +297,18 @@ export const TraceroutePane = ({ connection, connected }: TraceroutePaneProps) =
     }
   }, [connection?.host]);
 
+  useEffect(() => {
+    if (!connection || !connected) {
+      if (activeRunRef.current) {
+        activeRunRef.current = null;
+        setRunning(false);
+        void window.nextshell.traceroute.stop();
+      }
+      return;
+    }
+    void handleStart();
+  }, [connected, connection?.host, handleStart]);
+
   const handleStop = useCallback(async () => {
     activeRunRef.current = null;
     setRunning(false);

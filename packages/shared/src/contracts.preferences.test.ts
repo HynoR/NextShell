@@ -9,6 +9,37 @@ const assert = (condition: boolean, message: string): void => {
 
 (() => {
   const parsed = appPreferencesSchema.safeParse({
+    traceroute: {
+      nexttracePath: "/usr/local/bin/nexttrace",
+      powProvider: "sakura",
+      protocol: "tcp",
+      port: 443,
+      showTracerouteTab: true
+    }
+  });
+
+  assert(parsed.success, "appPreferencesSchema should accept the reduced traceroute preferences");
+  if (!parsed.success) return;
+
+  assert(
+    Object.keys(parsed.data.traceroute).sort().join(",") === "nexttracePath,powProvider",
+    "appPreferencesSchema should drop legacy traceroute fields"
+  );
+  assert(parsed.data.traceroute.powProvider === "sakura", "powProvider should be preserved");
+
+  const patch = appPreferencesPatchSchema.safeParse({
+    traceroute: { powProvider: "sakura", language: "en" }
+  });
+  assert(patch.success, "appPreferencesPatchSchema should accept reduced traceroute patches");
+  if (!patch.success) return;
+  assert(
+    Object.keys(patch.data.traceroute ?? {}).join(",") === "powProvider",
+    "appPreferencesPatchSchema should drop legacy traceroute fields"
+  );
+})();
+
+(() => {
+  const parsed = appPreferencesSchema.safeParse({
     window: {
       appearance: "system",
       minimizeToTray: false,

@@ -16,7 +16,10 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   ssh: { ...prefs.ssh },
   window: { ...prefs.window },
   connectionManager: { ...prefs.connectionManager },
-  traceroute: { ...prefs.traceroute },
+  traceroute: {
+    nexttracePath: prefs.traceroute.nexttracePath,
+    powProvider: prefs.traceroute.powProvider
+  },
   agent: {
     ...prefs.agent,
     allowedLocalRoots: [...prefs.agent.allowedLocalRoots]
@@ -158,7 +161,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
       ssh: { ...prev.ssh, ...(patch.ssh ?? {}) },
       window: { ...prev.window, ...(patch.window ?? {}) },
       connectionManager: { ...prev.connectionManager, ...(patch.connectionManager ?? {}) },
-      traceroute: { ...prev.traceroute, ...(patch.traceroute ?? {}) },
+      traceroute: {
+        nexttracePath: patch.traceroute?.nexttracePath ?? prev.traceroute.nexttracePath,
+        powProvider: patch.traceroute?.powProvider ?? prev.traceroute.powProvider
+      },
       agent: { ...prev.agent, ...(patch.agent ?? {}) }
     };
     set({ preferences: optimistic });

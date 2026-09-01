@@ -145,34 +145,6 @@ export class NetworkToolService {
     const bin = this.resolveNexttrace();
     const prefs = this.connections.getAppPreferences().traceroute;
     const args: string[] = [];
-    if (prefs.protocol === "tcp") {
-      args.push("--tcp");
-    } else if (prefs.protocol === "udp") {
-      args.push("--udp");
-    }
-    if ((prefs.protocol === "tcp" || prefs.protocol === "udp") && prefs.port > 0) {
-      args.push("--port", String(prefs.port));
-    }
-    if (prefs.ipVersion === "ipv4") {
-      args.push("--ipv4");
-    } else if (prefs.ipVersion === "ipv6") {
-      args.push("--ipv6");
-    }
-    if (prefs.queries !== 3) {
-      args.push("--queries", String(prefs.queries));
-    }
-    if (prefs.maxHops !== 30) {
-      args.push("--max-hops", String(prefs.maxHops));
-    }
-    if (prefs.dataProvider !== "LeoMoeAPI") {
-      args.push("--data-provider", prefs.dataProvider);
-    }
-    if (prefs.noRdns) {
-      args.push("--no-rdns");
-    }
-    if (prefs.language !== "cn") {
-      args.push("--language", prefs.language);
-    }
     if (prefs.powProvider !== "api.nxtrace.org") {
       args.push("--pow-provider", prefs.powProvider);
     }
