@@ -31,6 +31,7 @@ export interface ActiveRemoteSession {
   kind: "remote";
   descriptor: SessionDescriptor;
   channel: SshShellChannel;
+  connection: SshConnection;
   sender: WebContents;
   connectionId: string;
   terminalEncoding: TerminalEncoding;
@@ -70,25 +71,24 @@ export interface SystemMonitorRuntime {
   controller: SystemMonitorController;
   sender?: WebContents;
   disposed: boolean;
+  releaseConnection: () => void;
+  stopPromise?: Promise<void>;
 }
 
 export interface ProcessMonitorRuntime {
   controller: ProcessMonitorController;
   sender?: WebContents;
   disposed: boolean;
+  releaseConnection: () => void;
+  stopPromise?: Promise<void>;
 }
 
 export interface NetworkMonitorRuntime {
   controller: NetworkMonitorController;
   sender?: WebContents;
   disposed: boolean;
-}
-
-export interface AdhocSessionRuntime {
-  connection: SshConnection;
-  idleTimer?: ReturnType<typeof setTimeout>;
-  lastUsedAt: number;
-  disposed: boolean;
+  releaseConnection: () => void;
+  stopPromise?: Promise<void>;
 }
 
 // ─── Public ServiceContainer interface ─────────────────────────────────────

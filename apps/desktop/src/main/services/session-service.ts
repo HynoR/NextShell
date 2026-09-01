@@ -42,13 +42,12 @@ export interface SessionServiceOptions {
    * `activeSessions` only learns about the session once the shell is up, so
    * without this a concurrently closing last tab would close the client out
    * from under it.
-  */
+   */
   retainConnection: (connectionId: string) => () => void;
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
   ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
-  clearMonitorSuspension: (connectionId: string) => void;
   warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
   persistAuthOverride: (
     connectionId: string,
@@ -72,7 +71,6 @@ export class SessionService {
   private readonly ensureSystemMonitorRuntime: (
     connectionId: string
   ) => Promise<SystemMonitorRuntime>;
-  private readonly clearMonitorSuspension: (connectionId: string) => void;
   private readonly warmupSftp: (
     connectionId: string,
     connection: SshConnection
@@ -97,7 +95,6 @@ export class SessionService {
     this.sendSessionStatus = options.sendSessionStatus;
     this.sessionDataDispatcher = options.sessionDataDispatcher;
     this.ensureSystemMonitorRuntime = options.ensureSystemMonitorRuntime;
-    this.clearMonitorSuspension = options.clearMonitorSuspension;
     this.warmupSftp = options.warmupSftp;
     this.persistAuthOverride = options.persistAuthOverride;
     this.tapAgentSessionData = options.tapAgentSessionData;
@@ -201,6 +198,7 @@ export class SessionService {
         kind: "remote",
         descriptor,
         channel: shell,
+        connection,
         sender,
         connectionId,
         terminalEncoding: profile.terminalEncoding,
@@ -264,7 +262,6 @@ export class SessionService {
       }
 
       if (profile.monitorSession) {
-        this.clearMonitorSuspension(connectionId);
         try {
           await this.ensureSystemMonitorRuntime(connectionId);
         } catch (error) {

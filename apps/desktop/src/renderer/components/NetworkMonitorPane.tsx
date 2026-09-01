@@ -26,7 +26,6 @@ const getListenerKey = (listener: NetworkListener): string => {
 export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
   const { message } = AntdApp.useApp();
   const connectionId = session.connectionId;
-  const sessionId = session.id;
   if (!connectionId) {
     throw new Error("NetworkMonitorPane requires a remote session connectionId");
   }
@@ -57,19 +56,15 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
       }
     });
 
-    // sessionId identifies this pane as one monitor subscriber, so closing it
-    // only drops its own demand instead of stopping every tab on this host.
-    void window.nextshell.monitor
-      .startNetwork({ connectionId, sessionId })
-      .catch((err: unknown) => {
-        message.error(`启动网络监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
-      });
+    void window.nextshell.monitor.startNetwork({ connectionId }).catch((err: unknown) => {
+      message.error(`启动网络监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
+    });
 
     return () => {
       unsub();
-      void window.nextshell.monitor.stopNetwork({ connectionId, sessionId }).catch(() => {});
+      void window.nextshell.monitor.stopNetwork({ connectionId }).catch(() => {});
     };
-  }, [connectionId, sessionId, setNetworkSnapshot]);
+  }, [connectionId, setNetworkSnapshot]);
 
   const listeners = useMemo(() => {
     if (allListeners.length === 0) {

@@ -12,23 +12,14 @@ import type {
   SftpTransferStatusEvent,
   SettingsUpdateInput
 } from "../../../../../packages/shared/src/index";
-import type {
-  EncryptedSecretVault
-} from "../../../../../packages/security/src/index";
+import type { EncryptedSecretVault } from "../../../../../packages/security/src/index";
 import type {
   CachedConnectionRepository,
   CachedSshKeyRepository,
   CachedProxyRepository
 } from "../../../../../packages/storage/src/index";
 import type { RemoteEditManager } from "./remote-edit-manager";
-import type {
-  ActiveSession,
-  AdhocSessionRuntime,
-  MonitorState,
-  SystemMonitorRuntime,
-  ProcessMonitorRuntime,
-  NetworkMonitorRuntime
-} from "./container-types";
+import type { ActiveSession, MonitorState } from "./container-types";
 import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import type { NetworkTool } from "./monitor/network-monitor-controller";
 
@@ -57,23 +48,6 @@ export interface ServiceContext {
   connectionPromises: Map<string, Promise<SshConnection>>;
   activeSessions: Map<string, ActiveSession>;
 
-  // ─── Monitor State Maps ─────────────────────────────────────────────────
-  systemMonitorRuntimes: Map<string, SystemMonitorRuntime>;
-  systemMonitorConnections: Map<string, SshConnection>;
-  systemMonitorConnectionPromises: Map<string, Promise<SshConnection>>;
-  cancelledSystemMonitorConnections: Set<string>;
-  processMonitorRuntimes: Map<string, ProcessMonitorRuntime>;
-  processMonitorPromises: Map<string, Promise<ProcessMonitorRuntime>>;
-  processMonitorConnections: Map<string, SshConnection>;
-  processMonitorConnectionPromises: Map<string, Promise<SshConnection>>;
-  cancelledProcessMonitorConnections: Set<string>;
-  networkMonitorRuntimes: Map<string, NetworkMonitorRuntime>;
-  networkMonitorPromises: Map<string, Promise<NetworkMonitorRuntime>>;
-  networkMonitorConnections: Map<string, SshConnection>;
-  networkMonitorConnectionPromises: Map<string, Promise<SshConnection>>;
-  cancelledNetworkMonitorConnections: Set<string>;
-  adhocSessionRuntimes: Map<string, AdhocSessionRuntime>;
-  adhocSessionPromises: Map<string, Promise<AdhocSessionRuntime>>;
   monitorStates: Map<string, MonitorState>;
   networkToolCache: Map<string, NetworkTool>;
 
@@ -91,7 +65,6 @@ export interface ServiceContext {
   hasVisibleTerminalAlive: (connectionId: string) => boolean;
   assertMonitorEnabled: (connectionId: string) => ConnectionProfile;
   assertVisibleTerminalAlive: (connectionId: string) => void;
-  establishHiddenConnection: (connectionId: string, tag: string) => Promise<SshConnection>;
 
   // ─── Preferences ────────────────────────────────────────────────────────
   getAppPreferences: () => AppPreferences;
@@ -110,5 +83,4 @@ export interface ServiceContext {
   // ─── Debug Logging ──────────────────────────────────────────────────────
   debugSenders: Set<WebContents>;
   emitDebugLog: (entry: DebugLogEntry) => void;
-
 }

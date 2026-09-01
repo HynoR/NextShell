@@ -345,14 +345,13 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: monitorSystemStartSchema,
     label: "系统监控启动",
     dispatch: (services, input, event) =>
-      services.monitors.startSystemMonitor(input.connectionId, event.sender, input.sessionId)
+      services.monitors.startSystemMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorSystemStop,
     schema: monitorSystemStopSchema,
     label: "系统监控停止",
-    dispatch: (services, input) =>
-      services.monitors.stopSystemMonitor(input.connectionId, input.sessionId)
+    dispatch: (services, input) => services.monitors.stopSystemMonitor(input.connectionId)
   }),
   define({
     channel: IPCChannel.MonitorSystemSelectInterface,
@@ -581,14 +580,13 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: monitorProcessStartSchema,
     label: "进程监控启动",
     dispatch: (services, input, event) =>
-      services.monitors.startProcessMonitor(input.connectionId, event.sender, input.sessionId)
+      services.monitors.startProcessMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorProcessStop,
     schema: monitorProcessStopSchema,
     label: "进程监控停止",
-    dispatch: (services, input) =>
-      services.monitors.stopProcessMonitor(input.connectionId, input.sessionId)
+    dispatch: (services, input) => services.monitors.stopProcessMonitor(input.connectionId)
   }),
   define({
     channel: IPCChannel.MonitorProcessDetail,
@@ -608,14 +606,13 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: monitorNetworkStartSchema,
     label: "网络监控启动",
     dispatch: (services, input, event) =>
-      services.monitors.startNetworkMonitor(input.connectionId, event.sender, input.sessionId)
+      services.monitors.startNetworkMonitor(input.connectionId, event.sender)
   }),
   define({
     channel: IPCChannel.MonitorNetworkStop,
     schema: monitorNetworkStopSchema,
     label: "网络监控停止",
-    dispatch: (services, input) =>
-      services.monitors.stopNetworkMonitor(input.connectionId, input.sessionId)
+    dispatch: (services, input) => services.monitors.stopNetworkMonitor(input.connectionId)
   }),
   define({
     channel: IPCChannel.MonitorNetworkConnections,

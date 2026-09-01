@@ -238,23 +238,12 @@ export const monitorSystemInfoSnapshotSchema = z.object({
   connectionId: z.string().uuid()
 });
 
-/**
- * Opaque per-consumer key for monitor start/stop (renderer session id).
- *
- * The main process reference counts subscribers so one pane closing cannot tear
- * down the monitor of another tab on the same host. Optional for backwards
- * compatibility: without it, start/stop keep the old connection-level semantics.
- */
-const monitorSubscriberIdSchema = z.string().trim().min(1).max(128).optional();
-
 export const monitorSystemStartSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorSystemStopSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorSystemSelectInterfaceSchema = z.object({
@@ -263,13 +252,11 @@ export const monitorSystemSelectInterfaceSchema = z.object({
 });
 
 export const monitorProcessStartSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorProcessStopSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorProcessDetailSchema = z.object({
@@ -284,13 +271,11 @@ export const monitorProcessKillSchema = z.object({
 });
 
 export const monitorNetworkStartSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorNetworkStopSchema = z.object({
-  connectionId: z.string().uuid(),
-  sessionId: monitorSubscriberIdSchema
+  connectionId: z.string().uuid()
 });
 
 export const monitorNetworkConnectionsSchema = z.object({

@@ -534,42 +534,6 @@ export const createServiceContainer = async (
     await Promise.all(clients.map((client) => client.close()));
   };
 
-  const hasVisibleTerminalAlive = (connectionId: string): boolean =>
-    Array.from(activeSessions.values()).some(
-      (s) =>
-        s.kind === "remote" &&
-        s.connectionId === connectionId &&
-        s.descriptor.type === "terminal" &&
-        s.descriptor.status === "connected"
-    );
-
-  const assertMonitorEnabled = (connectionId: string): ConnectionProfile => {
-    const profile = getConnectionOrThrow(connectionId);
-    if (!profile.monitorSession)
-      throw new Error("当前连接未启用 Monitor Session，请在连接配置中开启后重试。");
-    return profile;
-  };
-
-  const assertVisibleTerminalAlive = (connectionId: string): void => {
-    if (!hasVisibleTerminalAlive(connectionId))
-      throw new Error("请先连接 SSH 终端以启动 Monitor Session。");
-  };
-
-  const establishHiddenConnection = async (
-    connectionId: string,
-    tag: string
-  ): Promise<SshConnection> => {
-    const profile = assertMonitorEnabled(connectionId);
-    logger.info(`[${tag}] connecting hidden SSH`, {
-      connectionId,
-      host: profile.host,
-      port: profile.port
-    });
-    const ssh = await SshConnection.connect(await resolveConnectOptions(profile));
-    logger.info(`[${tag}] hidden SSH connected`, { connectionId });
-    return ssh;
-  };
-
   // ─── Sub-Service Instantiation ───────────────────────────────────────────
   const prefsSvc = new PreferencesDialogService({
     connections
@@ -580,10 +544,9 @@ export const createServiceContainer = async (
   const networkToolSvc = new NetworkToolService({ connections });
 
   const monitorSvc = new MonitorService({
-    connections,
     getConnectionOrThrow,
-    resolveConnectOptions: (profile) => resolveConnectOptions(profile),
     activeSessions,
+    retainConnection,
     debugSenders: prefsSvc.debugSenders,
     emitDebugLog: (entry) => prefsSvc.emitDebugLog(entry),
     emitSystemSnapshot: (sender, snapshot) => {
@@ -646,7 +609,6 @@ export const createServiceContainer = async (
     sendSessionStatus,
     sessionDataDispatcher,
     ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
-    clearMonitorSuspension: (id) => monitorSvc.clearMonitorSuspension(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
     persistAuthOverride: (id, override) =>
       connectionSvc.persistSuccessfulAuthOverride(id, override),

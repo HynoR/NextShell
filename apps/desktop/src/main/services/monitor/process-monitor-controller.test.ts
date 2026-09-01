@@ -56,8 +56,8 @@ await (async () => {
 
   const controller = new ProcessMonitorController({
     connectionId: "conn-process-inflight",
-    getConnection: async () => fakeConnection,
-    closeConnection: async () => {
+    exec: (command, options) => fakeConnection.exec(command, options),
+    stopMonitor: async () => {
       closeCalls += 1;
     },
     isVisibleTerminalAlive: () => true,
@@ -105,8 +105,8 @@ await (async () => {
 
   const controller = new ProcessMonitorController({
     connectionId: "conn-process-receiver",
-    getConnection: async () => fakeConnection,
-    closeConnection: async () => {
+    exec: (command, options) => fakeConnection.exec(command, options),
+    stopMonitor: async () => {
       closeCalls += 1;
     },
     isVisibleTerminalAlive: () => true,
@@ -157,8 +157,8 @@ await (async () => {
 
   const controller = new ProcessMonitorController({
     connectionId: "conn-process-visible",
-    getConnection: async () => fakeConnection,
-    closeConnection: async () => {
+    exec: (command, options) => fakeConnection.exec(command, options),
+    stopMonitor: async () => {
       closeCalls += 1;
     },
     isVisibleTerminalAlive: () => visibleTerminalAlive,
@@ -194,10 +194,10 @@ await (async () => {
 await (async () => {
   const controller = new ProcessMonitorController({
     connectionId: "conn-process-start-guard",
-    getConnection: async () => {
+    exec: async () => {
       throw new Error("unexpected");
     },
-    closeConnection: async () => undefined,
+    stopMonitor: async () => undefined,
     isVisibleTerminalAlive: () => false,
     isReceiverAlive: () => true,
     emitSnapshot: () => undefined,

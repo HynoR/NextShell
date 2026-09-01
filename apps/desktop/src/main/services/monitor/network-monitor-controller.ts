@@ -1,6 +1,5 @@
 import type { NetworkConnection, NetworkSnapshot } from "../../../../../../packages/core/src/index";
-import type { SshConnection } from "../../../../../../packages/ssh/src/index";
-import { MonitorBackoff, MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
+import { MonitorExecTimeoutError, runTimedExec, type MonitorExec } from "./monitor-runner";
 import { parseNetstatOutput, parseSsOutput } from "./network-probe-parser";
 
 export type NetworkTool = "ss" | "netstat";
@@ -13,7 +12,7 @@ export const NETWORK_PROBE_NETSTAT =
 const NETWORK_TOOL_DETECT_SS = "command -v ss >/dev/null 2>&1";
 const NETWORK_TOOL_DETECT_NETSTAT = "command -v netstat >/dev/null 2>&1";
 
-const DEFAULT_POLL_INTERVAL_MS = 5000;
+const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_START_DELAY_MS = 200;
 const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
@@ -38,8 +37,8 @@ export interface NetworkProbeExecutionLog {
 
 export interface NetworkMonitorControllerOptions {
   connectionId: string;
-  getConnection: () => Promise<SshConnection>;
-  closeConnection: () => Promise<void>;
+  exec: MonitorExec;
+  stopMonitor: () => Promise<void>;
   isVisibleTerminalAlive: () => boolean;
   isReceiverAlive: () => boolean;
   emitSnapshot: (snapshot: NetworkSnapshot) => void;
@@ -86,10 +85,8 @@ export class NetworkMonitorController {
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight = false;
   private consecutiveFailures = 0;
-  private readonly backoff = new MonitorBackoff();
   private lastProbeDurationMs = 0;
   private skipCount = 0;
-  private suspended = false;
   private paused = false;
   private tool: NetworkTool | undefined;
 
@@ -103,10 +100,6 @@ export class NetworkMonitorController {
 
   get currentState(): NetworkMonitorControllerState {
     return this.state;
-  }
-
-  clearSuspension(): void {
-    this.suspended = false;
   }
 
   /** Stop the polling ticker without tearing down runtime state (OS suspend / window hidden). */
@@ -133,13 +126,6 @@ export class NetworkMonitorController {
   }
 
   async start(): Promise<{ ok: true }> {
-    if (this.suspended) {
-      this.options.logger.info("[NetworkMonitor] start refused: suspended until reconnection", {
-        connectionId: this.options.connectionId
-      });
-      return { ok: true };
-    }
-
     if (this.state === "RUNNING" || this.state === "STARTING") {
       return { ok: true };
     }
@@ -152,17 +138,11 @@ export class NetworkMonitorController {
     const generation = this.bumpGeneration();
     this.consecutiveFailures = 0;
     this.inFlight = false;
-    this.backoff.reset();
     this.lastProbeDurationMs = 0;
     this.skipCount = 0;
 
     try {
       await wait(this.startDelayMs);
-      if (!this.isGenerationActive(generation)) {
-        return { ok: true };
-      }
-
-      await this.options.getConnection();
       if (!this.isGenerationActive(generation)) {
         return { ok: true };
       }
@@ -188,7 +168,7 @@ export class NetworkMonitorController {
           this.timer = undefined;
         }
         try {
-          await this.options.closeConnection();
+          await this.options.stopMonitor();
         } finally {
           this.state = "STOPPED";
         }
@@ -203,7 +183,7 @@ export class NetworkMonitorController {
         clearInterval(this.timer);
         this.timer = undefined;
       }
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
       return { ok: true };
     }
 
@@ -215,7 +195,7 @@ export class NetworkMonitorController {
     }
 
     try {
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
     } finally {
       this.inFlight = false;
       this.state = "STOPPED";
@@ -239,8 +219,7 @@ export class NetworkMonitorController {
 
     const tool = await this.ensureTool();
     const command = buildConnectionsQueryCommand(tool, normalizedPort);
-    const connection = await this.options.getConnection();
-    const result = await runTimedExec(connection, command, this.execTimeoutMs);
+    const result = await runTimedExec(this.options.exec, command, this.execTimeoutMs);
 
     if (result.exitCode !== 0) {
       throw new Error(`网络连接查询失败 (exit ${result.exitCode})`);
@@ -286,14 +265,6 @@ export class NetworkMonitorController {
 
     if (!this.options.isVisibleTerminalAlive() || !this.options.isReceiverAlive()) {
       await this.stop();
-      return;
-    }
-
-    if (this.backoff.isActive()) {
-      this.options.logger.debug("[NetworkMonitor] skipping poll: backoff active", {
-        connectionId: this.options.connectionId,
-        remainingMs: this.backoff.remainingMs()
-      });
       return;
     }
 
@@ -343,12 +314,15 @@ export class NetworkMonitorController {
       return cached;
     }
 
-    const connection = await this.options.getConnection();
     if (generation !== undefined && !this.isGenerationActive(generation)) {
       throw new Error("Network monitor state changed");
     }
 
-    const ssProbe = await runTimedExec(connection, NETWORK_TOOL_DETECT_SS, this.execTimeoutMs);
+    const ssProbe = await runTimedExec(
+      this.options.exec,
+      NETWORK_TOOL_DETECT_SS,
+      this.execTimeoutMs
+    );
     if (ssProbe.exitCode === 0) {
       this.tool = "ss";
       this.options.writeToolCache("ss");
@@ -356,7 +330,7 @@ export class NetworkMonitorController {
     }
 
     const netstatProbe = await runTimedExec(
-      connection,
+      this.options.exec,
       NETWORK_TOOL_DETECT_NETSTAT,
       this.execTimeoutMs
     );
@@ -384,8 +358,7 @@ export class NetworkMonitorController {
       }
 
       command = tool === "ss" ? NETWORK_PROBE_SS : NETWORK_PROBE_NETSTAT;
-      const connection = await this.options.getConnection();
-      const result = await runTimedExec(connection, command, this.execTimeoutMs);
+      const result = await runTimedExec(this.options.exec, command, this.execTimeoutMs);
       if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
         return;
       }
@@ -406,30 +379,13 @@ export class NetworkMonitorController {
           exitCode: result.exitCode
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
-          await this.options.closeConnection();
-          this.backoff.apply();
-          if (this.backoff.isExhausted()) {
-            this.suspended = true;
-            this.options.logger.warn(
-              "[NetworkMonitor] server unresponsive, suspending monitor until reconnection",
-              {
-                connectionId: this.options.connectionId
-              }
-            );
-            await this.stop();
-            return;
-          }
-          this.options.logger.warn("[NetworkMonitor] backing off after consecutive failures", {
-            connectionId: this.options.connectionId,
-            consecutiveFailures: this.consecutiveFailures
-          });
+          await this.options.stopMonitor();
         }
         return;
       }
 
       this.lastProbeDurationMs = result.durationMs;
       this.consecutiveFailures = 0;
-      this.backoff.reset();
 
       if (!this.options.isReceiverAlive() || !this.isGenerationActive(generation)) {
         return;
@@ -465,21 +421,7 @@ export class NetworkMonitorController {
         error instanceof MonitorExecTimeoutError ||
         this.consecutiveFailures >= this.maxConsecutiveFailures
       ) {
-        await this.options.closeConnection();
-        this.backoff.apply();
-        if (this.backoff.isExhausted()) {
-          this.options.logger.warn("[NetworkMonitor] server unresponsive, stopping monitor", {
-            connectionId: this.options.connectionId,
-            reason: errorMessage
-          });
-          await this.stop();
-          return;
-        }
-        this.options.logger.warn("[NetworkMonitor] backing off after probe failure", {
-          connectionId: this.options.connectionId,
-          consecutiveFailures: this.consecutiveFailures,
-          reason: errorMessage
-        });
+        await this.options.stopMonitor();
       }
 
       this.options.logger.warn("[NetworkMonitor] drop frame: probe execution failed", {

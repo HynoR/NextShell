@@ -1,13 +1,12 @@
 import type { ProcessSnapshot } from "../../../../../../packages/core/src/index";
-import type { SshConnection } from "../../../../../../packages/ssh/src/index";
-import { MonitorBackoff, MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
+import { MonitorExecTimeoutError, runTimedExec, type MonitorExec } from "./monitor-runner";
 import { parseProcessSnapshot } from "./process-probe-parser";
 
 export const PROCESS_MONITOR_PS_COMMAND =
-  "LC_ALL=C ps -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,comm --no-headers --sort=-pcpu 2>/dev/null | head -n 200";
+  "LC_ALL=C ps -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,comm --no-headers --sort=-pcpu 2>/dev/null | head -n 300";
 export const PROCESS_MONITOR_LINUX_CHECK_COMMAND = "uname -s 2>/dev/null";
 
-const DEFAULT_POLL_INTERVAL_MS = 5000;
+const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_START_DELAY_MS = 200;
 const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
@@ -32,8 +31,8 @@ export interface ProcessProbeExecutionLog {
 
 export interface ProcessMonitorControllerOptions {
   connectionId: string;
-  getConnection: () => Promise<SshConnection>;
-  closeConnection: () => Promise<void>;
+  exec: MonitorExec;
+  stopMonitor: () => Promise<void>;
   isVisibleTerminalAlive: () => boolean;
   isReceiverAlive: () => boolean;
   emitSnapshot: (snapshot: ProcessSnapshot) => void;
@@ -67,10 +66,8 @@ export class ProcessMonitorController {
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight = false;
   private consecutiveFailures = 0;
-  private readonly backoff = new MonitorBackoff();
   private lastProbeDurationMs = 0;
   private skipCount = 0;
-  private suspended = false;
   private paused = false;
 
   constructor(private readonly options: ProcessMonitorControllerOptions) {
@@ -83,10 +80,6 @@ export class ProcessMonitorController {
 
   get currentState(): ProcessMonitorControllerState {
     return this.state;
-  }
-
-  clearSuspension(): void {
-    this.suspended = false;
   }
 
   /** Stop the polling ticker without tearing down runtime state (OS suspend / window hidden). */
@@ -113,13 +106,6 @@ export class ProcessMonitorController {
   }
 
   async start(): Promise<{ ok: true }> {
-    if (this.suspended) {
-      this.options.logger.info("[ProcessMonitor] start refused: suspended until reconnection", {
-        connectionId: this.options.connectionId
-      });
-      return { ok: true };
-    }
-
     if (this.state === "RUNNING" || this.state === "STARTING") {
       return { ok: true };
     }
@@ -132,7 +118,6 @@ export class ProcessMonitorController {
     const generation = this.bumpGeneration();
     this.consecutiveFailures = 0;
     this.inFlight = false;
-    this.backoff.reset();
     this.lastProbeDurationMs = 0;
     this.skipCount = 0;
 
@@ -142,13 +127,12 @@ export class ProcessMonitorController {
         return { ok: true };
       }
 
-      const connection = await this.options.getConnection();
       if (!this.isGenerationActive(generation)) {
         return { ok: true };
       }
 
       const linuxCheck = await runTimedExec(
-        connection,
+        this.options.exec,
         PROCESS_MONITOR_LINUX_CHECK_COMMAND,
         this.execTimeoutMs
       );
@@ -174,11 +158,8 @@ export class ProcessMonitorController {
           clearInterval(this.timer);
           this.timer = undefined;
         }
-        try {
-          await this.options.closeConnection();
-        } finally {
-          this.state = "STOPPED";
-        }
+        await this.options.stopMonitor();
+        this.state = "STOPPED";
       }
       throw error;
     }
@@ -190,7 +171,7 @@ export class ProcessMonitorController {
         clearInterval(this.timer);
         this.timer = undefined;
       }
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
       return { ok: true };
     }
 
@@ -202,7 +183,7 @@ export class ProcessMonitorController {
     }
 
     try {
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
     } finally {
       this.inFlight = false;
       this.state = "STOPPED";
@@ -253,14 +234,6 @@ export class ProcessMonitorController {
       return;
     }
 
-    if (this.backoff.isActive()) {
-      this.options.logger.debug("[ProcessMonitor] skipping poll: backoff active", {
-        connectionId: this.options.connectionId,
-        remainingMs: this.backoff.remainingMs()
-      });
-      return;
-    }
-
     if (this.lastProbeDurationMs > this.pollIntervalMs * 0.5) {
       this.skipCount += 1;
       if (this.skipCount % 2 !== 0) {
@@ -299,8 +272,11 @@ export class ProcessMonitorController {
 
     let stdout = "";
     try {
-      const connection = await this.options.getConnection();
-      const result = await runTimedExec(connection, PROCESS_MONITOR_PS_COMMAND, this.execTimeoutMs);
+      const result = await runTimedExec(
+        this.options.exec,
+        PROCESS_MONITOR_PS_COMMAND,
+        this.execTimeoutMs
+      );
       if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
         return;
       }
@@ -321,30 +297,13 @@ export class ProcessMonitorController {
           exitCode: result.exitCode
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
-          await this.options.closeConnection();
-          this.backoff.apply();
-          if (this.backoff.isExhausted()) {
-            this.suspended = true;
-            this.options.logger.warn(
-              "[ProcessMonitor] server unresponsive, suspending monitor until reconnection",
-              {
-                connectionId: this.options.connectionId
-              }
-            );
-            await this.stop();
-            return;
-          }
-          this.options.logger.warn("[ProcessMonitor] backing off after consecutive failures", {
-            connectionId: this.options.connectionId,
-            consecutiveFailures: this.consecutiveFailures
-          });
+          await this.options.stopMonitor();
         }
         return;
       }
 
       this.lastProbeDurationMs = result.durationMs;
       this.consecutiveFailures = 0;
-      this.backoff.reset();
 
       if (!this.options.isReceiverAlive() || !this.isGenerationActive(generation)) {
         return;
@@ -372,21 +331,7 @@ export class ProcessMonitorController {
         error instanceof MonitorExecTimeoutError ||
         this.consecutiveFailures >= this.maxConsecutiveFailures
       ) {
-        await this.options.closeConnection();
-        this.backoff.apply();
-        if (this.backoff.isExhausted()) {
-          this.options.logger.warn("[ProcessMonitor] server unresponsive, stopping monitor", {
-            connectionId: this.options.connectionId,
-            reason: errorMessage
-          });
-          await this.stop();
-          return;
-        }
-        this.options.logger.warn("[ProcessMonitor] backing off after probe failure", {
-          connectionId: this.options.connectionId,
-          consecutiveFailures: this.consecutiveFailures,
-          reason: errorMessage
-        });
+        await this.options.stopMonitor();
       }
 
       this.options.logger.warn("[ProcessMonitor] drop frame: probe execution failed", {

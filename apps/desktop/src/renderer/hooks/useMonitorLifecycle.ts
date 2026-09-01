@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { App as AntdApp } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
@@ -14,11 +14,6 @@ export function useMonitorLifecycle(
   const setMonitorSnapshot = useWorkspaceStore((state) => state.setMonitorSnapshot);
   const appendNetworkRate = useWorkspaceStore((state) => state.appendNetworkRate);
   const removeSession = useWorkspaceStore((state) => state.removeSession);
-  // Stable subscriber key for this hook instance: the main process reference
-  // counts monitor consumers, so our stop must only drop our own demand and
-  // never the system monitor another window/tab still needs.
-  const [subscriberId] = useState(() => crypto.randomUUID());
-
   // Receive system monitor snapshots.
   //
   // Every snapshot is stored under its own connectionId — no active-connection
@@ -45,10 +40,8 @@ export function useMonitorLifecycle(
 
   // Start/stop system monitor when connection or terminal status changes.
   //
-  // The stop on switch-away stays: it is the demand signal the main process
-  // reference counts. Main keeps the hidden SSH session warm for a short linger
-  // window (see SYSTEM_MONITOR_LINGER_MS) so A→B→A no longer redials, and the
-  // cached snapshot keeps the panel populated meanwhile.
+  // The sidebar follows the active connection; mount starts its monitor and
+  // unmount stops it.
   useEffect(() => {
     if (!activeConnectionId) {
       return;
@@ -60,14 +53,14 @@ export function useMonitorLifecycle(
 
     if (!shouldStartSystemMonitor) {
       void window.nextshell.monitor
-        .stopSystem({ connectionId: activeConnectionId, sessionId: subscriberId })
+        .stopSystem({ connectionId: activeConnectionId })
         .catch(() => {});
       return;
     }
 
     let disposed = false;
     void window.nextshell.monitor
-      .startSystem({ connectionId: activeConnectionId, sessionId: subscriberId })
+      .startSystem({ connectionId: activeConnectionId })
       .catch((error) => {
         if (disposed) return;
         message.error(`启动系统监控失败：${formatErrorMessage(error, "请检查连接状态")}`);
@@ -76,15 +69,10 @@ export function useMonitorLifecycle(
     return () => {
       disposed = true;
       void window.nextshell.monitor
-        .stopSystem({ connectionId: activeConnectionId, sessionId: subscriberId })
+        .stopSystem({ connectionId: activeConnectionId })
         .catch(() => {});
     };
-  }, [
-    monitorSessionEnabled,
-    activeConnectionId,
-    isActiveConnectionTerminalConnected,
-    subscriberId
-  ]);
+  }, [monitorSessionEnabled, activeConnectionId, isActiveConnectionTerminalConnected]);
 
   // Remove stale monitor sessions when their terminal disconnects
   useEffect(() => {

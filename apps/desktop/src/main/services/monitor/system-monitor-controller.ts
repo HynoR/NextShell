@@ -1,5 +1,4 @@
 import type { MonitorProcess, MonitorSnapshot } from "../../../../../../packages/core/src/index";
-import type { SshConnection } from "../../../../../../packages/ssh/src/index";
 import {
   buildDynamicSystemProbeCommand,
   MONITOR_NET_INTERFACES_COMMAND,
@@ -14,12 +13,9 @@ import {
   type ParsedNetworkCounters,
   type ParsedSystemProbeFrame
 } from "./system-probe-parser";
-import { MonitorBackoff, MonitorExecTimeoutError, runTimedExec } from "./monitor-runner";
+import { MonitorExecTimeoutError, runTimedExec, type MonitorExec } from "./monitor-runner";
 
-const DEFAULT_POLL_INTERVAL_MS = 1000;
-const DEFAULT_CPU_MEM_SWAP_INTERVAL_TICKS = 3;
-const DEFAULT_DISK_INTERVAL_TICKS = 10;
-const DEFAULT_INTERFACE_META_INTERVAL_TICKS = 30;
+const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_START_DELAY_MS = 300;
 const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
@@ -48,8 +44,8 @@ export interface ProbeExecutionLog {
 
 export interface SystemMonitorControllerOptions {
   connectionId: string;
-  getConnection: () => Promise<SshConnection>;
-  closeConnection: () => Promise<void>;
+  exec: MonitorExec;
+  stopMonitor: () => Promise<void>;
   isVisibleTerminalAlive: () => boolean;
   isReceiverAlive: () => boolean;
   emitSnapshot: (snapshot: MonitorSnapshot) => void;
@@ -59,19 +55,10 @@ export interface SystemMonitorControllerOptions {
   onProbeExecution?: (entry: ProbeExecutionLog) => void;
   timing?: {
     pollIntervalMs?: number;
-    cpuMemSwapIntervalTicks?: number;
-    diskIntervalTicks?: number;
-    interfaceMetaIntervalTicks?: number;
     startDelayMs?: number;
     execTimeoutMs?: number;
     maxConsecutiveFailures?: number;
   };
-}
-
-interface ProbeFlags {
-  collectCpuMemSwap: boolean;
-  collectDisk: boolean;
-  includeInterfaceMeta: boolean;
 }
 
 const emptyMemory = (): ParsedMemoryTotals => ({
@@ -139,26 +126,20 @@ const wait = async (durationMs: number): Promise<void> => {
 
 export class SystemMonitorController {
   private readonly pollIntervalMs: number;
-  private readonly cpuMemSwapIntervalTicks: number;
-  private readonly diskIntervalTicks: number;
-  private readonly interfaceMetaIntervalTicks: number;
   private readonly startDelayMs: number;
   private readonly execTimeoutMs: number;
   private readonly maxConsecutiveFailures: number;
 
   private state: SystemMonitorControllerState = "IDLE";
   private generation = 0;
-  private tickCount = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
   private inFlight = false;
   private consecutiveFailures = 0;
-  private suspended = false;
   private paused = false;
 
   private networkInterface = "eth0";
   private networkInterfaceOptions: string[] = [];
 
-  private readonly backoff = new MonitorBackoff();
   private lastProbeDurationMs = 0;
   private skipCount = 0;
 
@@ -179,11 +160,6 @@ export class SystemMonitorController {
 
   constructor(private readonly options: SystemMonitorControllerOptions) {
     this.pollIntervalMs = options.timing?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
-    this.cpuMemSwapIntervalTicks =
-      options.timing?.cpuMemSwapIntervalTicks ?? DEFAULT_CPU_MEM_SWAP_INTERVAL_TICKS;
-    this.diskIntervalTicks = options.timing?.diskIntervalTicks ?? DEFAULT_DISK_INTERVAL_TICKS;
-    this.interfaceMetaIntervalTicks =
-      options.timing?.interfaceMetaIntervalTicks ?? DEFAULT_INTERFACE_META_INTERVAL_TICKS;
     this.startDelayMs = options.timing?.startDelayMs ?? DEFAULT_START_DELAY_MS;
     this.execTimeoutMs = options.timing?.execTimeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
     this.maxConsecutiveFailures =
@@ -192,11 +168,6 @@ export class SystemMonitorController {
 
   get currentState(): SystemMonitorControllerState {
     return this.state;
-  }
-
-  /** Clear suspension so the monitor can be started again (call on session reconnect). */
-  clearSuspension(): void {
-    this.suspended = false;
   }
 
   /** Stop the polling ticker without tearing down runtime state (OS suspend / window hidden). */
@@ -225,13 +196,6 @@ export class SystemMonitorController {
   }
 
   async start(): Promise<{ ok: true }> {
-    if (this.suspended) {
-      this.options.logger.info("[SystemMonitor] start refused: suspended until reconnection", {
-        connectionId: this.options.connectionId
-      });
-      return { ok: true };
-    }
-
     if (this.state === "RUNNING" || this.state === "STARTING") {
       return { ok: true };
     }
@@ -242,10 +206,8 @@ export class SystemMonitorController {
 
     this.state = "STARTING";
     const generation = this.bumpGeneration();
-    this.tickCount = 0;
     this.consecutiveFailures = 0;
     this.inFlight = false;
-    this.backoff.reset();
     this.lastProbeDurationMs = 0;
     this.skipCount = 0;
     this.resetSamplingBaselines();
@@ -257,24 +219,12 @@ export class SystemMonitorController {
         return { ok: true };
       }
 
-      await this.options.getConnection();
-      if (!this.isGenerationActive(generation)) {
-        return { ok: true };
-      }
-
       this.state = "RUNNING";
-      await this.runProbe(
-        {
-          collectCpuMemSwap: true,
-          collectDisk: true,
-          includeInterfaceMeta: true
-        },
-        generation
-      );
+      await this.runProbe(generation);
 
       if (this.isGenerationActive(generation)) {
         this.startTicker(generation);
-        this.options.logger.info("[SystemMonitor] started (net 1s, cpu/mem/swap 3s, disk 10s)", {
+        this.options.logger.info("[SystemMonitor] started (merged probe every 2s)", {
           connectionId: this.options.connectionId
         });
       }
@@ -286,11 +236,8 @@ export class SystemMonitorController {
           clearInterval(this.timer);
           this.timer = undefined;
         }
-        try {
-          await this.options.closeConnection();
-        } finally {
-          this.state = "STOPPED";
-        }
+        await this.options.stopMonitor();
+        this.state = "STOPPED";
       }
       throw error;
     }
@@ -302,7 +249,7 @@ export class SystemMonitorController {
         clearInterval(this.timer);
         this.timer = undefined;
       }
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
       return { ok: true };
     }
 
@@ -314,7 +261,7 @@ export class SystemMonitorController {
     }
 
     try {
-      await this.options.closeConnection();
+      await this.options.stopMonitor();
     } finally {
       this.inFlight = false;
       this.state = "STOPPED";
@@ -336,9 +283,8 @@ export class SystemMonitorController {
       throw new Error("无效网卡名称");
     }
 
-    const connection = await this.options.getConnection();
     const result = await runTimedExec(
-      connection,
+      this.options.exec,
       MONITOR_NET_INTERFACES_COMMAND,
       this.execTimeoutMs
     );
@@ -417,16 +363,6 @@ export class SystemMonitorController {
       return;
     }
 
-    this.tickCount += 1;
-
-    if (this.backoff.isActive()) {
-      this.options.logger.debug("[SystemMonitor] skipping poll: backoff active", {
-        connectionId: this.options.connectionId,
-        remainingMs: this.backoff.remainingMs()
-      });
-      return;
-    }
-
     if (this.lastProbeDurationMs > this.pollIntervalMs * 0.5) {
       this.skipCount += 1;
       if (this.skipCount % 2 !== 0) {
@@ -445,21 +381,14 @@ export class SystemMonitorController {
 
     if (this.inFlight) {
       this.options.logger.debug("[SystemMonitor] drop frame: previous probe still running", {
-        connectionId: this.options.connectionId,
-        tickCount: this.tickCount
+        connectionId: this.options.connectionId
       });
       return;
     }
 
-    const flags: ProbeFlags = {
-      collectCpuMemSwap: this.tickCount % this.cpuMemSwapIntervalTicks === 0,
-      collectDisk: this.tickCount % this.diskIntervalTicks === 0,
-      includeInterfaceMeta: this.tickCount % this.interfaceMetaIntervalTicks === 0
-    };
-
     this.inFlight = true;
     try {
-      await this.runProbe(flags, generation);
+      await this.runProbe(generation);
     } finally {
       this.inFlight = false;
     }
@@ -586,28 +515,22 @@ export class SystemMonitorController {
     }
   }
 
-  private async runProbe(flags: ProbeFlags, generation: number): Promise<void> {
+  private async runProbe(generation: number): Promise<void> {
     if (!this.isGenerationActive(generation)) {
       return;
     }
 
     this.syncSelectionState();
 
-    const includeInterfaceMeta =
-      flags.includeInterfaceMeta ||
-      this.networkInterfaceOptions.length === 0 ||
-      !this.networkInterfaceOptions.includes(this.networkInterface);
-
     const command = buildDynamicSystemProbeCommand(this.networkInterface, {
-      collectCpuMemSwap: flags.collectCpuMemSwap,
-      collectDisk: flags.collectDisk,
-      includeInterfaceMeta
+      collectCpuMemSwap: true,
+      collectDisk: true,
+      includeInterfaceMeta: true
     });
 
     let stdout = "";
     try {
-      const connection = await this.options.getConnection();
-      const result = await runTimedExec(connection, command, this.execTimeoutMs);
+      const result = await runTimedExec(this.options.exec, command, this.execTimeoutMs);
       if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
         return;
       }
@@ -625,34 +548,16 @@ export class SystemMonitorController {
         this.consecutiveFailures += 1;
         this.options.logger.debug("[SystemMonitor] drop frame: command non-zero exit", {
           connectionId: this.options.connectionId,
-          exitCode: result.exitCode,
-          tickCount: this.tickCount
+          exitCode: result.exitCode
         });
         if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
-          await this.options.closeConnection();
-          this.backoff.apply();
-          if (this.backoff.isExhausted()) {
-            this.suspended = true;
-            this.options.logger.warn(
-              "[SystemMonitor] server unresponsive, suspending monitor until reconnection",
-              {
-                connectionId: this.options.connectionId
-              }
-            );
-            await this.stop();
-            return;
-          }
-          this.options.logger.warn("[SystemMonitor] backing off after consecutive failures", {
-            connectionId: this.options.connectionId,
-            consecutiveFailures: this.consecutiveFailures
-          });
+          await this.options.stopMonitor();
         }
         return;
       }
 
       this.lastProbeDurationMs = result.durationMs;
       this.consecutiveFailures = 0;
-      this.backoff.reset();
     } catch (error) {
       if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
         return;
@@ -672,27 +577,12 @@ export class SystemMonitorController {
         error instanceof MonitorExecTimeoutError ||
         this.consecutiveFailures >= this.maxConsecutiveFailures
       ) {
-        await this.options.closeConnection();
-        this.backoff.apply();
-        if (this.backoff.isExhausted()) {
-          this.options.logger.warn("[SystemMonitor] server unresponsive, stopping monitor", {
-            connectionId: this.options.connectionId,
-            reason: errorMessage
-          });
-          await this.stop();
-          return;
-        }
-        this.options.logger.warn("[SystemMonitor] backing off after probe failure", {
-          connectionId: this.options.connectionId,
-          consecutiveFailures: this.consecutiveFailures,
-          reason: errorMessage
-        });
+        await this.options.stopMonitor();
       }
 
       this.options.logger.warn("[SystemMonitor] drop frame: probe execution failed", {
         connectionId: this.options.connectionId,
-        reason: errorMessage,
-        tickCount: this.tickCount
+        reason: errorMessage
       });
       return;
     }
@@ -703,17 +593,16 @@ export class SystemMonitorController {
 
     const sections = parseCompoundOutput(stdout);
     const parsed = parseSystemProbeSections(sections, {
-      collectCpuMemSwap: flags.collectCpuMemSwap,
-      collectDisk: flags.collectDisk,
-      includeInterfaceMeta
+      collectCpuMemSwap: true,
+      collectDisk: true,
+      includeInterfaceMeta: true
     });
 
     if (!parsed.ok) {
       this.options.logger.warn("[SystemMonitor] drop frame: invalid probe payload", {
         connectionId: this.options.connectionId,
         reason: parsed.reason,
-        missingSections: parsed.missingSections,
-        tickCount: this.tickCount
+        missingSections: parsed.missingSections
       });
       if (parsed.reason === "invalid NETCOUNTERS") {
         this.networkInterfaceOptions = [];
@@ -728,13 +617,8 @@ export class SystemMonitorController {
     this.resolveInterface(parsed.frame);
     this.updateNetwork(parsed.frame.networkCounters);
 
-    if (flags.collectCpuMemSwap) {
-      this.updateCpuMemSwap(parsed.frame);
-    }
-
-    if (flags.collectDisk) {
-      this.updateDisk(parsed.frame);
-    }
+    this.updateCpuMemSwap(parsed.frame);
+    this.updateDisk(parsed.frame);
 
     if (!this.options.isReceiverAlive() || !this.isGenerationActive(generation)) {
       return;

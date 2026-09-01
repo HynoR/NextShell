@@ -32,7 +32,6 @@ type SortKey = "cpu" | "memory" | "pid";
 export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   const { message } = AntdApp.useApp();
   const connectionId = session.connectionId;
-  const sessionId = session.id;
   if (!connectionId) {
     throw new Error("ProcessManagerPane requires a remote session connectionId");
   }
@@ -70,22 +69,18 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
     });
     unsubRef.current = unsub;
 
-    // sessionId identifies this pane as one monitor subscriber, so closing it
-    // only drops its own demand instead of stopping every tab on this host.
-    void window.nextshell.monitor
-      .startProcess({ connectionId, sessionId })
-      .catch((err: unknown) => {
-        if (disposed) return;
-        message.error(`启动进程监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
-      });
+    void window.nextshell.monitor.startProcess({ connectionId }).catch((err: unknown) => {
+      if (disposed) return;
+      message.error(`启动进程监控失败：${formatErrorMessage(err, "请检查连接状态")}`);
+    });
 
     return () => {
       disposed = true;
       detailRequestIdRef.current += 1;
       unsub();
-      void window.nextshell.monitor.stopProcess({ connectionId, sessionId }).catch(() => {});
+      void window.nextshell.monitor.stopProcess({ connectionId }).catch(() => {});
     };
-  }, [connectionId, sessionId, setProcessSnapshot]);
+  }, [connectionId, setProcessSnapshot]);
 
   const handleKill = useCallback(
     async (pid: number, signal: "SIGTERM" | "SIGKILL") => {
