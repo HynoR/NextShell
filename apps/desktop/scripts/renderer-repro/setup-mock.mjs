@@ -281,9 +281,7 @@ async (page) => {
         workspaceParseToken: async () => ({}),
         status: async () => ({ workspaces: [] }),
         syncNow: () => ok,
-        listConflicts: async () => [],
         testConnection: async () => ({ ok: true }),
-        resolveConflict: () => ok,
         onStatus: () => () => {},
         onApplied: () => () => {}
       },

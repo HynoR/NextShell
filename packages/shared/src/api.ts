@@ -21,7 +21,6 @@ import type {
   SessionDescriptor,
   SystemInfoSnapshot,
   SshKeyProfile,
-  WorkspaceRepoConflict,
   WorkspaceRepoStatus
 } from "../../core/src/index";
 import type {
@@ -140,7 +139,6 @@ import type {
   CloudSyncWorkspaceParseTokenInput,
   CloudSyncTestConnectionInput,
   CloudSyncSyncNowInput,
-  CloudSyncResolveConflictInput,
   RendererErrorReportInput,
   ResourceCopyConnectionInput,
   RecycleBinRestoreInput,
@@ -301,11 +299,9 @@ export interface NextShellApi {
     ) => Promise<CloudSyncWorkspaceTokenDraft>;
     status: () => Promise<{ workspaces: WorkspaceRepoStatus[] }>;
     syncNow: (payload?: CloudSyncSyncNowInput) => Promise<{ ok: true }>;
-    listConflicts: () => Promise<Array<WorkspaceRepoConflict & { workspaceName: string }>>;
     testConnection: (
       payload: CloudSyncTestConnectionInput
     ) => Promise<{ ok: true; displayName?: string }>;
-    resolveConflict: (payload: CloudSyncResolveConflictInput) => Promise<{ ok: true }>;
     onStatus: (listener: (event: CloudSyncManagerStatusEvent) => void) => SessionEventUnsubscribe;
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
   };
@@ -471,9 +467,7 @@ export interface IpcInvokeMethods {
   [IPCChannel.CloudSyncWorkspaceParseToken]: NextShellApi["cloudSync"]["workspaceParseToken"];
   [IPCChannel.CloudSyncStatus]: NextShellApi["cloudSync"]["status"];
   [IPCChannel.CloudSyncSyncNow]: NextShellApi["cloudSync"]["syncNow"];
-  [IPCChannel.CloudSyncListConflicts]: NextShellApi["cloudSync"]["listConflicts"];
   [IPCChannel.CloudSyncTestConnection]: NextShellApi["cloudSync"]["testConnection"];
-  [IPCChannel.CloudSyncResolveConflict]: NextShellApi["cloudSync"]["resolveConflict"];
   [IPCChannel.ConnectionFolderList]: NextShellApi["connectionFolder"]["list"];
   [IPCChannel.ConnectionFolderCreate]: NextShellApi["connectionFolder"]["create"];
   [IPCChannel.ConnectionFolderRename]: NextShellApi["connectionFolder"]["rename"];

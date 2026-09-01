@@ -213,9 +213,7 @@ const api: NextShellApi = {
     workspaceParseToken: (payload) => invoke(IPCChannel.CloudSyncWorkspaceParseToken, payload),
     status: () => invoke(IPCChannel.CloudSyncStatus, {}),
     syncNow: (payload) => invoke(IPCChannel.CloudSyncSyncNow, payload ?? {}),
-    listConflicts: () => invoke(IPCChannel.CloudSyncListConflicts, {}),
     testConnection: (payload) => invoke(IPCChannel.CloudSyncTestConnection, payload),
-    resolveConflict: (payload) => invoke(IPCChannel.CloudSyncResolveConflict, payload),
     onStatus: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: CloudSyncManagerStatusEvent) => {
         listener(payload);

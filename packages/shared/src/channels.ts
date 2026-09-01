@@ -67,9 +67,7 @@ export const IPCChannel = {
   CloudSyncWorkspaceParseToken: "nextshell:cloud-sync:workspace:parse-token",
   CloudSyncStatus: "nextshell:cloud-sync:status",
   CloudSyncSyncNow: "nextshell:cloud-sync:sync-now",
-  CloudSyncListConflicts: "nextshell:cloud-sync:list-conflicts",
   CloudSyncTestConnection: "nextshell:cloud-sync:test-connection",
-  CloudSyncResolveConflict: "nextshell:cloud-sync:resolve-conflict",
   CloudSyncStatusEvent: "nextshell:cloud-sync:status:event",
   CloudSyncAppliedEvent: "nextshell:cloud-sync:applied:event",
   // ── Agent 接入（应用内 MCP 端点）──

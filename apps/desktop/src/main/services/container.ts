@@ -694,20 +694,10 @@ export const createServiceContainer = async (
     removeWorkspace: (id) => connections.removeCloudSyncWorkspace(id),
     getWorkspaceRepoLocalState: (wId) => connections.getWorkspaceRepoLocalState(wId),
     saveWorkspaceRepoLocalState: (state) => connections.saveWorkspaceRepoLocalState(state),
-    listWorkspaceRepoConflicts: (wId) => connections.listWorkspaceRepoConflicts(wId),
-    saveWorkspaceRepoConflict: (conflict) => connections.saveWorkspaceRepoConflict(conflict),
-    removeWorkspaceRepoConflict: (wId, resourceType, resourceId) =>
-      connections.removeWorkspaceRepoConflict(wId, resourceType, resourceId),
-    clearWorkspaceRepoConflicts: (wId) => connections.clearWorkspaceRepoConflicts(wId),
     listWorkspaceCommands: (wId) => connections.listWorkspaceCommands(wId),
     replaceWorkspaceCommands: (wId, commands) =>
       connections.replaceWorkspaceCommands(wId, commands),
-    getWorkspaceCommandsVersion: (wId) => connections.getWorkspaceCommandsVersion(wId),
-    saveWorkspaceCommandsVersion: (wId, version) =>
-      connections.saveWorkspaceCommandsVersion(wId, version),
     saveRecycleBinEntry: (e) => connections.saveRecycleBinEntry(e),
-    listRecycleBinEntries: () => connections.listRecycleBinEntries(),
-    removeRecycleBinEntry: (id) => connections.removeRecycleBinEntry(id),
     storeWorkspacePassword: async (wId, pwd) => {
       await vault.storeCredential(`cloud-sync-ws-${wId}`, pwd);
     },

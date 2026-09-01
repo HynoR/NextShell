@@ -101,8 +101,10 @@ export interface WorkspaceRepoSnapshot {
 
 export interface WorkspaceRepoLocalState {
   workspaceId: string;
-  /** Serialized last-synced snapshot; the common ancestor for three-way merge. */
-  baseSnapshotJson?: string;
+  /** SHA-256 of sorted local resource identity/update tuples. */
+  localFingerprint?: string;
+  /** SHA-256 of sorted local command identity/update tuples. */
+  localCommandsFingerprint?: string;
   /** Opaque server head token from the last successful sync. */
   remoteVersion?: string;
   remoteCommandsVersion?: string;
@@ -111,28 +113,15 @@ export interface WorkspaceRepoLocalState {
   syncState: "idle" | "syncing" | "diverged" | "error" | "disabled" | "synced";
 }
 
-export interface WorkspaceRepoConflict {
-  workspaceId: string;
-  resourceType: "connection" | "sshKey" | "proxy";
-  resourceId: string;
-  displayName: string;
-  localSnapshotJson?: string;
-  remoteSnapshotJson?: string;
-  remoteDeleted: boolean;
-  detectedAt: string;
-}
-
 export interface WorkspaceRepoStatus {
   workspaceId: string;
   state: "idle" | "syncing" | "synced" | "error" | "disabled" | "diverged";
   lastSyncAt?: string;
   lastError?: string;
-  conflictCount: number;
   commandsVersion?: string;
 }
 
-export type RecycleBinReason =
-  "delete" | "conflict_accept_remote" | "conflict_keep_local" | "danger_move";
+export type RecycleBinReason = "delete" | "danger_move";
 
 /** 回收站条目 — 物理隔离存储，恢复时总是创建新副本 */
 export interface RecycleBinEntry {
@@ -144,34 +133,6 @@ export interface RecycleBinEntry {
   reason: RecycleBinReason;
   snapshotJson: string;
   createdAt: string;
-}
-
-/** 带 workspace 作用域的 pending 操作 */
-export interface CloudSyncPendingOp {
-  id?: number;
-  workspaceId: string;
-  resourceType: "server" | "sshKey";
-  resourceId: string;
-  action: "upsert" | "delete";
-  baseRevision: number | null;
-  force: boolean;
-  payloadJson?: string;
-  queuedAt: string;
-  lastAttemptAt?: string;
-  lastError?: string;
-}
-
-/** 带 workspace 作用域的资源同步状态 */
-export interface CloudSyncResourceStateV2 {
-  workspaceId: string;
-  resourceType: "server" | "sshKey";
-  resourceId: string;
-  serverRevision?: number;
-  conflictRemoteRevision?: number;
-  conflictRemotePayloadJson?: string;
-  conflictRemoteUpdatedAt?: string;
-  conflictRemoteDeleted: boolean;
-  conflictDetectedAt?: string;
 }
 
 export const LOCAL_DEFAULT_SCOPE_KEY = "local-default";

@@ -7,7 +7,6 @@ import type {
   RecycleBinEntry,
   SshKeyProfile,
   WorkspaceCommandItem,
-  WorkspaceRepoConflict,
   WorkspaceRepoLocalState,
   WorkspaceRepoSnapshot,
   WorkspaceRepoStatus
@@ -35,22 +34,18 @@ export interface CloudSyncWorkspaceInput {
   enabled?: boolean;
 }
 
-export type CloudSyncConflictItemV3 = WorkspaceRepoConflict & {
-  workspaceName: string;
-};
-
-type ResourceType = WorkspaceRepoConflict["resourceType"];
+export type CloudSyncSyncMode = "cloud-wins" | "local-wins";
 
 type WorkspaceRuntime = {
   timer?: ReturnType<typeof setTimeout>;
   syncing: boolean;
   lastManualSyncAt: number;
+  diverged: boolean;
 };
 
 type ConnectionSnapshotItem = WorkspaceRepoSnapshot["connections"][number];
 type SshKeySnapshotItem = WorkspaceRepoSnapshot["sshKeys"][number];
 type ProxySnapshotItem = WorkspaceRepoSnapshot["proxies"][number];
-type ResourceSnapshotItem = ConnectionSnapshotItem | SshKeySnapshotItem | ProxySnapshotItem;
 
 export interface CloudSyncManagerDeps {
   listConnections: () => ConnectionProfile[];
@@ -75,23 +70,11 @@ export interface CloudSyncManagerDeps {
 
   getWorkspaceRepoLocalState: (workspaceId: string) => WorkspaceRepoLocalState | undefined;
   saveWorkspaceRepoLocalState: (state: WorkspaceRepoLocalState) => void;
-  listWorkspaceRepoConflicts: (workspaceId: string) => WorkspaceRepoConflict[];
-  saveWorkspaceRepoConflict: (conflict: WorkspaceRepoConflict) => void;
-  removeWorkspaceRepoConflict: (
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string
-  ) => void;
-  clearWorkspaceRepoConflicts: (workspaceId: string) => void;
 
   listWorkspaceCommands: (workspaceId: string) => WorkspaceCommandItem[];
   replaceWorkspaceCommands: (workspaceId: string, commands: WorkspaceCommandItem[]) => void;
-  getWorkspaceCommandsVersion: (workspaceId: string) => string | undefined;
-  saveWorkspaceCommandsVersion: (workspaceId: string, version: string) => void;
 
   saveRecycleBinEntry: (entry: RecycleBinEntry) => void;
-  listRecycleBinEntries: () => RecycleBinEntry[];
-  removeRecycleBinEntry: (id: string) => void;
 
   storeWorkspacePassword: (workspaceId: string, password: string) => Promise<void>;
   getWorkspacePassword: (workspaceId: string) => Promise<string | undefined>;
@@ -125,6 +108,20 @@ const stableSerialize = (value: unknown): string => {
 const hashValue = (value: unknown): string =>
   createHash("sha256").update(stableSerialize(value), "utf8").digest("hex");
 
+const compareFingerprintItems = (
+  left: [string, string, string],
+  right: [string, string, string]
+): number =>
+  left[0].localeCompare(right[0]) ||
+  left[1].localeCompare(right[1]) ||
+  left[2].localeCompare(right[2]);
+
+const fingerprintItem = (type: string, id: string, updatedAt: string): [string, string, string] => [
+  type,
+  id,
+  updatedAt
+];
+
 const workspaceRootSlug = (workspaceName: string): string => {
   const normalized = workspaceName
     .trim()
@@ -146,15 +143,6 @@ const normalizeWorkspaceGroupPath = (workspaceName: string, groupPath: string): 
   return suffix ? `/workspace/${slug}/${suffix}` : `/workspace/${slug}`;
 };
 
-const buildEmptySnapshot = (workspaceId: string): WorkspaceRepoSnapshot => ({
-  workspaceId,
-  snapshotId: hashValue({ connections: [], sshKeys: [], proxies: [] }),
-  createdAt: new Date().toISOString(),
-  connections: [],
-  sshKeys: [],
-  proxies: []
-});
-
 const makeDefaultLocalState = (workspaceId: string, enabled: boolean): WorkspaceRepoLocalState => ({
   workspaceId,
   syncState: enabled ? "idle" : "disabled"
@@ -163,28 +151,15 @@ const makeDefaultLocalState = (workspaceId: string, enabled: boolean): Workspace
 const toStatusState = (
   localState: WorkspaceRepoLocalState | undefined,
   syncing: boolean,
-  enabled: boolean
+  enabled: boolean,
+  diverged: boolean
 ): WorkspaceRepoStatus["state"] => {
   if (!enabled) return "disabled";
   if (syncing) return "syncing";
   if (localState?.syncState === "error") return "error";
-  if (localState?.syncState === "diverged") return "diverged";
+  if (diverged || localState?.syncState === "diverged") return "diverged";
   if (!localState || localState.syncState === "idle") return "idle";
   return "synced";
-};
-
-const parseSnapshotJson = (
-  workspaceId: string,
-  json: string | undefined
-): WorkspaceRepoSnapshot => {
-  if (json) {
-    try {
-      return JSON.parse(json) as WorkspaceRepoSnapshot;
-    } catch {
-      // fall through to empty snapshot
-    }
-  }
-  return buildEmptySnapshot(workspaceId);
 };
 
 export class CloudSyncManager {
@@ -279,7 +254,6 @@ export class CloudSyncManager {
     await this.deps.storeWorkspacePassword(id, input.workspacePassword);
     this.deps.saveWorkspace(workspace);
     this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(id, workspace.enabled));
-    this.updateLocalCommandsVersion(id);
     if (workspace.enabled) {
       this.startRuntime(workspace);
       await this.syncNow(id);
@@ -354,23 +328,6 @@ export class CloudSyncManager {
     };
   }
 
-  listConflicts(): CloudSyncConflictItemV3[] {
-    const workspaceNameById = new Map(
-      this.deps
-        .listWorkspaces()
-        .map((workspace) => [workspace.id, workspace.displayName || workspace.workspaceName])
-    );
-    return this.deps
-      .listWorkspaces()
-      .flatMap((workspace) =>
-        this.deps.listWorkspaceRepoConflicts(workspace.id).map((conflict) => ({
-          ...conflict,
-          workspaceName: workspaceNameById.get(workspace.id) ?? workspace.id
-        }))
-      )
-      .sort((left, right) => right.detectedAt.localeCompare(left.detectedAt));
-  }
-
   async testConnection(input: {
     apiBaseUrl: string;
     workspaceName: string;
@@ -388,63 +345,15 @@ export class CloudSyncManager {
     return { ok: true, displayName: result.displayName };
   }
 
-  async syncNow(workspaceId?: string, force = false): Promise<void> {
+  async syncNow(workspaceId?: string, mode?: CloudSyncSyncMode): Promise<void> {
     if (workspaceId) {
       const workspace = this.getWorkspaceOrThrow(workspaceId);
-      await this.syncWorkspace(workspace, force);
+      await this.syncWorkspace(workspace, mode);
       return;
     }
 
     const workspaces = this.deps.listWorkspaces().filter((workspace) => workspace.enabled);
-    await Promise.allSettled(workspaces.map((workspace) => this.syncWorkspace(workspace, force)));
-  }
-
-  async resolveConflict(
-    workspaceId: string,
-    resourceType: ResourceType,
-    resourceId: string,
-    strategy: "keep_local" | "accept_remote"
-  ): Promise<void> {
-    const workspace = this.getWorkspaceOrThrow(workspaceId);
-    const password = await this.getWorkspacePassword(workspaceId);
-    if (!password) {
-      throw new Error("Workspace password not available");
-    }
-
-    const conflicts = this.deps.listWorkspaceRepoConflicts(workspaceId);
-    const target = conflicts.find(
-      (conflict) => conflict.resourceType === resourceType && conflict.resourceId === resourceId
-    );
-    if (!target) {
-      return;
-    }
-
-    if (strategy === "accept_remote") {
-      const currentSnapshot = await this.buildWorkspaceSnapshot(workspace, password);
-      const patchedSnapshot = this.patchSnapshotWithConflictResolution(
-        currentSnapshot,
-        target,
-        "accept_remote"
-      );
-      await this.applyWorkspaceSnapshot(workspace, password, patchedSnapshot);
-    }
-
-    this.deps.removeWorkspaceRepoConflict(workspaceId, resourceType, resourceId);
-    const remaining = this.deps.listWorkspaceRepoConflicts(workspaceId);
-    if (remaining.length === 0) {
-      await this.syncNow(workspaceId, true);
-    } else {
-      const localState =
-        this.deps.getWorkspaceRepoLocalState(workspaceId) ??
-        makeDefaultLocalState(workspaceId, workspace.enabled);
-      this.deps.saveWorkspaceRepoLocalState({
-        ...localState,
-        syncState: "diverged"
-      });
-    }
-
-    this.broadcastManagerStatus();
-    this.deps.broadcastApplied(workspaceId);
+    await Promise.allSettled(workspaces.map((workspace) => this.syncWorkspace(workspace, mode)));
   }
 
   pushConnectionUpsert(profile: ConnectionProfile): void {
@@ -490,7 +399,6 @@ export class CloudSyncManager {
   }
 
   markWorkspaceCommandsDirty(workspaceId: string): void {
-    this.updateLocalCommandsVersion(workspaceId);
     void this.syncNow(workspaceId).catch(() => undefined);
   }
 
@@ -501,7 +409,8 @@ export class CloudSyncManager {
 
     const runtime = this.runtimes.get(workspace.id) ?? {
       syncing: false,
-      lastManualSyncAt: 0
+      lastManualSyncAt: 0,
+      diverged: false
     };
     this.runtimes.set(workspace.id, runtime);
     this.scheduleWorkspaceSync(workspace);
@@ -540,15 +449,17 @@ export class CloudSyncManager {
   private getWorkspaceStatus(workspace: CloudSyncWorkspaceProfile): WorkspaceRepoStatus {
     const runtime = this.runtimes.get(workspace.id);
     const localState = this.deps.getWorkspaceRepoLocalState(workspace.id);
-    const commandsVersion =
-      this.deps.getWorkspaceCommandsVersion(workspace.id) ?? localState?.remoteCommandsVersion;
     return {
       workspaceId: workspace.id,
-      state: toStatusState(localState, runtime?.syncing ?? false, workspace.enabled),
+      state: toStatusState(
+        localState,
+        runtime?.syncing ?? false,
+        workspace.enabled,
+        runtime?.diverged ?? false
+      ),
       lastSyncAt: localState?.lastSyncAt ?? workspace.lastSyncAt ?? undefined,
       lastError: localState?.lastError ?? workspace.lastError ?? undefined,
-      conflictCount: this.deps.listWorkspaceRepoConflicts(workspace.id).length,
-      commandsVersion
+      commandsVersion: localState?.remoteCommandsVersion
     };
   }
 
@@ -560,23 +471,26 @@ export class CloudSyncManager {
     if (!this.deps.getWorkspaceRepoLocalState(workspaceId)) {
       this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(workspaceId, workspace.enabled));
     }
-    this.updateLocalCommandsVersion(workspaceId);
   }
 
-  private async syncWorkspace(workspace: CloudSyncWorkspaceProfile, force = false): Promise<void> {
+  private async syncWorkspace(
+    workspace: CloudSyncWorkspaceProfile,
+    mode?: CloudSyncSyncMode
+  ): Promise<void> {
     if (!workspace.enabled) {
       return;
     }
 
     const runtime = this.runtimes.get(workspace.id) ?? {
       syncing: false,
-      lastManualSyncAt: 0
+      lastManualSyncAt: 0,
+      diverged: false
     };
     this.runtimes.set(workspace.id, runtime);
     if (runtime.syncing) {
       return;
     }
-    if (!force && Date.now() - runtime.lastManualSyncAt < SYNC_NOW_MIN_INTERVAL_MS) {
+    if (!mode && Date.now() - runtime.lastManualSyncAt < SYNC_NOW_MIN_INTERVAL_MS) {
       return;
     }
 
@@ -592,27 +506,56 @@ export class CloudSyncManager {
         makeDefaultLocalState(workspace.id, workspace.enabled);
       const resolve = await this.api.resolve(credentials);
       const remoteVersion = resolve.headCommitId ?? undefined;
-      const normalizedState = await this.syncWorkspaceRepo(
+      const commandsVersion = resolve.commandsVersion ?? undefined;
+      if (
+        !mode &&
+        (this.hasResourceDivergence(workspace.id, localState, remoteVersion) ||
+          this.hasCommandDivergence(workspace.id, localState, commandsVersion))
+      ) {
+        runtime.diverged = true;
+        this.deps.saveWorkspaceRepoLocalState({
+          ...localState,
+          lastError: undefined,
+          syncState: "diverged"
+        });
+        this.deps.saveWorkspace({ ...workspace, lastError: null });
+        return;
+      }
+      const repoState = await this.syncWorkspaceRepo(
         workspace,
         credentials,
         localState,
-        remoteVersion
+        remoteVersion,
+        mode
       );
+      if (repoState.syncState === "diverged") {
+        runtime.diverged = true;
+        this.deps.saveWorkspaceRepoLocalState({ ...repoState, lastError: undefined });
+        this.deps.saveWorkspace({ ...workspace, lastError: null });
+        return;
+      }
       const commandState = await this.syncWorkspaceCommands(
         workspace,
         credentials,
-        { ...normalizedState, remoteCommandsVersion: localState.remoteCommandsVersion },
-        resolve.commandsVersion ?? undefined
+        repoState,
+        commandsVersion,
+        mode
       );
+      if (commandState.syncState === "diverged") {
+        runtime.diverged = true;
+        this.deps.saveWorkspaceRepoLocalState({ ...commandState, lastError: undefined });
+        this.deps.saveWorkspace({ ...workspace, lastError: null });
+        return;
+      }
 
       const syncedAt = new Date().toISOString();
       const nextLocalState: WorkspaceRepoLocalState = {
         ...commandState,
-        syncState:
-          this.deps.listWorkspaceRepoConflicts(workspace.id).length > 0 ? "diverged" : "synced",
+        syncState: "synced",
         lastSyncAt: syncedAt,
         lastError: undefined
       };
+      runtime.diverged = false;
       this.deps.saveWorkspaceRepoLocalState(nextLocalState);
       this.deps.saveWorkspace({
         ...workspace,
@@ -630,6 +573,7 @@ export class CloudSyncManager {
         lastError: message,
         syncState: "error"
       });
+      runtime.diverged = false;
       this.deps.saveWorkspace({
         ...workspace,
         lastError: message
@@ -640,64 +584,98 @@ export class CloudSyncManager {
     }
   }
 
+  private hasResourceDivergence(
+    workspaceId: string,
+    localState: WorkspaceRepoLocalState,
+    remoteVersion?: string
+  ): boolean {
+    const hasBaseline =
+      localState.localFingerprint !== undefined || localState.remoteVersion !== undefined;
+    return (
+      hasBaseline &&
+      this.workspaceFingerprint(workspaceId) !== localState.localFingerprint &&
+      (remoteVersion ?? undefined) !== (localState.remoteVersion ?? undefined)
+    );
+  }
+
+  private hasCommandDivergence(
+    workspaceId: string,
+    localState: WorkspaceRepoLocalState,
+    remoteVersion?: string
+  ): boolean {
+    const hasBaseline =
+      localState.localCommandsFingerprint !== undefined ||
+      localState.remoteCommandsVersion !== undefined;
+    return (
+      hasBaseline &&
+      this.workspaceCommandsFingerprint(workspaceId) !== localState.localCommandsFingerprint &&
+      (remoteVersion ?? undefined) !== (localState.remoteCommandsVersion ?? undefined)
+    );
+  }
+
   private async syncWorkspaceRepo(
     workspace: CloudSyncWorkspaceProfile,
     credentials: CloudSyncApiV3Credentials,
     localState: WorkspaceRepoLocalState,
-    remoteVersion?: string
+    remoteVersion?: string,
+    mode?: CloudSyncSyncMode
   ): Promise<WorkspaceRepoLocalState> {
-    // Pending conflicts gate all repo sync until the user resolves them.
-    if (this.deps.listWorkspaceRepoConflicts(workspace.id).length > 0) {
-      return {
-        ...localState,
-        remoteVersion: remoteVersion ?? localState.remoteVersion,
-        syncState: "diverged"
-      };
+    const localFingerprint = this.workspaceFingerprint(workspace.id);
+    const hasBaseline =
+      localState.localFingerprint !== undefined || localState.remoteVersion !== undefined;
+    const localChanged = hasBaseline && localFingerprint !== localState.localFingerprint;
+    const remoteChanged =
+      !hasBaseline || (remoteVersion ?? undefined) !== (localState.remoteVersion ?? undefined);
+
+    if (!localChanged && !remoteChanged) {
+      return { ...localState, localFingerprint, syncState: "synced" };
     }
 
-    const base = parseSnapshotJson(workspace.id, localState.baseSnapshotJson);
+    if (localChanged && remoteChanged) {
+      if (!mode) {
+        return { ...localState, syncState: "diverged" };
+      }
+      if (mode === "cloud-wins") {
+        return this.pullRemoteHead(workspace, credentials, localState, remoteVersion);
+      }
+    }
+
+    if (remoteChanged && !localChanged) {
+      return this.pullRemoteHead(workspace, credentials, localState, remoteVersion);
+    }
+
     const localSnapshot = await this.buildWorkspaceSnapshot(
       workspace,
       credentials.workspacePassword
     );
-    const knownRemoteVersion = localState.remoteVersion;
-
-    const localDirty = localSnapshot.snapshotId !== base.snapshotId;
-    const remoteChanged = (remoteVersion ?? undefined) !== (knownRemoteVersion ?? undefined);
-
-    if (!localDirty && !remoteChanged) {
-      return { ...localState, syncState: "synced" };
-    }
-    if (!localDirty && remoteChanged) {
-      return this.pullRemoteHead(workspace, credentials, localState);
-    }
-    if (localDirty && !remoteChanged) {
-      return this.pushLocalHead(workspace, credentials, localState, localSnapshot);
-    }
-    // Both sides moved → reconcile via three-way merge against the common ancestor.
-    return this.reconcileDivergence(workspace, credentials, localState, base, localSnapshot);
+    return this.pushLocalHead(workspace, credentials, localState, localSnapshot, mode);
   }
 
   private async pullRemoteHead(
     workspace: CloudSyncWorkspaceProfile,
     credentials: CloudSyncApiV3Credentials,
-    localState: WorkspaceRepoLocalState
+    localState: WorkspaceRepoLocalState,
+    remoteVersion?: string
   ): Promise<WorkspaceRepoLocalState> {
     const response = await this.api.pull(credentials, localState.remoteVersion);
-    const remoteVersion = response.headCommitId ?? undefined;
+    const nextRemoteVersion = response.headCommitId ?? remoteVersion;
     if (response.unchanged || !response.snapshot) {
-      return { ...localState, remoteVersion, syncState: "synced" };
+      return {
+        ...localState,
+        remoteVersion: nextRemoteVersion,
+        localFingerprint: this.workspaceFingerprint(workspace.id),
+        syncState: "synced"
+      };
     }
     const remoteSnapshot: WorkspaceRepoSnapshot = {
       ...response.snapshot,
       workspaceId: workspace.id
     };
     await this.applyWorkspaceSnapshot(workspace, credentials.workspacePassword, remoteSnapshot);
-    this.deps.clearWorkspaceRepoConflicts(workspace.id);
     return {
       ...localState,
-      baseSnapshotJson: JSON.stringify(remoteSnapshot),
-      remoteVersion,
+      remoteVersion: nextRemoteVersion,
+      localFingerprint: this.workspaceFingerprint(workspace.id),
       syncState: "synced"
     };
   }
@@ -706,320 +684,123 @@ export class CloudSyncManager {
     workspace: CloudSyncWorkspaceProfile,
     credentials: CloudSyncApiV3Credentials,
     localState: WorkspaceRepoLocalState,
-    localSnapshot: WorkspaceRepoSnapshot
-  ): Promise<WorkspaceRepoLocalState> {
-    const response = await this.api.push(credentials, {
-      baseHeadCommitId: localState.remoteVersion ?? null,
-      snapshot: localSnapshot
-    });
-
-    if (response.status === "accepted") {
-      this.deps.clearWorkspaceRepoConflicts(workspace.id);
-      return {
-        ...localState,
-        baseSnapshotJson: JSON.stringify(localSnapshot),
-        remoteVersion: response.headCommitId,
-        syncState: "synced"
-      };
-    }
-
-    // Remote advanced since our base; merge against the snapshot the server returned.
-    const base = parseSnapshotJson(workspace.id, localState.baseSnapshotJson);
-    const remoteSnapshot: WorkspaceRepoSnapshot = {
-      ...response.snapshot,
-      workspaceId: workspace.id
-    };
-    return this.mergeAndSettle(
-      workspace,
-      credentials,
-      localState,
-      base,
-      localSnapshot,
-      remoteSnapshot,
-      response.headCommitId ?? undefined
-    );
-  }
-
-  private async reconcileDivergence(
-    workspace: CloudSyncWorkspaceProfile,
-    credentials: CloudSyncApiV3Credentials,
-    localState: WorkspaceRepoLocalState,
-    base: WorkspaceRepoSnapshot,
-    localSnapshot: WorkspaceRepoSnapshot
-  ): Promise<WorkspaceRepoLocalState> {
-    const response = await this.api.pull(credentials, localState.remoteVersion);
-    const remoteVersion = response.headCommitId ?? undefined;
-    if (response.unchanged || !response.snapshot) {
-      // Remote token advanced without a snapshot delta; push local as the new head.
-      return this.pushLocalHead(
-        workspace,
-        credentials,
-        { ...localState, remoteVersion },
-        localSnapshot
-      );
-    }
-    const remoteSnapshot: WorkspaceRepoSnapshot = {
-      ...response.snapshot,
-      workspaceId: workspace.id
-    };
-    return this.mergeAndSettle(
-      workspace,
-      credentials,
-      localState,
-      base,
-      localSnapshot,
-      remoteSnapshot,
-      remoteVersion
-    );
-  }
-
-  private async mergeAndSettle(
-    workspace: CloudSyncWorkspaceProfile,
-    credentials: CloudSyncApiV3Credentials,
-    localState: WorkspaceRepoLocalState,
-    base: WorkspaceRepoSnapshot,
     localSnapshot: WorkspaceRepoSnapshot,
-    remoteSnapshot: WorkspaceRepoSnapshot,
-    remoteVersion: string | undefined
+    mode?: CloudSyncSyncMode
   ): Promise<WorkspaceRepoLocalState> {
-    const mergeResult = this.mergeSnapshots(base, localSnapshot, remoteSnapshot);
-    this.deps.clearWorkspaceRepoConflicts(workspace.id);
-    await this.applyWorkspaceSnapshot(
-      workspace,
-      credentials.workspacePassword,
-      mergeResult.snapshot
-    );
-
-    if (mergeResult.conflicts.length > 0) {
-      for (const conflict of mergeResult.conflicts) {
-        this.deps.saveWorkspaceRepoConflict(conflict);
+    let baseHeadCommitId = localState.remoteVersion ?? null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await this.api.push(credentials, {
+        baseHeadCommitId,
+        snapshot: localSnapshot
+      });
+      if (response.status === "accepted") {
+        return {
+          ...localState,
+          remoteVersion: response.headCommitId,
+          localFingerprint: this.workspaceFingerprint(workspace.id),
+          syncState: "synced"
+        };
       }
-      // Adopt remote as the new common ancestor; conflicts gate sync until resolved.
-      return {
-        ...localState,
-        baseSnapshotJson: JSON.stringify(remoteSnapshot),
-        remoteVersion,
-        syncState: "diverged"
-      };
+
+      if (mode === "cloud-wins") {
+        await this.applyWorkspaceSnapshot(workspace, credentials.workspacePassword, {
+          ...response.snapshot,
+          workspaceId: workspace.id
+        });
+        return {
+          ...localState,
+          remoteVersion: response.headCommitId ?? undefined,
+          localFingerprint: this.workspaceFingerprint(workspace.id),
+          syncState: "synced"
+        };
+      }
+      if (mode !== "local-wins") {
+        return { ...localState, syncState: "diverged" };
+      }
+      baseHeadCommitId = response.headCommitId ?? null;
     }
 
-    // Merge already equals remote (local had no unique changes) → nothing to push.
-    if (mergeResult.snapshot.snapshotId === remoteSnapshot.snapshotId) {
-      return {
-        ...localState,
-        baseSnapshotJson: JSON.stringify(remoteSnapshot),
-        remoteVersion,
-        syncState: "synced"
-      };
-    }
-
-    // Clean auto-merge: push the merged result back to the server.
-    const pushResponse = await this.api.push(credentials, {
-      baseHeadCommitId: remoteVersion ?? null,
-      snapshot: mergeResult.snapshot
-    });
-    if (pushResponse.status === "accepted") {
-      return {
-        ...localState,
-        baseSnapshotJson: JSON.stringify(mergeResult.snapshot),
-        remoteVersion: pushResponse.headCommitId,
-        syncState: "synced"
-      };
-    }
-
-    // Remote moved again mid-merge; adopt the newest snapshot and retry next tick.
-    const newerRemote: WorkspaceRepoSnapshot = {
-      ...pushResponse.snapshot,
-      workspaceId: workspace.id
-    };
-    await this.applyWorkspaceSnapshot(workspace, credentials.workspacePassword, newerRemote);
-    return {
-      ...localState,
-      baseSnapshotJson: JSON.stringify(newerRemote),
-      remoteVersion: pushResponse.headCommitId ?? remoteVersion,
-      syncState: "idle"
-    };
+    throw new Error("云端持续发生变化，已停止本地优先重试");
   }
 
   private async syncWorkspaceCommands(
     workspace: CloudSyncWorkspaceProfile,
     credentials: CloudSyncApiV3Credentials,
     localState: WorkspaceRepoLocalState,
-    resolvedRemoteVersion?: string
+    resolvedRemoteVersion?: string,
+    mode?: CloudSyncSyncMode
   ): Promise<WorkspaceRepoLocalState> {
-    const localVersion = this.updateLocalCommandsVersion(workspace.id);
-    const lastRemoteVersion = localState.remoteCommandsVersion;
-    const remoteVersion = resolvedRemoteVersion;
+    const localCommandsFingerprint = this.workspaceCommandsFingerprint(workspace.id);
+    const hasBaseline =
+      localState.localCommandsFingerprint !== undefined ||
+      localState.remoteCommandsVersion !== undefined;
+    const localChanged =
+      hasBaseline && localCommandsFingerprint !== localState.localCommandsFingerprint;
+    const remoteChanged =
+      !hasBaseline ||
+      (resolvedRemoteVersion ?? undefined) !== (localState.remoteCommandsVersion ?? undefined);
 
-    if (!remoteVersion && !localVersion) {
-      return {
-        ...localState,
-        remoteCommandsVersion: undefined
-      };
+    if (!localChanged && !remoteChanged) {
+      return { ...localState, localCommandsFingerprint, syncState: "synced" };
+    }
+    if (localChanged && remoteChanged && !mode) {
+      return { ...localState, syncState: "diverged" };
     }
 
-    const localDirty = (localVersion ?? undefined) !== (lastRemoteVersion ?? undefined);
-    const remoteChanged = (remoteVersion ?? undefined) !== (lastRemoteVersion ?? undefined);
-
-    if (localDirty && remoteChanged) {
-      const response = await this.api.pullCommands(credentials, lastRemoteVersion ?? null);
-      if (response.status === "changed") {
-        const mergedCommands = this.mergeWorkspaceCommands(
-          this.deps.listWorkspaceCommands(workspace.id),
-          response.commands.map((command) => ({
-            ...command,
-            workspaceId: workspace.id
-          })),
-          workspace.id
-        );
-        const pushResponse = await this.api.pushCommands(
-          credentials,
-          mergedCommands.map((command) => ({
-            ...command,
-            workspaceId: workspace.id
-          }))
-        );
-        this.deps.replaceWorkspaceCommands(workspace.id, mergedCommands);
-        this.deps.saveWorkspaceCommandsVersion(workspace.id, pushResponse.version);
-        return {
-          ...localState,
-          remoteCommandsVersion: pushResponse.version
-        };
-      }
-      const pushResponse = await this.api.pushCommands(
+    if (remoteChanged && (!localChanged || mode === "cloud-wins")) {
+      const response = await this.api.pullCommands(
         credentials,
-        this.deps.listWorkspaceCommands(workspace.id).map((command) => ({
-          ...command,
-          workspaceId: workspace.id
-        }))
+        localState.remoteCommandsVersion ?? null
       );
-      this.deps.saveWorkspaceCommandsVersion(workspace.id, pushResponse.version);
-      return {
-        ...localState,
-        remoteCommandsVersion: pushResponse.version
-      };
-    }
-
-    if (localDirty || (!remoteVersion && localVersion)) {
-      const response = await this.api.pushCommands(
-        credentials,
-        this.deps.listWorkspaceCommands(workspace.id).map((command) => ({
-          ...command,
-          workspaceId: workspace.id
-        }))
-      );
-      this.deps.saveWorkspaceCommandsVersion(workspace.id, response.version);
-      return {
-        ...localState,
-        remoteCommandsVersion: response.version
-      };
-    }
-
-    if (remoteChanged && remoteVersion) {
-      const response = await this.api.pullCommands(credentials, lastRemoteVersion ?? null);
       if (response.status === "changed") {
         this.deps.replaceWorkspaceCommands(
           workspace.id,
-          response.commands.map((command) => ({
-            ...command,
-            workspaceId: workspace.id
-          }))
+          response.commands.map((command) => ({ ...command, workspaceId: workspace.id }))
         );
-        this.deps.saveWorkspaceCommandsVersion(workspace.id, response.version);
-        return {
-          ...localState,
-          remoteCommandsVersion: response.version
-        };
       }
-      this.deps.saveWorkspaceCommandsVersion(workspace.id, response.version);
       return {
         ...localState,
-        remoteCommandsVersion: response.version
+        remoteCommandsVersion: response.version,
+        localCommandsFingerprint: this.workspaceCommandsFingerprint(workspace.id),
+        syncState: "synced"
       };
     }
 
-    if (remoteVersion) {
-      this.deps.saveWorkspaceCommandsVersion(workspace.id, remoteVersion);
-    }
+    const response = await this.api.pushCommands(
+      credentials,
+      this.deps.listWorkspaceCommands(workspace.id).map((command) => ({
+        ...command,
+        workspaceId: workspace.id
+      }))
+    );
     return {
       ...localState,
-      remoteCommandsVersion: remoteVersion ?? localVersion
+      remoteCommandsVersion: response.version,
+      localCommandsFingerprint: this.workspaceCommandsFingerprint(workspace.id),
+      syncState: "synced"
     };
   }
 
-  private mergeWorkspaceCommands(
-    localCommands: WorkspaceCommandItem[],
-    remoteCommands: WorkspaceCommandItem[],
-    workspaceId: string
-  ): WorkspaceCommandItem[] {
-    const now = new Date().toISOString();
-    const merged = new Map<string, WorkspaceCommandItem>();
-
-    for (const command of localCommands) {
-      merged.set(command.id, { ...command, workspaceId });
-    }
-
-    for (const remoteCommand of remoteCommands) {
-      const normalizedRemote = { ...remoteCommand, workspaceId };
-      const localCommand = merged.get(remoteCommand.id);
-      if (!localCommand) {
-        merged.set(remoteCommand.id, normalizedRemote);
-        continue;
-      }
-      if (
-        hashValue(this.toCommandVersionItem(localCommand)) ===
-        hashValue(this.toCommandVersionItem(normalizedRemote))
-      ) {
-        continue;
-      }
-      const conflictCopyId = randomUUID();
-      merged.set(conflictCopyId, {
-        ...normalizedRemote,
-        id: conflictCopyId,
-        name: `${normalizedRemote.name} (云端版本)`,
-        createdAt: now,
-        updatedAt: now
-      });
-    }
-
-    return [...merged.values()].sort((left, right) => {
-      const groupCompare = left.group.localeCompare(right.group);
-      if (groupCompare !== 0) {
-        return groupCompare;
-      }
-      return left.name.localeCompare(right.name);
-    });
+  private workspaceFingerprint(workspaceId: string): string {
+    const items: Array<[string, string, string]> = [
+      ...this.listWorkspaceConnections(workspaceId).map((item) =>
+        fingerprintItem("connection", item.uuidInScope ?? item.id, item.updatedAt)
+      ),
+      ...this.listWorkspaceSshKeys(workspaceId).map((item) =>
+        fingerprintItem("sshKey", item.uuidInScope ?? item.id, item.updatedAt)
+      ),
+      ...this.listWorkspaceProxies(workspaceId).map((item) =>
+        fingerprintItem("proxy", item.uuidInScope ?? item.id, item.updatedAt)
+      )
+    ];
+    return hashValue(items.sort(compareFingerprintItems));
   }
 
-  private toCommandVersionItem(
-    command: WorkspaceCommandItem
-  ): Omit<WorkspaceCommandItem, "workspaceId"> {
-    return {
-      id: command.id,
-      name: command.name,
-      description: command.description,
-      group: command.group,
-      command: command.command,
-      isTemplate: command.isTemplate,
-      createdAt: command.createdAt,
-      updatedAt: command.updatedAt
-    };
-  }
-
-  private updateLocalCommandsVersion(workspaceId: string): string | undefined {
-    const commands = this.deps
+  private workspaceCommandsFingerprint(workspaceId: string): string {
+    const items: Array<[string, string, string]> = this.deps
       .listWorkspaceCommands(workspaceId)
-      .map((command) => this.toCommandVersionItem(command))
-      .sort((left, right) => left.id.localeCompare(right.id));
-
-    if (commands.length === 0) {
-      this.deps.saveWorkspaceCommandsVersion(workspaceId, "");
-      return undefined;
-    }
-
-    const version = hashValue(commands);
-    this.deps.saveWorkspaceCommandsVersion(workspaceId, version);
-    return version;
+      .map((command) => fingerprintItem("command", command.id, command.updatedAt));
+    return hashValue(items.sort(compareFingerprintItems));
   }
 
   private async buildWorkspaceSnapshot(
@@ -1324,6 +1105,7 @@ export class CloudSyncManager {
       if (retainedConnectionIds.has(connection.id)) {
         continue;
       }
+      await this.saveRemoteDeletedConnection(connection);
       await this.clearCredential(connection.credentialRef);
       this.deps.removeConnection(connection.id);
     }
@@ -1338,204 +1120,60 @@ export class CloudSyncManager {
       if (retainedKeyIds.has(key.id)) {
         continue;
       }
+      await this.saveRemoteDeletedSshKey(key);
       await this.clearCredential(key.keyContentRef);
       await this.clearCredential(key.passphraseRef);
       this.deps.removeSshKey(key.id);
     }
   }
 
-  private mergeSnapshots(
-    base: WorkspaceRepoSnapshot,
-    local: WorkspaceRepoSnapshot,
-    remote: WorkspaceRepoSnapshot
-  ): { snapshot: WorkspaceRepoSnapshot; conflicts: WorkspaceRepoConflict[] } {
-    const mergedSnapshot: WorkspaceRepoSnapshot = {
-      workspaceId: local.workspaceId,
-      snapshotId: "",
-      createdAt: new Date().toISOString(),
-      connections: [],
-      sshKeys: [],
-      proxies: []
-    };
-    const conflicts: WorkspaceRepoConflict[] = [];
-
-    const mergeResourceType = <T extends ResourceSnapshotItem>(
-      resourceType: ResourceType,
-      getDisplayName: (item: T | undefined, fallbackId: string) => string,
-      baseItems: T[],
-      localItems: T[],
-      remoteItems: T[]
-    ): T[] => {
-      const baseById = new Map(baseItems.map((item) => [item.uuid, item]));
-      const localById = new Map(localItems.map((item) => [item.uuid, item]));
-      const remoteById = new Map(remoteItems.map((item) => [item.uuid, item]));
-      const ids = new Set([...baseById.keys(), ...localById.keys(), ...remoteById.keys()]);
-      const merged: T[] = [];
-
-      for (const id of [...ids].sort()) {
-        const baseItem = baseById.get(id);
-        const localItem = localById.get(id);
-        const remoteItem = remoteById.get(id);
-
-        if (!baseItem && localItem && !remoteItem) {
-          merged.push(localItem);
-          continue;
-        }
-        if (!baseItem && !localItem && remoteItem) {
-          merged.push(remoteItem);
-          continue;
-        }
-        if (!baseItem && localItem && remoteItem) {
-          if (hashValue(localItem) === hashValue(remoteItem)) {
-            merged.push(localItem);
-          } else {
-            merged.push(localItem);
-            conflicts.push({
-              workspaceId: local.workspaceId,
-              resourceType,
-              resourceId: id,
-              displayName: getDisplayName(localItem, id),
-              localSnapshotJson: JSON.stringify(localItem),
-              remoteSnapshotJson: JSON.stringify(remoteItem),
-              remoteDeleted: false,
-              detectedAt: new Date().toISOString()
-            });
-          }
-          continue;
-        }
-        if (!baseItem) {
-          continue;
-        }
-        if (!localItem && !remoteItem) {
-          continue;
-        }
-        if (localItem && remoteItem) {
-          const localHash = hashValue(localItem);
-          const remoteHash = hashValue(remoteItem);
-          const baseHash = hashValue(baseItem);
-          if (localHash === remoteHash) {
-            merged.push(localItem);
-          } else if (localHash === baseHash) {
-            merged.push(remoteItem);
-          } else if (remoteHash === baseHash) {
-            merged.push(localItem);
-          } else {
-            merged.push(localItem);
-            conflicts.push({
-              workspaceId: local.workspaceId,
-              resourceType,
-              resourceId: id,
-              displayName: getDisplayName(localItem, id),
-              localSnapshotJson: JSON.stringify(localItem),
-              remoteSnapshotJson: JSON.stringify(remoteItem),
-              remoteDeleted: false,
-              detectedAt: new Date().toISOString()
-            });
-          }
-          continue;
-        }
-        if (!localItem && remoteItem) {
-          if (hashValue(remoteItem) === hashValue(baseItem)) {
-            continue;
-          }
-          conflicts.push({
-            workspaceId: local.workspaceId,
-            resourceType,
-            resourceId: id,
-            displayName: getDisplayName(remoteItem, id),
-            localSnapshotJson: undefined,
-            remoteSnapshotJson: JSON.stringify(remoteItem),
-            remoteDeleted: false,
-            detectedAt: new Date().toISOString()
-          });
-          continue;
-        }
-        if (localItem && !remoteItem) {
-          if (hashValue(localItem) === hashValue(baseItem)) {
-            continue;
-          }
-          merged.push(localItem);
-          conflicts.push({
-            workspaceId: local.workspaceId,
-            resourceType,
-            resourceId: id,
-            displayName: getDisplayName(localItem, id),
-            localSnapshotJson: JSON.stringify(localItem),
-            remoteSnapshotJson: undefined,
-            remoteDeleted: true,
-            detectedAt: new Date().toISOString()
-          });
-        }
-      }
-
-      return merged;
-    };
-
-    mergedSnapshot.connections = mergeResourceType<ConnectionSnapshotItem>(
-      "connection",
-      (item, fallbackId) => item?.name || item?.host || fallbackId,
-      base.connections,
-      local.connections,
-      remote.connections
-    );
-    mergedSnapshot.sshKeys = mergeResourceType<SshKeySnapshotItem>(
-      "sshKey",
-      (item, fallbackId) => item?.name || fallbackId,
-      base.sshKeys,
-      local.sshKeys,
-      remote.sshKeys
-    );
-    mergedSnapshot.proxies = mergeResourceType<ProxySnapshotItem>(
-      "proxy",
-      (item, fallbackId) => item?.name || item?.host || fallbackId,
-      base.proxies,
-      local.proxies,
-      remote.proxies
-    );
-    mergedSnapshot.snapshotId = hashValue({
-      connections: mergedSnapshot.connections,
-      sshKeys: mergedSnapshot.sshKeys,
-      proxies: mergedSnapshot.proxies
+  private async saveRemoteDeletedConnection(connection: ConnectionProfile): Promise<void> {
+    const snapshotData: Record<string, unknown> = { ...connection };
+    if (connection.credentialRef) {
+      const password = await this.deps
+        .readCredential(connection.credentialRef)
+        .catch(() => undefined);
+      if (password) snapshotData._savedCredential = password;
+    }
+    this.deps.saveRecycleBinEntry({
+      id: randomUUID(),
+      resourceType: "server",
+      displayName: connection.name || connection.host,
+      originalResourceId:
+        connection.resourceId ??
+        buildResourceId(
+          connection.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+          connection.uuidInScope ?? connection.id
+        ),
+      originalScopeKey: connection.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+      reason: "delete",
+      snapshotJson: JSON.stringify(snapshotData),
+      createdAt: new Date().toISOString()
     });
-    return { snapshot: mergedSnapshot, conflicts };
   }
 
-  private patchSnapshotWithConflictResolution(
-    snapshot: WorkspaceRepoSnapshot,
-    conflict: WorkspaceRepoConflict,
-    strategy: "keep_local" | "accept_remote"
-  ): WorkspaceRepoSnapshot {
-    if (strategy === "keep_local") {
-      return snapshot;
+  private async saveRemoteDeletedSshKey(key: SshKeyProfile): Promise<void> {
+    const snapshotData: Record<string, unknown> = { ...key };
+    if (key.keyContentRef) {
+      const content = await this.deps.readCredential(key.keyContentRef).catch(() => undefined);
+      if (content) snapshotData._savedKeyContent = content;
     }
-
-    const patchCollection = <T extends ResourceSnapshotItem>(items: T[]): T[] => {
-      const map = new Map(items.map((item) => [item.uuid, item]));
-      if (conflict.remoteDeleted || !conflict.remoteSnapshotJson) {
-        map.delete(conflict.resourceId);
-      } else {
-        map.set(conflict.resourceId, JSON.parse(conflict.remoteSnapshotJson) as T);
-      }
-      return [...map.values()].sort((left, right) => left.uuid.localeCompare(right.uuid));
-    };
-
-    const patched: WorkspaceRepoSnapshot = {
-      ...snapshot,
+    if (key.passphraseRef) {
+      const passphrase = await this.deps.readCredential(key.passphraseRef).catch(() => undefined);
+      if (passphrase) snapshotData._savedPassphrase = passphrase;
+    }
+    this.deps.saveRecycleBinEntry({
+      id: randomUUID(),
+      resourceType: "sshKey",
+      displayName: key.name,
+      originalResourceId:
+        key.resourceId ??
+        buildResourceId(key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY, key.uuidInScope ?? key.id),
+      originalScopeKey: key.originScopeKey ?? LOCAL_DEFAULT_SCOPE_KEY,
+      reason: "delete",
+      snapshotJson: JSON.stringify(snapshotData),
       createdAt: new Date().toISOString()
-    };
-    if (conflict.resourceType === "connection") {
-      patched.connections = patchCollection(snapshot.connections);
-    } else if (conflict.resourceType === "sshKey") {
-      patched.sshKeys = patchCollection(snapshot.sshKeys);
-    } else {
-      patched.proxies = patchCollection(snapshot.proxies);
-    }
-    patched.snapshotId = hashValue({
-      connections: patched.connections,
-      sshKeys: patched.sshKeys,
-      proxies: patched.proxies
     });
-    return patched;
   }
 
   private getWorkspaceOrThrow(workspaceId: string): CloudSyncWorkspaceProfile {
@@ -1603,7 +1241,6 @@ export class CloudSyncManager {
       this.deps.removeSshKey(key.id);
     }
     this.deps.replaceWorkspaceCommands(workspaceId, []);
-    this.deps.saveWorkspaceCommandsVersion(workspaceId, "");
   }
 
   private async replaceCredential(

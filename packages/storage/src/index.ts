@@ -10,8 +10,6 @@ export {
 } from "./cached-repository";
 import type {
   AppPreferences,
-  CloudSyncResourceStateV2,
-  CloudSyncPendingOp,
   CloudSyncWorkspaceProfile,
   RecycleBinEntry,
   CommandHistoryEntry,
@@ -23,7 +21,6 @@ import type {
   SavedCommand,
   SshKeyProfile,
   WorkspaceCommandItem,
-  WorkspaceRepoConflict,
   WorkspaceRepoLocalState
 } from "../../core/src/index";
 import {
@@ -129,32 +126,6 @@ interface RecycleBinRow {
   created_at: string;
 }
 
-interface PendingOpRow {
-  id: number;
-  workspace_id: string;
-  resource_type: "server" | "sshKey";
-  resource_id: string;
-  action: "upsert" | "delete";
-  base_revision: number | null;
-  force: number;
-  payload_json: string | null;
-  queued_at: string;
-  last_attempt_at: string | null;
-  last_error: string | null;
-}
-
-interface CloudSyncResourceStateV2Row {
-  workspace_id: string;
-  resource_type: "server" | "sshKey";
-  resource_id: string;
-  server_revision: number | null;
-  conflict_remote_revision: number | null;
-  conflict_remote_payload_json: string | null;
-  conflict_remote_updated_at: string | null;
-  conflict_remote_deleted: number;
-  conflict_detected_at: string | null;
-}
-
 interface ProxyRow {
   id: string;
   name: string;
@@ -175,23 +146,12 @@ interface ProxyRow {
 
 interface WorkspaceRepoLocalStateRow {
   workspace_id: string;
-  base_snapshot_json: string | null;
   remote_version: string | null;
   remote_commands_version: string | null;
+  local_fingerprint: string | null;
+  local_commands_fingerprint: string | null;
   last_sync_at: string | null;
   last_error: string | null;
-  sync_state: string;
-}
-
-interface WorkspaceRepoConflictRow {
-  workspace_id: string;
-  resource_type: "connection" | "sshKey" | "proxy";
-  resource_id: string;
-  display_name: string;
-  local_snapshot_json: string | null;
-  remote_snapshot_json: string | null;
-  remote_deleted: number;
-  detected_at: string;
 }
 
 interface WorkspaceCommandRow {
@@ -406,35 +366,6 @@ const rowToRecycleBinEntry = (row: RecycleBinRow): RecycleBinEntry => ({
   createdAt: row.created_at
 });
 
-const rowToPendingOp = (row: PendingOpRow): CloudSyncPendingOp => ({
-  id: row.id,
-  workspaceId: row.workspace_id,
-  resourceType: row.resource_type,
-  resourceId: row.resource_id,
-  action: row.action,
-  baseRevision: row.base_revision,
-  force: row.force === 1,
-  payloadJson: row.payload_json ?? undefined,
-  queuedAt: row.queued_at,
-  lastAttemptAt: row.last_attempt_at ?? undefined,
-  lastError: row.last_error ?? undefined
-});
-
-const rowToCloudSyncResourceStateV2 = (
-  row: CloudSyncResourceStateV2Row
-): CloudSyncResourceStateV2 => ({
-  workspaceId: row.workspace_id,
-  resourceType: row.resource_type,
-  resourceId: row.resource_id,
-  serverRevision: typeof row.server_revision === "number" ? row.server_revision : undefined,
-  conflictRemoteRevision:
-    typeof row.conflict_remote_revision === "number" ? row.conflict_remote_revision : undefined,
-  conflictRemotePayloadJson: row.conflict_remote_payload_json ?? undefined,
-  conflictRemoteUpdatedAt: row.conflict_remote_updated_at ?? undefined,
-  conflictRemoteDeleted: row.conflict_remote_deleted === 1,
-  conflictDetectedAt: row.conflict_detected_at ?? undefined
-});
-
 const rowToProxy = (row: ProxyRow): ProxyProfile => ({
   id: row.id,
   name: row.name,
@@ -457,23 +388,13 @@ const rowToWorkspaceRepoLocalState = (
   row: WorkspaceRepoLocalStateRow
 ): WorkspaceRepoLocalState => ({
   workspaceId: row.workspace_id,
-  baseSnapshotJson: row.base_snapshot_json ?? undefined,
   remoteVersion: row.remote_version ?? undefined,
   remoteCommandsVersion: row.remote_commands_version ?? undefined,
+  localFingerprint: row.local_fingerprint ?? undefined,
+  localCommandsFingerprint: row.local_commands_fingerprint ?? undefined,
   lastSyncAt: row.last_sync_at ?? undefined,
   lastError: row.last_error ?? undefined,
-  syncState: row.sync_state as WorkspaceRepoLocalState["syncState"]
-});
-
-const rowToWorkspaceRepoConflict = (row: WorkspaceRepoConflictRow): WorkspaceRepoConflict => ({
-  workspaceId: row.workspace_id,
-  resourceType: row.resource_type,
-  resourceId: row.resource_id,
-  displayName: row.display_name,
-  localSnapshotJson: row.local_snapshot_json ?? undefined,
-  remoteSnapshotJson: row.remote_snapshot_json ?? undefined,
-  remoteDeleted: row.remote_deleted === 1,
-  detectedAt: row.detected_at
+  syncState: row.last_error ? "error" : "idle"
 });
 
 const rowToWorkspaceCommand = (row: WorkspaceCommandRow): WorkspaceCommandItem => ({
@@ -506,12 +427,7 @@ const rowToSavedCommand = (row: SavedCommandRow): SavedCommand => ({
 });
 
 /** 存坏的尺寸不该让对话框缩成一条缝或撑出屏幕，越界一律退回默认值。 */
-const readStoredSize = (
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number
-): number => {
+const readStoredSize = (value: unknown, fallback: number, min: number, max: number): number => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return fallback;
   }
@@ -1460,12 +1376,7 @@ const migrations: MigrationDefinition[] = [
     version: 24,
     name: "add_connection_agent_access_column",
     apply: (db) => {
-      ensureColumn(
-        db,
-        "connections",
-        "agent_access",
-        "agent_access TEXT NOT NULL DEFAULT 'off'"
-      );
+      ensureColumn(db, "connections", "agent_access", "agent_access TEXT NOT NULL DEFAULT 'off'");
     }
   },
   {
@@ -1504,9 +1415,7 @@ const migrations: MigrationDefinition[] = [
         "folder_id",
         "folder_id TEXT REFERENCES connection_folders(id) ON DELETE SET NULL"
       );
-      db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_connections_folder_id ON connections(folder_id);"
-      );
+      db.exec("CREATE INDEX IF NOT EXISTS idx_connections_folder_id ON connections(folder_id);");
 
       backfillConnectionFolders(db);
     }
@@ -1523,9 +1432,7 @@ const migrations: MigrationDefinition[] = [
       ensureColumn(db, "ssh_keys", "key_comment", "key_comment TEXT");
       ensureColumn(db, "ssh_keys", "fingerprint", "fingerprint TEXT");
       ensureColumn(db, "ssh_keys", "public_key_line", "public_key_line TEXT");
-      db.exec(
-        "CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);"
-      );
+      db.exec("CREATE INDEX IF NOT EXISTS idx_ssh_keys_fingerprint ON ssh_keys(fingerprint);");
     }
   },
   {
@@ -1541,6 +1448,28 @@ const migrations: MigrationDefinition[] = [
     apply: (db) => {
       db.exec("DELETE FROM app_settings WHERE key = 'master_key_meta';");
       db.exec("DELETE FROM secret_store WHERE id = 'master-password';");
+    }
+  },
+  {
+    version: 29,
+    name: "cloud_sync_pan_model",
+    apply: (db) => {
+      db.exec(`
+        DROP TABLE IF EXISTS cloud_sync_resource_state;
+        DROP TABLE IF EXISTS cloud_sync_pending_ops;
+        DROP TABLE IF EXISTS cloud_sync_runtime_state;
+        DROP TABLE IF EXISTS workspace_repo_conflicts;
+        DROP TABLE IF EXISTS workspace_repo_local_state;
+        CREATE TABLE workspace_repo_local_state (
+          workspace_id TEXT PRIMARY KEY,
+          remote_version TEXT,
+          remote_commands_version TEXT,
+          local_fingerprint TEXT,
+          local_commands_fingerprint TEXT,
+          last_sync_at TEXT,
+          last_error TEXT
+        );
+      `);
     }
   }
 ];
@@ -1697,45 +1626,14 @@ export interface ConnectionRepository {
   getCloudSyncWorkspace: (id: string) => CloudSyncWorkspaceProfile | undefined;
   saveCloudSyncWorkspace: (ws: CloudSyncWorkspaceProfile) => void;
   removeCloudSyncWorkspace: (id: string) => void;
-  // ── Cloud Sync v2: workspace-scoped resource state ──
-  listResourceStatesV2: (workspaceId: string) => CloudSyncResourceStateV2[];
-  getResourceStateV2: (
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string
-  ) => CloudSyncResourceStateV2 | undefined;
-  saveResourceStateV2: (state: CloudSyncResourceStateV2) => void;
-  removeResourceStateV2: (workspaceId: string, resourceType: string, resourceId: string) => void;
-  clearResourceStatesV2: (workspaceId: string) => void;
-  // ── Cloud Sync v2: pending ops ──
-  listPendingOps: (workspaceId: string) => CloudSyncPendingOp[];
-  savePendingOp: (op: CloudSyncPendingOp) => number;
-  upsertPendingOp: (op: CloudSyncPendingOp) => number;
-  updatePendingOp: (op: CloudSyncPendingOp) => void;
-  removePendingOp: (id: number) => void;
-  clearPendingOps: (workspaceId: string) => void;
-  // ── Cloud Sync v2: runtime state persistence ──
-  getRuntimeCurrentVersion: (workspaceId: string) => number | null;
-  saveRuntimeCurrentVersion: (workspaceId: string, currentVersion: number) => void;
-  removeRuntimeCurrentVersion: (workspaceId: string) => void;
   // ── Workspace repo ──
   getWorkspaceRepoLocalState: (workspaceId: string) => WorkspaceRepoLocalState | undefined;
   saveWorkspaceRepoLocalState: (state: WorkspaceRepoLocalState) => void;
-  listWorkspaceRepoConflicts: (workspaceId: string) => WorkspaceRepoConflict[];
-  saveWorkspaceRepoConflict: (conflict: WorkspaceRepoConflict) => void;
-  removeWorkspaceRepoConflict: (
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string
-  ) => void;
-  clearWorkspaceRepoConflicts: (workspaceId: string) => void;
   // ── Workspace commands ──
   listWorkspaceCommands: (workspaceId: string) => WorkspaceCommandItem[];
   replaceWorkspaceCommands: (workspaceId: string, commands: WorkspaceCommandItem[]) => void;
   upsertWorkspaceCommand: (command: WorkspaceCommandItem) => WorkspaceCommandItem;
   removeWorkspaceCommand: (workspaceId: string, id: string) => void;
-  getWorkspaceCommandsVersion: (workspaceId: string) => string | undefined;
-  saveWorkspaceCommandsVersion: (workspaceId: string, version: string) => void;
   // ── Recycle bin ──
   listRecycleBinEntries: () => RecycleBinEntry[];
   getRecycleBinEntry: (id: string) => RecycleBinEntry | undefined;
@@ -2247,85 +2145,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     this.db.prepare("DELETE FROM app_settings WHERE key = ?").run(key);
   }
 
-  // ── Cloud Sync v2: workspace-scoped resource state ──
-  listResourceStatesV2(workspaceId: string): CloudSyncResourceStateV2[] {
-    const rows = this.db
-      .prepare(
-        `SELECT workspace_id, resource_type, resource_id, server_revision,
-              conflict_remote_revision, conflict_remote_payload_json,
-              conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
-       FROM cloud_sync_resource_state
-       WHERE workspace_id = ?
-       ORDER BY resource_type ASC, resource_id ASC`
-      )
-      .all(workspaceId) as CloudSyncResourceStateV2Row[];
-    return rows.map(rowToCloudSyncResourceStateV2);
-  }
-
-  getResourceStateV2(
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string
-  ): CloudSyncResourceStateV2 | undefined {
-    const row = this.db
-      .prepare(
-        `SELECT workspace_id, resource_type, resource_id, server_revision,
-              conflict_remote_revision, conflict_remote_payload_json,
-              conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
-       FROM cloud_sync_resource_state
-       WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?`
-      )
-      .get(workspaceId, resourceType, resourceId) as CloudSyncResourceStateV2Row | undefined;
-    return row ? rowToCloudSyncResourceStateV2(row) : undefined;
-  }
-
-  saveResourceStateV2(state: CloudSyncResourceStateV2): void {
-    this.db
-      .prepare(
-        `INSERT INTO cloud_sync_resource_state (
-         workspace_id, resource_type, resource_id, server_revision,
-         conflict_remote_revision, conflict_remote_payload_json,
-         conflict_remote_updated_at, conflict_remote_deleted, conflict_detected_at
-       ) VALUES (
-         @workspace_id, @resource_type, @resource_id, @server_revision,
-         @conflict_remote_revision, @conflict_remote_payload_json,
-         @conflict_remote_updated_at, @conflict_remote_deleted, @conflict_detected_at
-       )
-       ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
-         server_revision = excluded.server_revision,
-         conflict_remote_revision = excluded.conflict_remote_revision,
-         conflict_remote_payload_json = excluded.conflict_remote_payload_json,
-         conflict_remote_updated_at = excluded.conflict_remote_updated_at,
-         conflict_remote_deleted = excluded.conflict_remote_deleted,
-         conflict_detected_at = excluded.conflict_detected_at`
-      )
-      .run({
-        workspace_id: state.workspaceId,
-        resource_type: state.resourceType,
-        resource_id: state.resourceId,
-        server_revision: state.serverRevision ?? null,
-        conflict_remote_revision: state.conflictRemoteRevision ?? null,
-        conflict_remote_payload_json: state.conflictRemotePayloadJson ?? null,
-        conflict_remote_updated_at: state.conflictRemoteUpdatedAt ?? null,
-        conflict_remote_deleted: state.conflictRemoteDeleted ? 1 : 0,
-        conflict_detected_at: state.conflictDetectedAt ?? null
-      });
-  }
-
-  removeResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.db
-      .prepare(
-        "DELETE FROM cloud_sync_resource_state WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
-      )
-      .run(workspaceId, resourceType, resourceId);
-  }
-
-  clearResourceStatesV2(workspaceId: string): void {
-    this.db
-      .prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?")
-      .run(workspaceId);
-  }
-
   // ── Cloud Sync v2: workspace management ──
   listCloudSyncWorkspaces(): CloudSyncWorkspaceProfile[] {
     const rows = this.db
@@ -2379,123 +2198,11 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   removeCloudSyncWorkspace(id: string): void {
     // Atomically clean up workspace + associated data
     this.db.transaction(() => {
-      this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(id);
-      this.db.prepare("DELETE FROM cloud_sync_resource_state WHERE workspace_id = ?").run(id);
-      this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM workspace_repo_local_state WHERE workspace_id = ?").run(id);
-      this.db.prepare("DELETE FROM workspace_repo_conflicts WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM workspace_command_sync_state WHERE workspace_id = ?").run(id);
       this.db.prepare("DELETE FROM cloud_sync_workspaces WHERE id = ?").run(id);
     })();
-  }
-
-  // ── Cloud Sync v2: pending ops ──
-  listPendingOps(workspaceId: string): CloudSyncPendingOp[] {
-    const rows = this.db
-      .prepare(
-        "SELECT id, workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error FROM cloud_sync_pending_ops WHERE workspace_id = ? ORDER BY id ASC"
-      )
-      .all(workspaceId) as PendingOpRow[];
-    return rows.map(rowToPendingOp);
-  }
-
-  savePendingOp(op: CloudSyncPendingOp): number {
-    const result = this.db
-      .prepare(
-        `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
-       VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)`
-      )
-      .run({
-        workspace_id: op.workspaceId,
-        resource_type: op.resourceType,
-        resource_id: op.resourceId,
-        action: op.action,
-        base_revision: op.baseRevision,
-        force: op.force ? 1 : 0,
-        payload_json: op.payloadJson ?? null,
-        queued_at: op.queuedAt,
-        last_attempt_at: op.lastAttemptAt ?? null,
-        last_error: op.lastError ?? null
-      });
-    return Number(result.lastInsertRowid);
-  }
-
-  upsertPendingOp(op: CloudSyncPendingOp): number {
-    const result = this.db
-      .prepare(
-        `INSERT INTO cloud_sync_pending_ops (workspace_id, resource_type, resource_id, action, base_revision, force, payload_json, queued_at, last_attempt_at, last_error)
-       VALUES (@workspace_id, @resource_type, @resource_id, @action, @base_revision, @force, @payload_json, @queued_at, @last_attempt_at, @last_error)
-       ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
-         action = CASE
-           WHEN excluded.action = 'delete' THEN 'delete'
-           ELSE excluded.action
-         END,
-         force = MAX(cloud_sync_pending_ops.force, excluded.force),
-         queued_at = excluded.queued_at,
-         last_attempt_at = NULL,
-         last_error = NULL`
-      )
-      .run({
-        workspace_id: op.workspaceId,
-        resource_type: op.resourceType,
-        resource_id: op.resourceId,
-        action: op.action,
-        base_revision: op.baseRevision,
-        force: op.force ? 1 : 0,
-        payload_json: op.payloadJson ?? null,
-        queued_at: op.queuedAt,
-        last_attempt_at: op.lastAttemptAt ?? null,
-        last_error: op.lastError ?? null
-      });
-    return Number(result.lastInsertRowid);
-  }
-
-  updatePendingOp(op: CloudSyncPendingOp): void {
-    if (op.id == null) return;
-    this.db
-      .prepare(
-        `UPDATE cloud_sync_pending_ops SET
-         last_attempt_at = @last_attempt_at,
-         last_error = @last_error,
-         force = @force
-       WHERE id = @id`
-      )
-      .run({
-        id: op.id,
-        last_attempt_at: op.lastAttemptAt ?? null,
-        last_error: op.lastError ?? null,
-        force: op.force ? 1 : 0
-      });
-  }
-
-  removePendingOp(id: number): void {
-    this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE id = ?").run(id);
-  }
-
-  clearPendingOps(workspaceId: string): void {
-    this.db.prepare("DELETE FROM cloud_sync_pending_ops WHERE workspace_id = ?").run(workspaceId);
-  }
-
-  // ── Cloud Sync v2: runtime state persistence ──
-  getRuntimeCurrentVersion(workspaceId: string): number | null {
-    const row = this.db
-      .prepare("SELECT current_version FROM cloud_sync_runtime_state WHERE workspace_id = ?")
-      .get(workspaceId) as { current_version: number } | undefined;
-    return row?.current_version ?? null;
-  }
-
-  saveRuntimeCurrentVersion(workspaceId: string, currentVersion: number): void {
-    this.db
-      .prepare(
-        `INSERT INTO cloud_sync_runtime_state (workspace_id, current_version) VALUES (?, ?)
-       ON CONFLICT(workspace_id) DO UPDATE SET current_version = excluded.current_version`
-      )
-      .run(workspaceId, currentVersion);
-  }
-
-  removeRuntimeCurrentVersion(workspaceId: string): void {
-    this.db.prepare("DELETE FROM cloud_sync_runtime_state WHERE workspace_id = ?").run(workspaceId);
   }
 
   // ── Workspace repo ──
@@ -2503,7 +2210,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     const row = this.db
       .prepare(
         `
-        SELECT workspace_id, base_snapshot_json, remote_version, remote_commands_version, last_sync_at, last_error, sync_state
+        SELECT workspace_id, remote_version, remote_commands_version,
+               local_fingerprint, local_commands_fingerprint, last_sync_at, last_error
         FROM workspace_repo_local_state
         WHERE workspace_id = ?
       `
@@ -2518,108 +2226,39 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         `
         INSERT INTO workspace_repo_local_state (
           workspace_id,
-          base_snapshot_json,
           remote_version,
           remote_commands_version,
+          local_fingerprint,
+          local_commands_fingerprint,
           last_sync_at,
-          last_error,
-          sync_state
+          last_error
         ) VALUES (
           @workspace_id,
-          @base_snapshot_json,
           @remote_version,
           @remote_commands_version,
+          @local_fingerprint,
+          @local_commands_fingerprint,
           @last_sync_at,
-          @last_error,
-          @sync_state
+          @last_error
         )
         ON CONFLICT(workspace_id) DO UPDATE SET
-          base_snapshot_json = excluded.base_snapshot_json,
           remote_version = excluded.remote_version,
           remote_commands_version = excluded.remote_commands_version,
+          local_fingerprint = excluded.local_fingerprint,
+          local_commands_fingerprint = excluded.local_commands_fingerprint,
           last_sync_at = excluded.last_sync_at,
-          last_error = excluded.last_error,
-          sync_state = excluded.sync_state
+          last_error = excluded.last_error
       `
       )
       .run({
         workspace_id: state.workspaceId,
-        base_snapshot_json: state.baseSnapshotJson ?? null,
         remote_version: state.remoteVersion ?? null,
         remote_commands_version: state.remoteCommandsVersion ?? null,
+        local_fingerprint: state.localFingerprint ?? null,
+        local_commands_fingerprint: state.localCommandsFingerprint ?? null,
         last_sync_at: state.lastSyncAt ?? null,
-        last_error: state.lastError ?? null,
-        sync_state: state.syncState
+        last_error: state.lastError ?? null
       });
-  }
-
-  listWorkspaceRepoConflicts(workspaceId: string): WorkspaceRepoConflict[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT workspace_id, resource_type, resource_id, display_name, local_snapshot_json, remote_snapshot_json, remote_deleted, detected_at
-        FROM workspace_repo_conflicts
-        WHERE workspace_id = ?
-        ORDER BY detected_at DESC, resource_type ASC, resource_id ASC
-      `
-      )
-      .all(workspaceId) as WorkspaceRepoConflictRow[];
-    return rows.map(rowToWorkspaceRepoConflict);
-  }
-
-  saveWorkspaceRepoConflict(conflict: WorkspaceRepoConflict): void {
-    this.db
-      .prepare(
-        `
-        INSERT INTO workspace_repo_conflicts (
-          workspace_id,
-          resource_type,
-          resource_id,
-          display_name,
-          local_snapshot_json,
-          remote_snapshot_json,
-          remote_deleted,
-          detected_at
-        ) VALUES (
-          @workspace_id,
-          @resource_type,
-          @resource_id,
-          @display_name,
-          @local_snapshot_json,
-          @remote_snapshot_json,
-          @remote_deleted,
-          @detected_at
-        )
-        ON CONFLICT(workspace_id, resource_type, resource_id) DO UPDATE SET
-          display_name = excluded.display_name,
-          local_snapshot_json = excluded.local_snapshot_json,
-          remote_snapshot_json = excluded.remote_snapshot_json,
-          remote_deleted = excluded.remote_deleted,
-          detected_at = excluded.detected_at
-      `
-      )
-      .run({
-        workspace_id: conflict.workspaceId,
-        resource_type: conflict.resourceType,
-        resource_id: conflict.resourceId,
-        display_name: conflict.displayName,
-        local_snapshot_json: conflict.localSnapshotJson ?? null,
-        remote_snapshot_json: conflict.remoteSnapshotJson ?? null,
-        remote_deleted: conflict.remoteDeleted ? 1 : 0,
-        detected_at: conflict.detectedAt
-      });
-  }
-
-  removeWorkspaceRepoConflict(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.db
-      .prepare(
-        "DELETE FROM workspace_repo_conflicts WHERE workspace_id = ? AND resource_type = ? AND resource_id = ?"
-      )
-      .run(workspaceId, resourceType, resourceId);
-  }
-
-  clearWorkspaceRepoConflicts(workspaceId: string): void {
-    this.db.prepare("DELETE FROM workspace_repo_conflicts WHERE workspace_id = ?").run(workspaceId);
   }
 
   // ── Workspace commands ──
@@ -2638,7 +2277,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
   }
 
   replaceWorkspaceCommands(workspaceId: string, commands: WorkspaceCommandItem[]): void {
-    const now = new Date().toISOString();
     const deleteStmt = this.db.prepare("DELETE FROM workspace_commands WHERE workspace_id = ?");
     const insertStmt = this.db.prepare(
       `
@@ -2680,21 +2318,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
           updated_at: item.updatedAt
         });
       }
-      this.db
-        .prepare(
-          `
-          INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
-          VALUES (@workspace_id, @commands_version, @updated_at)
-          ON CONFLICT(workspace_id) DO UPDATE SET
-            commands_version = excluded.commands_version,
-            updated_at = excluded.updated_at
-        `
-        )
-        .run({
-          workspace_id: workspaceId,
-          commands_version: null,
-          updated_at: now
-        });
     })(commands);
   }
 
@@ -2746,22 +2369,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         updated_at: command.updatedAt || now
       });
 
-    this.db
-      .prepare(
-        `
-        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
-        VALUES (@workspace_id, @commands_version, @updated_at)
-        ON CONFLICT(workspace_id) DO UPDATE SET
-          commands_version = excluded.commands_version,
-          updated_at = excluded.updated_at
-      `
-      )
-      .run({
-        workspace_id: command.workspaceId,
-        commands_version: null,
-        updated_at: now
-      });
-
     const row = this.db
       .prepare(
         `
@@ -2778,46 +2385,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
     this.db
       .prepare("DELETE FROM workspace_commands WHERE workspace_id = ? AND id = ?")
       .run(workspaceId, id);
-    this.db
-      .prepare(
-        `
-        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
-        VALUES (@workspace_id, @commands_version, @updated_at)
-        ON CONFLICT(workspace_id) DO UPDATE SET
-          commands_version = excluded.commands_version,
-          updated_at = excluded.updated_at
-      `
-      )
-      .run({
-        workspace_id: workspaceId,
-        commands_version: null,
-        updated_at: new Date().toISOString()
-      });
-  }
-
-  getWorkspaceCommandsVersion(workspaceId: string): string | undefined {
-    const row = this.db
-      .prepare("SELECT commands_version FROM workspace_command_sync_state WHERE workspace_id = ?")
-      .get(workspaceId) as { commands_version: string | null } | undefined;
-    return row?.commands_version ?? undefined;
-  }
-
-  saveWorkspaceCommandsVersion(workspaceId: string, version: string): void {
-    this.db
-      .prepare(
-        `
-        INSERT INTO workspace_command_sync_state (workspace_id, commands_version, updated_at)
-        VALUES (@workspace_id, @commands_version, @updated_at)
-        ON CONFLICT(workspace_id) DO UPDATE SET
-          commands_version = excluded.commands_version,
-          updated_at = excluded.updated_at
-      `
-      )
-      .run({
-        workspace_id: workspaceId,
-        commands_version: version,
-        updated_at: new Date().toISOString()
-      });
   }
 
   // ── Recycle bin ──
@@ -2966,9 +2533,8 @@ export class SQLiteSshKeyRepository implements SshKeyRepository {
   }
 
   getById(id: string): SshKeyProfile | undefined {
-    const row = this.db
-      .prepare(`SELECT ${SSH_KEY_COLUMNS} FROM ssh_keys WHERE id = ?`)
-      .get(id) as SshKeyRow | undefined;
+    const row = this.db.prepare(`SELECT ${SSH_KEY_COLUMNS} FROM ssh_keys WHERE id = ?`).get(id) as
+      SshKeyRow | undefined;
     return row ? rowToSshKey(row) : undefined;
   }
 
@@ -3282,8 +2848,7 @@ const rowToConnectionFolder = (row: ConnectionFolderRow): ConnectionFolder => ({
   updatedAt: row.updated_at
 });
 
-const FOLDER_COLUMNS =
-  "id, scope_key, parent_id, name, sort_index, created_at, updated_at";
+const FOLDER_COLUMNS = "id, scope_key, parent_id, name, sort_index, created_at, updated_at";
 
 export const normalizeFolderName = (name: string): string => {
   const trimmed = name.trim();

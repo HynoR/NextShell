@@ -4,10 +4,8 @@ import type { RecycleBinEntry } from "@nextshell/core";
 import { SettingsCard } from "./shared-components";
 import { formatRelativeTime, formatDateTime } from "../../utils/formatTime";
 
-const REASON_LABELS: Record<string, string> = {
+const REASON_LABELS: Record<RecycleBinEntry["reason"], string> = {
   delete: "用户删除",
-  conflict_accept_remote: "冲突接受远端",
-  conflict_keep_local: "冲突保留本地",
   danger_move: "危险移动"
 };
 
@@ -82,10 +80,7 @@ export const RecycleBinSection = () => {
   };
 
   return (
-    <SettingsCard
-      title="回收站"
-      description="被删除或因冲突替换的资源会保留在此，可恢复或永久删除。"
-    >
+    <SettingsCard title="回收站" description="被删除的资源会保留在此，可恢复或永久删除。">
       {entries.length > 0 && (
         <div style={{ marginBottom: 12, textAlign: "right" }}>
           <Popconfirm

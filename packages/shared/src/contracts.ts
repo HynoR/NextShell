@@ -1453,23 +1453,15 @@ export const cloudSyncWorkspaceParseTokenSchema = z.object({
 export const cloudSyncStatusSchema = z.object({});
 
 export const cloudSyncSyncNowSchema = z.object({
-  workspaceId: z.string().trim().min(1).optional()
+  workspaceId: z.string().trim().min(1).optional(),
+  mode: z.enum(["cloud-wins", "local-wins"]).optional()
 });
-
-export const cloudSyncListConflictsSchema = z.object({});
 
 export const cloudSyncTestConnectionSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
   workspacePassword: z.string().min(1).max(200),
   ignoreTlsErrors: z.boolean().optional()
-});
-
-export const cloudSyncResolveConflictSchema = z.object({
-  workspaceId: z.string().trim().min(1),
-  resourceType: z.enum(["connection", "sshKey", "proxy"]),
-  resourceId: z.string().trim().min(1),
-  strategy: z.enum(["keep_local", "accept_remote"])
 });
 
 export type CloudSyncWorkspaceListInput = z.infer<typeof cloudSyncWorkspaceListSchema>;
@@ -1483,9 +1475,7 @@ export type CloudSyncWorkspaceExportTokenInput = z.infer<
 export type CloudSyncWorkspaceParseTokenInput = z.infer<typeof cloudSyncWorkspaceParseTokenSchema>;
 export type CloudSyncStatusInput = z.infer<typeof cloudSyncStatusSchema>;
 export type CloudSyncSyncNowInput = z.infer<typeof cloudSyncSyncNowSchema>;
-export type CloudSyncListConflictsInput = z.infer<typeof cloudSyncListConflictsSchema>;
 export type CloudSyncTestConnectionInput = z.infer<typeof cloudSyncTestConnectionSchema>;
-export type CloudSyncResolveConflictInput = z.infer<typeof cloudSyncResolveConflictSchema>;
 
 // ─── Resource Operations ─────────────────────────────────────────────────
 

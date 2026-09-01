@@ -71,9 +71,7 @@ import {
   cloudSyncWorkspaceParseTokenSchema,
   cloudSyncStatusSchema,
   cloudSyncSyncNowSchema,
-  cloudSyncListConflictsSchema,
   cloudSyncTestConnectionSchema,
-  cloudSyncResolveConflictSchema,
   sshKeyListSchema,
   connectionFolderCreateSchema,
   connectionFolderListSchema,
@@ -688,36 +686,15 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "云同步立即同步",
     coerceEmptyPayload: true,
     dispatch: async (services, input) => {
-      await services.cloudSync.syncNow(input.workspaceId);
+      await services.cloudSync.syncNow(input.workspaceId, input.mode);
       return { ok: true as const };
     }
-  }),
-  define({
-    channel: IPCChannel.CloudSyncListConflicts,
-    schema: cloudSyncListConflictsSchema,
-    label: "云同步冲突列表",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.cloudSync.listConflicts()
   }),
   define({
     channel: IPCChannel.CloudSyncTestConnection,
     schema: cloudSyncTestConnectionSchema,
     label: "云同步连接测试",
     dispatch: (services, input) => services.cloudSync.testConnection(input)
-  }),
-  define({
-    channel: IPCChannel.CloudSyncResolveConflict,
-    schema: cloudSyncResolveConflictSchema,
-    label: "云同步冲突处理",
-    dispatch: async (services, input) => {
-      await services.cloudSync.resolveConflict(
-        input.workspaceId,
-        input.resourceType,
-        input.resourceId,
-        input.strategy
-      );
-      return { ok: true as const };
-    }
   }),
 
   // ─── Connection Folders ───────────────────────────────────────────────────

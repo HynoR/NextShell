@@ -6,19 +6,14 @@ import {
   List,
   Modal,
   Popconfirm,
-  Skeleton,
   Space,
   Switch,
   Tag,
   Typography,
   message
 } from "antd";
-import { Fragment, useCallback, useEffect, useState } from "react";
-import type {
-  CloudSyncWorkspaceProfile,
-  WorkspaceRepoConflict,
-  WorkspaceRepoStatus
-} from "@nextshell/core";
+import { useCallback, useEffect, useState } from "react";
+import type { CloudSyncWorkspaceProfile, WorkspaceRepoStatus } from "@nextshell/core";
 import { SettingsCard } from "./SettingsCard";
 
 const api = () =>
@@ -46,7 +41,6 @@ const emptyForm: WorkspaceFormState = {
 };
 
 type WorkspaceStatus = WorkspaceRepoStatus;
-type ConflictItem = WorkspaceRepoConflict & { workspaceName: string };
 
 const STATE_COLORS: Record<string, string> = {
   idle: "green",
@@ -63,68 +57,7 @@ const STATE_LABELS: Record<string, string> = {
   syncing: "同步中",
   error: "出错",
   disabled: "已停用",
-  diverged: "有冲突"
-};
-
-const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  connection: "连接",
-  sshKey: "SSH 密钥",
-  proxy: "代理"
-};
-
-const FIELD_LABELS: Record<string, string> = {
-  name: "名称",
-  host: "主机",
-  port: "端口",
-  username: "用户名",
-  authType: "认证方式",
-  groupPath: "分组",
-  notes: "备注",
-  tags: "标签",
-  favorite: "收藏",
-  proxyType: "代理类型",
-  凭据: "凭据"
-};
-
-const CREDENTIAL_KEYS = new Set(["password", "privateKey", "passphrase"]);
-const SKIP_DIFF_KEYS = new Set(["createdAt", "updatedAt", "uuid"]);
-
-const formatConflictValue = (value: unknown): string => {
-  if (value === undefined || value === null || value === "") return "—";
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-};
-
-const computeConflictDiff = (
-  item: WorkspaceRepoConflict
-): Array<{ field: string; local: string; remote: string }> => {
-  const parse = (json: string | undefined): Record<string, unknown> => {
-    if (!json) return {};
-    try {
-      return JSON.parse(json) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  };
-  const local = parse(item.localSnapshotJson);
-  const remote = parse(item.remoteSnapshotJson);
-  const rows: Array<{ field: string; local: string; remote: string }> = [];
-  let credentialChanged = false;
-  for (const key of new Set([...Object.keys(local), ...Object.keys(remote)])) {
-    if (SKIP_DIFF_KEYS.has(key)) continue;
-    if (CREDENTIAL_KEYS.has(key)) {
-      if (JSON.stringify(local[key]) !== JSON.stringify(remote[key])) credentialChanged = true;
-      continue;
-    }
-    const l = formatConflictValue(local[key]);
-    const r = formatConflictValue(remote[key]);
-    if (l !== r) rows.push({ field: FIELD_LABELS[key] ?? key, local: l, remote: r });
-  }
-  if (credentialChanged) {
-    rows.push({ field: FIELD_LABELS["凭据"]!, local: "（本地版本）", remote: "（云端版本）" });
-  }
-  return rows;
+  diverged: "待选择"
 };
 
 export const CloudSyncManagerPanel = () => {
@@ -139,9 +72,6 @@ export const CloudSyncManagerPanel = () => {
   const [pastingToken, setPastingToken] = useState(false);
 
   const [statusMap, setStatusMap] = useState<Map<string, WorkspaceStatus>>(new Map());
-  const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
-  const [conflictsLoading, setConflictsLoading] = useState(false);
-  const [conflictBusyKey, setConflictBusyKey] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -164,34 +94,19 @@ export const CloudSyncManagerPanel = () => {
     }
   }, []);
 
-  const refreshConflicts = useCallback(async () => {
-    setConflictsLoading(true);
-    try {
-      const list = await api().cloudSync.listConflicts();
-      setConflicts(list);
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setConflictsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void refresh();
-    void refreshConflicts();
     const unsubStatus = api().cloudSync.onStatus(() => {
       void refresh();
-      void refreshConflicts();
     });
     const unsubApplied = api().cloudSync.onApplied(() => {
       void refresh();
-      void refreshConflicts();
     });
     return () => {
       unsubStatus();
       unsubApplied();
     };
-  }, [refresh, refreshConflicts]);
+  }, [refresh]);
 
   const openAddModal = (prefill?: Partial<WorkspaceFormState>) => {
     setEditForm({ ...emptyForm, ...prefill });
@@ -304,40 +219,15 @@ export const CloudSyncManagerPanel = () => {
     }
   };
 
-  const handleSync = async (workspaceId: string) => {
+  const handleSync = async (workspaceId: string, mode?: "cloud-wins" | "local-wins") => {
     setSyncingId(workspaceId);
     try {
-      await api().cloudSync.syncNow({ workspaceId });
+      await api().cloudSync.syncNow({ workspaceId, mode });
       await refresh();
-      await refreshConflicts();
     } catch (err) {
       message.error(err instanceof Error ? err.message : String(err));
     } finally {
       setSyncingId(null);
-    }
-  };
-
-  const handleResolveConflict = async (
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string,
-    strategy: "keep_local" | "accept_remote"
-  ) => {
-    const key = `${workspaceId}:${resourceType}:${resourceId}:${strategy}`;
-    setConflictBusyKey(key);
-    try {
-      await api().cloudSync.resolveConflict({
-        workspaceId,
-        resourceType: resourceType as "connection" | "sshKey" | "proxy",
-        resourceId,
-        strategy
-      });
-      await refreshConflicts();
-      await refresh();
-    } catch (err) {
-      message.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setConflictBusyKey(null);
     }
   };
 
@@ -365,16 +255,6 @@ export const CloudSyncManagerPanel = () => {
       setTesting(false);
     }
   };
-
-  const conflictsByWorkspace = new Map<string, { workspaceName: string; items: ConflictItem[] }>();
-  for (const c of conflicts) {
-    const existing = conflictsByWorkspace.get(c.workspaceId);
-    if (existing) {
-      existing.items.push(c);
-    } else {
-      conflictsByWorkspace.set(c.workspaceId, { workspaceName: c.workspaceName, items: [c] });
-    }
-  }
 
   return (
     <>
@@ -425,7 +305,7 @@ export const CloudSyncManagerPanel = () => {
                   <Popconfirm
                     key="del"
                     title="确认删除此工作区？"
-                    description="关联的同步状态和待推送操作都会被清除。"
+                    description="关联的同步状态和云端资产都会被清除。"
                     onConfirm={() => handleRemove(ws.id)}
                     okText="删除"
                     cancelText="取消"
@@ -451,9 +331,6 @@ export const CloudSyncManagerPanel = () => {
                         <Tag>已停用</Tag>
                       )}
                       {(ws.lastError || st?.lastError) && <Tag color="red">错误</Tag>}
-                      {st && st.conflictCount > 0 && (
-                        <Tag color="orange">{st.conflictCount} 冲突</Tag>
-                      )}
                     </Space>
                   }
                   description={
@@ -475,135 +352,37 @@ export const CloudSyncManagerPanel = () => {
             );
           }}
         />
-      </SettingsCard>
-
-      <SettingsCard
-        title="冲突处理"
-        description="当本地和云端同时修改了同一资源时出现冲突。保留本地会丢弃云端版本，接受云端会替换当前本地版本。"
-      >
-        {conflictsLoading ? (
-          <Skeleton active paragraph={{ rows: 3 }} />
-        ) : conflicts.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "16px 0", color: "var(--t2)" }}>
-            <span style={{ marginRight: 4 }}>✓</span>
-            <span>没有待处理的冲突</span>
-          </div>
-        ) : (
-          Array.from(conflictsByWorkspace.entries()).map(([wsId, group]) => (
-            <div key={wsId} style={{ marginBottom: 16 }}>
-              <Typography.Text strong style={{ fontSize: 13, display: "block", marginBottom: 8 }}>
-                工作区: {group.workspaceName}
-              </Typography.Text>
-              {group.items.map((item) => {
-                const keepBusy =
-                  conflictBusyKey === `${wsId}:${item.resourceType}:${item.resourceId}:keep_local`;
-                const acceptBusy =
-                  conflictBusyKey ===
-                  `${wsId}:${item.resourceType}:${item.resourceId}:accept_remote`;
-                const diff = computeConflictDiff(item);
-                return (
-                  <div
-                    key={`${item.resourceType}:${item.resourceId}`}
-                    style={{
-                      padding: "8px 0",
-                      borderBottom: "1px solid var(--border-color)"
-                    }}
+        {workspaces
+          .filter((workspace) => statusMap.get(workspace.id)?.state === "diverged")
+          .map((workspace) => (
+            <Alert
+              key={workspace.id}
+              type="warning"
+              showIcon
+              style={{ marginTop: 12 }}
+              message="云端与本地都有改动"
+              description={`工作区「${workspace.displayName || workspace.workspaceName}」需要选择覆盖方向。`}
+              action={
+                <Space>
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={syncingId === workspace.id}
+                    onClick={() => void handleSync(workspace.id, "cloud-wins")}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center"
-                      }}
-                    >
-                      <div>
-                        <Space size={8}>
-                          <span>{item.displayName}</span>
-                          <Tag>{RESOURCE_TYPE_LABELS[item.resourceType] ?? item.resourceType}</Tag>
-                          {item.remoteDeleted && <Tag color="red">云端已删除</Tag>}
-                        </Space>
-                        <div>
-                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            检测时间: {item.detectedAt}
-                          </Typography.Text>
-                        </div>
-                      </div>
-                      <Space>
-                        <Button
-                          type="primary"
-                          size="small"
-                          loading={keepBusy}
-                          onClick={() =>
-                            handleResolveConflict(
-                              wsId,
-                              item.resourceType,
-                              item.resourceId,
-                              "keep_local"
-                            )
-                          }
-                        >
-                          保留本地
-                        </Button>
-                        <Popconfirm
-                          title="接受云端版本？"
-                          description="当前本地版本会被云端版本替换。"
-                          okText="接受云端"
-                          cancelText="取消"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={() =>
-                            handleResolveConflict(
-                              wsId,
-                              item.resourceType,
-                              item.resourceId,
-                              "accept_remote"
-                            )
-                          }
-                        >
-                          <Button size="small" danger loading={acceptBusy}>
-                            接受云端
-                          </Button>
-                        </Popconfirm>
-                      </Space>
-                    </div>
-                    {diff.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          fontSize: 12,
-                          display: "grid",
-                          gridTemplateColumns: "auto 1fr 1fr",
-                          gap: "2px 12px",
-                          alignItems: "baseline"
-                        }}
-                      >
-                        <Typography.Text type="secondary">字段</Typography.Text>
-                        <Typography.Text type="secondary">本地</Typography.Text>
-                        <Typography.Text type="secondary">云端</Typography.Text>
-                        {diff.map((row) => (
-                          <Fragment key={row.field}>
-                            <span style={{ color: "var(--t2)" }}>{row.field}</span>
-                            <span style={{ wordBreak: "break-all" }}>{row.local}</span>
-                            <span style={{ wordBreak: "break-all", color: "var(--warn, #d48806)" }}>
-                              {row.remote}
-                            </span>
-                          </Fragment>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))
-        )}
-        {conflicts.length > 0 && (
-          <Alert
-            type="info"
-            showIcon
-            message="解决冲突后会立即重新同步；接受云端前请确认当前本地版本不需要保留。"
-            style={{ marginTop: 8 }}
-          />
-        )}
+                    以云为主
+                  </Button>
+                  <Button
+                    size="small"
+                    loading={syncingId === workspace.id}
+                    onClick={() => void handleSync(workspace.id, "local-wins")}
+                  >
+                    以本地为主
+                  </Button>
+                </Space>
+              }
+            />
+          ))}
       </SettingsCard>
 
       <Modal

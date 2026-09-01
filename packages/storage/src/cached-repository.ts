@@ -19,10 +19,7 @@ import {
   MAX_COMMAND_HISTORY_ENTRIES,
   type AppPreferences,
   type WorkspaceCommandItem,
-  type WorkspaceRepoConflict,
   type WorkspaceRepoLocalState,
-  type CloudSyncResourceStateV2,
-  type CloudSyncPendingOp,
   type CloudSyncWorkspaceProfile,
   type RecycleBinEntry,
   type CommandHistoryEntry,
@@ -33,11 +30,7 @@ import {
   type SshKeyProfile
 } from "../../core/src/index";
 import type { SecretStoreDB } from "../../security/src/index";
-import type {
-  ConnectionRepository,
-  SshKeyRepository,
-  ProxyRepository
-} from "./index";
+import type { ConnectionRepository, SshKeyRepository, ProxyRepository } from "./index";
 
 interface CommandHistoryCache {
   entriesByCommand: Map<string, CommandHistoryEntry>;
@@ -243,7 +236,7 @@ export class CachedConnectionRepository implements ConnectionRepository {
     this.inner.removeSetting(key);
   }
 
-  // ── Cloud Sync v2 pass-through ──
+  // ── Cloud Sync pass-through ──
   listCloudSyncWorkspaces(): CloudSyncWorkspaceProfile[] {
     return this.inner.listCloudSyncWorkspaces();
   }
@@ -256,69 +249,11 @@ export class CachedConnectionRepository implements ConnectionRepository {
   removeCloudSyncWorkspace(id: string): void {
     this.inner.removeCloudSyncWorkspace(id);
   }
-  listResourceStatesV2(workspaceId: string): CloudSyncResourceStateV2[] {
-    return this.inner.listResourceStatesV2(workspaceId);
-  }
-  getResourceStateV2(
-    workspaceId: string,
-    resourceType: string,
-    resourceId: string
-  ): CloudSyncResourceStateV2 | undefined {
-    return this.inner.getResourceStateV2(workspaceId, resourceType, resourceId);
-  }
-  saveResourceStateV2(state: CloudSyncResourceStateV2): void {
-    this.inner.saveResourceStateV2(state);
-  }
-  removeResourceStateV2(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.inner.removeResourceStateV2(workspaceId, resourceType, resourceId);
-  }
-  clearResourceStatesV2(workspaceId: string): void {
-    this.inner.clearResourceStatesV2(workspaceId);
-  }
-  listPendingOps(workspaceId: string): CloudSyncPendingOp[] {
-    return this.inner.listPendingOps(workspaceId);
-  }
-  savePendingOp(op: CloudSyncPendingOp): number {
-    return this.inner.savePendingOp(op);
-  }
-  upsertPendingOp(op: CloudSyncPendingOp): number {
-    return this.inner.upsertPendingOp(op);
-  }
-  updatePendingOp(op: CloudSyncPendingOp): void {
-    this.inner.updatePendingOp(op);
-  }
-  removePendingOp(id: number): void {
-    this.inner.removePendingOp(id);
-  }
-  clearPendingOps(workspaceId: string): void {
-    this.inner.clearPendingOps(workspaceId);
-  }
-  getRuntimeCurrentVersion(workspaceId: string): number | null {
-    return this.inner.getRuntimeCurrentVersion(workspaceId);
-  }
-  saveRuntimeCurrentVersion(workspaceId: string, currentVersion: number): void {
-    this.inner.saveRuntimeCurrentVersion(workspaceId, currentVersion);
-  }
-  removeRuntimeCurrentVersion(workspaceId: string): void {
-    this.inner.removeRuntimeCurrentVersion(workspaceId);
-  }
   getWorkspaceRepoLocalState(workspaceId: string): WorkspaceRepoLocalState | undefined {
     return this.inner.getWorkspaceRepoLocalState(workspaceId);
   }
   saveWorkspaceRepoLocalState(state: WorkspaceRepoLocalState): void {
     this.inner.saveWorkspaceRepoLocalState(state);
-  }
-  listWorkspaceRepoConflicts(workspaceId: string): WorkspaceRepoConflict[] {
-    return this.inner.listWorkspaceRepoConflicts(workspaceId);
-  }
-  saveWorkspaceRepoConflict(conflict: WorkspaceRepoConflict): void {
-    this.inner.saveWorkspaceRepoConflict(conflict);
-  }
-  removeWorkspaceRepoConflict(workspaceId: string, resourceType: string, resourceId: string): void {
-    this.inner.removeWorkspaceRepoConflict(workspaceId, resourceType, resourceId);
-  }
-  clearWorkspaceRepoConflicts(workspaceId: string): void {
-    this.inner.clearWorkspaceRepoConflicts(workspaceId);
   }
   listWorkspaceCommands(workspaceId: string): WorkspaceCommandItem[] {
     return this.inner.listWorkspaceCommands(workspaceId);
@@ -331,12 +266,6 @@ export class CachedConnectionRepository implements ConnectionRepository {
   }
   removeWorkspaceCommand(workspaceId: string, id: string): void {
     this.inner.removeWorkspaceCommand(workspaceId, id);
-  }
-  getWorkspaceCommandsVersion(workspaceId: string): string | undefined {
-    return this.inner.getWorkspaceCommandsVersion(workspaceId);
-  }
-  saveWorkspaceCommandsVersion(workspaceId: string, version: string): void {
-    this.inner.saveWorkspaceCommandsVersion(workspaceId, version);
   }
   listRecycleBinEntries(): RecycleBinEntry[] {
     return this.inner.listRecycleBinEntries();
