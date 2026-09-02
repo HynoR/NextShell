@@ -37,6 +37,17 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   }
   const processSnapshot = useWorkspaceStore((state) => state.processSnapshots[connectionId]);
   const setProcessSnapshot = useWorkspaceStore((state) => state.setProcessSnapshot);
+  const sessions = useWorkspaceStore((state) => state.sessions);
+  const terminalConnected = useMemo(
+    () =>
+      sessions.some(
+        (item) =>
+          item.connectionId === connectionId &&
+          item.type === "terminal" &&
+          item.status === "connected"
+      ),
+    [sessions, connectionId]
+  );
 
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("cpu");
@@ -59,6 +70,10 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
 
   // Subscribe to process data events + start monitor on mount
   useEffect(() => {
+    if (!terminalConnected) {
+      return;
+    }
+
     let disposed = false;
 
     const unsub = window.nextshell.monitor.onProcessData((snapshot: ProcessSnapshot) => {
@@ -80,7 +95,7 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
       unsub();
       void window.nextshell.monitor.stopProcess({ connectionId }).catch(() => {});
     };
-  }, [connectionId, setProcessSnapshot]);
+  }, [connectionId, setProcessSnapshot, terminalConnected]);
 
   const handleKill = useCallback(
     async (pid: number, signal: "SIGTERM" | "SIGKILL") => {
@@ -307,6 +322,14 @@ export const ProcessManagerPane = ({ session }: ProcessManagerPaneProps) => {
   const capturedAt = processSnapshot?.capturedAt
     ? new Date(processSnapshot.capturedAt).toLocaleTimeString()
     : "--:--:--";
+
+  if (!terminalConnected) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center py-2 px-3 bg-[var(--bg-surface)]">
+        <div className="monitor-placeholder">请先连接 SSH 终端以启动监控会话</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full py-2 px-3 overflow-hidden bg-[var(--bg-surface)]">

@@ -164,12 +164,6 @@ interface WorkspaceCommandRow {
   updated_at: string;
 }
 
-interface WorkspaceCommandSyncStateRow {
-  workspace_id: string;
-  commands_version: string | null;
-  updated_at: string | null;
-}
-
 interface CommandHistoryRow {
   command: string;
   use_count: number;

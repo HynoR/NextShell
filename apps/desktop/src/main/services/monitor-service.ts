@@ -21,6 +21,7 @@ import {
   type ProcessProbeExecutionLog
 } from "./monitor/process-monitor-controller";
 import { firstNonEmptyLine, parseProcessDetailPrimary } from "./monitor/process-probe-parser";
+import { runTimedExec } from "./monitor/monitor-runner";
 import {
   NetworkMonitorController,
   type NetworkProbeExecutionLog,
@@ -107,7 +108,7 @@ export class MonitorService {
   }
 
   private getVisibleConnection(connectionId: string): SshConnection {
-    const session = Array.from(this.activeSessions.values()).find(
+    const candidates = Array.from(this.activeSessions.values()).filter(
       (candidate): candidate is Extract<ActiveSession, { kind: "remote" }> =>
         candidate.kind === "remote" &&
         candidate.connectionId === connectionId &&
@@ -115,10 +116,27 @@ export class MonitorService {
         candidate.descriptor.status === "connected" &&
         candidate.connection.isAlive
     );
+    // Prefer a client with channel headroom so probe channels don't push a
+    // fully loaded client past the server's MaxSessions.
+    const session =
+      candidates.find((candidate) => candidate.connection.hasChannelCapacity()) ?? candidates[0];
     if (!session) {
       throw new Error("请先连接 SSH 终端以启动 Monitor Session。");
     }
     return session.connection;
+  }
+
+  /**
+   * One-shot exec on the terminal's shared connection. Always time-boxed: a hung
+   * command here would otherwise pin a channel on the user's live terminal client
+   * and leave the IPC call pending forever.
+   */
+  private execOnce(connectionId: string, command: string) {
+    return runTimedExec(
+      (cmd, options) => this.getVisibleConnection(connectionId).exec(cmd, options),
+      command,
+      MONITOR_COMMAND_TIMEOUT_MS
+    );
   }
 
   private hasVisibleTerminalAlive(connectionId: string): boolean {
@@ -250,10 +268,12 @@ export class MonitorService {
   }
 
   async ensureSystemMonitorRuntime(connectionId: string): Promise<SystemMonitorRuntime> {
-    const existing = this.systemMonitorRuntimes.get(connectionId);
-    if (existing?.stopPromise) {
+    let existing = this.systemMonitorRuntimes.get(connectionId);
+    while (existing?.stopPromise) {
       await existing.stopPromise;
-    } else if (existing && !existing.disposed) {
+      existing = this.systemMonitorRuntimes.get(connectionId);
+    }
+    if (existing && !existing.disposed) {
       return existing;
     }
 
@@ -301,10 +321,12 @@ export class MonitorService {
   }
 
   private async ensureProcessMonitorRuntime(connectionId: string): Promise<ProcessMonitorRuntime> {
-    const existing = this.processMonitorRuntimes.get(connectionId);
-    if (existing?.stopPromise) {
+    let existing = this.processMonitorRuntimes.get(connectionId);
+    while (existing?.stopPromise) {
       await existing.stopPromise;
-    } else if (existing && !existing.disposed) {
+      existing = this.processMonitorRuntimes.get(connectionId);
+    }
+    if (existing && !existing.disposed) {
       return existing;
     }
 
@@ -338,10 +360,12 @@ export class MonitorService {
   }
 
   private async ensureNetworkMonitorRuntime(connectionId: string): Promise<NetworkMonitorRuntime> {
-    const existing = this.networkMonitorRuntimes.get(connectionId);
-    if (existing?.stopPromise) {
+    let existing = this.networkMonitorRuntimes.get(connectionId);
+    while (existing?.stopPromise) {
       await existing.stopPromise;
-    } else if (existing && !existing.disposed) {
+      existing = this.networkMonitorRuntimes.get(connectionId);
+    }
+    if (existing && !existing.disposed) {
       return existing;
     }
 
@@ -409,14 +433,13 @@ export class MonitorService {
 
   async getSystemInfoSnapshot(connectionId: string): Promise<SystemInfoSnapshot> {
     this.assertMonitorEnabled(connectionId);
-    const connection = this.getVisibleConnection(connectionId);
-    const kernel = await connection.exec(MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
+    const kernel = await this.execOnce(connectionId, MONITOR_SYSTEM_INFO_KERNEL_NAME_COMMAND);
     const platform = kernel.stdout.trim().split(/\s+/)[0] ?? "";
     if (kernel.exitCode !== 0 || platform !== "Linux") {
       throw new Error("系统信息标签页当前仅支持 Linux 主机");
     }
 
-    const result = await connection.exec(buildSystemInfoCommand());
+    const result = await this.execOnce(connectionId, buildSystemInfoCommand());
     const sections = parseCompoundOutput(result.stdout);
     const totals = parseMeminfoTotals(sections.get("MEMINFO") ?? "");
     return {
@@ -460,9 +483,8 @@ export class MonitorService {
     if (normalizedPid < 1) {
       throw new Error("无效进程 PID");
     }
-    const connection = this.getVisibleConnection(connectionId);
     const primaryCommand = `ps -p ${normalizedPid} -o pid=,ppid=,user=,state=,%cpu=,%mem=,rss=,etime=,comm=`;
-    const primary = await connection.exec(primaryCommand);
+    const primary = await this.execOnce(connectionId, primaryCommand);
     if (primary.exitCode !== 0) {
       throw new Error("进程不存在或已结束");
     }
@@ -472,7 +494,7 @@ export class MonitorService {
       throw new Error("进程不存在或已结束");
     }
 
-    const args = await connection.exec(`ps -p ${normalizedPid} -o args=`);
+    const args = await this.execOnce(connectionId, `ps -p ${normalizedPid} -o args=`);
     return {
       ...parsed,
       commandLine:
@@ -494,9 +516,7 @@ export class MonitorService {
     if (normalizedPid < 1) {
       throw new Error("无效进程 PID");
     }
-    const result = await this.getVisibleConnection(connectionId).exec(
-      `kill -${signal} ${normalizedPid} 2>&1`
-    );
+    const result = await this.execOnce(connectionId, `kill -${signal} ${normalizedPid} 2>&1`);
     if (result.exitCode !== 0) {
       throw new Error(
         `kill 失败 (exit ${result.exitCode}): ${result.stdout.trim() || "unknown error"}`

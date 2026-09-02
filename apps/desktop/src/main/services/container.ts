@@ -506,6 +506,11 @@ export const createServiceContainer = async (
   const isConnectionRetained = (connectionId: string): boolean =>
     (connectionRefCounts.get(connectionId) ?? 0) > 0;
 
+  const hasLiveRemoteSession = (connectionId: string): boolean =>
+    Array.from(activeSessions.values()).some(
+      (s) => s.kind === "remote" && s.connectionId === connectionId
+    );
+
   /**
    * Nothing wants this connection: no handshake in flight *and* no live
    * session. Both halves matter — a session that finishes opening drops its
@@ -514,17 +519,16 @@ export const createServiceContainer = async (
    * terminal is using it.
    */
   const isConnectionIdle = (connectionId: string): boolean =>
-    !isConnectionRetained(connectionId) &&
-    !Array.from(activeSessions.values()).some(
-      (s) => s.kind === "remote" && s.connectionId === connectionId
-    );
+    !isConnectionRetained(connectionId) && !hasLiveRemoteSession(connectionId);
 
   const closeConnectionIfIdle = async (connectionId: string): Promise<void> => {
-    if (!isConnectionIdle(connectionId)) return;
-    // Monitor teardown races each hidden client's close against a 2s timeout,
-    // so this await is long enough for a whole session open to complete inside
-    // it: re-check the *full* idleness condition afterwards, not just the ref
-    // count, or the tab that just opened gets its shell closed underneath it.
+    // Monitors hold their own retain, so they must be torn down *before* the
+    // ref-count check or a monitor would keep its connection alive forever.
+    // They only run against a visible terminal, so "no live session" is the
+    // right gate for them; the full idle check afterwards then only sees
+    // handshake/agent refs. The await is long enough for a whole session open
+    // to complete inside it, hence the re-check.
+    if (hasLiveRemoteSession(connectionId)) return;
     await monitorSvc.disposeAllMonitorSessions(connectionId);
     if (!isConnectionIdle(connectionId)) return;
     const clients = connectionPool.get(connectionId);
@@ -608,7 +612,6 @@ export const createServiceContainer = async (
     closeConnectionIfIdle,
     sendSessionStatus,
     sessionDataDispatcher,
-    ensureSystemMonitorRuntime: (id) => monitorSvc.ensureSystemMonitorRuntime(id),
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
     persistAuthOverride: (id, override) =>
       connectionSvc.persistSuccessfulAuthOverride(id, override),

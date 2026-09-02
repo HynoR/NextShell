@@ -19,7 +19,6 @@ export const MONITOR_SYSTEM_INFO_FILESYSTEMS_COMMAND =
   "export LANG=C LC_ALL=C; (df -kP || df -k || df) 2>/dev/null";
 export const MONITOR_NETWORK_INTERVAL_MS = 5000;
 export const MONITOR_PROCESS_INTERVAL_MS = 5000;
-export const ADHOC_IDLE_TIMEOUT_MS = 30_000;
 export const MONITOR_MAX_CONSECUTIVE_FAILURES = 3;
 export const MONITOR_COMMAND_TIMEOUT_MS = 10000;
 export const SFTP_WARMUP_TIMEOUT_MS = 5000;

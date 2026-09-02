@@ -1,4 +1,4 @@
-import type { MonitorProcess, MonitorSnapshot } from "../../../../../../packages/core/src/index";
+import type { MonitorSnapshot } from "../../../../../../packages/core/src/index";
 import {
   buildDynamicSystemProbeCommand,
   MONITOR_NET_INTERFACES_COMMAND,
@@ -8,9 +8,6 @@ import {
   parseCompoundOutput,
   parseNetworkInterfaceList,
   parseSystemProbeSections,
-  type ParsedDiskTotals,
-  type ParsedMemoryTotals,
-  type ParsedNetworkCounters,
   type ParsedSystemProbeFrame
 } from "./system-probe-parser";
 import { MonitorExecTimeoutError, runTimedExec, type MonitorExec } from "./monitor-runner";
@@ -19,6 +16,9 @@ const DEFAULT_POLL_INTERVAL_MS = 2000;
 const DEFAULT_START_DELAY_MS = 300;
 const DEFAULT_EXEC_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_CONSECUTIVE_FAILURES = 3;
+
+// One merged probe per tick: every section is collected on every frame.
+const PROBE_OPTIONS = { collectCpuMemSwap: true, collectDisk: true, includeInterfaceMeta: true };
 
 export type SystemMonitorControllerState = "IDLE" | "STARTING" | "RUNNING" | "STOPPING" | "STOPPED";
 
@@ -61,67 +61,50 @@ export interface SystemMonitorControllerOptions {
   };
 }
 
-const emptyMemory = (): ParsedMemoryTotals => ({
-  memTotalKb: 0,
-  memAvailableKb: 0,
-  swapTotalKb: 0,
-  swapFreeKb: 0
-});
-
-const emptyDisk = (): ParsedDiskTotals => ({
-  diskTotalKb: 0,
-  diskUsedKb: 0
-});
+const round2 = (value: number): number => Number(value.toFixed(2));
 
 const toSnapshot = (
   connectionId: string,
-  loadAverage: [number, number, number],
+  frame: ParsedSystemProbeFrame,
   cpuPercent: number,
-  memory: ParsedMemoryTotals,
-  disk: ParsedDiskTotals,
   networkInMbps: number,
   networkOutMbps: number,
   networkInterface: string,
-  networkInterfaceOptions: string[],
-  processes: MonitorProcess[]
+  networkInterfaceOptions: string[]
 ): MonitorSnapshot => {
+  // With PROBE_OPTIONS all on, the parser always fills these; defaults only satisfy the types.
+  const memory = frame.memory ?? { memTotalKb: 0, memAvailableKb: 0, swapTotalKb: 0, swapFreeKb: 0 };
+  const disk = frame.disk ?? { diskTotalKb: 0, diskUsedKb: 0 };
   const memoryUsedKb = Math.max(0, memory.memTotalKb - memory.memAvailableKb);
   const swapUsedKb = Math.max(0, memory.swapTotalKb - memory.swapFreeKb);
-
-  const memoryPercent = memory.memTotalKb > 0 ? (memoryUsedKb / memory.memTotalKb) * 100 : 0;
-  const swapPercent = memory.swapTotalKb > 0 ? (swapUsedKb / memory.swapTotalKb) * 100 : 0;
-  const diskPercent = disk.diskTotalKb > 0 ? (disk.diskUsedKb / disk.diskTotalKb) * 100 : 0;
+  const pct = (used: number, total: number): number => (total > 0 ? (used / total) * 100 : 0);
 
   return {
     connectionId,
-    loadAverage,
-    cpuPercent: Number(Math.max(0, cpuPercent).toFixed(2)),
-    memoryPercent: Number(memoryPercent.toFixed(2)),
-    memoryUsedMb: Number((memoryUsedKb / 1024).toFixed(2)),
-    memoryTotalMb: Number((memory.memTotalKb / 1024).toFixed(2)),
-    swapPercent: Number(swapPercent.toFixed(2)),
-    swapUsedMb: Number((swapUsedKb / 1024).toFixed(2)),
-    swapTotalMb: Number((memory.swapTotalKb / 1024).toFixed(2)),
-    diskPercent: Number(diskPercent.toFixed(2)),
-    diskUsedGb: Number((disk.diskUsedKb / (1024 * 1024)).toFixed(2)),
-    diskTotalGb: Number((disk.diskTotalKb / (1024 * 1024)).toFixed(2)),
-    networkInMbps: Number(Math.max(0, networkInMbps).toFixed(2)),
-    networkOutMbps: Number(Math.max(0, networkOutMbps).toFixed(2)),
+    loadAverage: frame.loadAverage ?? [0, 0, 0],
+    cpuPercent: round2(Math.max(0, cpuPercent)),
+    memoryPercent: round2(pct(memoryUsedKb, memory.memTotalKb)),
+    memoryUsedMb: round2(memoryUsedKb / 1024),
+    memoryTotalMb: round2(memory.memTotalKb / 1024),
+    swapPercent: round2(pct(swapUsedKb, memory.swapTotalKb)),
+    swapUsedMb: round2(swapUsedKb / 1024),
+    swapTotalMb: round2(memory.swapTotalKb / 1024),
+    diskPercent: round2(pct(disk.diskUsedKb, disk.diskTotalKb)),
+    diskUsedGb: round2(disk.diskUsedKb / (1024 * 1024)),
+    diskTotalGb: round2(disk.diskTotalKb / (1024 * 1024)),
+    networkInMbps: round2(Math.max(0, networkInMbps)),
+    networkOutMbps: round2(Math.max(0, networkOutMbps)),
     networkInterface,
     networkInterfaceOptions,
-    processes,
+    processes: frame.processes ?? [],
     capturedAt: new Date().toISOString()
   };
 };
 
 const wait = async (durationMs: number): Promise<void> => {
-  if (durationMs <= 0) {
-    return;
+  if (durationMs > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, durationMs));
   }
-
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, durationMs);
-  });
 };
 
 export class SystemMonitorController {
@@ -143,20 +126,13 @@ export class SystemMonitorController {
   private lastProbeDurationMs = 0;
   private skipCount = 0;
 
-  private prevNetRx: number | undefined;
-  private prevNetTx: number | undefined;
-  private prevNetSampledAt: number | undefined;
-  private cachedNetInMbps = 0;
-  private cachedNetOutMbps = 0;
-
-  private prevCpuTotal: number | undefined;
-  private prevCpuIdle: number | undefined;
-  private cachedCpuPercent = 0;
-
-  private cachedLoadAvg: [number, number, number] = [0, 0, 0];
-  private cachedMemory: ParsedMemoryTotals = emptyMemory();
-  private cachedDisk: ParsedDiskTotals = emptyDisk();
-  private cachedProcesses: MonitorProcess[] = [];
+  // Previous samples for rate computation; the rates persist across frames that cannot be rated
+  // (first frame, counter reset, zero elapsed).
+  private prevNet: { rx: number; tx: number; at: number } | undefined;
+  private netInMbps = 0;
+  private netOutMbps = 0;
+  private prevCpu: { total: number; idle: number } | undefined;
+  private cpuPercent = 0;
 
   constructor(private readonly options: SystemMonitorControllerOptions) {
     this.pollIntervalMs = options.timing?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -176,10 +152,7 @@ export class SystemMonitorController {
       return;
     }
     this.paused = true;
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
+    this.clearTimer();
   }
 
   /** Restart the ticker paused by pause(); idempotent, only restarts while RUNNING. */
@@ -232,10 +205,7 @@ export class SystemMonitorController {
       return { ok: true };
     } catch (error) {
       if (this.generation === generation) {
-        if (this.timer) {
-          clearInterval(this.timer);
-          this.timer = undefined;
-        }
+        this.clearTimer();
         await this.options.stopMonitor();
         this.state = "STOPPED";
       }
@@ -244,21 +214,21 @@ export class SystemMonitorController {
   }
 
   async stop(): Promise<{ ok: true }> {
+    if (this.state === "STOPPING") {
+      // Re-entrant stop (self-stop → stopMonitor → dispose → stop): the outer call finishes it.
+      // Awaiting here would deadlock, since the outer stop is waiting on our caller.
+      return { ok: true };
+    }
+
     if (this.state === "IDLE" || this.state === "STOPPED") {
-      if (this.timer) {
-        clearInterval(this.timer);
-        this.timer = undefined;
-      }
+      this.clearTimer();
       await this.options.stopMonitor();
       return { ok: true };
     }
 
     this.state = "STOPPING";
     this.bumpGeneration();
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
+    this.clearTimer();
 
     try {
       await this.options.stopMonitor();
@@ -299,11 +269,7 @@ export class SystemMonitorController {
 
     this.networkInterface = normalized;
     this.networkInterfaceOptions = options;
-    this.prevNetRx = undefined;
-    this.prevNetTx = undefined;
-    this.prevNetSampledAt = undefined;
-    this.cachedNetInMbps = 0;
-    this.cachedNetOutMbps = 0;
+    this.resetNetworkBaseline();
 
     this.options.writeSelection({
       selectedNetworkInterface: normalized,
@@ -324,37 +290,42 @@ export class SystemMonitorController {
     );
   }
 
-  private startTicker(generation: number): void {
-    if (this.paused) {
-      return;
-    }
+  private isRunning(generation: number): boolean {
+    return this.isGenerationActive(generation) && this.state === "RUNNING";
+  }
 
-    if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
-      return;
-    }
-
+  private clearTimer(): void {
     if (this.timer) {
       clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+
+  private startTicker(generation: number): void {
+    if (this.paused || !this.isRunning(generation)) {
+      return;
     }
 
+    this.clearTimer();
     this.timer = setInterval(() => {
       void this.poll(generation);
     }, this.pollIntervalMs);
   }
 
+  private resetNetworkBaseline(): void {
+    this.prevNet = undefined;
+    this.netInMbps = 0;
+    this.netOutMbps = 0;
+  }
+
   private resetSamplingBaselines(): void {
-    this.prevNetRx = undefined;
-    this.prevNetTx = undefined;
-    this.prevNetSampledAt = undefined;
-    this.prevCpuTotal = undefined;
-    this.prevCpuIdle = undefined;
-    this.cachedNetInMbps = 0;
-    this.cachedNetOutMbps = 0;
-    this.cachedCpuPercent = 0;
+    this.resetNetworkBaseline();
+    this.prevCpu = undefined;
+    this.cpuPercent = 0;
   }
 
   private async poll(generation: number): Promise<void> {
-    if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
+    if (!this.isRunning(generation)) {
       return;
     }
 
@@ -422,14 +393,14 @@ export class SystemMonitorController {
       this.networkInterfaceOptions = frame.networkInterfaceOptions;
     }
 
-    if (selected && this.networkInterfaceOptions.includes(selected)) {
+    const known = (name: string | undefined): name is string =>
+      !!name && this.networkInterfaceOptions.includes(name);
+
+    if (known(selected)) {
       this.networkInterface = selected;
-    } else if (counterInterface && this.networkInterfaceOptions.includes(counterInterface)) {
+    } else if (known(counterInterface)) {
       this.networkInterface = counterInterface;
-    } else if (
-      frame.defaultNetworkInterface &&
-      this.networkInterfaceOptions.includes(frame.defaultNetworkInterface)
-    ) {
+    } else if (known(frame.defaultNetworkInterface)) {
       this.networkInterface = frame.defaultNetworkInterface;
     } else if (counterInterface) {
       this.networkInterface = counterInterface;
@@ -440,78 +411,39 @@ export class SystemMonitorController {
       this.networkInterface = this.networkInterfaceOptions[0] ?? this.networkInterface;
     }
 
-    const effectiveSelectedInterface =
-      selected && this.networkInterfaceOptions.includes(selected)
-        ? selected
-        : this.networkInterface;
-
     if (previousInterface !== this.networkInterface) {
-      this.prevNetRx = undefined;
-      this.prevNetTx = undefined;
-      this.prevNetSampledAt = undefined;
-      this.cachedNetInMbps = 0;
-      this.cachedNetOutMbps = 0;
+      this.resetNetworkBaseline();
     }
 
     this.options.writeSelection({
-      selectedNetworkInterface: effectiveSelectedInterface,
+      selectedNetworkInterface: known(selected) ? selected : this.networkInterface,
       networkInterfaceOptions: this.networkInterfaceOptions
     });
   }
 
-  private updateNetwork(counters: ParsedNetworkCounters): void {
+  private updateRates(frame: ParsedSystemProbeFrame): void {
     const now = Date.now();
-
-    if (
-      this.prevNetRx !== undefined &&
-      this.prevNetTx !== undefined &&
-      this.prevNetSampledAt !== undefined
-    ) {
-      const elapsed = (now - this.prevNetSampledAt) / 1000;
-      const deltaRx = counters.rxBytes - this.prevNetRx;
-      const deltaTx = counters.txBytes - this.prevNetTx;
-
+    const { rxBytes, txBytes } = frame.networkCounters;
+    if (this.prevNet) {
+      const elapsed = (now - this.prevNet.at) / 1000;
+      const deltaRx = rxBytes - this.prevNet.rx;
+      const deltaTx = txBytes - this.prevNet.tx;
       if (elapsed > 0 && deltaRx >= 0 && deltaTx >= 0) {
-        this.cachedNetInMbps = (deltaRx * 8) / (elapsed * 1e6);
-        this.cachedNetOutMbps = (deltaTx * 8) / (elapsed * 1e6);
+        this.netInMbps = (deltaRx * 8) / (elapsed * 1e6);
+        this.netOutMbps = (deltaTx * 8) / (elapsed * 1e6);
       }
     }
+    this.prevNet = { rx: rxBytes, tx: txBytes, at: now };
 
-    this.prevNetRx = counters.rxBytes;
-    this.prevNetTx = counters.txBytes;
-    this.prevNetSampledAt = now;
-  }
-
-  private updateCpuMemSwap(frame: ParsedSystemProbeFrame): void {
     if (frame.cpuTotal !== undefined && frame.cpuIdle !== undefined) {
-      if (this.prevCpuTotal !== undefined && this.prevCpuIdle !== undefined) {
-        const deltaTotal = frame.cpuTotal - this.prevCpuTotal;
-        const deltaIdle = frame.cpuIdle - this.prevCpuIdle;
+      if (this.prevCpu) {
+        const deltaTotal = frame.cpuTotal - this.prevCpu.total;
+        const deltaIdle = frame.cpuIdle - this.prevCpu.idle;
         if (deltaTotal > 0) {
-          this.cachedCpuPercent = ((deltaTotal - deltaIdle) / deltaTotal) * 100;
+          this.cpuPercent = ((deltaTotal - deltaIdle) / deltaTotal) * 100;
         }
       }
-
-      this.prevCpuTotal = frame.cpuTotal;
-      this.prevCpuIdle = frame.cpuIdle;
-    }
-
-    if (frame.memory) {
-      this.cachedMemory = frame.memory;
-    }
-
-    if (frame.loadAverage) {
-      this.cachedLoadAvg = frame.loadAverage;
-    }
-
-    if (frame.processes) {
-      this.cachedProcesses = frame.processes;
-    }
-  }
-
-  private updateDisk(frame: ParsedSystemProbeFrame): void {
-    if (frame.disk) {
-      this.cachedDisk = frame.disk;
+      this.prevCpu = { total: frame.cpuTotal, idle: frame.cpuIdle };
     }
   }
 
@@ -522,16 +454,12 @@ export class SystemMonitorController {
 
     this.syncSelectionState();
 
-    const command = buildDynamicSystemProbeCommand(this.networkInterface, {
-      collectCpuMemSwap: true,
-      collectDisk: true,
-      includeInterfaceMeta: true
-    });
+    const command = buildDynamicSystemProbeCommand(this.networkInterface, PROBE_OPTIONS);
 
     let stdout = "";
     try {
       const result = await runTimedExec(this.options.exec, command, this.execTimeoutMs);
-      if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
+      if (!this.isRunning(generation)) {
         return;
       }
 
@@ -559,7 +487,7 @@ export class SystemMonitorController {
       this.lastProbeDurationMs = result.durationMs;
       this.consecutiveFailures = 0;
     } catch (error) {
-      if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
+      if (!this.isRunning(generation)) {
         return;
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -587,17 +515,11 @@ export class SystemMonitorController {
       return;
     }
 
-    if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
+    if (!this.isRunning(generation)) {
       return;
     }
 
-    const sections = parseCompoundOutput(stdout);
-    const parsed = parseSystemProbeSections(sections, {
-      collectCpuMemSwap: true,
-      collectDisk: true,
-      includeInterfaceMeta: true
-    });
-
+    const parsed = parseSystemProbeSections(parseCompoundOutput(stdout), PROBE_OPTIONS);
     if (!parsed.ok) {
       this.options.logger.warn("[SystemMonitor] drop frame: invalid probe payload", {
         connectionId: this.options.connectionId,
@@ -610,33 +532,23 @@ export class SystemMonitorController {
       return;
     }
 
-    if (!this.isGenerationActive(generation) || this.state !== "RUNNING") {
-      return;
-    }
-
     this.resolveInterface(parsed.frame);
-    this.updateNetwork(parsed.frame.networkCounters);
-
-    this.updateCpuMemSwap(parsed.frame);
-    this.updateDisk(parsed.frame);
+    this.updateRates(parsed.frame);
 
     if (!this.options.isReceiverAlive() || !this.isGenerationActive(generation)) {
       return;
     }
 
-    const snapshot = toSnapshot(
-      this.options.connectionId,
-      this.cachedLoadAvg,
-      this.cachedCpuPercent,
-      this.cachedMemory,
-      this.cachedDisk,
-      this.cachedNetInMbps,
-      this.cachedNetOutMbps,
-      this.networkInterface,
-      this.networkInterfaceOptions,
-      this.cachedProcesses
+    this.options.emitSnapshot(
+      toSnapshot(
+        this.options.connectionId,
+        parsed.frame,
+        this.cpuPercent,
+        this.netInMbps,
+        this.netOutMbps,
+        this.networkInterface,
+        this.networkInterfaceOptions
+      )
     );
-
-    this.options.emitSnapshot(snapshot);
   }
 }

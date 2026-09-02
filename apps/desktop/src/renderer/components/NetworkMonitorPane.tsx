@@ -31,6 +31,17 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
   }
   const networkSnapshot = useWorkspaceStore((state) => state.networkSnapshots[connectionId]);
   const setNetworkSnapshot = useWorkspaceStore((state) => state.setNetworkSnapshot);
+  const sessions = useWorkspaceStore((state) => state.sessions);
+  const terminalConnected = useMemo(
+    () =>
+      sessions.some(
+        (item) =>
+          item.connectionId === connectionId &&
+          item.type === "terminal" &&
+          item.status === "connected"
+      ),
+    [sessions, connectionId]
+  );
 
   const [search, setSearch] = useState("");
   const [selectedListenerKey, setSelectedListenerKey] = useState<string>();
@@ -49,6 +60,10 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
   const allListeners = networkSnapshot?.listeners ?? [];
 
   useEffect(() => {
+    if (!terminalConnected) {
+      return;
+    }
+
     const unsub = window.nextshell.monitor.onNetworkData((snapshot: NetworkSnapshot) => {
       if (snapshot.connectionId === connectionId) {
         setNetworkSnapshot(connectionId, snapshot);
@@ -64,7 +79,7 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
       unsub();
       void window.nextshell.monitor.stopNetwork({ connectionId }).catch(() => {});
     };
-  }, [connectionId, setNetworkSnapshot]);
+  }, [connectionId, setNetworkSnapshot, terminalConnected]);
 
   const listeners = useMemo(() => {
     if (allListeners.length === 0) {
@@ -262,6 +277,14 @@ export const NetworkMonitorPane = ({ session }: NetworkMonitorPaneProps) => {
   const detailTimeText = detailCapturedAt
     ? new Date(detailCapturedAt).toLocaleTimeString()
     : "--:--:--";
+
+  if (!terminalConnected) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center py-2 px-3 bg-[var(--bg-surface)]">
+        <div className="monitor-placeholder">请先连接 SSH 终端以启动监控会话</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full py-2 px-3 overflow-hidden bg-[var(--bg-surface)] gap-2">

@@ -104,3 +104,41 @@ await (async () => {
   }
   assertTrue(thrown, "monitor should reject start without a visible terminal");
 })();
+
+await (async () => {
+  let visible = true;
+  let sample = 0;
+  const stoppedLogs: string[] = [];
+  let controller: SystemMonitorController;
+
+  controller = new SystemMonitorController({
+    connectionId: "conn-reentrant-stop",
+    exec: async (command) => {
+      sample += 1;
+      return { stdout: buildProbeOutput(command, sample), stderr: "", exitCode: 0 };
+    },
+    // Mirrors monitor-service: self-stop → stopMonitor → dispose → controller.stop() again.
+    stopMonitor: async () => {
+      await controller.stop();
+    },
+    isVisibleTerminalAlive: () => visible,
+    isReceiverAlive: () => true,
+    emitSnapshot: () => undefined,
+    readSelection: () => undefined,
+    writeSelection: () => undefined,
+    logger: {
+      info: (message) => {
+        if (message.includes("stopped")) stoppedLogs.push(message);
+      },
+      warn: () => undefined,
+      debug: () => undefined
+    },
+    timing: { pollIntervalMs: 10, startDelayMs: 0 }
+  });
+
+  await controller.start();
+  visible = false;
+  await wait(40);
+  assertEqual(controller.currentState, "STOPPED", "re-entrant stop should still end STOPPED");
+  assertEqual(stoppedLogs.length, 1, "re-entrant stop should log stopped exactly once");
+})();

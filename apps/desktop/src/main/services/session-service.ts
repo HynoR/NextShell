@@ -12,7 +12,7 @@ import type {
 } from "@nextshell/shared";
 import { AUTH_REQUIRED_PREFIX, IPCChannel } from "@nextshell/shared";
 import type { CachedConnectionRepository } from "@nextshell/storage";
-import type { ActiveSession, ActiveRemoteSession, SystemMonitorRuntime } from "./container-types";
+import type { ActiveSession, ActiveRemoteSession } from "./container-types";
 import {
   normalizeError,
   toAuthRequiredReason,
@@ -47,7 +47,6 @@ export interface SessionServiceOptions {
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  ensureSystemMonitorRuntime: (connectionId: string) => Promise<SystemMonitorRuntime>;
   warmupSftp: (connectionId: string, connection: SshConnection) => Promise<string | undefined>;
   persistAuthOverride: (
     connectionId: string,
@@ -68,9 +67,6 @@ export class SessionService {
   private readonly closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   private readonly sendSessionStatus: (sender: WebContents, payload: SessionStatusEvent) => void;
   private readonly sessionDataDispatcher: ReturnType<typeof createOrderedBytesDispatcher>;
-  private readonly ensureSystemMonitorRuntime: (
-    connectionId: string
-  ) => Promise<SystemMonitorRuntime>;
   private readonly warmupSftp: (
     connectionId: string,
     connection: SshConnection
@@ -94,7 +90,6 @@ export class SessionService {
     this.closeConnectionIfIdle = options.closeConnectionIfIdle;
     this.sendSessionStatus = options.sendSessionStatus;
     this.sessionDataDispatcher = options.sessionDataDispatcher;
-    this.ensureSystemMonitorRuntime = options.ensureSystemMonitorRuntime;
     this.warmupSftp = options.warmupSftp;
     this.persistAuthOverride = options.persistAuthOverride;
     this.tapAgentSessionData = options.tapAgentSessionData;
@@ -258,21 +253,6 @@ export class SessionService {
           connectedReason = connectedReason
             ? `${connectedReason}；${persistWarning}`
             : persistWarning;
-        }
-      }
-
-      if (profile.monitorSession) {
-        try {
-          await this.ensureSystemMonitorRuntime(connectionId);
-        } catch (error) {
-          const monitorReason = `Monitor Session 后台连接初始化失败：${normalizeError(error)}`;
-          connectedReason = connectedReason
-            ? `${connectedReason}；${monitorReason}`
-            : monitorReason;
-          logger.warn("[MonitorSession] failed to bootstrap runtime after terminal open", {
-            connectionId,
-            reason: normalizeError(error)
-          });
         }
       }
 
