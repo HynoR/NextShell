@@ -43,7 +43,6 @@ import {
   sftpDeleteSchema,
   sftpDownloadSchema,
   sftpDownloadPackedSchema,
-  sftpListLocalSchema,
   sftpMkdirSchema,
   sessionOpenSchema,
   sessionResizeSchema,
@@ -374,12 +373,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: sftpListSchema,
     label: "文件列表",
     dispatch: (services, input) => services.sftp.listRemoteFiles(input.connectionId, input.path)
-  }),
-  define({
-    channel: IPCChannel.SftpListLocal,
-    schema: sftpListLocalSchema,
-    label: "本机文件列表",
-    dispatch: (services, input) => services.sftp.listLocalFiles(input.path)
   }),
   define({
     channel: IPCChannel.SftpUpload,

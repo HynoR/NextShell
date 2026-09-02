@@ -177,47 +177,6 @@ export class SftpService {
       });
   }
 
-  async listLocalFiles(pathName: string): Promise<RemoteFileEntry[]> {
-    const resolvedPath = resolveLocalPath(pathName);
-    let rows: fs.Dirent[];
-    try {
-      rows = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
-    } catch (error) {
-      throw new Error(`读取本机目录失败：${normalizeError(error)}`);
-    }
-
-    const entries = await Promise.all(
-      rows
-        .filter((entry) => entry.name !== "." && entry.name !== "..")
-        .map(async (entry) => {
-          const fullPath = path.join(resolvedPath, entry.name);
-          const stats = await fs.promises.lstat(fullPath);
-          const type: RemoteFileEntry["type"] = entry.isDirectory()
-            ? "directory"
-            : entry.isSymbolicLink()
-              ? "link"
-              : "file";
-
-          return {
-            name: entry.name,
-            path: fullPath,
-            type,
-            size: stats.size,
-            permissions: (stats.mode & 0o777).toString(8).padStart(3, "0"),
-            owner: typeof stats.uid === "number" ? String(stats.uid) : "-",
-            group: typeof stats.gid === "number" ? String(stats.gid) : "-",
-            modifiedAt: stats.mtime.toISOString()
-          } satisfies RemoteFileEntry;
-        })
-    );
-
-    return entries.sort((a, b) => {
-      if (a.type === "directory" && b.type !== "directory") return -1;
-      if (a.type !== "directory" && b.type === "directory") return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }
-
   async uploadRemoteFile(
     connectionId: string,
     localPath: string,

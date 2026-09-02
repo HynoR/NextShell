@@ -10,6 +10,7 @@ interface FileExplorerContextMenuProps {
   onRefresh: () => void;
   onDownload: (entries: RemoteFileEntry[]) => void;
   onPackedDownload: (entries: RemoteFileEntry[]) => void;
+  onSendToServer: (entries: RemoteFileEntry[]) => void;
   onUpload: () => void;
   onPackedUpload: () => void;
   onCopyPath: (entries: RemoteFileEntry[]) => void;
@@ -33,6 +34,7 @@ export const FileExplorerContextMenu = ({
   onRefresh,
   onDownload,
   onPackedDownload,
+  onSendToServer,
   onUpload,
   onPackedUpload,
   onCopyPath,
@@ -170,6 +172,10 @@ export const FileExplorerContextMenu = ({
               <span className="fe-ctx-arrow">›</span>
             </div>
           </Dropdown>
+
+          <button className="fe-ctx-item" onClick={() => run(() => onSendToServer(entries))}>
+            <span className="fe-ctx-icon">{icon("ri-send-plane-line")}</span> 发送到服务器…
+          </button>
 
           <div className="fe-ctx-divider" />
 

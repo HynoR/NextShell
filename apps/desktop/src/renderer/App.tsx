@@ -430,25 +430,6 @@ export const App = () => {
     [openMonitorTab]
   );
 
-  const handleOpenQuickTransfer = useCallback(() => {
-    const existing = sessions.find((s) => s.type === "quickTransfer");
-    if (existing) {
-      setActiveSession(existing.id);
-      return;
-    }
-    const session: SessionDescriptor = {
-      id: crypto.randomUUID(),
-      target: "local",
-      title: "文件快传",
-      type: "quickTransfer",
-      status: "connected",
-      createdAt: new Date().toISOString(),
-      reconnectable: false
-    };
-    upsertSession(session);
-    setActiveSession(session.id);
-  }, [sessions, setActiveSession, upsertSession]);
-
   const handleOpenEditorTab = useCallback(
     async (connectionId: string, remotePath: string) => {
       const existing = editorTabFindByRemotePath(connectionId, remotePath);
@@ -792,7 +773,6 @@ export const App = () => {
           onRenameSession={handleRenameSession}
           onOpenProcessManager={handleOpenProcessManager}
           onOpenNetworkMonitor={handleOpenNetworkMonitor}
-          onOpenQuickTransfer={handleOpenQuickTransfer}
           onCloseMonitorTab={handleCloseMonitorTab}
           onOpenEditorTab={handleOpenEditorTab}
           onRetrySessionAuth={retrySessionAuth}

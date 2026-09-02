@@ -24,7 +24,6 @@ import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionPrompt } from "./ConnectionPrompt";
 import { FileExplorerPane } from "./FileExplorerPane";
-import { QuickTransferPane } from "./QuickTransferPane";
 import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
@@ -64,8 +63,7 @@ const SESSION_TYPE_ICON: Record<SessionType, string> = {
   terminal: "ri-terminal-line",
   processManager: "ri-cpu-line",
   networkMonitor: "ri-global-line",
-  editor: "ri-file-code-line",
-  quickTransfer: "ri-folder-transfer-line"
+  editor: "ri-file-code-line"
 };
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
@@ -348,7 +346,6 @@ interface WorkspaceLayoutProps {
   onRenameSession: (sessionId: string, title: string) => void;
   onOpenProcessManager: (connectionId: string) => void;
   onOpenNetworkMonitor: (connectionId: string) => void;
-  onOpenQuickTransfer: () => void;
   onCloseMonitorTab: (sessionId: string) => void;
   onOpenEditorTab: (connectionId: string, remotePath: string) => Promise<void>;
   onRetrySessionAuth: (
@@ -398,7 +395,6 @@ const WorkspaceLayoutComponent = ({
   onRenameSession,
   onOpenProcessManager,
   onOpenNetworkMonitor,
-  onOpenQuickTransfer,
   onCloseMonitorTab,
   onOpenEditorTab,
   onRetrySessionAuth,
@@ -991,10 +987,6 @@ const WorkspaceLayoutComponent = ({
             <i className="ri-links-line" aria-hidden="true" />
             服务器
           </button>
-          <button className="hdr-btn" onClick={onOpenQuickTransfer} title="文件快传">
-            <i className="ri-folder-transfer-line" aria-hidden="true" />
-            快传
-          </button>
           <button className="hdr-btn" onClick={onOpenSettings} title="打开设置中心">
             <i className="ri-settings-3-line" aria-hidden="true" />
             设置
@@ -1281,8 +1273,7 @@ const WorkspaceLayoutComponent = ({
                   className={
                     activeSession?.type === "processManager" ||
                     activeSession?.type === "networkMonitor" ||
-                    activeSession?.type === "editor" ||
-                    activeSession?.type === "quickTransfer"
+                    activeSession?.type === "editor"
                       ? "hidden"
                       : "flex-1 min-h-0 flex flex-col"
                   }
@@ -1333,13 +1324,6 @@ const WorkspaceLayoutComponent = ({
                       </Suspense>
                     </div>
                   ))}
-                {activeSession?.type === "quickTransfer" ? (
-                  <QuickTransferPane
-                    key={activeSession.id}
-                    connections={connections}
-                    sessions={sessions}
-                  />
-                ) : null}
               </div>
             </Panel>
             <Separator className="panel-resize-handle vertical" />

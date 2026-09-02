@@ -156,7 +156,6 @@ const api: NextShellApi = {
   },
   sftp: {
     list: (payload) => invoke(IPCChannel.SftpList, payload),
-    listLocal: (payload) => invoke(IPCChannel.SftpListLocal, payload),
     upload: (payload) => invoke(IPCChannel.SftpUpload, payload),
     download: (payload) => invoke(IPCChannel.SftpDownload, payload),
     uploadPacked: (payload) => invoke(IPCChannel.SftpUploadPacked, payload),

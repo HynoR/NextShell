@@ -296,8 +296,7 @@ export interface ConnectionListQuery {
 }
 
 export type SessionStatus = "connecting" | "connected" | "disconnected" | "failed";
-export type SessionType =
-  "terminal" | "processManager" | "networkMonitor" | "editor" | "quickTransfer";
+export type SessionType = "terminal" | "processManager" | "networkMonitor" | "editor";
 
 export interface SessionDescriptor {
   id: string;

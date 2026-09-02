@@ -26,7 +26,7 @@
    ```
    等 `curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:5173/` 返回 200。端口必须 5173(index.html 的 CSP 只放行它)。
 
-2. **注入 mock 并加载页面**:调用 Playwright MCP 的 `browser_run_code_unsafe`,`filename` 传 `setup-mock.mjs` 的绝对路径。返回值里 `rootText` 应包含侧栏文案(「服务器/快传/设置」),`errors` 应为空。
+2. **注入 mock 并加载页面**:调用 Playwright MCP 的 `browser_run_code_unsafe`,`filename` 传 `setup-mock.mjs` 的绝对路径。返回值里 `rootText` 应包含侧栏文案(「服务器/设置」),`errors` 应为空。
 
 3. **跑场景**:同样方式运行 `drive-two-sessions.mjs`(或照它改写你的场景)。截图落在 `<仓库根>/.playwright-mcp/`(已 gitignore)。
 

@@ -1,5 +1,6 @@
 import { memo, useState } from "react";
 import { App as AntdApp, Tree } from "antd";
+import type { RemoteFileEntry } from "@nextshell/core";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { useSessionOscStore } from "../../store/useSessionOscStore";
 import { useTransferQueueStore } from "../../store/useTransferQueueStore";
@@ -11,6 +12,7 @@ import { FileExplorerContextMenu } from "./components/FileExplorerContextMenu";
 import { FileExplorerDropOverlay } from "./components/FileExplorerDropOverlay";
 import { FileExplorerTable } from "./components/FileExplorerTable";
 import { FileExplorerToolbar } from "./components/FileExplorerToolbar";
+import { SendToServerDialog } from "./components/SendToServerDialog";
 import { useFileActions } from "./hooks/useFileActions";
 import { useRemoteCommand } from "./hooks/useRemoteCommand";
 import { useRemoteExplorerState } from "./hooks/useRemoteExplorerState";
@@ -33,6 +35,7 @@ export const FileExplorerPane = memo(function FileExplorerPane({
   const followSessionCwd = useSessionOscStore((state) =>
     followSessionId ? state.cwdBySession[followSessionId] : undefined
   );
+  const [sendToServerEntries, setSendToServerEntries] = useState<RemoteFileEntry[] | null>(null);
 
   const explorer = useRemoteExplorerState({
     connection,
@@ -184,6 +187,7 @@ export const FileExplorerPane = memo(function FileExplorerPane({
           onRefresh={() => void explorer.loadFiles()}
           onDownload={(entries) => void transfers.handleDownload(entries)}
           onPackedDownload={(entries) => void transfers.handlePackedDownload(entries)}
+          onSendToServer={setSendToServerEntries}
           onUpload={() => void transfers.handleUpload()}
           onPackedUpload={() => void transfers.handlePackedUpload()}
           onCopyPath={actions.handleCopyPath}
@@ -204,6 +208,14 @@ export const FileExplorerPane = memo(function FileExplorerPane({
         targets={actions.deleteTargets ?? []}
         onCancel={actions.cancelDelete}
         onConfirm={actions.confirmDelete}
+      />
+
+      <SendToServerDialog
+        open={Boolean(sendToServerEntries)}
+        sourceConnectionId={connection.id}
+        sourceDir={explorer.pathName}
+        entries={sendToServerEntries ?? []}
+        onClose={() => setSendToServerEntries(null)}
       />
 
       {transfers.dropTargetActive && <FileExplorerDropOverlay pathName={explorer.pathName} />}

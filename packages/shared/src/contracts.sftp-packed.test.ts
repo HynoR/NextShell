@@ -1,5 +1,4 @@
 import {
-  sftpListLocalSchema,
   sftpDownloadPackedSchema,
   sftpTransferPackedSchema,
   sftpUploadPackedSchema
@@ -59,13 +58,6 @@ const assert = (condition: boolean, message: string): void => {
     remoteDir: "/var/www"
   });
   assert(!parsed.success, "sftpUploadPackedSchema should reject empty localPaths");
-})();
-
-(() => {
-  const parsed = sftpListLocalSchema.safeParse({
-    path: "/tmp"
-  });
-  assert(parsed.success, "sftpListLocalSchema should accept valid payload");
 })();
 
 (() => {

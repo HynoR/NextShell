@@ -113,7 +113,6 @@ import type {
   SftpEditStopInput,
   SftpEditSessionInfo,
   SftpListInput,
-  SftpListLocalInput,
   SftpMkdirInput,
   SftpRenameInput,
   SftpTransferCancelInput,
@@ -253,7 +252,6 @@ export interface NextShellApi {
   };
   sftp: {
     list: (payload: SftpListInput) => Promise<RemoteFileEntry[]>;
-    listLocal: (payload: SftpListLocalInput) => Promise<RemoteFileEntry[]>;
     upload: (payload: SftpUploadInput) => Promise<{ ok: true }>;
     download: (payload: SftpDownloadInput) => Promise<{ ok: true }>;
     uploadPacked: (payload: SftpUploadPackedInput) => Promise<{ ok: true }>;
@@ -432,7 +430,6 @@ export interface IpcInvokeMethods {
   [IPCChannel.MonitorNetworkConnections]: NextShellApi["monitor"]["getNetworkConnections"];
   [IPCChannel.CommandExec]: NextShellApi["command"]["exec"];
   [IPCChannel.SftpList]: NextShellApi["sftp"]["list"];
-  [IPCChannel.SftpListLocal]: NextShellApi["sftp"]["listLocal"];
   [IPCChannel.SftpUpload]: NextShellApi["sftp"]["upload"];
   [IPCChannel.SftpUploadPacked]: NextShellApi["sftp"]["uploadPacked"];
   [IPCChannel.SftpDownload]: NextShellApi["sftp"]["download"];

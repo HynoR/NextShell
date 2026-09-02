@@ -241,7 +241,6 @@ async (page) => {
       },
       sftp: {
         list: async () => [],
-        listLocal: async () => [],
         upload: () => ok,
         download: () => ok,
         uploadPacked: () => ok,
