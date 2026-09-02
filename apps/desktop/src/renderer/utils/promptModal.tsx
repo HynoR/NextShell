@@ -10,12 +10,14 @@ export function promptModal(
   modal: ModalInstance,
   title: string,
   placeholder?: string,
-  defaultValue?: string
+  defaultValue?: string,
+  selectStem = false
 ): Promise<string | null> {
   return new Promise((resolve) => {
     let value = defaultValue ?? "";
     let close: (() => void) | undefined;
     let settled = false;
+    let stemSelected = false;
     const settle = (result: string | null): void => {
       if (settled) return;
       settled = true;
@@ -34,6 +36,13 @@ export function promptModal(
             const trimmed = value.trim();
             close?.();
             settle(trimmed || null);
+          }}
+          ref={(input) => {
+            // 重命名场景：预填文件名时只选中不含扩展名的部分，方便直接覆盖输入。
+            if (!input || stemSelected || !selectStem || !defaultValue) return;
+            stemSelected = true;
+            const dot = defaultValue.lastIndexOf(".");
+            input.setSelectionRange(0, dot > 0 ? dot : defaultValue.length);
           }}
           autoFocus
         />

@@ -11,7 +11,7 @@ import { Table } from "antd";
 import type { ColumnsType, TableRef } from "antd/es/table";
 import type { RemoteFileEntry } from "@nextshell/core";
 import { useTableScrollY } from "../../../hooks/useTableScrollY";
-import { fileTypeLabel, formatFileSize, formatModifiedTime } from "../shared";
+import { formatFileSize, formatModifiedTime } from "../shared";
 import {
   DEFAULT_FILE_EXPLORER_SORT,
   fileExplorerSortComparators,
@@ -133,13 +133,6 @@ export const FileExplorerTable = ({
         render: (value: number, row) => formatFileSize(value, row.type === "directory")
       },
       {
-        title: "类型",
-        dataIndex: "type",
-        key: "type",
-        width: 72,
-        render: (value: RemoteFileEntry["type"]) => fileTypeLabel(value)
-      },
-      {
         title: "修改时间",
         dataIndex: "modifiedAt",
         key: "modifiedAt",
@@ -181,7 +174,7 @@ export const FileExplorerTable = ({
         columns={columns}
         dataSource={files}
         loading={busy}
-        scroll={{ x: 920, y: tableScrollY }}
+        scroll={{ x: 800, y: tableScrollY }}
         onChange={(_pagination, _filters, sorter) => {
           setSortState(resolveFileExplorerSort(sorter));
         }}

@@ -27,7 +27,6 @@ import {
 } from "../shared";
 
 type AppMessage = ReturnType<typeof AntdApp.useApp>["message"];
-type AppModal = ReturnType<typeof AntdApp.useApp>["modal"];
 type UpdatePreferences = ReturnType<typeof usePreferencesStore.getState>["updatePreferences"];
 type EnqueueTask = ReturnType<typeof useTransferQueueStore.getState>["enqueueTask"];
 type MarkTransferResult = ReturnType<typeof useTransferQueueStore.getState>["markFailed"];
@@ -47,7 +46,6 @@ interface UseTransferHandlersParams {
   markFailed: MarkTransferResult;
   markSuccess: MarkTransferSuccess;
   message: AppMessage;
-  modal: AppModal;
 }
 
 export const useTransferHandlers = ({
@@ -63,8 +61,7 @@ export const useTransferHandlers = ({
   enqueueTask,
   markFailed,
   markSuccess,
-  message,
-  modal
+  message
 }: UseTransferHandlersParams) => {
   const dragDepthRef = useRef(0);
   const [dropTargetActive, setDropTargetActive] = useState(false);
@@ -152,24 +149,6 @@ export const useTransferHandlers = ({
       setBusy,
       syncUploadDefaultDir
     ]
-  );
-
-  const confirmDropUpload = useCallback(
-    (filePaths: string[]): Promise<boolean> =>
-      new Promise((resolve) => {
-        modal.confirm({
-          title: "上传拖拽文件",
-          content:
-            filePaths.length === 1
-              ? `将 ${inferName(filePaths[0] ?? "")} 上传到当前目录 ${pathName}？`
-              : `将 ${filePaths.length} 个文件上传到当前目录 ${pathName}？`,
-          okText: "上传",
-          cancelText: "取消",
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false)
-        });
-      }),
-    [modal, pathName]
   );
 
   const handleUpload = useCallback(async (): Promise<void> => {
@@ -338,33 +317,38 @@ export const useTransferHandlers = ({
       }
       console.info("[sftpFileDrop] extracted paths:", result.paths);
 
-      const confirmed = await confirmDropUpload(result.paths);
-      if (!confirmed) {
-        return;
-      }
-
       await uploadLocalFiles(result.paths);
     },
-    [active, busy, confirmDropUpload, connected, connection, message, uploadLocalFiles]
+    [active, busy, connected, connection, message, uploadLocalFiles]
   );
 
-  const handleDownload = useCallback(
-    async (
-      entries: { name: string; path: string }[],
-      targetBaseDir?: string,
-      persistDefaultDir = false
-    ): Promise<void> => {
-      if (!connection || entries.length === 0) return;
-      const localBasePath = (targetBaseDir || transferPreferences.downloadDefaultDir).trim();
-      if (!localBasePath) return;
-
-      if (persistDefaultDir && localBasePath !== transferPreferences.downloadDefaultDir) {
+  // 下载前先弹系统目录选择框（默认上次目录），选完记住——与上传的记住逻辑对称。
+  const pickDownloadDir = useCallback(async (): Promise<string | undefined> => {
+    try {
+      const picked = await window.nextshell.dialog.openDirectory({
+        title: "选择下载保存目录",
+        defaultPath: transferPreferences.downloadDefaultDir
+      });
+      if (picked.canceled || !picked.filePath) return undefined;
+      if (picked.filePath !== transferPreferences.downloadDefaultDir) {
         void updatePreferences({
           transfer: {
-            downloadDefaultDir: localBasePath
+            downloadDefaultDir: picked.filePath
           }
         });
       }
+      return picked.filePath;
+    } catch (error) {
+      message.error(`打开目录选择器失败：${formatErrorMessage(error, "请稍后重试")}`);
+      return undefined;
+    }
+  }, [message, transferPreferences.downloadDefaultDir, updatePreferences]);
+
+  const handleDownload = useCallback(
+    async (entries: { name: string; path: string }[]): Promise<void> => {
+      if (!connection || entries.length === 0) return;
+      const localBasePath = (await pickDownloadDir())?.trim();
+      if (!localBasePath) return;
 
       try {
         let successCount = 0;
@@ -407,35 +391,14 @@ export const useTransferHandlers = ({
         setBusy(false);
       }
     },
-    [
-      connection,
-      enqueueTask,
-      markFailed,
-      markSuccess,
-      message,
-      setBusy,
-      transferPreferences.downloadDefaultDir,
-      updatePreferences
-    ]
+    [connection, enqueueTask, markFailed, markSuccess, message, pickDownloadDir, setBusy]
   );
 
   const handlePackedDownload = useCallback(
-    async (
-      entries: { name: string }[],
-      targetBaseDir?: string,
-      persistDefaultDir = false
-    ): Promise<void> => {
+    async (entries: { name: string }[]): Promise<void> => {
       if (!connection || entries.length === 0) return;
-      const localBasePath = (targetBaseDir || transferPreferences.downloadDefaultDir).trim();
+      const localBasePath = (await pickDownloadDir())?.trim();
       if (!localBasePath) return;
-
-      if (persistDefaultDir && localBasePath !== transferPreferences.downloadDefaultDir) {
-        void updatePreferences({
-          transfer: {
-            downloadDefaultDir: localBasePath
-          }
-        });
-      }
 
       const normalizedCurrentPath = normalizeRemotePath(pathName);
       const pathSegment =
@@ -476,17 +439,7 @@ export const useTransferHandlers = ({
         setBusy(false);
       }
     },
-    [
-      connection,
-      enqueueTask,
-      markFailed,
-      markSuccess,
-      message,
-      pathName,
-      setBusy,
-      transferPreferences.downloadDefaultDir,
-      updatePreferences
-    ]
+    [connection, enqueueTask, markFailed, markSuccess, message, pathName, pickDownloadDir, setBusy]
   );
 
   return {

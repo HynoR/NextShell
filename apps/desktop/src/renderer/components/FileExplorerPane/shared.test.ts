@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
   ensureTarGzName,
-  fileTypeLabel,
   formatFileSize,
   formatModifiedTime,
   inferName,
@@ -29,9 +28,6 @@ describe("FileExplorerPane shared helpers", () => {
   test("formats archive names and file labels", () => {
     expect(ensureTarGzName("backup")).toBe("backup.tar.gz");
     expect(ensureTarGzName("backup.tar.gz")).toBe("backup.tar.gz");
-    expect(fileTypeLabel("directory")).toBe("文件夹");
-    expect(fileTypeLabel("link")).toBe("链接");
-    expect(fileTypeLabel("file")).toBe("文件");
   });
 
   test("formats file metadata for the table", () => {
@@ -45,6 +41,8 @@ describe("FileExplorerPane shared helpers", () => {
   test("supports remote shell actions", () => {
     expect(isPermissionDenied("Permission denied")).toBe(true);
     expect(isPermissionDenied("operation not permitted")).toBe(true);
+    expect(isPermissionDenied("权限不足：EACCES")).toBe(true);
+    expect(isPermissionDenied("删除失败：EPERM")).toBe(true);
     expect(isPermissionDenied("file missing")).toBe(false);
     expect(shellEscape("/tmp/it's.txt")).toBe("'/tmp/it'\\''s.txt'");
   });

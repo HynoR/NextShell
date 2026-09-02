@@ -18,6 +18,7 @@ interface FileExplorerContextMenuProps {
   onPaste: () => void;
   onNewFolder: () => void;
   onNewFile: () => void;
+  onOpenInTerminal: () => void;
   onRename: (entry: RemoteFileEntry) => void;
   onDelete: (entries: RemoteFileEntry[]) => void;
   onRemoteEdit: (entry: RemoteFileEntry) => void;
@@ -40,6 +41,7 @@ export const FileExplorerContextMenu = ({
   onPaste,
   onNewFolder,
   onNewFile,
+  onOpenInTerminal,
   onRename,
   onDelete,
   onRemoteEdit
@@ -212,6 +214,10 @@ export const FileExplorerContextMenu = ({
         <>
           <button className="fe-ctx-item" onClick={() => run(onRefresh)}>
             <span className="fe-ctx-icon">{icon("ri-refresh-line")}</span> 刷新
+          </button>
+
+          <button className="fe-ctx-item" onClick={() => run(onOpenInTerminal)}>
+            <span className="fe-ctx-icon">{icon("ri-terminal-line")}</span> 在终端中打开
           </button>
 
           <Dropdown menu={uploadMenu} trigger={["click"]} placement="bottomLeft">

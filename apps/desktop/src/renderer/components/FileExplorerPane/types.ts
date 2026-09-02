@@ -6,7 +6,6 @@ export interface FileExplorerPaneProps {
   connected: boolean;
   followSessionId?: string;
   active: boolean;
-  onOpenSettings?: () => void;
   onOpenEditorTab?: (connectionId: string, remotePath: string) => Promise<void>;
 }
 

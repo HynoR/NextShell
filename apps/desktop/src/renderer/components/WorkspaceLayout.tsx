@@ -22,6 +22,7 @@ import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./command-center";
 import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
+import { ConnectionPrompt } from "./ConnectionPrompt";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { QuickTransferPane } from "./QuickTransferPane";
 import { LiveEditPane } from "./LiveEditPane";
@@ -840,7 +841,26 @@ const WorkspaceLayoutComponent = ({
     }
   }, [bottomPanelRef]);
 
+  // D37：一个连接一个 FileExplorerPane 实例（照编辑器 tab 的写法），非活动的 hidden。
+  // 只挂「有已连接终端会话」的连接，断开即卸载；切标签变成 CSS 切换，
+  // 每个实例天然只认识自己的连接，不再需要切连接状态机。
+  const fileExplorerConnections = useMemo(
+    () =>
+      connections.filter((connection) =>
+        sessions.some(
+          (session) =>
+            session.connectionId === connection.id &&
+            isTerminalSession(session) &&
+            session.status === "connected"
+        )
+      ),
+    [connections, sessions]
+  );
+
   const bottomTabItems = useMemo(() => {
+    const activeExplorerMounted = fileExplorerConnections.some(
+      (connection) => connection.id === activeConnectionId
+    );
     const base: Array<{
       key: string;
       label: string;
@@ -850,14 +870,35 @@ const WorkspaceLayoutComponent = ({
         key: "files",
         label: "SFTP",
         children: (
-          <FileExplorerPane
-            connection={activeConnection}
-            connected={isActiveConnectionTerminalConnected}
-            followSessionId={followTerminalSessionId}
-            active={bottomTab === "files"}
-            onOpenSettings={onOpenSettings}
-            onOpenEditorTab={onOpenEditorTab}
-          />
+          <>
+            {!activeExplorerMounted ? (
+              activeConnection ? (
+                <ConnectionPrompt
+                  message="当前连接未建立会话，请先连接 SSH 终端。"
+                  icon="ri-links-line"
+                />
+              ) : (
+                <ConnectionPrompt
+                  message="先选择一个连接再浏览文件。"
+                  icon="ri-folder-open-line"
+                />
+              )
+            ) : null}
+            {fileExplorerConnections.map((connection) => {
+              const isActiveConnection = connection.id === activeConnectionId;
+              return (
+                <div key={connection.id} className={isActiveConnection ? "h-full" : "hidden"}>
+                  <FileExplorerPane
+                    connection={connection}
+                    connected
+                    followSessionId={isActiveConnection ? followTerminalSessionId : undefined}
+                    active={bottomTab === "files" && isActiveConnection}
+                    onOpenEditorTab={onOpenEditorTab}
+                  />
+                </div>
+              );
+            })}
+          </>
         )
       },
       {
@@ -890,6 +931,8 @@ const WorkspaceLayoutComponent = ({
     return base;
   }, [
     activeConnection,
+    activeConnectionId,
+    fileExplorerConnections,
     isActiveConnectionTerminalConnected,
     followTerminalSessionId,
     bottomTab,

@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { App as AntdApp } from "antd";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
-import { deleteExplorerCache } from "../components/FileExplorerPane/explorerStateCache";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { persistConnectionWrite } from "./useConnectionManager.helpers";
@@ -49,9 +48,7 @@ export function useConnectionManager() {
     const prevConnections = [...connections];
     setConnections(connections.filter((c) => c.id !== connectionId));
     removeSessionsByConnection(connectionId);
-    // 连接没了，SFTP 面板缓存的那份目录快照也别留着占内存。
-    deleteExplorerCache(connectionId);
-    // 同理，侧栏系统监控那份缓存快照也一起清掉。
+    // 侧栏系统监控那份缓存快照一起清掉。
     removeMonitorSnapshot(connectionId);
 
     try {

@@ -1,4 +1,3 @@
-import type { RemoteFileEntry } from "@nextshell/core";
 
 export const normalizeRemotePath = (rawPath: string): string => {
   const value = rawPath.trim();
@@ -50,30 +49,9 @@ export const formatModifiedTime = (iso: string): string => {
   }
 };
 
-export const fileTypeLabel = (type: RemoteFileEntry["type"]): string => {
-  switch (type) {
-    case "directory":
-      return "文件夹";
-    case "link":
-      return "链接";
-    default:
-      return "文件";
-  }
-};
-
-export const isPermissionDenied = (stderr: string): boolean =>
-  /permission denied|operation not permitted/i.test(stderr);
-
-export const EDITOR_PRESETS: { label: string; value: string }[] = [
-  { label: "VS Code", value: "code" },
-  { label: "Cursor", value: "cursor" },
-  { label: "Sublime Text", value: "subl" },
-  { label: "Vim (Terminal)", value: "vim" },
-  { label: "Nano (Terminal)", value: "nano" },
-  { label: "Notepad++ (Windows)", value: "notepad++" },
-  { label: "TextEdit (macOS)", value: "open -t" },
-  { label: "Xcode (macOS)", value: "open -a Xcode" }
-];
+/** 入参可能是 formatErrorMessage 已译成「权限不足：EACCES」的串,中英文与 errno 都认。 */
+export const isPermissionDenied = (text: string): boolean =>
+  /权限不足|permission denied|operation not permitted|\bEACCES\b|\bEPERM\b/i.test(text);
 
 export const shellEscape = (path: string): string => `'${path.replace(/'/g, "'\\''")}'`;
 

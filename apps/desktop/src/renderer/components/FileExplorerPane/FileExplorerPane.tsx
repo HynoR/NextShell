@@ -1,10 +1,9 @@
-import { useMemo } from "react";
+import { memo, useState } from "react";
 import { App as AntdApp, Tree } from "antd";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { useSessionOscStore } from "../../store/useSessionOscStore";
 import { useTransferQueueStore } from "../../store/useTransferQueueStore";
 import { ConnectionPrompt } from "../ConnectionPrompt";
-import { getVisibleFileExplorerToolbarActions } from "../FileExplorerPane.toolbar";
 import { normalizeRemotePath } from "./shared";
 import type { DirTreeNode, FileExplorerPaneProps } from "./types";
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
@@ -17,18 +16,15 @@ import { useRemoteCommand } from "./hooks/useRemoteCommand";
 import { useRemoteExplorerState } from "./hooks/useRemoteExplorerState";
 import { useTransferHandlers } from "./hooks/useTransferHandlers";
 
-export const FileExplorerPane = ({
+// memo:D37 后 N 个实例同挂,WorkspaceLayout 任一会话事件不该让隐藏面板全部重渲染。
+export const FileExplorerPane = memo(function FileExplorerPane({
   connection,
   connected,
   followSessionId,
   active,
-  onOpenSettings,
   onOpenEditorTab
-}: FileExplorerPaneProps) => {
-  void onOpenSettings;
-
+}: FileExplorerPaneProps) {
   const { message, modal } = AntdApp.useApp();
-  const visibleToolbarActions = useMemo(() => new Set(getVisibleFileExplorerToolbarActions()), []);
   const preferences = usePreferencesStore((state) => state.preferences);
   const updatePreferences = usePreferencesStore((state) => state.updatePreferences);
   const enqueueTask = useTransferQueueStore((state) => state.enqueueTask);
@@ -60,13 +56,13 @@ export const FileExplorerPane = ({
     enqueueTask,
     markFailed,
     markSuccess,
-    message,
-    modal
+    message
   });
   const actions = useFileActions({
     connection,
     connected,
     pathName: explorer.pathName,
+    terminalSessionId: followSessionId,
     files: explorer.files,
     setFiles: explorer.setFiles,
     selectedPaths: explorer.selectedPaths,
@@ -84,12 +80,6 @@ export const FileExplorerPane = ({
 
   if (!connection) {
     return <ConnectionPrompt message="先选择一个连接再浏览文件。" icon="ri-folder-open-line" />;
-  }
-
-  if (!connected) {
-    return (
-      <ConnectionPrompt message="当前连接未建立会话，请先连接 SSH 终端。" icon="ri-links-line" />
-    );
   }
 
   return (
@@ -134,7 +124,6 @@ export const FileExplorerPane = ({
           historyLength={explorer.pathHistory.length}
           clipboard={actions.clipboard}
           followCwd={explorer.followCwd}
-          visibleToolbarActions={visibleToolbarActions}
           selectedEntryCount={explorer.selectedEntries.length}
           hasSingleSelection={Boolean(explorer.singleSelected)}
           onPathInputChange={explorer.setPathInput}
@@ -203,6 +192,7 @@ export const FileExplorerPane = ({
           onPaste={() => void actions.handlePaste()}
           onNewFolder={() => void actions.handleCreateDirectory()}
           onNewFile={() => void actions.handleCreateFile()}
+          onOpenInTerminal={actions.handleOpenInTerminal}
           onRename={(entry) => void actions.handleRename(entry)}
           onDelete={actions.requestDelete}
           onRemoteEdit={actions.handleRemoteEdit}
@@ -219,4 +209,4 @@ export const FileExplorerPane = ({
       {transfers.dropTargetActive && <FileExplorerDropOverlay pathName={explorer.pathName} />}
     </div>
   );
-};
+});

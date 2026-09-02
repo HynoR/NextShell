@@ -12,7 +12,7 @@ import { usePreferencesStore } from "../../../store/usePreferencesStore";
 import { pMap } from "../../../utils/concurrentLimit";
 import { formatErrorMessage } from "../../../utils/errorMessage";
 import { promptModal } from "../../../utils/promptModal";
-import { joinRemotePath, normalizeRemotePath, shellEscape } from "../shared";
+import { isPermissionDenied, joinRemotePath, normalizeRemotePath, shellEscape } from "../shared";
 import type { Clipboard, ContextMenuState } from "../types";
 
 type AppMessage = ReturnType<typeof AntdApp.useApp>["message"];
@@ -23,6 +23,8 @@ interface UseFileActionsParams {
   connection?: ConnectionProfile;
   connected: boolean;
   pathName: string;
+  /** 该连接当前可写入的远程终端会话，用于「在终端中打开」。 */
+  terminalSessionId?: string;
   files: RemoteFileEntry[];
   setFiles: Dispatch<SetStateAction<RemoteFileEntry[]>>;
   selectedPaths: string[];
@@ -42,6 +44,7 @@ export const useFileActions = ({
   connection,
   connected,
   pathName,
+  terminalSessionId,
   files,
   setFiles,
   selectedPaths,
@@ -109,9 +112,12 @@ export const useFileActions = ({
     async (entry?: RemoteFileEntry): Promise<void> => {
       const target = entry ?? singleSelected;
       if (!connection || !target) return;
-      const toPath = await promptModal(modal, "重命名为", undefined, target.path);
-      if (!toPath || toPath === target.path) return;
-      const normalized = normalizeRemotePath(toPath);
+      // 预填文件名并选中不含扩展名的部分；跨目录移动走「剪切/粘贴」。
+      const newName = await promptModal(modal, "重命名为", undefined, target.name, true);
+      if (!newName || newName === target.name) return;
+      const parentDir = target.path.slice(0, target.path.lastIndexOf("/")) || "/";
+      const normalized = normalizeRemotePath(joinRemotePath(parentDir, newName));
+      if (normalized === target.path) return;
       setBusy(true);
       try {
         await window.nextshell.sftp.rename({
@@ -128,6 +134,22 @@ export const useFileActions = ({
       }
     },
     [connection, loadFiles, message, modal, setBusy, singleSelected]
+  );
+
+  // 强制删除：远端执行 rm -rf（权限/只读场景的兜底，不可恢复）。
+  const runForceDelete = useCallback(
+    async (targets: RemoteFileEntry[]): Promise<void> => {
+      if (!connection) return;
+      const paths = targets.map((entry) => shellEscape(entry.path)).join(" ");
+      setBusy(true);
+      const { ok } = await execSSH(`rm -rf ${paths}`);
+      setBusy(false);
+      if (ok) {
+        message.success("已删除");
+        await loadFiles();
+      }
+    },
+    [connection, execSSH, loadFiles, message, setBusy]
   );
 
   // 安全删除：走 SFTP remove，带乐观更新（失败回滚）。
@@ -154,29 +176,26 @@ export const useFileActions = ({
         message.success("删除成功");
         await loadFiles();
       } catch (error) {
-        message.error(`删除失败：${formatErrorMessage(error, "请稍后重试")}`);
         setFiles(prevFiles);
+        const reason = formatErrorMessage(error, "请稍后重试");
+        if (isPermissionDenied(reason)) {
+          // 仅权限/只读场景才需要 rm -rf：普通 sftp.remove 对目录已递归。
+          modal.confirm({
+            title: "删除被拒绝（权限不足）",
+            content: "普通删除因权限不足失败。要在远端执行 rm -rf 强制重试吗？该操作不可恢复。",
+            okText: "rm -rf 重试",
+            okButtonProps: { danger: true },
+            cancelText: "取消",
+            onOk: () => runForceDelete(targets)
+          });
+        } else {
+          message.error(`删除失败：${reason}`);
+        }
       } finally {
         setBusy(false);
       }
     },
-    [connection, files, loadFiles, message, setBusy, setFiles]
-  );
-
-  // 强制删除：远端执行 rm -rf（可删只读/非空目录，不可恢复）。
-  const runForceDelete = useCallback(
-    async (targets: RemoteFileEntry[]): Promise<void> => {
-      if (!connection) return;
-      const paths = targets.map((entry) => shellEscape(entry.path)).join(" ");
-      setBusy(true);
-      const { ok } = await execSSH(`rm -rf ${paths}`);
-      setBusy(false);
-      if (ok) {
-        message.success("已删除");
-        await loadFiles();
-      }
-    },
-    [connection, execSSH, loadFiles, message, setBusy]
+    [connection, files, loadFiles, message, modal, runForceDelete, setBusy, setFiles]
   );
 
   const requestDelete = useCallback(
@@ -191,23 +210,16 @@ export const useFileActions = ({
     setDeleteTargets(null);
   }, []);
 
-  const confirmDelete = useCallback(
-    async (force: boolean): Promise<void> => {
-      const targets = deleteTargets;
-      if (!targets || targets.length === 0) {
-        setDeleteTargets(null);
-        return;
-      }
-      // 保持对话框开启（显示确认 loading）直到操作完成后再关闭。
-      if (force) {
-        await runForceDelete(targets);
-      } else {
-        await runSafeDelete(targets);
-      }
+  const confirmDelete = useCallback(async (): Promise<void> => {
+    const targets = deleteTargets;
+    if (!targets || targets.length === 0) {
       setDeleteTargets(null);
-    },
-    [deleteTargets, runForceDelete, runSafeDelete]
-  );
+      return;
+    }
+    // 保持对话框开启（显示确认 loading）直到操作完成后再关闭。
+    await runSafeDelete(targets);
+    setDeleteTargets(null);
+  }, [deleteTargets, runSafeDelete]);
 
   const handleCopy = useCallback(
     (entries: RemoteFileEntry[]) => {
@@ -230,7 +242,7 @@ export const useFileActions = ({
   const handlePaste = useCallback(async (): Promise<void> => {
     if (!connection || !clipboard) return;
     if (clipboard.sourceConnectionId !== connection.id) {
-      message.warning("仅支持在同一连接内粘贴");
+      message.warning("剪贴板内容来自其他连接，跨连接传输请使用右键「发送到服务器…」");
       return;
     }
 
@@ -270,6 +282,20 @@ export const useFileActions = ({
     },
     [message]
   );
+
+  // 「在终端中打开」：向该连接的活动终端发送 cd，与「跟随终端」互为反向。
+  const handleOpenInTerminal = useCallback(() => {
+    if (!terminalSessionId) {
+      message.info({ content: "当前连接暂无可用的远程终端。", duration: 2 });
+      return;
+    }
+    window.nextshell.session
+      .write({
+        sessionId: terminalSessionId,
+        data: `cd ${shellEscape(normalizeRemotePath(pathName))}\n`
+      })
+      .catch(() => message.error("发送命令失败"));
+  }, [message, pathName, terminalSessionId]);
 
   const doRemoteEdit = useCallback(
     async (entry: RemoteFileEntry, editorCmd: string) => {
@@ -343,6 +369,7 @@ export const useFileActions = ({
     handleCreateDirectory,
     handleCreateFile,
     handleCut,
+    handleOpenInTerminal,
     handlePaste,
     handleRemoteEdit,
     handleRename

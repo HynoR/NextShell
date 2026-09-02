@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { Checkbox, Modal } from "antd";
+import { Modal } from "antd";
 import type { RemoteFileEntry } from "@nextshell/core";
 
 interface DeleteConfirmDialogProps {
   open: boolean;
   targets: RemoteFileEntry[];
   onCancel: () => void;
-  onConfirm: (force: boolean) => void | Promise<void>;
+  onConfirm: () => void | Promise<void>;
 }
 
 export const DeleteConfirmDialog = ({
@@ -15,13 +15,11 @@ export const DeleteConfirmDialog = ({
   onCancel,
   onConfirm
 }: DeleteConfirmDialogProps) => {
-  const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // 每次打开对话框时重置高危选项，避免上次勾选残留。
+  // 每次打开对话框时重置确认 loading，避免上次操作残留。
   useEffect(() => {
     if (open) {
-      setForce(false);
       setBusy(false);
     }
   }, [open]);
@@ -31,7 +29,7 @@ export const DeleteConfirmDialog = ({
   const handleOk = async () => {
     setBusy(true);
     try {
-      await onConfirm(force);
+      await onConfirm();
     } finally {
       setBusy(false);
     }
@@ -41,7 +39,7 @@ export const DeleteConfirmDialog = ({
     <Modal
       open={open}
       title="删除远端文件"
-      okText={force ? "强制删除" : "删除"}
+      okText="删除"
       cancelText="取消"
       okButtonProps={{ danger: true }}
       confirmLoading={busy}
@@ -63,16 +61,6 @@ export const DeleteConfirmDialog = ({
           `确认删除选中的 ${targets.length} 项?`
         )}
       </p>
-
-      <Checkbox checked={force} onChange={(event) => setForce(event.target.checked)}>
-        强制删除（<code>rm -rf</code>，可删除只读 / 非空目录，<strong>不可恢复</strong>）
-      </Checkbox>
-
-      {force ? (
-        <p style={{ margin: "8px 0 0", color: "var(--err)", fontSize: 12 }}>
-          将在远端直接执行 <code>rm -rf</code>，不经回收站，请谨慎确认。
-        </p>
-      ) : null}
     </Modal>
   );
 };
