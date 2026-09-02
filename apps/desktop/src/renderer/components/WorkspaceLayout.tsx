@@ -1070,7 +1070,6 @@ const WorkspaceLayoutComponent = ({
               <AgentActivityPanel />
               <LiveEditPane
                 connections={connections}
-                active={!liveEditPanelCollapsed}
                 collapsed={liveEditPanelCollapsed}
                 onToggle={onLiveEditPanelToggle}
               />

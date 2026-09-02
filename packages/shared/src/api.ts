@@ -107,8 +107,8 @@ import type {
   SftpDownloadInput,
   SftpDownloadPackedInput,
   SftpEditOpenInput,
-  SftpEditOpenBuiltinInput,
-  SftpEditSaveBuiltinInput,
+  SftpEditReadFileInput,
+  SftpEditWriteFileInput,
   SftpEditStatusEvent,
   SftpEditStopInput,
   SftpEditSessionInfo,
@@ -266,10 +266,8 @@ export interface NextShellApi {
     rename: (payload: SftpRenameInput) => Promise<{ ok: true }>;
     remove: (payload: SftpDeleteInput) => Promise<{ ok: true }>;
     editOpen: (payload: SftpEditOpenInput) => Promise<{ editId: string; localPath: string }>;
-    editOpenBuiltin: (
-      payload: SftpEditOpenBuiltinInput
-    ) => Promise<{ editId: string; content: string }>;
-    editSaveBuiltin: (payload: SftpEditSaveBuiltinInput) => Promise<{ ok: true }>;
+    editReadFile: (payload: SftpEditReadFileInput) => Promise<{ content: string }>;
+    editWriteFile: (payload: SftpEditWriteFileInput) => Promise<{ ok: true }>;
     editStop: (payload: SftpEditStopInput) => Promise<{ ok: true }>;
     editStopAll: () => Promise<{ ok: true }>;
     editList: () => Promise<SftpEditSessionInfo[]>;
@@ -455,8 +453,8 @@ export interface IpcInvokeMethods {
   [IPCChannel.SftpEditStop]: NextShellApi["sftp"]["editStop"];
   [IPCChannel.SftpEditStopAll]: NextShellApi["sftp"]["editStopAll"];
   [IPCChannel.SftpEditList]: NextShellApi["sftp"]["editList"];
-  [IPCChannel.SftpEditOpenBuiltin]: NextShellApi["sftp"]["editOpenBuiltin"];
-  [IPCChannel.SftpEditSaveBuiltin]: NextShellApi["sftp"]["editSaveBuiltin"];
+  [IPCChannel.SftpEditReadFile]: NextShellApi["sftp"]["editReadFile"];
+  [IPCChannel.SftpEditWriteFile]: NextShellApi["sftp"]["editWriteFile"];
   [IPCChannel.AgentStatus]: NextShellApi["agent"]["status"];
   [IPCChannel.AgentEnable]: NextShellApi["agent"]["enable"];
   [IPCChannel.AgentDisable]: NextShellApi["agent"]["disable"];

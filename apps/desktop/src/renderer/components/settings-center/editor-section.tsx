@@ -31,12 +31,12 @@ export const EditorSection = ({
         }}
         disabled={loading}
       >
-        <Radio value="builtin">内置编辑器 (Monaco)</Radio>
+        <Radio value="builtin">内置编辑器</Radio>
         <Radio value="external">外部编辑器</Radio>
       </Radio.Group>
     </SettingsRow>
     {editorMode === "external" && (
-      <SettingsRow label="默认编辑器命令" hint="留空时自动使用 VISUAL / EDITOR，最后回退系统默认">
+      <SettingsRow label="默认编辑器命令" hint="留空时使用系统默认编辑器">
         <div className="flex gap-2">
           <Input
             style={{ flex: 1 }}

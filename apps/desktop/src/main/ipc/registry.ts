@@ -60,8 +60,8 @@ import {
   savedCommandUpsertSchema,
   sftpEditOpenSchema,
   sftpEditStopSchema,
-  sftpEditOpenBuiltinSchema,
-  sftpEditSaveBuiltinSchema,
+  sftpEditReadFileSchema,
+  sftpEditWriteFileSchema,
   cloudSyncWorkspaceListSchema,
   cloudSyncWorkspaceAddSchema,
   cloudSyncWorkspaceUpdateSchema,
@@ -561,17 +561,17 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     dispatch: (services) => services.sftp.listRemoteEdits()
   }),
   define({
-    channel: IPCChannel.SftpEditOpenBuiltin,
-    schema: sftpEditOpenBuiltinSchema,
-    label: "内置编辑打开",
-    dispatch: (services, input, event) =>
-      services.sftp.openBuiltinEdit(input.connectionId, input.remotePath, event.sender)
+    channel: IPCChannel.SftpEditReadFile,
+    schema: sftpEditReadFileSchema,
+    label: "读取远端文件",
+    dispatch: (services, input) => services.sftp.readEditFile(input.connectionId, input.remotePath)
   }),
   define({
-    channel: IPCChannel.SftpEditSaveBuiltin,
-    schema: sftpEditSaveBuiltinSchema,
-    label: "内置编辑保存",
-    dispatch: (services, input) => services.sftp.saveBuiltinEdit(input.editId, input.content)
+    channel: IPCChannel.SftpEditWriteFile,
+    schema: sftpEditWriteFileSchema,
+    label: "写入远端文件",
+    dispatch: (services, input) =>
+      services.sftp.writeEditFile(input.connectionId, input.remotePath, input.content)
   }),
 
   // ─── Process & Network Monitor ────────────────────────────────────────────

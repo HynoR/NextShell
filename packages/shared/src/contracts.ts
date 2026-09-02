@@ -395,14 +395,15 @@ export const sftpEditOpenSchema = z.object({
   editorCommand: z.string()
 });
 
-export const sftpEditOpenBuiltinSchema = z.object({
+export const sftpEditReadFileSchema = z.object({
   connectionId: z.string().uuid(),
   remotePath: z.string().min(1)
 });
 
-export const sftpEditSaveBuiltinSchema = z.object({
-  editId: z.string().uuid(),
-  content: z.string().max(64 * 1024 * 1024)
+export const sftpEditWriteFileSchema = z.object({
+  connectionId: z.string().uuid(),
+  remotePath: z.string().min(1),
+  content: z.string().max(10 * 1024 * 1024)
 });
 
 export const sftpEditStopSchema = z.object({
@@ -1152,8 +1153,8 @@ export type CommandHistoryClearInput = z.infer<typeof commandHistoryClearSchema>
 export type SavedCommandUpsertInput = z.infer<typeof savedCommandUpsertSchema>;
 export type SavedCommandRemoveInput = z.infer<typeof savedCommandRemoveSchema>;
 export type SftpEditOpenInput = z.infer<typeof sftpEditOpenSchema>;
-export type SftpEditOpenBuiltinInput = z.infer<typeof sftpEditOpenBuiltinSchema>;
-export type SftpEditSaveBuiltinInput = z.infer<typeof sftpEditSaveBuiltinSchema>;
+export type SftpEditReadFileInput = z.infer<typeof sftpEditReadFileSchema>;
+export type SftpEditWriteFileInput = z.infer<typeof sftpEditWriteFileSchema>;
 export type SftpEditStopInput = z.infer<typeof sftpEditStopSchema>;
 export type SftpEditStatusEvent = z.infer<typeof sftpEditStatusEventSchema>;
 export type SftpEditSessionInfo = z.infer<typeof sftpEditSessionInfoSchema>;

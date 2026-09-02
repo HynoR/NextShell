@@ -946,16 +946,18 @@ export class SftpService {
     return this.remoteEditManager.listSessions();
   }
 
-  async openBuiltinEdit(
-    connectionId: string,
-    remotePath: string,
-    sender: WebContents
-  ): Promise<{ editId: string; content: string }> {
-    return this.remoteEditManager.openBuiltin(connectionId, remotePath, sender);
+  readEditFile(connectionId: string, remotePath: string): Promise<{ content: string }> {
+    this.getConnectionOrThrow(connectionId);
+    return this.remoteEditManager.readFile(connectionId, remotePath);
   }
 
-  async saveBuiltinEdit(editId: string, content: string): Promise<{ ok: true }> {
-    await this.remoteEditManager.saveBuiltin(editId, content);
+  async writeEditFile(
+    connectionId: string,
+    remotePath: string,
+    content: string
+  ): Promise<{ ok: true }> {
+    this.getConnectionOrThrow(connectionId);
+    await this.remoteEditManager.writeFile(connectionId, remotePath, content);
     return { ok: true };
   }
 

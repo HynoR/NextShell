@@ -283,7 +283,7 @@ export const useFileActions = ({
         });
         message.success(`已打开远端编辑: ${entry.name}`);
       } catch (error) {
-        message.error(`远端编辑失败：${formatErrorMessage(error, "请检查编辑器配置或环境变量")}`);
+        message.error(`远端编辑失败：${formatErrorMessage(error, "请检查编辑器配置")}`);
       } finally {
         setBusy(false);
       }

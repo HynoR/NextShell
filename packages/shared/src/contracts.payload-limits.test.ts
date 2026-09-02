@@ -1,7 +1,7 @@
 import {
   sessionWriteSchema,
   sftpDownloadPackedSchema,
-  sftpEditSaveBuiltinSchema,
+  sftpEditWriteFileSchema,
   sftpTransferPackedSchema,
   sftpUploadPackedSchema
 } from "./contracts";
@@ -76,39 +76,24 @@ const makeUuid = (index: number): string =>
   assert(parsed.success, "sftpTransferPackedSchema should accept payload within limits");
 })();
 
-// ─── sftpEditSaveBuiltinSchema: editId 为唯一授权 + content 上限 64MB ───────
+// ─── sftpEditWriteFileSchema: 写入目标由调用方给出 + content 上限 10MB ───────
 
 (() => {
-  const parsed = sftpEditSaveBuiltinSchema.safeParse({
-    editId: makeUuid(1),
+  const parsed = sftpEditWriteFileSchema.safeParse({
+    connectionId: makeUuid(1),
+    remotePath: "/etc/nginx/nginx.conf",
     content: "hello"
   });
-  assert(parsed.success, "sftpEditSaveBuiltinSchema should accept editId + content only");
+  assert(parsed.success, "sftpEditWriteFileSchema should accept connectionId + remotePath + content");
 })();
 
 (() => {
-  // 调用方自报的 connectionId/remotePath 不应进入解析结果（写入目标以会话为准）。
-  const parsed = sftpEditSaveBuiltinSchema.safeParse({
-    editId: makeUuid(1),
-    connectionId: makeUuid(2),
-    remotePath: "/etc/passwd",
-    content: "hello"
+  const parsed = sftpEditWriteFileSchema.safeParse({
+    connectionId: makeUuid(1),
+    remotePath: "/etc/nginx/nginx.conf",
+    content: "x".repeat(10 * 1024 * 1024 + 1)
   });
-  assert(parsed.success, "sftpEditSaveBuiltinSchema should parse despite extra fields");
-  if (parsed.success) {
-    assert(
-      !("connectionId" in parsed.data) && !("remotePath" in parsed.data),
-      "sftpEditSaveBuiltinSchema should strip caller-supplied connectionId/remotePath"
-    );
-  }
-})();
-
-(() => {
-  const parsed = sftpEditSaveBuiltinSchema.safeParse({
-    editId: makeUuid(1),
-    content: "x".repeat(64 * 1024 * 1024 + 1)
-  });
-  assert(!parsed.success, "sftpEditSaveBuiltinSchema should reject content over 64MB");
+  assert(!parsed.success, "sftpEditWriteFileSchema should reject content over 10MB");
 })();
 
 console.log("contracts.payload-limits.test: all assertions passed");

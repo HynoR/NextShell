@@ -44,8 +44,9 @@ export const EditorPane = ({ session }: EditorPaneProps) => {
     const content = viewRef.current.state.doc.toString();
     setSaving(session.id, true);
     try {
-      await window.nextshell.sftp.editSaveBuiltin({
-        editId: tab.editId,
+      await window.nextshell.sftp.editWriteFile({
+        connectionId: tab.connectionId,
+        remotePath: tab.remotePath,
         content
       });
       setDirty(session.id, false);

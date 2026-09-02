@@ -459,11 +459,11 @@ export const App = () => {
       }
 
       try {
-        const result = await window.nextshell.sftp.editOpenBuiltin({ connectionId, remotePath });
+        const result = await window.nextshell.sftp.editReadFile({ connectionId, remotePath });
         const fileName = remotePath.split("/").pop() ?? remotePath;
         const conn = connections.find((c) => c.id === connectionId);
         const serverLabel = conn?.name ?? conn?.host ?? connectionId.slice(0, 8);
-        const sessionId = `editor-${result.editId}`;
+        const sessionId = `editor-${crypto.randomUUID()}`;
         const session: SessionDescriptor = {
           id: sessionId,
           target: "remote",
@@ -479,7 +479,6 @@ export const App = () => {
           sessionId,
           connectionId,
           remotePath,
-          editId: result.editId,
           initialContent: result.content,
           syntaxMode: "auto",
           dirty: false,

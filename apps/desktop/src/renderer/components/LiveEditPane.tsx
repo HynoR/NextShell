@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { App as AntdApp, Button, Tag, Tooltip } from "antd";
 import type { ConnectionProfile } from "@nextshell/core";
-import { useScheduledPoll } from "../hooks/useScheduledPoll";
 import { useEditSessionStore } from "../store/useEditSessionStore";
 import { PanelSkeleton } from "./LoadingSkeletons";
 
 interface LiveEditPaneProps {
   connections: ConnectionProfile[];
-  /** When true, panel is expanded and polling is enabled */
-  active: boolean;
+  /** 保留以维持调用方签名;轮询已删,列表靠 onEditStatus 推送更新 */
   collapsed: boolean;
   onToggle: () => void;
 }
@@ -31,12 +29,12 @@ const statusTag = (status: string): { color: string; text: string } => {
   }
 };
 
-export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveEditPaneProps) => {
+export const LiveEditPane = ({ connections, collapsed, onToggle }: LiveEditPaneProps) => {
   const { message } = AntdApp.useApp();
   const { sessions, loading, fetchSessions, applyEvent, stopSession, stopAllSessions } =
     useEditSessionStore();
 
-  // Subscribe to edit status events from main process
+  // Fetch once on mount; afterwards the list is kept up-to-date by push events
   useEffect(() => {
     void fetchSessions();
     const unsub = window.nextshell.sftp.onEditStatus((event) => {
@@ -58,14 +56,6 @@ export const LiveEditPane = ({ connections, active, collapsed, onToggle }: LiveE
     });
     return unsub;
   }, [applyEvent, fetchSessions]);
-
-  useScheduledPoll({
-    enabled: active,
-    intervalMs: 30_000,
-    task: async () => {
-      await fetchSessions();
-    }
-  });
 
   const connMap = useMemo(() => {
     const map = new Map<string, ConnectionProfile>();

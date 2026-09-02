@@ -21,8 +21,6 @@ export const EDITOR_PRESETS: Array<{ label: string; value: string }> = [
   { label: "VS Code", value: "code" },
   { label: "Cursor", value: "cursor" },
   { label: "Sublime", value: "subl" },
-  { label: "Vim", value: "vim" },
-  { label: "Nano", value: "nano" },
   { label: "Notepad++", value: "notepad++" },
   { label: "TextEdit", value: "open -t" },
   { label: "Xcode", value: "open -a Xcode" }

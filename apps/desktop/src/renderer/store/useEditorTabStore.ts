@@ -5,7 +5,6 @@ export interface EditorTabMeta {
   sessionId: string;
   connectionId: string;
   remotePath: string;
-  editId: string;
   initialContent: string;
   syntaxMode: EditorSyntaxMode;
   dirty: boolean;
