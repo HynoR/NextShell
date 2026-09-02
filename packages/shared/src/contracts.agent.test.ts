@@ -2,24 +2,12 @@ import { DEFAULT_APP_PREFERENCES } from "../../core/src/index";
 import {
   agentCopyClientConfigSchema,
   appPreferencesPatchSchema,
-  appPreferencesSchema,
-  connectionUpsertSchema
+  appPreferencesSchema
 } from "./contracts";
-
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {
     throw new Error(message);
   }
-};
-
-const baseConnection = {
-  name: "prod-hk",
-  host: "10.0.0.1",
-  port: 22,
-  username: "root",
-  authType: "password" as const,
-  password: "secret",
-  groupPath: "/server/prod"
 };
 
 (() => {
@@ -33,10 +21,10 @@ const baseConnection = {
     parsed.agent.enabled === false,
     "agent endpoint must default to disabled in schema parsing"
   );
-  assert(parsed.agent.tcpEnabled === false, "agent TCP listener must default to disabled");
+  assert(parsed.agent.execTimeoutSec === 60, "agent exec timeout should default to 60s");
   assert(
-    parsed.agent.allowedLocalRoots.length === 0,
-    "agent allowedLocalRoots should default to an empty list"
+    parsed.agent.blacklist.length === 0,
+    "agent blacklist should default to an empty list"
   );
 })();
 
@@ -55,44 +43,28 @@ const baseConnection = {
 
 (() => {
   const parsed = appPreferencesPatchSchema.safeParse({
-    agent: { tcpPort: 70000 }
+    agent: { execTimeoutSec: 0 }
   });
 
   assert(
     parsed.success === false,
-    "appPreferencesPatchSchema should reject an out-of-range tcpPort"
+    "appPreferencesPatchSchema should reject an out-of-range execTimeoutSec"
   );
 })();
 
 (() => {
-  const parsed = connectionUpsertSchema.safeParse(baseConnection);
+  const parsed = appPreferencesPatchSchema.safeParse({
+    agent: { blacklist: [" kubectl delete ", "", "^rm\\s"] }
+  });
 
-  assert(parsed.success, "connectionUpsertSchema should accept a payload without agentAccess");
+  assert(parsed.success, "appPreferencesPatchSchema should accept a blacklist patch");
   if (!parsed.success) {
     return;
   }
-
   assert(
-    parsed.data.agentAccess === undefined,
-    "an omitted agentAccess must stay undefined so the service can keep the stored level"
+    parsed.data.agent?.blacklist?.length === 2,
+    "blank blacklist entries must be filtered out by the patch schema"
   );
-})();
-
-(() => {
-  const parsed = connectionUpsertSchema.safeParse({ ...baseConnection, agentAccess: "full" });
-
-  assert(parsed.success, "connectionUpsertSchema should accept an explicit agentAccess level");
-  if (!parsed.success) {
-    return;
-  }
-
-  assert(parsed.data.agentAccess === "full", "an explicit agentAccess level must be preserved");
-})();
-
-(() => {
-  const parsed = connectionUpsertSchema.safeParse({ ...baseConnection, agentAccess: "admin" });
-
-  assert(parsed.success === false, "connectionUpsertSchema should reject an unknown access level");
 })();
 
 (() => {

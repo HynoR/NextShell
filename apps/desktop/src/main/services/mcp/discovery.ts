@@ -10,9 +10,6 @@ export interface EndpointDiscoveryRecord {
   version: number;
   pid: number;
   socketPath: string | null;
-  httpPort?: number;
-  /** Present only while the loopback TCP listener is up. */
-  token?: string;
   appVersion: string;
   startedAt: string;
 }
@@ -44,8 +41,6 @@ const parseRecord = (raw: string): EndpointDiscoveryRecord | null => {
       version: typeof parsed.version === "number" ? parsed.version : ENDPOINT_DISCOVERY_VERSION,
       pid: parsed.pid,
       socketPath: typeof parsed.socketPath === "string" ? parsed.socketPath : null,
-      httpPort: typeof parsed.httpPort === "number" ? parsed.httpPort : undefined,
-      token: typeof parsed.token === "string" ? parsed.token : undefined,
       appVersion: typeof parsed.appVersion === "string" ? parsed.appVersion : "unknown",
       startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : new Date(0).toISOString()
     };
@@ -56,8 +51,8 @@ const parseRecord = (raw: string): EndpointDiscoveryRecord | null => {
 
 /**
  * `<userData>/mcp/endpoint-<pid>.json` per instance, plus `endpoint.json`
- * pointing at the newest live one. Files are 0600 because they can carry the
- * loopback TCP bearer token.
+ * pointing at the newest live one. Files stay 0600: no secrets any more, but
+ * the socket path is instance-private by convention.
  */
 export class EndpointDiscoveryFile {
   private readonly directory: string;
@@ -92,8 +87,6 @@ export class EndpointDiscoveryFile {
 
   async write(input: {
     socketPath: string | null;
-    httpPort?: number | null;
-    token?: string | null;
     startedAt?: string;
   }): Promise<EndpointDiscoveryRecord> {
     const record: EndpointDiscoveryRecord = {
@@ -103,12 +96,6 @@ export class EndpointDiscoveryFile {
       appVersion: this.appVersion,
       startedAt: input.startedAt ?? new Date().toISOString()
     };
-    if (typeof input.httpPort === "number") {
-      record.httpPort = input.httpPort;
-    }
-    if (input.token) {
-      record.token = input.token;
-    }
 
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const payload = `${JSON.stringify(record, null, 2)}\n`;

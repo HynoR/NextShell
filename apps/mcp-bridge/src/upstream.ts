@@ -16,7 +16,7 @@ const MAX_ERROR_BODY_CHARS = 512;
 
 /**
  * Failure codes are the only upstream detail allowed to reach stdout: unlike
- * the underlying Node error messages they never carry a socket path or token.
+ * the underlying Node error messages they never carry a socket path.
  */
 export type UpstreamErrorCode =
   | "UNREACHABLE"
@@ -84,23 +84,20 @@ const headerValue = (value: string | string[] | undefined): string | null => {
   return null;
 };
 
+const DEFAULT_HTTP_PATH = "/mcp";
+
 const buildRequestOptions = (
   target: EndpointTarget,
   method: string,
   headers: Record<string, string>
-): http.RequestOptions => {
-  const options: http.RequestOptions = { method, path: target.httpPath, headers };
-  if (target.transport === "socket" && target.socketPath !== null) {
-    options.socketPath = target.socketPath;
-  } else {
-    options.host = target.host ?? "127.0.0.1";
-    options.port = target.port ?? 0;
-  }
-  return options;
-};
+): http.RequestOptions => ({
+  method,
+  path: DEFAULT_HTTP_PATH,
+  socketPath: target.socketPath,
+  headers
+});
 
 const buildHeaders = (
-  target: EndpointTarget,
   sessionId: string | null,
   protocolVersion: string | null,
   extra: Record<string, string> = {}
@@ -114,9 +111,6 @@ const buildHeaders = (
   }
   if (protocolVersion !== null) {
     headers["mcp-protocol-version"] = protocolVersion;
-  }
-  if (target.token !== null && target.token.length > 0) {
-    headers.authorization = `Bearer ${target.token}`;
   }
   return headers;
 };
@@ -141,7 +135,7 @@ interface PostArgs {
 const postJsonRpc = (args: PostArgs): Promise<PostOutcome> =>
   new Promise<PostOutcome>((resolve, reject) => {
     const payload = Buffer.from(JSON.stringify(args.message), "utf8");
-    const headers = buildHeaders(args.target, args.sessionId, args.protocolVersion, {
+    const headers = buildHeaders(args.sessionId, args.protocolVersion, {
       "content-type": "application/json",
       "content-length": String(payload.byteLength)
     });
@@ -309,7 +303,7 @@ export interface UpstreamSessionOptions {
 }
 
 export interface UpstreamLike {
-  readonly transport: "socket" | "tcp";
+  readonly transport: "socket";
   readonly serverInfo: { name: string; version: string } | null;
   request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
   close(): Promise<void>;
@@ -327,7 +321,7 @@ export class UpstreamSession implements UpstreamLike {
     readonly serverInfo: { name: string; version: string } | null
   ) {}
 
-  get transport(): "socket" | "tcp" {
+  get transport(): "socket" {
     return this.target.transport;
   }
 
@@ -430,7 +424,7 @@ export class UpstreamSession implements UpstreamLike {
       return;
     }
     await new Promise<void>((resolve) => {
-      const headers = buildHeaders(this.target, this.sessionId, this.protocolVersion);
+      const headers = buildHeaders(this.sessionId, this.protocolVersion);
       const request = http.request(buildRequestOptions(this.target, "DELETE", headers));
       const done = (): void => resolve();
       request.on("error", done);

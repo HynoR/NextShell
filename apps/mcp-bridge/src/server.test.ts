@@ -10,10 +10,6 @@ import { UpstreamError, UpstreamRpcError, type UpstreamLike } from "./upstream.j
 const socketTarget: EndpointTarget = {
   transport: "socket",
   socketPath: "/tmp/nextshell-secret-path.sock",
-  host: null,
-  port: null,
-  token: null,
-  httpPath: "/mcp",
   source: "test"
 };
 
@@ -37,7 +33,7 @@ class FakeSession implements UpstreamLike {
 
 const upstreamTools = {
   tools: [
-    { name: "host_list", description: "real", inputSchema: { type: "object" } },
+    { name: "session_list", description: "real", inputSchema: { type: "object" } },
     { name: "nextshell_exec", description: "real exec", inputSchema: { type: "object" } }
   ]
 };
@@ -126,7 +122,7 @@ describe("BridgeServer without a running NextShell", () => {
     expect(Array.isArray(tools)).toBe(true);
     const names = (tools as Array<{ name: string }>).map((tool) => tool.name);
     expect(names).toContain(BRIDGE_STATUS_TOOL);
-    expect(names).toContain("host_list");
+    expect(names).toContain("session_list");
   });
 
   it("returns a tool-level error for tools/call instead of failing the request", async () => {
@@ -136,7 +132,7 @@ describe("BridgeServer without a running NextShell", () => {
       jsonrpc: "2.0",
       id: 3,
       method: "tools/call",
-      params: { name: "host_list", arguments: {} }
+      params: { name: "session_list", arguments: {} }
     });
 
     const result = resultOf(harness.sent[1]);
@@ -214,7 +210,7 @@ describe("BridgeServer with a reachable NextShell", () => {
     const tools = resultOf(harness.sent[harness.sent.length - 1]).tools as Array<{ name: string }>;
     expect(tools.map((tool) => tool.name)).toEqual([
       BRIDGE_STATUS_TOOL,
-      "host_list",
+      "session_list",
       "nextshell_exec"
     ]);
   });
@@ -253,7 +249,7 @@ describe("BridgeServer with a reachable NextShell", () => {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "host_list" }
+      params: { name: "session_list" }
     });
 
     const result = resultOf(harness.sent[1]);
@@ -288,7 +284,7 @@ describe("BridgeServer with a reachable NextShell", () => {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "host_list" }
+      params: { name: "session_list" }
     });
 
     expect(opened).toBe(2);
@@ -310,11 +306,11 @@ describe("BridgeServer with a reachable NextShell", () => {
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "session_open", arguments: {} }
+      params: { name: "no_such_tool", arguments: {} }
     });
 
     const result = resultOf(harness.sent[harness.sent.length - 1]);
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain("session_open");
+    expect(textOf(result)).toContain("no_such_tool");
   });
 });

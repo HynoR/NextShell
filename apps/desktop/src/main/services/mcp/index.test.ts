@@ -7,29 +7,8 @@ import { DEFAULT_APP_PREFERENCES } from "@nextshell/core";
 import type { AppPreferences } from "@nextshell/core";
 
 import { createAgentMcpService, type AgentMcpService, type AgentMcpServiceDeps } from "./index";
-import type { AgentTransferSnapshot } from "./transfers";
 
 const TIMESTAMP = "2026-08-03T00:00:00.000Z";
-
-/** Minimal Tier 2 transfer stub; the tracker itself is covered in transfers.test.ts. */
-const stubTransfer = (
-  direction: "upload" | "download",
-  input: { connectionId: string; localPath: string; remotePath: string }
-): AgentTransferSnapshot => ({
-  taskId: "task-stub",
-  direction,
-  connectionId: input.connectionId,
-  localPath: input.localPath,
-  remotePath: input.remotePath,
-  packed: false,
-  state: "running",
-  progress: 0,
-  transferredBytes: 0,
-  totalBytes: null,
-  startedAt: TIMESTAMP,
-  finishedAt: null,
-  error: null
-});
 
 const tempDirs: string[] = [];
 let service: AgentMcpService | null = null;
@@ -49,21 +28,21 @@ const baseDeps = (
   appVersion: "9.9.9",
   socketPath: path.join(os.tmpdir(), `nsmcp-svc-${randomUUID().slice(0, 8)}`, "s"),
   listConnections: () => [],
-  isConnectionOnline: () => false,
   listSessions: () => [],
-  getMonitorSnapshot: async () => null,
-  listRemoteFiles: async () => [],
-  statRemoteFile: async () => {
-    throw new Error("ENOENT");
-  },
-  readRemoteFile: async () => ({ bytes: Buffer.alloc(0), truncated: false }),
-  listSavedCommands: () => [],
+  listScopedCommands: () => [],
+  saveCommand: (input) => ({
+    id: input.id ?? "cmd-new",
+    name: input.name,
+    group: input.group ?? "默认",
+    command: input.command,
+    appendCr: input.appendCr,
+    createdAt: TIMESTAMP,
+    updatedAt: TIMESTAMP
+  }),
   readSessionScreen: async () => null,
   writeSession: () => undefined,
   lastUserInputAt: () => null,
   waitForCommandCompletion: async () => null,
-  openSession: async () => ({ id: "sess-agent", title: "agent", status: "connected" as const }),
-  closeSession: async () => undefined,
   focusSession: () => undefined,
   setSessionAgentControlled: () => undefined,
   clearSessionAgentControlled: () => undefined,
@@ -74,27 +53,9 @@ const baseDeps = (
     exitCode: 0,
     executedAt: new Date().toISOString()
   }),
-  writeRemoteFile: async () => undefined,
-  makeRemoteDirectory: async () => undefined,
-  renameRemotePath: async () => undefined,
-  deleteRemotePath: async () => undefined,
-  statLocalPath: () => null,
-  localPathContext: () => ({
-    homeDir: "/home/tester",
-    appDataDir: "/home/tester/.nextshell",
-    allowedRoots: []
-  }),
-  startUpload: (input) => stubTransfer("upload", input),
-  startDownload: (input) => stubTransfer("download", input),
-  getTransfer: () => undefined,
-  cancelTransfer: () => false,
-  runningTransferCount: () => 0,
   retainConnection: () => () => undefined,
   closeConnectionIfIdle: async () => undefined,
-  promptUser: async () => ({ id: randomUUID(), canceled: true }),
-  notifyUser: () => undefined,
   emitActivity: () => undefined,
-  respondToPrompt: () => undefined,
   getPreferences: preferences,
   ...overrides
 });
@@ -125,15 +86,12 @@ describe("agent mcp service", () => {
     expect(idle.enabled).toBe(false);
     expect(idle.listening).toBe(false);
     expect(idle.socketPath).toBeNull();
-    expect(idle.token).toBeNull();
     await expect(stat(idle.endpointFilePath)).rejects.toThrow();
 
     preferences = withAgent({ enabled: true });
     const running = await service.applyPreferences();
     expect(running.listening).toBe(true);
     expect(running.socketPath).not.toBeNull();
-    expect(running.tcpPort).toBeNull();
-    expect(running.token).toBeNull();
     await expect(stat(running.endpointFilePath)).resolves.toBeDefined();
     await expect(stat(running.socketPath!)).resolves.toBeDefined();
   });
@@ -156,21 +114,6 @@ describe("agent mcp service", () => {
 
     const stoppedAgain = await service.stop();
     expect(stoppedAgain.listening).toBe(false);
-  });
-
-  test("the loopback listener issues a token and rotation replaces it", async () => {
-    const userDataDir = await createTempDir();
-    const preferences = withAgent({ enabled: true, tcpEnabled: true, tcpPort: 0 });
-    service = createAgentMcpService(baseDeps(userDataDir, () => preferences));
-
-    const started = await service.start();
-    expect(started.tcpPort).toBeGreaterThan(0);
-    expect(started.token).toBeTruthy();
-
-    const rotated = await service.rotateToken();
-    expect(rotated.token).toBeTruthy();
-    expect(rotated.token).not.toBe(started.token);
-    expect(rotated.listening).toBe(true);
   });
 
   test("client config points at the bundled bridge, never at npx or a credential", async () => {
@@ -247,7 +190,7 @@ describe("agent mcp service", () => {
 
   test("installClaudeDesktop merges the stdio bridge into the config file", async () => {
     const userDataDir = await createTempDir();
-    const preferences = withAgent({ enabled: true, tcpEnabled: true });
+    const preferences = withAgent({ enabled: true });
     const bridgeEntry = path.join(userDataDir, "mcp-bridge", "index.js");
     const claudeDir = path.join(userDataDir, "Claude");
     const configPath = path.join(claudeDir, "claude_desktop_config.json");
@@ -265,7 +208,6 @@ describe("agent mcp service", () => {
     const result = service.installClaudeDesktop();
     expect(result.configPath).toBe(configPath);
     const written = JSON.parse(await readFile(configPath, "utf8"));
-    // Claude Desktop only speaks stdio: even with TCP listening, it gets the bridge.
     expect(written.mcpServers.nextshell.command).toBe("/apps/NextShell");
     expect(written.mcpServers.nextshell.env.ELECTRON_RUN_AS_NODE).toBe("1");
   });
@@ -297,14 +239,16 @@ describe("agent mcp service", () => {
     expect(canceled).toEqual({ ok: false, canceled: true });
   });
 
-  test("client config switches to loopback HTTP when TCP is on", async () => {
+  test("the halt breaker is reflected in the status", async () => {
     const userDataDir = await createTempDir();
-    const preferences = withAgent({ enabled: true, tcpEnabled: true });
+    const preferences = withAgent({ enabled: true });
     service = createAgentMcpService(baseDeps(userDataDir, () => preferences));
-    const status = await service.start();
+    await service.start();
 
-    const config = service.buildClientConfig("claude-code");
-    expect(config.command).toContain(`http://127.0.0.1:${status.tcpPort}/mcp`);
-    expect(config.json).toContain("Authorization");
+    expect(service.getStatus().halted).toBe(false);
+    const halted = service.setHalted(true);
+    expect(halted.halted).toBe(true);
+    expect(halted.listening).toBe(true);
+    expect(service.setHalted(false).halted).toBe(false);
   });
 });

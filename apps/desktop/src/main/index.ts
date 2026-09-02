@@ -309,10 +309,7 @@ app.whenReady().then(async () => {
     .start()
     .then((status) => {
       if (status.listening) {
-        logger.info("[Agent] MCP endpoint listening", {
-          socket: status.socketPath !== null,
-          tcpPort: status.tcpPort
-        });
+        logger.info("[Agent] MCP endpoint listening", { socketPath: status.socketPath });
       }
       if (status.lastError) {
         logger.warn("[Agent] MCP endpoint reported an error", { error: status.lastError });

@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -8,8 +7,7 @@ import type {
   AgentEndpointStatus,
   AgentExportMcpbResult,
   AgentInstallClaudeDesktopResult,
-  AgentInstallCursorResult,
-  AgentPromptResponse
+  AgentInstallCursorResult
 } from "@nextshell/shared";
 
 import {
@@ -20,8 +18,7 @@ import {
 import {
   AgentGateway,
   type AgentClientIdentity,
-  type AgentGatewayDeps,
-  type AgentGatewayLimits
+  type AgentGatewayDeps
 } from "./agent-gateway";
 import { EndpointDiscoveryFile } from "./discovery";
 import { McpEndpointServer, type AgentLogger } from "./endpoint-server";
@@ -39,9 +36,6 @@ export interface AgentMcpServiceDeps extends AgentGatewayDeps {
   appVersion: string;
   /** Override for tests; production uses a short tmpdir path. */
   socketPath?: string;
-  gatewayLimits?: Partial<AgentGatewayLimits>;
-  /** Survives restarts when provided (e.g. a JSON setting); otherwise the token is per-run. */
-  tokenStore?: { read: () => string | null; write: (token: string | null) => void };
   /**
    * Absolute path to the bundled stdio bridge entry, or null when it is not
    * shipped. The bridge is not published to npm, so a generated config must
@@ -57,20 +51,17 @@ export interface AgentMcpServiceDeps extends AgentGatewayDeps {
   chooseSavePath?: (options: { title: string; defaultFileName: string }) => Promise<string | null>;
   /** Test override for the Claude Desktop config file location. */
   claudeDesktopConfigPath?: string;
-  respondToPrompt: (response: AgentPromptResponse) => void;
   logger?: AgentLogger;
 }
 
 export interface AgentMcpService {
-  /** Starts the listeners when `preferences.agent.enabled` is true. Idempotent. */
+  /** Starts the listener when `preferences.agent.enabled` is true. Idempotent. */
   start: () => Promise<AgentEndpointStatus>;
-  /** Stops the listeners without touching preferences. Idempotent. */
+  /** Stops the listener without touching preferences. Idempotent. */
   stop: () => Promise<AgentEndpointStatus>;
-  /** Reconciles the running listeners with the current preferences. */
+  /** Reconciles the running listener with the current preferences. */
   applyPreferences: () => Promise<AgentEndpointStatus>;
   getStatus: () => AgentEndpointStatus;
-  /** Issues a new bearer token and drops every connected client. */
-  rotateToken: () => Promise<AgentEndpointStatus>;
   buildClientConfig: (client: AgentClientKind) => AgentClientConfigResult;
   /** Opens the Cursor one-click install deeplink. */
   installCursor: () => Promise<AgentInstallCursorResult>;
@@ -78,7 +69,6 @@ export interface AgentMcpService {
   installClaudeDesktop: () => AgentInstallClaudeDesktopResult;
   /** Exports a `.mcpb` bundle via a save dialog. */
   exportMcpb: () => Promise<AgentExportMcpbResult>;
-  respondToPrompt: (response: AgentPromptResponse) => void;
   /** Global breaker: rejects every tool call without tearing the endpoint down. */
   setHalted: (halted: boolean) => AgentEndpointStatus;
   dispose: () => Promise<void>;
@@ -88,62 +78,36 @@ const shellQuote = (value: string): string =>
   /^[A-Za-z0-9_@%+=:,./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 
 export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpService => {
-  const gateway = new AgentGateway(deps, { limits: deps.gatewayLimits });
+  const gateway = new AgentGateway(deps);
   const discovery = new EndpointDiscoveryFile({
     userDataDir: deps.userDataDir,
     appVersion: deps.appVersion
   });
 
   let endpoint: McpEndpointServer | null = null;
-  let token: string | null = deps.tokenStore?.read() ?? null;
   let lastError: string | null = null;
-  let signature = "";
   let pending: Promise<void> = Promise.resolve();
 
   const preferences = () => deps.getPreferences().agent;
-
-  const listenSignature = (): string => {
-    const agent = preferences();
-    return `${agent.socketEnabled ? 1 : 0}|${agent.tcpEnabled ? 1 : 0}|${agent.tcpPort}`;
-  };
-
-  const ensureToken = (): string => {
-    if (!token) {
-      token = randomBytes(32).toString("base64url");
-      deps.tokenStore?.write(token);
-    }
-    return token;
-  };
 
   const createMcpServer = (identity: AgentClientIdentity): McpServer => {
     const server = new McpServer(
       { name: MCP_SERVER_NAME, version: deps.appVersion },
       {
         instructions:
-          "NextShell exposes only hosts the user explicitly granted. Resolve targets with host_list/session_list; ambiguous targets return candidates instead of guessing. exec is policy-gated and may open a NextShell-owned confirmation dialog."
+          "NextShell hands the agent the terminal tabs the user has already opened. session_list is the only discovery entry; exec and session_send_keys borrow a live session, pass a dangerous-command blacklist, and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
       }
     );
     registerAgentTools(server, { gateway, client: identity });
     return server;
   };
 
-  // Buckets are keyed per client, not per session: only fully aged-out ones are
-  // dropped, so reconnecting cannot hand a client a fresh budget.
-  const onClientsChanged = (): void => {
-    gateway.pruneRateLimits();
-    gateway.pruneClientSessions(new Set(endpoint?.getClients().map((client) => client.id) ?? []));
-  };
-
   const getStatus = (): AgentEndpointStatus => {
     const agent = preferences();
-    const listening = endpoint?.listening ?? false;
-    const tcpPort = endpoint?.tcpPort ?? null;
     return {
       enabled: agent.enabled,
-      listening,
+      listening: endpoint?.listening ?? false,
       socketPath: endpoint?.socketPath ?? null,
-      tcpPort,
-      token: listening && tcpPort !== null ? token : null,
       endpointFilePath: discovery.primaryPath,
       clients: endpoint?.getClients() ?? [],
       lastError,
@@ -156,25 +120,13 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       await endpoint.stop();
       endpoint = null;
     }
-    signature = "";
     await discovery.remove();
   };
 
   const startEndpoint = async (): Promise<void> => {
-    const agent = preferences();
-    if (!agent.socketEnabled && !agent.tcpEnabled) {
-      lastError = "未启用任何监听方式（Unix socket 或本地 TCP）";
-      return;
-    }
-
     const server = new McpEndpointServer({
-      socketEnabled: agent.socketEnabled,
-      tcpEnabled: agent.tcpEnabled,
-      tcpPort: agent.tcpPort,
-      token: agent.tcpEnabled ? ensureToken() : null,
       socketPath: deps.socketPath,
       createMcpServer,
-      onClientsChanged,
       logger: deps.logger
     });
 
@@ -188,22 +140,17 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
     }
 
     endpoint = server;
-    signature = listenSignature();
     lastError = null;
 
     try {
-      await discovery.write({
-        socketPath: server.socketPath,
-        httpPort: server.tcpPort,
-        token: server.tcpPort !== null ? token : null
-      });
+      await discovery.write({ socketPath: server.socketPath });
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
       deps.logger?.warn?.("Failed to write the MCP endpoint discovery file", { error: lastError });
     }
   };
 
-  /** Serialized so overlapping enable/disable/rotate calls cannot interleave. */
+  /** Serialized so overlapping enable/disable calls cannot interleave. */
   const enqueue = async (task: () => Promise<void>): Promise<AgentEndpointStatus> => {
     const run = pending.then(task, task);
     pending = run.then(
@@ -226,9 +173,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
   } => {
     const bridgeEntry = deps.resolveBridgeEntry?.() ?? null;
     if (!bridgeEntry) {
-      throw new Error(
-        "未找到随应用分发的 MCP 桥接程序，无法生成 Socket 接入配置；请改用 127.0.0.1 TCP 监听，或重新安装应用"
-      );
+      throw new Error("未找到随应用分发的 MCP 桥接程序，无法生成接入配置；请重新安装应用");
     }
     const runtime = deps.bridgeRuntimePath ?? process.execPath;
     const env = {
@@ -246,11 +191,6 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
     }
     if (!endpoint) {
       await startEndpoint();
-      return;
-    }
-    if (signature !== listenSignature()) {
-      await stopEndpoint();
-      await startEndpoint();
     }
   };
 
@@ -259,60 +199,22 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
     stop: () => enqueue(stopEndpoint),
     applyPreferences: () => enqueue(reconcile),
     getStatus,
-    rotateToken: () =>
-      enqueue(async () => {
-        token = randomBytes(32).toString("base64url");
-        deps.tokenStore?.write(token);
-        if (endpoint) {
-          // A live connection keeps working after the token changes, so the
-          // rotation has to tear the sockets down as well.
-          await endpoint.disconnectClients();
-          await stopEndpoint();
-          await startEndpoint();
-        }
-      }),
     buildClientConfig: (client) => {
       const status = getStatus();
-      const useTcp = status.tcpPort !== null && status.token !== null;
+      const stdio = buildStdioServerConfig();
+      const command = `claude mcp add ${MCP_CLIENT_KEY} --env ${RUN_AS_NODE_ENV_VAR}=1 --env ${ENDPOINT_ENV_VAR}=${shellQuote(
+        status.endpointFilePath
+      )} -- ${shellQuote(stdio.runtime)} ${shellQuote(stdio.bridgeEntry)}`;
 
-      let serverConfig: Record<string, unknown>;
-      let command: string;
-      if (useTcp) {
-        serverConfig = {
-          type: "http",
-          url: `http://127.0.0.1:${status.tcpPort}/mcp`,
-          headers: { Authorization: `Bearer ${status.token}` }
-        };
-        command = `claude mcp add --transport http ${MCP_CLIENT_KEY} http://127.0.0.1:${status.tcpPort}/mcp --header ${shellQuote(
-          `Authorization: Bearer ${status.token}`
-        )}`;
-      } else {
-        const stdio = buildStdioServerConfig();
-        serverConfig = stdio.serverConfig;
-        command = `claude mcp add ${MCP_CLIENT_KEY} --env ${RUN_AS_NODE_ENV_VAR}=1 --env ${ENDPOINT_ENV_VAR}=${shellQuote(
-          status.endpointFilePath
-        )} -- ${shellQuote(stdio.runtime)} ${shellQuote(stdio.bridgeEntry)}`;
-      }
-
-      const json = JSON.stringify({ mcpServers: { [MCP_CLIENT_KEY]: serverConfig } }, null, 2);
+      const json = JSON.stringify({ mcpServers: { [MCP_CLIENT_KEY]: stdio.serverConfig } }, null, 2);
       deps.writeClipboard?.(client === "claude-code" ? command : json);
       return { ok: true, command, json };
     },
     installCursor: async () => {
-      const status = getStatus();
-      const useTcp = status.tcpPort !== null && status.token !== null;
-      const serverConfig = useTcp
-        ? {
-            url: `http://127.0.0.1:${status.tcpPort}/mcp`,
-            headers: { Authorization: `Bearer ${status.token}` }
-          }
-        : buildStdioServerConfig().serverConfig;
-      const deeplink = buildCursorDeeplink(MCP_CLIENT_KEY, serverConfig);
+      const deeplink = buildCursorDeeplink(MCP_CLIENT_KEY, buildStdioServerConfig().serverConfig);
       await deps.openExternal?.(deeplink);
       return { ok: true, deeplink };
     },
-    // Claude Desktop only speaks stdio servers, so this always uses the bridge
-    // regardless of whether the TCP listener is up.
     installClaudeDesktop: () => {
       const { serverConfig } = buildStdioServerConfig();
       const { configPath } = installClaudeDesktopConfig(MCP_CLIENT_KEY, serverConfig, {
@@ -340,7 +242,6 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       writeFileSync(savePath, archive);
       return { ok: true, filePath: savePath };
     },
-    respondToPrompt: (response) => deps.respondToPrompt(response),
     // Deliberately not `enqueue`d: a kill switch that waits behind whatever the
     // endpoint queue is doing is not a kill switch.
     setHalted: (halted) => {
@@ -356,19 +257,9 @@ export {
   AgentGateway,
   type AgentClientIdentity,
   type AgentGatewayDeps,
-  type AgentGatewayLimits,
   type AgentSessionInfo,
-  type AgentRemoteFileStat,
-  type AgentRemoteFileChunk,
   type AgentToolError,
   type AgentToolResult
 } from "./agent-gateway";
 export { McpEndpointServer, resolveDefaultSocketPath } from "./endpoint-server";
 export { EndpointDiscoveryFile, type EndpointDiscoveryRecord } from "./discovery";
-export {
-  buildServerSummary,
-  listServerSummaries,
-  resolveConnectionTarget,
-  searchServerSummaries,
-  type ServerSummary
-} from "./target-resolver";

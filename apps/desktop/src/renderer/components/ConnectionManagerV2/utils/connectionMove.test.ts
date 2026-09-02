@@ -37,7 +37,6 @@ const conn = (patch: Partial<ConnectionProfile> = {}): ConnectionProfile =>
     notes: "跳板机",
     favorite: true,
     monitorSession: true,
-    agentAccess: "readonly",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-02-01T00:00:00.000Z",
     lastConnectedAt: "2026-03-01T00:00:00.000Z",
@@ -70,7 +69,6 @@ describe("profileToUpsertPayload — 逐字段保真", () => {
     expect(payload.notes).toBe("跳板机");
     expect(payload.favorite).toBe(true);
     expect(payload.monitorSession).toBe(true);
-    expect(payload.agentAccess).toBe("readonly");
   });
 
   /**
@@ -129,7 +127,6 @@ describe("profileToUpsertPayload — 逐字段保真", () => {
         keepAliveEnabled: undefined,
         keepAliveIntervalSec: undefined,
         notes: undefined,
-        agentAccess: undefined,
         tags: []
       })
     );
@@ -138,7 +135,6 @@ describe("profileToUpsertPayload — 逐字段保真", () => {
     expect(payload.keepAliveEnabled).toBeUndefined();
     expect(payload.keepAliveIntervalSec).toBeUndefined();
     expect(payload.notes).toBeUndefined();
-    expect(payload.agentAccess).toBeUndefined();
     expect(payload.tags).toEqual([]);
   });
 

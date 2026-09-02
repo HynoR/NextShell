@@ -27,18 +27,12 @@ describe("endpoint discovery file", () => {
     const userDataDir = await createTempDir();
     const discovery = new EndpointDiscoveryFile({ userDataDir, appVersion: "1.2.3", pid: 4242 });
 
-    const record = await discovery.write({
-      socketPath: "/tmp/nsmcp/s",
-      httpPort: 51234,
-      token: "secret-token"
-    });
+    const record = await discovery.write({ socketPath: "/tmp/nsmcp/s" });
 
     expect(record).toMatchObject({
       version: 1,
       pid: 4242,
       socketPath: "/tmp/nsmcp/s",
-      httpPort: 51234,
-      token: "secret-token",
       appVersion: "1.2.3"
     });
 
@@ -54,19 +48,15 @@ describe("endpoint discovery file", () => {
     }
   });
 
-  test("omits the token when the TCP listener is off", async () => {
+  test("the record carries no token or port fields at all", async () => {
     const userDataDir = await createTempDir();
     const discovery = new EndpointDiscoveryFile({ userDataDir, appVersion: "1.0.0", pid: 11 });
 
-    const record = await discovery.write({
-      socketPath: "/tmp/nsmcp/s",
-      httpPort: null,
-      token: null
-    });
+    await discovery.write({ socketPath: "/tmp/nsmcp/s" });
 
-    expect(record.token).toBeUndefined();
-    expect(record.httpPort).toBeUndefined();
-    expect(await readFile(discovery.primaryPath, "utf8")).not.toContain("token");
+    const written = await readFile(discovery.primaryPath, "utf8");
+    expect(written).not.toContain("token");
+    expect(written).not.toContain("httpPort");
   });
 
   test("prunes dead instances and repoints endpoint.json at the newest survivor", async () => {

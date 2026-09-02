@@ -46,10 +46,10 @@ describe("parseCliInvocation", () => {
   });
 
   it("keeps reserved flags out of tool arguments", () => {
-    const invocation = parseCliInvocation(["host_list", "--full", "--timeout", "9"]);
+    const invocation = parseCliInvocation(["session_list", "--full", "--timeout", "9"]);
     expect(invocation).toEqual({
       kind: "call",
-      tool: "host_list",
+      tool: "session_list",
       args: {},
       full: true,
       timeoutSec: 9
@@ -101,6 +101,6 @@ describe("renderToolList", () => {
   it("prints one aligned line per tool", () => {
     const lines = renderToolList(STATIC_TOOLS, false).split("\n");
     expect(lines).toHaveLength(STATIC_TOOLS.length);
-    expect(lines.some((line) => line.startsWith("host_list"))).toBe(true);
+    expect(lines.some((line) => line.startsWith("session_list"))).toBe(true);
   });
 });

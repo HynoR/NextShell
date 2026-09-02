@@ -31,7 +31,6 @@ export const EDITOR_SECTION_BY_FIELD: Record<string, EditorSectionKey> = {
   monitorSession: "terminal",
   tags: "meta",
   favorite: "meta",
-  agentAccess: "meta",
   notes: "meta"
 };
 
@@ -151,7 +150,6 @@ export const ConnectionEditor = ({
         tags: connection?.tags ?? CONNECTION_EDITOR_DEFAULT_VALUES.tags,
         notes: connection?.notes,
         favorite: connection?.favorite ?? CONNECTION_EDITOR_DEFAULT_VALUES.favorite,
-        agentAccess: connection?.agentAccess ?? "off",
         password: undefined
       }) as ConnectionEditorValues,
     [connection, currentFolderId]
@@ -421,7 +419,7 @@ export const ConnectionEditor = ({
             },
             {
               key: "meta",
-              label: "标签与 Agent",
+              label: "标签",
               children: (
                 <>
                   <Form.Item label="标签" name="tags">
@@ -429,19 +427,6 @@ export const ConnectionEditor = ({
                   </Form.Item>
                   <Form.Item label="收藏" name="favorite" valuePropName="checked">
                     <Switch size="small" />
-                  </Form.Item>
-                  <Form.Item
-                    label="Agent 授权"
-                    name="agentAccess"
-                    extra="默认关闭时该主机对 AI Agent 完全不可见。Agent 永远拿不到密码与私钥。"
-                  >
-                    <Select
-                      options={[
-                        { label: "关闭（不可见）", value: "off" },
-                        { label: "只读", value: "readonly" },
-                        { label: "完全", value: "full" }
-                      ]}
-                    />
                   </Form.Item>
                   <Form.Item label="备注" name="notes">
                     <Input.TextArea rows={2} placeholder="可选" />

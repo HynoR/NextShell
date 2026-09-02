@@ -78,7 +78,7 @@ export class SessionService {
   private readonly tapAgentSessionData: SessionServiceOptions["tapAgentSessionData"];
   private readonly disposeAgentSessionData: SessionServiceOptions["disposeAgentSessionData"];
   private readonly onSessionResized: SessionServiceOptions["onSessionResized"];
-  /** Last real keystroke per session; drives agent-injection preemption. */
+  /** Last real keystroke per session; the agent gateway compares it against its own last call to detect human intervention. */
   private readonly userInputAt = new Map<string, number>();
 
   constructor(options: SessionServiceOptions) {
@@ -389,11 +389,11 @@ export class SessionService {
   }
 
   /**
-   * `origin` is what makes agent injection safe to allow at all: a real
-   * keystroke stamps the session, and {@link lastUserInputAt} lets the agent
-   * gateway stand down while a human is actively typing into the same PTY.
-   * Anything the renderer sends is a human or a protocol reply on their behalf;
-   * "agent" only ever originates inside the main process.
+   * `origin` is what makes agent injection accountable: a real keystroke stamps
+   * the session, and {@link lastUserInputAt} lets the agent gateway fail its next
+   * `send_keys`/`exec` with `human_intervention` when the person has taken the
+   * keyboard back. Anything the renderer sends is a human or a protocol reply on
+   * their behalf; "agent" only ever originates inside the main process.
    */
   writeSession(
     sessionId: string,

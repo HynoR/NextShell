@@ -207,10 +207,10 @@ export const HELP_TEXT = `nextshell-cli — 通过本机运行的 NextShell 桌�
   --timeout <sec>  覆盖本次调用的等待秒数
 
 示例:
-  nextshell-cli host_list
-  nextshell-cli exec --target web-1 --command "systemctl status nginx"
-  nextshell-cli file_read --target web-1 --path /var/log/nginx/error.log
-  nextshell-cli transfer_upload --target web-1 --localPath ./dist.tar.gz --remotePath /opt/app/
+  nextshell-cli session_list
+  nextshell-cli exec --target 3f9c… --command "systemctl status nginx"
+  nextshell-cli session_read --target 3f9c… --mode scrollback --lines 200
+  nextshell-cli command_save --name "重启 nginx" --command "sudo systemctl restart nginx"
 
 退出码: 0 成功；1 工具执行出错；2 用法错误；3 无法连接 NextShell`;
 

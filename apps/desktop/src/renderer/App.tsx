@@ -7,9 +7,8 @@ import {
   useState,
   type CSSProperties
 } from "react";
-import { App as AntdApp, Checkbox, Input, Select, Typography } from "antd";
+import { App as AntdApp } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import type { AgentPromptRequest } from "@nextshell/shared";
 import type { SettingsSection } from "./components/settings-center/types";
 import { WorkspaceLayout } from "./components/WorkspaceLayout";
 import { AppSkeleton } from "./components/LoadingSkeletons";
@@ -133,87 +132,6 @@ export const App = () => {
       })
       .catch(() => undefined);
   }, [setAgentHalted, setAgentEnabled]);
-
-  useEffect(() => {
-    const showPrompt = (request: AgentPromptRequest): void => {
-      let value = request.choices?.[0] ?? "";
-      let rememberForSession = false;
-      let settled = false;
-      const respond = async (canceled: boolean): Promise<void> => {
-        if (settled) return;
-        settled = true;
-        await window.nextshell.agent.respondPrompt({
-          id: request.id,
-          canceled,
-          ...(canceled ? {} : { value: request.kind === "confirm" ? "approved" : value }),
-          ...(request.allowRemember && rememberForSession ? { rememberForSession: true } : {})
-        });
-      };
-
-      const details = request.details ? (
-        <Typography.Paragraph>
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-[var(--bg-surface)] p-2 text-xs">
-            {request.details}
-          </pre>
-        </Typography.Paragraph>
-      ) : null;
-      const input =
-        request.kind === "select" ? (
-          <Select
-            className="w-full"
-            defaultValue={value}
-            options={(request.choices ?? []).map((choice) => ({ label: choice, value: choice }))}
-            onChange={(next) => {
-              value = next;
-            }}
-          />
-        ) : request.kind === "text" ? (
-          request.sensitive ? (
-            <Input.Password
-              autoFocus
-              placeholder={request.placeholder}
-              onChange={(event) => {
-                value = event.target.value;
-              }}
-            />
-          ) : (
-            <Input.TextArea
-              autoFocus
-              placeholder={request.placeholder}
-              onChange={(event) => {
-                value = event.target.value;
-              }}
-            />
-          )
-        ) : null;
-
-      modal.confirm({
-        title: request.title,
-        content: (
-          <div className="space-y-3">
-            <Typography.Paragraph>{request.message}</Typography.Paragraph>
-            {details}
-            {input}
-            {request.allowRemember ? (
-              <Checkbox
-                onChange={(event) => {
-                  rememberForSession = event.target.checked;
-                }}
-              >
-                本客户端会话内对此命令始终允许
-              </Checkbox>
-            ) : null}
-          </div>
-        ),
-        okText: request.kind === "confirm" ? "允许" : "提交",
-        cancelText: "取消",
-        okButtonProps: request.kind === "confirm" ? { danger: true } : undefined,
-        onOk: () => respond(false),
-        onCancel: () => respond(true)
-      });
-    };
-    return window.nextshell.agent.onPrompt(showPrompt);
-  }, [modal]);
 
   const { loadConnections, handleConnectionSaved, handleConnectionRemoved } =
     useConnectionManager();

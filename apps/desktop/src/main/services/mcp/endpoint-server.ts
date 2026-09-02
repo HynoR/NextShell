@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { chmod, mkdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +10,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { AgentConnectedClient } from "@nextshell/shared";
 
-import type { AgentClientIdentity, AgentTransportKind } from "./agent-gateway";
+import type { AgentClientIdentity } from "./agent-gateway";
 
 /** macOS `sun_path` is 104 bytes; a longer path makes `listen()` fail with EINVAL. */
 export const MAX_UNIX_SOCKET_PATH_BYTES = 104;
@@ -34,12 +34,6 @@ export interface AgentLogger {
 }
 
 export interface McpEndpointServerOptions {
-  socketEnabled: boolean;
-  tcpEnabled: boolean;
-  /** 0 lets the OS pick; the resolved port is readable from `tcpPort` after start. */
-  tcpPort: number;
-  /** Required when `tcpEnabled`; unused (and not issued) for socket listeners. */
-  token: string | null;
   /** Unix socket path or Windows named pipe. Defaults to a short tmpdir path. */
   socketPath?: string;
   createMcpServer: (identity: AgentClientIdentity) => McpServer;
@@ -112,27 +106,6 @@ const readRequestBody = async (req: IncomingMessage): Promise<unknown> => {
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
 };
 
-/** Length is compared first: `timingSafeEqual` throws on unequal buffer sizes. */
-export const isTokenValid = (expected: string | null, presented: string | null): boolean => {
-  if (!expected || !presented) {
-    return false;
-  }
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(presented, "utf8");
-  if (a.byteLength !== b.byteLength) {
-    return false;
-  }
-  return timingSafeEqual(a, b);
-};
-
-const extractBearer = (header: string | undefined): string | null => {
-  if (!header) {
-    return null;
-  }
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  return match?.[1]?.trim() ?? null;
-};
-
 const jsonRpcError = (res: ServerResponse, status: number, code: number, message: string): void => {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify({ jsonrpc: "2.0", error: { code, message }, id: null }));
@@ -149,20 +122,9 @@ const readClientInfo = (body: unknown): { name: string | null; version: string |
 };
 
 /**
- * The rate-limit bucket a client falls into. Sessions are cheap to recreate, so
- * anything derived from the session id would be a free budget reset; the
- * transport plus the self-reported client name is the most stable identifier
- * available before Phase 1 adds per-client approval.
- */
-export const buildClientRateKey = (
-  transport: AgentTransportKind,
-  clientName: string | null
-): string => `${transport}:${(clientName ?? "unknown").trim().toLowerCase() || "unknown"}`;
-
-/**
- * One `http.Server` per listener (Unix socket and optional loopback TCP) sharing
- * a single request handler and a single session map — a server instance cannot
- * `listen()` twice.
+ * The MCP endpoint is a single Unix socket / named pipe with 0600 permissions:
+ * the OS filesystem is the authorization layer, so there is no token, no TCP
+ * listener and no second transport to defend.
  */
 export class McpEndpointServer {
   private readonly options: McpEndpointServerOptions;
@@ -171,9 +133,7 @@ export class McpEndpointServer {
   private readonly maxSessions: number;
   private readonly idleTimeoutMs: number;
   private socketServer: Server | null = null;
-  private tcpServer: Server | null = null;
   private activeSocketPath: string | null = null;
-  private activeTcpPort: number | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: McpEndpointServerOptions) {
@@ -190,15 +150,11 @@ export class McpEndpointServer {
   }
 
   get listening(): boolean {
-    return this.socketServer !== null || this.tcpServer !== null;
+    return this.socketServer !== null;
   }
 
   get socketPath(): string | null {
     return this.activeSocketPath;
-  }
-
-  get tcpPort(): number | null {
-    return this.activeTcpPort;
   }
 
   getClients(): AgentConnectedClient[] {
@@ -215,20 +171,9 @@ export class McpEndpointServer {
     if (this.listening) {
       return;
     }
-    if (!this.options.socketEnabled && !this.options.tcpEnabled) {
-      throw new AgentEndpointError("No listener is enabled for the MCP endpoint");
-    }
-    if (this.options.tcpEnabled && !this.options.token) {
-      throw new AgentEndpointError("A bearer token is required for the loopback TCP listener");
-    }
 
     try {
-      if (this.options.socketEnabled) {
-        await this.startSocketListener();
-      }
-      if (this.options.tcpEnabled) {
-        await this.startTcpListener();
-      }
+      await this.startSocketListener();
     } catch (error) {
       await this.stop();
       throw error;
@@ -287,7 +232,7 @@ export class McpEndpointServer {
       await this.removeStaleSocket(socketPath);
     }
 
-    const server = createServer(this.createRequestListener("socket"));
+    const server = createServer(this.createRequestListener());
     this.trackConnections(server);
     await new Promise<void>((resolve, reject) => {
       const onError = (error: Error): void => reject(error);
@@ -313,26 +258,6 @@ export class McpEndpointServer {
       return;
     }
     await rm(socketPath, { force: true });
-  }
-
-  private async startTcpListener(): Promise<void> {
-    const server = createServer(this.createRequestListener("tcp"));
-    this.trackConnections(server);
-    await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error): void => reject(error);
-      server.once("error", onError);
-      server.listen(this.options.tcpPort, "127.0.0.1", () => {
-        server.off("error", onError);
-        resolve();
-      });
-    });
-
-    const address = server.address();
-    this.activeTcpPort = typeof address === "object" && address !== null ? address.port : null;
-    this.tcpServer = server;
-    this.options.logger?.info?.("MCP endpoint listening on loopback TCP", {
-      port: this.activeTcpPort
-    });
   }
 
   private trackConnections(server: Server): void {
@@ -366,23 +291,15 @@ export class McpEndpointServer {
     }
     await this.disconnectClients();
 
-    const closeServer = async (server: Server | null): Promise<void> => {
-      if (!server) {
-        return;
-      }
+    if (this.socketServer) {
       await new Promise<void>((resolve) => {
-        server.close(() => resolve());
+        this.socketServer?.close(() => resolve());
       });
-    };
-
-    await closeServer(this.socketServer);
-    await closeServer(this.tcpServer);
-    this.socketServer = null;
-    this.tcpServer = null;
+      this.socketServer = null;
+    }
 
     const socketPath = this.activeSocketPath;
     this.activeSocketPath = null;
-    this.activeTcpPort = null;
 
     if (socketPath && !isWindows) {
       await rm(socketPath, { force: true }).catch(() => undefined);
@@ -394,12 +311,6 @@ export class McpEndpointServer {
 
   private allowedHosts(): Set<string> {
     const hosts = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
-    const port = this.activeTcpPort ?? this.options.tcpPort;
-    if (port) {
-      hosts.add(`localhost:${port}`);
-      hosts.add(`127.0.0.1:${port}`);
-      hosts.add(`[::1]:${port}`);
-    }
     for (const host of this.options.extraAllowedHosts ?? []) {
       hosts.add(host);
     }
@@ -433,11 +344,9 @@ export class McpEndpointServer {
     return true;
   }
 
-  private createRequestListener(
-    transport: AgentTransportKind
-  ): (req: IncomingMessage, res: ServerResponse) => void {
+  private createRequestListener(): (req: IncomingMessage, res: ServerResponse) => void {
     return (req, res) => {
-      void this.handleRequest(transport, req, res).catch((error: unknown) => {
+      void this.handleRequest(req, res).catch((error: unknown) => {
         this.options.logger?.error?.("MCP endpoint request failed", {
           error: error instanceof Error ? error.message : String(error)
         });
@@ -450,11 +359,7 @@ export class McpEndpointServer {
     };
   }
 
-  private async handleRequest(
-    transport: AgentTransportKind,
-    req: IncomingMessage,
-    res: ServerResponse
-  ): Promise<void> {
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = (req.url ?? "/").split("?")[0] ?? "/";
     if (!MCP_PATHS.has(url)) {
       jsonRpcError(res, 404, -32601, "Not found");
@@ -463,23 +368,6 @@ export class McpEndpointServer {
     if (!this.isRequestOriginAllowed(req)) {
       jsonRpcError(res, 403, -32600, "Forbidden");
       return;
-    }
-    if (transport === "tcp") {
-      const presented = extractBearer(req.headers.authorization);
-      if (!isTokenValid(this.options.token, presented)) {
-        res.writeHead(401, {
-          "content-type": "application/json",
-          "www-authenticate": 'Bearer realm="nextshell"'
-        });
-        res.end(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            error: { code: -32001, message: "Unauthorized" },
-            id: null
-          })
-        );
-        return;
-      }
     }
 
     let body: unknown;
@@ -517,7 +405,7 @@ export class McpEndpointServer {
       return;
     }
 
-    const entry = await this.createSession(transport, body);
+    const entry = await this.createSession(body);
     this.trackActivity(entry, res);
     await entry.transport.handleRequest(req, res, body);
   }
@@ -540,15 +428,14 @@ export class McpEndpointServer {
     });
   }
 
-  private async createSession(transport: AgentTransportKind, body: unknown): Promise<SessionEntry> {
+  private async createSession(body: unknown): Promise<SessionEntry> {
     const sessionId = randomUUID();
     const clientInfo = readClientInfo(body);
     const identity: AgentClientIdentity = {
       id: sessionId,
       name: clientInfo.name,
       version: clientInfo.version,
-      transport,
-      rateKey: buildClientRateKey(transport, clientInfo.name)
+      transport: "socket"
     };
 
     const httpTransport = new StreamableHTTPServerTransport({

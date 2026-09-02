@@ -43,8 +43,7 @@ export const profileToUpsertPayload = (
   tags: [...profile.tags],
   notes: profile.notes,
   favorite: profile.favorite,
-  monitorSession: profile.monitorSession,
-  agentAccess: profile.agentAccess
+  monitorSession: profile.monitorSession
 });
 
 export interface MoveOutcome {

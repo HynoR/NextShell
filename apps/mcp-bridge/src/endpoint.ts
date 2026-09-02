@@ -4,11 +4,8 @@ import path from "node:path";
 
 import { isRecord } from "./json-rpc.js";
 
-/** Overrides endpoint discovery entirely (socket path, `http://…` URL, or an endpoint.json path). */
+/** Overrides endpoint discovery entirely (socket path or an endpoint.json path). */
 export const ENDPOINT_ENV_VAR = "NEXTSHELL_MCP_ENDPOINT";
-/** Bearer token for a TCP endpoint supplied out of band. Never read from disk by the bridge. */
-export const ENDPOINT_TOKEN_ENV_VAR = "NEXTSHELL_MCP_TOKEN";
-export const DEFAULT_HTTP_PATH = "/mcp";
 export const ENDPOINT_DIRECTORY_NAME = "mcp";
 export const ENDPOINT_FILE_NAME = "endpoint.json";
 
@@ -16,24 +13,21 @@ const APP_DIRECTORY_CANDIDATES = ["NextShell", "nextshell"] as const;
 const WINDOWS_PIPE_PREFIX = "\\\\.\\pipe\\";
 
 export interface EndpointRecord {
-  socketPath: string | null;
-  host: string;
-  tcpPort: number | null;
-  token: string | null;
-  httpPath: string;
+  socketPath: string;
   pid: number | null;
   /** Epoch milliseconds; 0 when the file carries no usable timestamp. */
   updatedAt: number;
   source: string;
 }
 
+/**
+ * The desktop endpoint is a 0600 Unix socket / named pipe: the OS file mode is
+ * the authorization, so a dial target is exactly a socket path — there is no
+ * port or token to carry.
+ */
 export interface EndpointTarget {
-  transport: "socket" | "tcp";
-  socketPath: string | null;
-  host: string | null;
-  port: number | null;
-  token: string | null;
-  httpPath: string;
+  transport: "socket";
+  socketPath: string;
   source: string;
 }
 
@@ -92,16 +86,6 @@ const readString = (source: Record<string, unknown>, keys: string[]): string | n
   return null;
 };
 
-const readPort = (source: Record<string, unknown>, keys: string[]): number | null => {
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 65535) {
-      return value;
-    }
-  }
-  return null;
-};
-
 const readTimestamp = (source: Record<string, unknown>, keys: string[]): number => {
   for (const key of keys) {
     const value = source[key];
@@ -118,16 +102,11 @@ const readTimestamp = (source: Record<string, unknown>, keys: string[]): number 
   return 0;
 };
 
-const normalizeHttpPath = (value: string | null): string => {
-  if (value === null) {
-    return DEFAULT_HTTP_PATH;
-  }
-  return value.startsWith("/") ? value : `/${value}`;
-};
-
 /**
  * The desktop side owns the endpoint file format; accept both a single object
  * and a list of instances so a schema tweak there cannot brick the bridge.
+ * Records without a socket path (e.g. written by a long-dead TCP-era build)
+ * are simply skipped.
  */
 export const parseEndpointRecords = (raw: unknown, source: string): EndpointRecord[] => {
   let entries: unknown[];
@@ -146,19 +125,12 @@ export const parseEndpointRecords = (raw: unknown, source: string): EndpointReco
       continue;
     }
     const socketPath = readString(entry, ["socketPath", "socket", "pipePath", "pipe"]);
-    // `httpPort` is the key the desktop app actually writes; the other two are
-    // accepted so a hand-written or older endpoint file still resolves.
-    const tcpPort = readPort(entry, ["httpPort", "tcpPort", "port"]);
-    if (socketPath === null && tcpPort === null) {
+    if (socketPath === null) {
       continue;
     }
     const pidValue = entry.pid;
     records.push({
       socketPath,
-      host: readString(entry, ["host", "address"]) ?? "127.0.0.1",
-      tcpPort,
-      token: readString(entry, ["token"]),
-      httpPath: normalizeHttpPath(readString(entry, ["httpPath", "path", "endpointPath"])),
       pid:
         typeof pidValue === "number" && Number.isInteger(pidValue) && pidValue > 0
           ? pidValue
@@ -207,7 +179,7 @@ export const resolveUserDataDirs = (deps: EndpointDiscoveryDeps = {}): string[] 
 };
 
 const recordKey = (record: EndpointRecord): string =>
-  `${record.socketPath ?? ""}|${record.host}|${record.tcpPort ?? 0}|${record.pid ?? 0}`;
+  `${record.socketPath}|${record.pid ?? 0}`;
 
 export const readEndpointRecords = (deps: EndpointDiscoveryDeps = {}): EndpointRecord[] => {
   const readFile = deps.readFile ?? defaultReadFile;
@@ -253,8 +225,7 @@ export const readEndpointRecords = (deps: EndpointDiscoveryDeps = {}): EndpointR
 
 /**
  * Drops records whose owning process is gone (a crashed app leaves the file
- * behind) and orders the survivors newest first. Socket wins over TCP: it needs
- * no token, so nothing secret can leak through it.
+ * behind) or whose socket vanished, and orders the survivors newest first.
  */
 export const selectEndpointTargets = (
   records: EndpointRecord[],
@@ -268,26 +239,10 @@ export const selectEndpointTargets = (
 
   const targets: EndpointTarget[] = [];
   for (const record of ordered) {
-    const socketPath = record.socketPath;
-    if (socketPath !== null && (isNamedPipe(socketPath) || exists(socketPath))) {
+    if (isNamedPipe(record.socketPath) || exists(record.socketPath)) {
       targets.push({
         transport: "socket",
-        socketPath,
-        host: null,
-        port: null,
-        token: null,
-        httpPath: record.httpPath,
-        source: record.source
-      });
-    }
-    if (record.tcpPort !== null) {
-      targets.push({
-        transport: "tcp",
-        socketPath: null,
-        host: record.host,
-        port: record.tcpPort,
-        token: record.token,
-        httpPath: record.httpPath,
+        socketPath: record.socketPath,
         source: record.source
       });
     }
@@ -304,31 +259,6 @@ export const parseEndpointOverride = (
     return [];
   }
 
-  const env = deps.env ?? process.env;
-  const envToken = env[ENDPOINT_TOKEN_ENV_VAR];
-  const token = envToken !== undefined && envToken.length > 0 ? envToken : null;
-
-  if (/^https?:\/\//i.test(trimmed)) {
-    let url: URL;
-    try {
-      url = new URL(trimmed);
-    } catch {
-      return [];
-    }
-    const port = url.port.length > 0 ? Number.parseInt(url.port, 10) : 80;
-    return [
-      {
-        transport: "tcp",
-        socketPath: null,
-        host: url.hostname,
-        port,
-        token,
-        httpPath: url.pathname.length > 1 ? url.pathname : DEFAULT_HTTP_PATH,
-        source: ENDPOINT_ENV_VAR
-      }
-    ];
-  }
-
   if (trimmed.toLowerCase().endsWith(".json")) {
     const readFile = deps.readFile ?? defaultReadFile;
     try {
@@ -343,10 +273,6 @@ export const parseEndpointOverride = (
     {
       transport: "socket",
       socketPath: trimmed,
-      host: null,
-      port: null,
-      token,
-      httpPath: DEFAULT_HTTP_PATH,
       source: ENDPOINT_ENV_VAR
     }
   ];

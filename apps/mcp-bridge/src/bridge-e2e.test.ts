@@ -14,7 +14,7 @@ import { UpstreamSession } from "./upstream.js";
 
 const UPSTREAM_TOOLS = {
   tools: [
-    { name: "host_list", description: "upstream", inputSchema: { type: "object" } },
+    { name: "session_list", description: "upstream", inputSchema: { type: "object" } },
     { name: "nextshell_exec", description: "upstream exec", inputSchema: { type: "object" } }
   ]
 };
@@ -193,14 +193,12 @@ describe.skipIf(process.platform === "win32")("bridge over a real unix socket", 
         {
           pid: 999999,
           socketPath: path.join(dir, "u.sock"),
-          updatedAt: Date.now() + 60000,
-          httpPath: "/mcp"
+          updatedAt: Date.now() + 60000
         },
         {
           pid: process.pid,
           socketPath: upstream.socketPath,
-          updatedAt: Date.now(),
-          httpPath: "/mcp"
+          updatedAt: Date.now()
         }
       ]
     });
@@ -267,7 +265,7 @@ describe.skipIf(process.platform === "win32")("bridge over a real unix socket", 
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
-      params: { name: "host_list" }
+      params: { name: "session_list" }
     });
     const failed = lastResult(sent);
     expect(failed.isError).toBe(true);

@@ -39,7 +39,6 @@ export const windowAppearanceSchema = z.enum(["system", "light", "dark"]);
 export const localShellModeSchema = z.enum(["preset", "custom"]);
 export const localShellPresetSchema = z.enum(["system", "powershell", "cmd", "zsh", "sh", "bash"]);
 export const shellIntegrationModeSchema = z.enum(["auto", "off", "manual"]);
-export const agentAccessLevelSchema = z.enum(["off", "readonly", "full"]);
 export const connectionListQuerySchema = z.object({
   keyword: z.string().trim().optional(),
   group: z.string().trim().optional(),
@@ -83,11 +82,7 @@ export const connectionUpsertSchema = z
     tags: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1)).default([])),
     notes: z.preprocess(trimToOptionalString, z.string().optional()),
     favorite: z.boolean().default(false),
-    monitorSession: z.boolean().default(false),
-    // Optional on purpose: an omitted field must never grant access. The service keeps the
-    // already-stored level and falls back to "off", so callers that predate this field
-    // (quick connect, imports, auth-override rewrites) can never elevate a host silently.
-    agentAccess: agentAccessLevelSchema.optional()
+    monitorSession: z.boolean().default(false)
   })
   .superRefine((value, ctx) => {
     if (value.authType === "privateKey" && !value.sshKeyId) {
@@ -185,7 +180,8 @@ export const sessionWriteSchema = z.object({
    * which the main process never accepts over this channel — it is produced
    * inside the main process and only ever appears on the outbound activity path.
    * Only "user" writes represent real keystrokes, which is what shell-integration
-   * injection must not collide with, and what preempts agent injection.
+   * injection must not collide with, and what trips the agent's
+   * human_intervention error.
    * Optional so every existing caller keeps defaulting to "user".
    */
   origin: z.enum(["user", "protocol", "agent"]).optional()
@@ -571,28 +567,16 @@ export const appPreferencesSchema = z
     agent: z
       .object({
         enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.enabled),
-        socketEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.socketEnabled),
-        tcpEnabled: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.tcpEnabled),
-        tcpPort: z.coerce
-          .number()
-          .int()
-          .min(0)
-          .max(65535)
-          .default(DEFAULT_APP_PREFERENCES.agent.tcpPort),
-        confirmWrites: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.confirmWrites),
-        confirmUnknownCommands: z
-          .boolean()
-          .default(DEFAULT_APP_PREFERENCES.agent.confirmUnknownCommands),
-        allowedLocalRoots: z.preprocess(
-          trimAndFilterStringArray,
-          z.array(z.string().min(1)).default(DEFAULT_APP_PREFERENCES.agent.allowedLocalRoots)
-        ),
         execTimeoutSec: z.coerce
           .number()
           .int()
           .min(1)
           .max(3600)
-          .default(DEFAULT_APP_PREFERENCES.agent.execTimeoutSec)
+          .default(DEFAULT_APP_PREFERENCES.agent.execTimeoutSec),
+        blacklist: z.preprocess(
+          trimAndFilterStringArray,
+          z.array(z.string().min(1)).default(DEFAULT_APP_PREFERENCES.agent.blacklist)
+        )
       })
       .default(DEFAULT_APP_PREFERENCES.agent)
   })
@@ -685,15 +669,10 @@ export const appPreferencesPatchSchema = z.object({
   agent: z
     .object({
       enabled: z.boolean().optional(),
-      socketEnabled: z.boolean().optional(),
-      tcpEnabled: z.boolean().optional(),
-      tcpPort: z.coerce.number().int().min(0).max(65535).optional(),
-      confirmWrites: z.boolean().optional(),
-      confirmUnknownCommands: z.boolean().optional(),
-      allowedLocalRoots: z
+      execTimeoutSec: z.coerce.number().int().min(1).max(3600).optional(),
+      blacklist: z
         .preprocess(trimAndFilterStringArray, z.array(z.string().min(1)))
-        .optional(),
-      execTimeoutSec: z.coerce.number().int().min(1).max(3600).optional()
+        .optional()
     })
     .optional()
 });
@@ -754,11 +733,6 @@ export const terminalNotificationActionEventSchema = z.object({
 
 export const sftpTransferStatusEventSchema = z.object({
   taskId: z.string().uuid().optional(),
-  /**
-   * 谁发起的。缺省视作 "user"——只有 Agent 发起的传输才会被主进程打上 "agent"，
-   * 传输队列据此显示徽标，让人一眼看出这条不是自己点的。
-   */
-  origin: z.enum(["user", "agent"]).optional(),
   direction: z.enum(["upload", "download"]),
   connectionId: z.string().uuid(),
   remotePath: z.string().min(1),
@@ -783,32 +757,12 @@ export const agentClientKindSchema = z.enum(["claude-code", "claude-desktop", "c
 export const agentStatusSchema = z.object({});
 export const agentEnableSchema = z.object({});
 export const agentDisableSchema = z.object({});
-export const agentRotateTokenSchema = z.object({});
 export const agentCopyClientConfigSchema = z.object({
   client: agentClientKindSchema.default("claude-code")
 });
 export const agentInstallCursorSchema = z.object({});
 export const agentInstallClaudeDesktopSchema = z.object({});
 export const agentExportMcpbSchema = z.object({});
-
-export const agentPromptRequestSchema = z.object({
-  id: z.string().uuid(),
-  kind: z.enum(["confirm", "select", "text"]),
-  title: z.string().trim().min(1).max(160),
-  message: z.string().trim().min(1).max(4000),
-  details: z.string().max(16_000).optional(),
-  choices: z.array(z.string().trim().min(1).max(200)).min(1).max(20).optional(),
-  placeholder: z.string().max(300).optional(),
-  sensitive: z.boolean().optional(),
-  allowRemember: z.boolean().optional()
-});
-
-export const agentPromptResponseSchema = z.object({
-  id: z.string().uuid(),
-  canceled: z.boolean(),
-  value: z.string().max(16_000).optional(),
-  rememberForSession: z.boolean().optional()
-});
 
 /** 全局断闸：把 Agent 的所有工具调用立刻掐断，或重新放行。 */
 export const agentSetHaltedSchema = z.object({
@@ -842,13 +796,10 @@ export type AgentClientKind = z.infer<typeof agentClientKindSchema>;
 export type AgentStatusInput = z.infer<typeof agentStatusSchema>;
 export type AgentEnableInput = z.infer<typeof agentEnableSchema>;
 export type AgentDisableInput = z.infer<typeof agentDisableSchema>;
-export type AgentRotateTokenInput = z.infer<typeof agentRotateTokenSchema>;
 export type AgentCopyClientConfigInput = z.infer<typeof agentCopyClientConfigSchema>;
 export type AgentInstallCursorInput = z.infer<typeof agentInstallCursorSchema>;
 export type AgentInstallClaudeDesktopInput = z.infer<typeof agentInstallClaudeDesktopSchema>;
 export type AgentExportMcpbInput = z.infer<typeof agentExportMcpbSchema>;
-export type AgentPromptRequest = z.infer<typeof agentPromptRequestSchema>;
-export type AgentPromptResponse = z.infer<typeof agentPromptResponseSchema>;
 export type AgentActivityEvent = z.infer<typeof agentActivityEventSchema>;
 export type AgentSetHaltedInput = z.infer<typeof agentSetHaltedSchema>;
 export type AgentSessionControlEvent = z.infer<typeof agentSessionControlEventSchema>;
@@ -860,7 +811,7 @@ export interface AgentConnectedClient {
   /** initialize 上报的客户端名称，未知时为 null */
   name: string | null;
   version: string | null;
-  transport: "socket" | "tcp";
+  transport: "socket";
   connectedAt: string;
 }
 
@@ -871,13 +822,6 @@ export interface AgentEndpointStatus {
   listening: boolean;
   /** Unix socket / 命名管道路径，未监听时为 null */
   socketPath: string | null;
-  /** 实际生效的 loopback TCP 端口（0 端口偏好会被解析成真实端口），未监听时为 null */
-  tcpPort: number | null;
-  /**
-   * TCP 监听的 Bearer token。仅 TCP 开启时非空——socket 监听靠 0600 文件权限授权，
-   * 不签发 token。凭据（密码 / 私钥 / 设备密钥）永远不会出现在本结构里。
-   */
-  token: string | null;
   /** 端点发现文件路径（<userData>/mcp/endpoint.json） */
   endpointFilePath: string;
   clients: AgentConnectedClient[];

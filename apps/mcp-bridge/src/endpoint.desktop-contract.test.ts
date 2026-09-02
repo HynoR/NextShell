@@ -42,23 +42,9 @@ describe("desktop ↔ bridge endpoint discovery contract", () => {
     fs.writeFileSync(socketPath, "");
 
     const discovery = new EndpointDiscoveryFile({ userDataDir, appVersion: "0.0.0-test" });
-    await discovery.write({ socketPath, httpPort: null, token: null });
+    await discovery.write({ socketPath });
 
     const targets = discoverEndpointTargets({ platform: "linux", env: { HOME: home } });
     expect(targets.map((target) => target.socketPath)).toContain(socketPath);
-  });
-
-  it("round-trips a TCP-only endpoint including its bearer token", async () => {
-    const { home, userDataDir } = makeUserDataDir();
-    const discovery = new EndpointDiscoveryFile({ userDataDir, appVersion: "0.0.0-test" });
-    await discovery.write({ socketPath: null, httpPort: 7654, token: "loopback-token" });
-
-    const targets = discoverEndpointTargets({ platform: "linux", env: { HOME: home } });
-    expect(targets).toHaveLength(1);
-    expect(targets[0]).toMatchObject({
-      transport: "tcp",
-      port: 7654,
-      token: "loopback-token"
-    });
   });
 });

@@ -292,8 +292,6 @@ const rowToConnection = (row: ConnectionRow): ConnectionProfile => {
     notes: row.notes ?? undefined,
     favorite: row.favorite === 1,
     monitorSession: (row as ConnectionRow & { monitor_session?: number }).monitor_session === 1,
-    agentAccess:
-      row.agent_access === "readonly" || row.agent_access === "full" ? row.agent_access : "off",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastConnectedAt: row.last_connected_at ?? undefined,
@@ -437,7 +435,7 @@ const cloneDefaultPreferences = (): AppPreferences => {
     traceroute: { ...DEFAULT_APP_PREFERENCES_VALUE.traceroute },
     agent: {
       ...DEFAULT_APP_PREFERENCES_VALUE.agent,
-      allowedLocalRoots: [...DEFAULT_APP_PREFERENCES_VALUE.agent.allowedLocalRoots]
+      blacklist: [...DEFAULT_APP_PREFERENCES_VALUE.agent.blacklist]
     }
   };
 };
@@ -663,41 +661,18 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.agent?.enabled === "boolean"
             ? parsed.agent.enabled
             : fallback.agent.enabled,
-        socketEnabled:
-          typeof parsed.agent?.socketEnabled === "boolean"
-            ? parsed.agent.socketEnabled
-            : fallback.agent.socketEnabled,
-        tcpEnabled:
-          typeof parsed.agent?.tcpEnabled === "boolean"
-            ? parsed.agent.tcpEnabled
-            : fallback.agent.tcpEnabled,
-        tcpPort:
-          typeof parsed.agent?.tcpPort === "number" &&
-          Number.isInteger(parsed.agent.tcpPort) &&
-          parsed.agent.tcpPort >= 0 &&
-          parsed.agent.tcpPort <= 65535
-            ? parsed.agent.tcpPort
-            : fallback.agent.tcpPort,
-        confirmWrites:
-          typeof parsed.agent?.confirmWrites === "boolean"
-            ? parsed.agent.confirmWrites
-            : fallback.agent.confirmWrites,
-        confirmUnknownCommands:
-          typeof parsed.agent?.confirmUnknownCommands === "boolean"
-            ? parsed.agent.confirmUnknownCommands
-            : fallback.agent.confirmUnknownCommands,
-        allowedLocalRoots: Array.isArray(parsed.agent?.allowedLocalRoots)
-          ? parsed.agent.allowedLocalRoots.filter(
-              (root): root is string => typeof root === "string" && root.trim().length > 0
-            )
-          : fallback.agent.allowedLocalRoots,
         execTimeoutSec:
           typeof parsed.agent?.execTimeoutSec === "number" &&
           Number.isInteger(parsed.agent.execTimeoutSec) &&
           parsed.agent.execTimeoutSec >= 1 &&
           parsed.agent.execTimeoutSec <= 3600
             ? parsed.agent.execTimeoutSec
-            : fallback.agent.execTimeoutSec
+            : fallback.agent.execTimeoutSec,
+        blacklist: Array.isArray(parsed.agent?.blacklist)
+          ? parsed.agent.blacklist.filter(
+              (entry): entry is string => typeof entry === "string" && entry.trim().length > 0
+            )
+          : fallback.agent.blacklist
       }
     };
   } catch {
@@ -1780,7 +1755,8 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         notes: connection.notes ?? null,
         favorite: connection.favorite ? 1 : 0,
         monitor_session: connection.monitorSession ? 1 : 0,
-        agent_access: connection.agentAccess ?? "off",
+        // ÜÚ:;: agentAccess ËÅÚè Agent Õæ° d,›YFR:ÿ§<
+        agent_access: "off",
         created_at: connection.createdAt,
         updated_at: connection.updatedAt,
         last_connected_at: connection.lastConnectedAt ?? null,

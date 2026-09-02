@@ -96,12 +96,10 @@ import {
   agentStatusSchema,
   agentEnableSchema,
   agentDisableSchema,
-  agentRotateTokenSchema,
   agentCopyClientConfigSchema,
   agentInstallCursorSchema,
   agentInstallClaudeDesktopSchema,
   agentExportMcpbSchema,
-  agentPromptResponseSchema,
   agentSetHaltedSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container-types";
@@ -916,13 +914,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     }
   }),
   define({
-    channel: IPCChannel.AgentRotateToken,
-    schema: agentRotateTokenSchema,
-    label: "轮换 Agent 令牌",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.agentMcp.rotateToken()
-  }),
-  define({
     channel: IPCChannel.AgentCopyClientConfig,
     schema: agentCopyClientConfigSchema,
     label: "复制 Agent 接入配置",
@@ -950,15 +941,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "导出 .mcpb 安装包",
     coerceEmptyPayload: true,
     dispatch: (services) => services.agentMcp.exportMcpb()
-  }),
-  define({
-    channel: IPCChannel.AgentPromptResponse,
-    schema: agentPromptResponseSchema,
-    label: "回应 Agent 问询",
-    dispatch: (services, input) => {
-      services.agentMcp.respondToPrompt(input);
-      return { ok: true as const };
-    }
   }),
   define({
     channel: IPCChannel.AgentSetHalted,

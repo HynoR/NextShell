@@ -863,55 +863,6 @@ describe("CloudSyncManager applyWorkspaceSnapshot", () => {
     expect(applied?.folderId).toBe("folder-asia");
   });
 
-  // agentAccess 同样不在线协议里:全行 upsert 绑的是 `agentAccess ?? "off"`,漏掉这个键
-  // 等于每次 pull 都把用户授予 agent 的访问权限悄悄降回 off。
-  test("keeps the local agentAccess of an existing cloud connection across a pull", async () => {
-    const workspace = { ...createWorkspace(), enabled: true };
-    const scopeKey = buildScopeKey({
-      kind: "cloud",
-      apiBaseUrl: workspace.apiBaseUrl,
-      workspaceName: workspace.workspaceName
-    });
-    const existing: ConnectionProfile = {
-      id: "local-id-2",
-      name: "Prod",
-      host: "old.example.com",
-      port: 22,
-      username: "root",
-      authType: "agent",
-      strictHostKeyChecking: false,
-      groupPath: "/workspace/prod-team",
-      agentAccess: "full",
-      tags: [],
-      favorite: false,
-      monitorSession: false,
-      terminalEncoding: "utf-8",
-      backspaceMode: "ascii-backspace",
-      deleteMode: "vt220-delete",
-      createdAt: now,
-      updatedAt: now,
-      resourceId: `${scopeKey}-conn-2`,
-      uuidInScope: "conn-2",
-      originKind: "cloud",
-      originScopeKey: scopeKey,
-      originWorkspaceId: workspace.id
-    } as ConnectionProfile;
-    const state = createMutableState(workspace, { connections: [existing] });
-    const manager = new CloudSyncManager(createMutableDeps(state));
-
-    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
-      workspace,
-      "workspace-password",
-      repoSnapshot(workspace.id, "remote-snapshot", [
-        snapshotConnection("conn-2", "Prod", "new.example.com")
-      ])
-    );
-
-    const applied = state.connections.find((connection) => connection.uuidInScope === "conn-2");
-    expect(applied?.host).toBe("new.example.com");
-    expect(applied?.agentAccess).toBe("full");
-  });
-
   test("leaves folderId empty for a connection this device has never seen", async () => {
     const workspace = { ...createWorkspace(), enabled: true };
     const state = createMutableState(workspace);

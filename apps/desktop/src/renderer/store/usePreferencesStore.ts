@@ -22,7 +22,7 @@ const clonePreferences = (prefs: AppPreferences): AppPreferences => ({
   },
   agent: {
     ...prefs.agent,
-    allowedLocalRoots: [...prefs.agent.allowedLocalRoots]
+    blacklist: [...prefs.agent.blacklist]
   }
 });
 

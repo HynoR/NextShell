@@ -30,10 +30,6 @@ afterAll(() => {
 
 const record = (overrides: Partial<EndpointRecord> = {}): EndpointRecord => ({
   socketPath: "/tmp/nextshell.sock",
-  host: "127.0.0.1",
-  tcpPort: null,
-  token: null,
-  httpPath: "/mcp",
   pid: 4242,
   updatedAt: 1000,
   source: "test",
@@ -68,17 +64,18 @@ describe("parseEndpointRecords", () => {
     expect(single[0]?.updatedAt).toBe(Date.parse("2026-08-03T00:00:00.000Z"));
 
     const many = parseEndpointRecords(
-      { endpoints: [{ socketPath: "/tmp/a.sock" }, { tcpPort: 7000, token: "t" }] },
+      { endpoints: [{ socketPath: "/tmp/a.sock" }, { socketPath: "/tmp/b.sock" }] },
       "file"
     );
     expect(many).toHaveLength(2);
-    expect(many[1]?.tcpPort).toBe(7000);
-    expect(many[1]?.httpPath).toBe("/mcp");
+    expect(many[1]?.socketPath).toBe("/tmp/b.sock");
   });
 
-  it("drops entries that describe no listener at all", () => {
+  it("drops entries without a socket path, including TCP-era leftovers", () => {
     expect(parseEndpointRecords({ pid: 5 }, "file")).toEqual([]);
     expect(parseEndpointRecords("nonsense", "file")).toEqual([]);
+    // Written by a pre-redesign desktop build: port + token, no socket.
+    expect(parseEndpointRecords({ httpPort: 7412, token: "loopback-token" }, "file")).toEqual([]);
   });
 });
 
@@ -99,23 +96,19 @@ describe("selectEndpointTargets", () => {
     expect(targets.map((target) => target.socketPath)).toEqual(["/tmp/new.sock", "/tmp/old.sock"]);
   });
 
-  it("skips a socket whose file no longer exists but keeps the TCP fallback", () => {
-    const targets = selectEndpointTargets(
-      [record({ pid: null, socketPath: "/tmp/missing.sock", tcpPort: 7100, token: "secret" })],
-      { fileExists: () => false }
-    );
-    expect(targets).toHaveLength(1);
-    expect(targets[0]?.transport).toBe("tcp");
-    expect(targets[0]?.port).toBe(7100);
-    expect(targets[0]?.token).toBe("secret");
+  it("skips a socket whose file no longer exists", () => {
+    const targets = selectEndpointTargets([record({ pid: null })], {
+      fileExists: () => false
+    });
+    expect(targets).toHaveLength(0);
   });
 
-  it("never attaches a token to a socket target", () => {
-    const targets = selectEndpointTargets([record({ pid: null, token: "secret" })], {
+  it("a socket target is all there is", () => {
+    const targets = selectEndpointTargets([record({ pid: null })], {
       fileExists: () => true
     });
     expect(targets[0]?.transport).toBe("socket");
-    expect(targets[0]?.token).toBeNull();
+    expect(targets[0]?.socketPath).toBe("/tmp/nextshell.sock");
   });
 });
 
@@ -139,31 +132,6 @@ describe("discoverEndpointTargets", () => {
     expect(targets[0]?.socketPath).toBe(socketPath);
   });
 
-  it("resolves a TCP-only endpoint written with the desktop app's field names", () => {
-    const home = makeTempDir();
-    const dir = path.join(home, ".config", "NextShell", "mcp");
-    fs.mkdirSync(dir, { recursive: true });
-    // Byte-for-byte the shape of EndpointDiscoveryRecord in
-    // apps/desktop/src/main/services/mcp/discovery.ts: the port key is
-    // `httpPort`, and a socket-disabled run writes `socketPath: null`.
-    fs.writeFileSync(
-      path.join(dir, "endpoint.json"),
-      JSON.stringify({
-        version: 1,
-        pid: process.pid,
-        socketPath: null,
-        httpPort: 7412,
-        token: "loopback-token",
-        appVersion: "0.1.6",
-        startedAt: new Date().toISOString()
-      })
-    );
-
-    const targets = discoverEndpointTargets({ platform: "linux", env: { HOME: home } });
-    expect(targets).toHaveLength(1);
-    expect(targets[0]).toMatchObject({ transport: "tcp", port: 7412, token: "loopback-token" });
-  });
-
   it("eliminates a stale endpoint file left behind by a crashed app", () => {
     const home = makeTempDir();
     const dir = path.join(home, ".config", "NextShell", "mcp");
@@ -172,7 +140,7 @@ describe("discoverEndpointTargets", () => {
     fs.writeFileSync(socketPath, "");
     fs.writeFileSync(
       path.join(dir, "endpoint.json"),
-      JSON.stringify({ pid: 999999, socketPath, tcpPort: 7000, updatedAt: Date.now() })
+      JSON.stringify({ pid: 999999, socketPath, updatedAt: Date.now() })
     );
 
     const targets = discoverEndpointTargets({
@@ -189,16 +157,16 @@ describe("discoverEndpointTargets", () => {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, "endpoint-2.json"),
-      JSON.stringify({ pid: process.pid, tcpPort: 7300, token: "abc", updatedAt: 2 })
+      JSON.stringify({ pid: process.pid, socketPath: "/tmp/instance-2.sock", updatedAt: 2 })
     );
     fs.writeFileSync(path.join(dir, "unrelated.json"), "{}");
 
     const records = readEndpointRecords({ platform: "linux", env: { HOME: home } });
     expect(records).toHaveLength(1);
-    expect(records[0]?.tcpPort).toBe(7300);
+    expect(records[0]?.socketPath).toBe("/tmp/instance-2.sock");
   });
 
-  it("honours the environment override for socket paths, URLs and files", () => {
+  it("honours the environment override for socket paths and files", () => {
     const socketTargets = discoverEndpointTargets({
       env: { NEXTSHELL_MCP_ENDPOINT: "/tmp/override.sock" }
     });
@@ -207,25 +175,13 @@ describe("discoverEndpointTargets", () => {
       socketPath: "/tmp/override.sock"
     });
 
-    const tcpTargets = discoverEndpointTargets({
-      env: {
-        NEXTSHELL_MCP_ENDPOINT: "http://127.0.0.1:7788/mcp",
-        NEXTSHELL_MCP_TOKEN: "bearer-token"
-      }
-    });
-    expect(tcpTargets[0]).toMatchObject({
-      transport: "tcp",
-      host: "127.0.0.1",
-      port: 7788,
-      httpPath: "/mcp",
-      token: "bearer-token"
-    });
-
     const dir = makeTempDir();
+    const socketPath = path.join(dir, "file.sock");
+    fs.writeFileSync(socketPath, "");
     const file = path.join(dir, "endpoint.json");
-    fs.writeFileSync(file, JSON.stringify({ pid: process.pid, tcpPort: 7900 }));
+    fs.writeFileSync(file, JSON.stringify({ pid: process.pid, socketPath }));
     const fileTargets = discoverEndpointTargets({ env: { NEXTSHELL_MCP_ENDPOINT: file } });
-    expect(fileTargets[0]).toMatchObject({ transport: "tcp", port: 7900 });
+    expect(fileTargets[0]).toMatchObject({ transport: "socket", socketPath });
   });
 
   it("ignores an override pointing at an unreadable file", () => {

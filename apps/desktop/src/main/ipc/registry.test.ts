@@ -19,7 +19,6 @@ const expectedEventChannelNames = [
   "DebugLogEvent",
   "TerminalNotificationAction",
   "SecurityDeviceKeyNoticeEvent",
-  "AgentPromptRequest",
   "AgentActivityEvent",
   "AgentSessionControlEvent",
   "AgentSessionFocusEvent"

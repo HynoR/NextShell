@@ -22,75 +22,17 @@ export const normalizeTerminalInput = (
   return `\u001b[200~${normalized}\u001b[201~`;
 };
 
-export type CommandRiskLevel = "readonly" | "unknown" | "dangerous";
-
-export interface CommandRiskAssessment {
-  level: CommandRiskLevel;
-  reason: string;
-  hasSudo: boolean;
-}
-
 interface ParsedShellCommand {
   segments: string[][];
-  hasRedirection: boolean;
-  hasExpansion: boolean;
-  hasComplexSyntax: boolean;
-  invalidSyntax: boolean;
 }
-
-const READ_ONLY_COMMANDS = new Set([
-  "basename",
-  "blkid",
-  "cat",
-  "column",
-  "cut",
-  "date",
-  "df",
-  "dirname",
-  "dmesg",
-  "du",
-  "echo",
-  "free",
-  "getent",
-  "grep",
-  "head",
-  "hostname",
-  "id",
-  "iostat",
-  "journalctl",
-  "last",
-  "ls",
-  "lsblk",
-  "lsof",
-  "netstat",
-  "pgrep",
-  "pidof",
-  "printf",
-  "ps",
-  "pwd",
-  "readlink",
-  "realpath",
-  "sort",
-  "ss",
-  "stat",
-  "tail",
-  "tr",
-  "type",
-  "uname",
-  "uptime",
-  "vmstat",
-  "wc",
-  "which",
-  "who",
-  "whoami"
-]);
 
 const basenameOf = (value: string): string => value.slice(value.lastIndexOf("/") + 1);
 
 /**
- * Tokenizes only the small shell subset the classifier can prove safe. This is
- * deliberately not a shell parser: unsupported constructs are marked complex
- * and therefore can never be classified as read-only.
+ * Tokenizes just enough shell to recognize dangerous commands through quoting,
+ * path and wrapper (`sudo`/`env`/`busybox`/`sh -c`) disguises. This is
+ * deliberately not a shell parser and proves nothing about safety: it only
+ * ever answers "does this match the preset dangerous list".
  */
 const parseShellCommand = (command: string): ParsedShellCommand => {
   const segments: string[][] = [];
@@ -99,9 +41,6 @@ const parseShellCommand = (command: string): ParsedShellCommand => {
   let tokenStarted = false;
   let quote: "'" | '"' | null = null;
   let escaped = false;
-  let hasRedirection = false;
-  let hasExpansion = false;
-  let hasComplexSyntax = false;
 
   const finishToken = (): void => {
     if (!tokenStarted) return;
@@ -134,8 +73,6 @@ const parseShellCommand = (command: string): ParsedShellCommand => {
       if (char === quote) {
         quote = null;
       } else {
-        if (char === "$" && quote === '"') hasExpansion = true;
-        if (char === "`" && quote === '"') hasExpansion = true;
         token += char;
         tokenStarted = true;
       }
@@ -146,19 +83,11 @@ const parseShellCommand = (command: string): ParsedShellCommand => {
       tokenStarted = true;
       continue;
     }
-    if (char === "$" || char === "`") {
-      hasExpansion = true;
-      token += char;
-      tokenStarted = true;
-      continue;
-    }
     if (/\s/u.test(char)) {
-      if (char === "\n" || char === "\r") hasComplexSyntax = true;
       finishToken();
       continue;
     }
     if (char === ">" || char === "<") {
-      hasRedirection = true;
       finishToken();
       continue;
     }
@@ -171,34 +100,21 @@ const parseShellCommand = (command: string): ParsedShellCommand => {
       if (command[index + 1] === "&") {
         finishSegment();
         index += 1;
-      } else {
-        hasComplexSyntax = true;
       }
       continue;
-    }
-    if (char === "(" || char === ")" || char === "{" || char === "}" || char === "!") {
-      hasComplexSyntax = true;
     }
     token += char;
     tokenStarted = true;
   }
 
   finishSegment();
-  return {
-    segments,
-    hasRedirection,
-    hasExpansion,
-    hasComplexSyntax,
-    invalidSyntax: quote !== null || escaped
-  };
+  return { segments };
 };
 
-const commandTokens = (segment: string[]): { executable?: string; args: string[]; hasSudo: boolean } => {
+const commandTokens = (segment: string[]): { executable?: string; args: string[] } => {
   let index = 0;
-  let hasSudo = false;
 
   if (basenameOf(segment[index] ?? "") === "sudo") {
-    hasSudo = true;
     index += 1;
     while (index < segment.length) {
       const option = segment[index] ?? "";
@@ -217,8 +133,7 @@ const commandTokens = (segment: string[]): { executable?: string; args: string[]
   const executable = segment[index];
   return {
     executable: executable ? basenameOf(executable).toLowerCase() : undefined,
-    args: segment.slice(index + 1),
-    hasSudo
+    args: segment.slice(index + 1)
   };
 };
 
@@ -352,99 +267,11 @@ const dangerousReason = (
   return null;
 };
 
-const safeSpecialCommand = (executable: string, args: string[]): boolean => {
-  if (executable === "sort") {
-    return !args.some((arg) => arg === "-o" || arg === "--output" || arg.startsWith("--output="));
-  }
-  if (executable === "journalctl") {
-    return !args.some((arg) =>
-      /^(?:--vacuum-|--rotate$|--flush$|--sync$|--relinquish-var$)/u.test(arg)
-    );
-  }
-  if (executable === "systemctl") {
-    const subcommand = args.find((arg) => !arg.startsWith("-"));
-    return (
-      subcommand === undefined ||
-      [
-        "cat",
-        "help",
-        "is-active",
-        "is-enabled",
-        "is-failed",
-        "list-dependencies",
-        "list-jobs",
-        "list-sockets",
-        "list-timers",
-        "list-unit-files",
-        "list-units",
-        "show",
-        "status"
-      ].includes(subcommand)
-    );
-  }
-  if (executable === "docker") {
-    const positional = args.filter((arg) => !arg.startsWith("-"));
-    const first = positional[0];
-    const second = positional[1];
-    if (["info", "inspect", "logs", "ps", "stats", "top", "version"].includes(first ?? "")) {
-      return true;
-    }
-    return (
-      ["container", "image", "network", "volume"].includes(first ?? "") &&
-      ["inspect", "ls"].includes(second ?? "")
-    );
-  }
-  return READ_ONLY_COMMANDS.has(executable);
-};
-
 /**
- * Conservatively classifies a remote shell command for the Agent gateway.
- * "readonly" means every command segment is proven safe; it never means that
- * an unrecognized or complex shell expression merely failed to match a denylist.
+ * The preset dangerous-command blacklist for the Agent gateway. Returns the
+ * human-readable reason when the command matches, `null` otherwise. There is
+ * no safe/unsafe classification here by design: anything not on the list is
+ * simply allowed through.
  */
-export const classifyCommandRisk = (command: string): CommandRiskAssessment => {
-  const parsed = parseShellCommand(command);
-  const resolvedSegments = parsed.segments.map(commandTokens);
-  const hasSudo = resolvedSegments.some((segment) => segment.hasSudo);
-  const dangerous = dangerousReason(command, parsed);
-  if (dangerous) return { level: "dangerous", reason: dangerous, hasSudo };
-
-  if (command.trim().length === 0) {
-    return { level: "unknown", reason: "The command is empty", hasSudo };
-  }
-  if (parsed.invalidSyntax) {
-    return { level: "unknown", reason: "The shell syntax is incomplete", hasSudo };
-  }
-  if (parsed.hasRedirection) {
-    return { level: "unknown", reason: "Shell redirection is not considered read-only", hasSudo };
-  }
-  if (parsed.hasExpansion) {
-    return {
-      level: "unknown",
-      reason: "Shell expansion or command substitution is not considered read-only",
-      hasSudo
-    };
-  }
-  if (parsed.hasComplexSyntax || parsed.segments.length === 0) {
-    return { level: "unknown", reason: "Complex shell syntax is not considered read-only", hasSudo };
-  }
-
-  for (const segment of resolvedSegments) {
-    if (!segment.executable) {
-      return { level: "unknown", reason: "A command segment is empty", hasSudo };
-    }
-    if (!safeSpecialCommand(segment.executable, segment.args)) {
-      return {
-        level: "unknown",
-        reason: `Command segment is not in the read-only allowlist: ${segment.executable}`,
-        hasSudo
-      };
-    }
-  }
-
-  return {
-    level: "readonly",
-    reason: "Every command segment is in the read-only allowlist",
-    hasSudo
-  };
-};
+export const matchDangerousCommand = (command: string): string | null =>
+  dangerousReason(command, parseShellCommand(command));

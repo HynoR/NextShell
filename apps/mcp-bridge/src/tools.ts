@@ -37,23 +37,9 @@ const targetSchema = (extra: Record<string, unknown> = {}): Record<string, unkno
 export const STATIC_TOOLS: ToolDescriptor[] = [
   BRIDGE_STATUS_TOOL_DESCRIPTOR,
   {
-    name: "host_list",
-    title: "列出主机",
-    description: "列出已授权 Agent 访问的 NextShell 主机摘要（不含任何凭据字段）。",
-    inputSchema: emptySchema(),
-    annotations: { readOnlyHint: true }
-  },
-  {
-    name: "host_describe",
-    title: "查看主机",
-    description: "查看一台已授权主机、活动会话与监控摘要。",
-    inputSchema: targetSchema(),
-    annotations: { readOnlyHint: true }
-  },
-  {
     name: "session_list",
     title: "列出会话",
-    description: "列出已授权主机的活动会话与 OSC 跟踪的 cwd。",
+    description: "列出用户在 NextShell 里已打开的终端标签页（会话 id、连接名、host、状态与 cwd）。",
     inputSchema: emptySchema(),
     annotations: { readOnlyHint: true }
   },
@@ -77,125 +63,52 @@ export const STATIC_TOOLS: ToolDescriptor[] = [
     annotations: { readOnlyHint: true }
   },
   {
-    name: "file_list",
-    title: "列出远端目录",
-    inputSchema: targetSchema({ path: { type: "string" } }),
-    annotations: { readOnlyHint: true }
-  },
-  {
-    name: "file_stat",
-    title: "查看远端文件属性",
-    inputSchema: targetSchema({ path: { type: "string" } }),
-    annotations: { readOnlyHint: true }
-  },
-  {
-    name: "file_read",
-    title: "读取远端文件",
-    inputSchema: targetSchema({ path: { type: "string" } }),
-    annotations: { readOnlyHint: true }
-  },
-  {
-    name: "monitor_snapshot",
-    title: "读取监控快照",
-    inputSchema: targetSchema(),
-    annotations: { readOnlyHint: true }
-  },
-  {
     name: "command_search",
     title: "检索命令库",
+    description: "检索用户保存的快速命令（本地 + workspace）。",
     inputSchema: emptySchema(),
     annotations: { readOnlyHint: true }
   },
   {
-    name: "exec",
-    title: "执行远程命令",
-    description: "在已授权主机上执行一条命令并返回输出。",
+    name: "command_save",
+    title: "保存快速命令",
+    description: "保存或更新一条快速命令（name/group/command/appendCr）。",
     inputSchema: {
       type: "object",
       properties: {
-        target: { type: "string", description: "主机或活动会话 id" },
+        id: { type: "string" },
+        workspaceId: { type: "string" },
+        name: { type: "string" },
+        group: { type: "string" },
+        command: { type: "string" },
+        appendCr: { type: "boolean" }
+      },
+      required: ["name", "command"]
+    },
+    annotations: { idempotentHint: true }
+  },
+  {
+    name: "exec",
+    title: "执行远程命令",
+    description:
+      "在某个已打开会话的既有连接上执行一条命令并返回输出；命中黑名单直接报错。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target: { type: "string", description: "session_list 返回的活动会话 id" },
         command: { type: "string" },
         cwd: { type: "string" },
         timeoutSec: { type: "integer", minimum: 1, maximum: 3600 }
       },
       required: ["target", "command"]
-    }
-  },
-  {
-    name: "file_write",
-    title: "写入远端文件",
-    description: "写入一个小文件（1MB 以内），已存在则覆盖。大文件或整个目录请用 transfer_upload。",
-    inputSchema: targetSchema({
-      path: { type: "string" },
-      content: { type: "string" },
-      encoding: { type: "string", enum: ["utf-8", "base64"] }
-    })
-  },
-  {
-    name: "file_mkdir",
-    title: "创建远端目录",
-    inputSchema: targetSchema({ path: { type: "string" } }),
-    annotations: { idempotentHint: true }
-  },
-  {
-    name: "file_rename",
-    title: "重命名远端路径",
-    inputSchema: targetSchema({ from: { type: "string" }, to: { type: "string" } })
-  },
-  {
-    name: "file_delete",
-    title: "删除远端路径",
-    description: "删除远端路径。目录会被递归删除且不可恢复，始终需要用户在 NextShell 内确认。",
-    inputSchema: targetSchema({
-      path: { type: "string" },
-      type: { type: "string", enum: ["file", "directory", "link"] }
-    }),
+    },
     annotations: { destructiveHint: true }
-  },
-  {
-    name: "transfer_upload",
-    title: "上传到远端",
-    description:
-      "把本机文件或目录传到主机（目录自动打包为 tar.gz 并在远端解包）。立即返回 taskId，用 transfer_status 轮询。",
-    inputSchema: targetSchema({
-      localPath: { type: "string" },
-      remotePath: { type: "string" }
-    })
-  },
-  {
-    name: "transfer_download",
-    title: "下载到本机",
-    description: "把远端文件下载到本机。立即返回 taskId，用 transfer_status 轮询。",
-    inputSchema: targetSchema({
-      remotePath: { type: "string" },
-      localPath: { type: "string" }
-    })
-  },
-  {
-    name: "transfer_status",
-    title: "查询传输进度",
-    inputSchema: {
-      type: "object",
-      properties: { taskId: { type: "string" } },
-      required: ["taskId"]
-    },
-    annotations: { readOnlyHint: true }
-  },
-  {
-    name: "transfer_cancel",
-    title: "取消传输",
-    inputSchema: {
-      type: "object",
-      properties: { taskId: { type: "string" } },
-      required: ["taskId"]
-    },
-    annotations: { idempotentHint: true }
   },
   {
     name: "session_send_keys",
     title: "向会话注入输入",
     description:
-      "像用户一样往活动会话的 PTY 里打字。除非状态就活在那个 shell 里（TUI、交互式提示、已进入的 venv 或容器），否则优先用 exec。始终需要用户确认；用户正在该会话里打字时会被拒绝。",
+      "像用户一样往活动会话的 PTY 里打字。除非状态就活在那个 shell 里（TUI、交互式提示、已进入的 venv 或容器），否则优先用 exec。检测到用户在该标签页手动操作时报 human_intervention。",
     inputSchema: targetSchema({
       text: { type: "string" },
       submit: { type: "boolean" },
@@ -214,42 +127,11 @@ export const STATIC_TOOLS: ToolDescriptor[] = [
     annotations: { destructiveHint: true }
   },
   {
-    name: "session_open",
-    title: "打开终端标签",
-    description: "在主机上打开一个真实可见的终端标签，并标记为 Agent 控制中。",
-    inputSchema: targetSchema()
-  },
-  {
-    name: "session_close",
-    title: "关闭终端标签",
-    inputSchema: targetSchema(),
-    annotations: { destructiveHint: true }
-  },
-  {
     name: "session_focus",
     title: "聚焦终端标签",
     description: "把 NextShell 窗口置顶并切到该会话的标签，用于把事情交回给人。",
     inputSchema: targetSchema(),
     annotations: { idempotentHint: true }
-  },
-  {
-    name: "ask_user",
-    title: "询问用户",
-    description: "在 NextShell 内弹出确认、选择或文本问询。",
-    inputSchema: {
-      type: "object",
-      properties: { question: { type: "string" }, choices: { type: "array", items: { type: "string" } } },
-      required: ["question"]
-    }
-  },
-  {
-    name: "notify_user",
-    title: "通知用户",
-    inputSchema: {
-      type: "object",
-      properties: { title: { type: "string" }, message: { type: "string" } },
-      required: ["title", "message"]
-    }
   }
 ];
 

@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AgentActivityEvent,
-  AgentPromptRequest,
   AgentSessionControlEvent,
   AgentSessionFocusEvent,
   CloudSyncManagerStatusEvent,
@@ -236,20 +235,11 @@ const api: NextShellApi = {
     status: () => invoke(IPCChannel.AgentStatus, {}),
     enable: () => invoke(IPCChannel.AgentEnable, {}),
     disable: () => invoke(IPCChannel.AgentDisable, {}),
-    rotateToken: () => invoke(IPCChannel.AgentRotateToken, {}),
     copyClientConfig: (payload) =>
       invoke(IPCChannel.AgentCopyClientConfig, payload ?? { client: "claude-code" }),
     installCursor: () => invoke(IPCChannel.AgentInstallCursor, {}),
     installClaudeDesktop: () => invoke(IPCChannel.AgentInstallClaudeDesktop, {}),
     exportMcpb: () => invoke(IPCChannel.AgentExportMcpb, {}),
-    respondPrompt: (payload) => invoke(IPCChannel.AgentPromptResponse, payload),
-    onPrompt: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: AgentPromptRequest) => {
-        listener(payload);
-      };
-      ipcRenderer.on(IPCChannel.AgentPromptRequest, handler);
-      return () => ipcRenderer.off(IPCChannel.AgentPromptRequest, handler);
-    },
     setHalted: (payload) => invoke(IPCChannel.AgentSetHalted, payload),
     onActivity: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: AgentActivityEvent) => {

@@ -64,9 +64,6 @@ import type {
   AgentDisableInput,
   AgentEnableInput,
   AgentEndpointStatus,
-  AgentPromptRequest,
-  AgentPromptResponse,
-  AgentRotateTokenInput,
   AgentSessionControlEvent,
   AgentSessionFocusEvent,
   AgentSetHaltedInput,
@@ -305,12 +302,10 @@ export interface NextShellApi {
     onApplied: (listener: (event: { workspaceId: string }) => void) => SessionEventUnsubscribe;
   };
   agent: {
-    /** 端点状态：是否启用、socket 路径、TCP 端口、token、已连客户端、endpoint.json 路径 */
+    /** 端点状态：是否启用、socket 路径、已连客户端、endpoint.json 路径 */
     status: (payload?: AgentStatusInput) => Promise<AgentEndpointStatus>;
     enable: (payload?: AgentEnableInput) => Promise<AgentEndpointStatus>;
     disable: (payload?: AgentDisableInput) => Promise<AgentEndpointStatus>;
-    /** 轮换 TCP Bearer token，并断开所有已连客户端 */
-    rotateToken: (payload?: AgentRotateTokenInput) => Promise<AgentEndpointStatus>;
     /** 把客户端接入配置（`claude mcp add` 命令与 JSON 片段）写入剪贴板 */
     copyClientConfig: (payload?: AgentCopyClientConfigInput) => Promise<AgentClientConfigResult>;
     /** 打开 Cursor 一键安装 deeplink（`cursor://…/mcp/install`） */
@@ -321,11 +316,8 @@ export interface NextShellApi {
     ) => Promise<AgentInstallClaudeDesktopResult>;
     /** 导出 Claude Desktop 一键安装包（.mcpb）；弹保存对话框，取消时返回 canceled */
     exportMcpb: (payload?: AgentExportMcpbInput) => Promise<AgentExportMcpbResult>;
-    /** 回应主进程发起的确认、选择或文本问询。 */
-    respondPrompt: (payload: AgentPromptResponse) => Promise<{ ok: true }>;
-    /** 全局断闸：拉下后所有 Agent 工具调用立即被拒，并遗忘全部「本会话始终允许」。 */
+    /** 全局断闸：拉下后所有 Agent 工具调用立即被拒。 */
     setHalted: (payload: AgentSetHaltedInput) => Promise<AgentEndpointStatus>;
-    onPrompt: (listener: (event: AgentPromptRequest) => void) => SessionEventUnsubscribe;
     onActivity: (listener: (event: AgentActivityEvent) => void) => SessionEventUnsubscribe;
     /** 某个会话正被 / 不再被 Agent 驱动，用于标签徽标。 */
     onSessionControl: (
@@ -455,12 +447,10 @@ export interface IpcInvokeMethods {
   [IPCChannel.AgentStatus]: NextShellApi["agent"]["status"];
   [IPCChannel.AgentEnable]: NextShellApi["agent"]["enable"];
   [IPCChannel.AgentDisable]: NextShellApi["agent"]["disable"];
-  [IPCChannel.AgentRotateToken]: NextShellApi["agent"]["rotateToken"];
   [IPCChannel.AgentCopyClientConfig]: NextShellApi["agent"]["copyClientConfig"];
   [IPCChannel.AgentInstallCursor]: NextShellApi["agent"]["installCursor"];
   [IPCChannel.AgentInstallClaudeDesktop]: NextShellApi["agent"]["installClaudeDesktop"];
   [IPCChannel.AgentExportMcpb]: NextShellApi["agent"]["exportMcpb"];
-  [IPCChannel.AgentPromptResponse]: NextShellApi["agent"]["respondPrompt"];
   [IPCChannel.AgentSetHalted]: NextShellApi["agent"]["setHalted"];
   [IPCChannel.CloudSyncWorkspaceList]: NextShellApi["cloudSync"]["workspaceList"];
   [IPCChannel.CloudSyncWorkspaceAdd]: NextShellApi["cloudSync"]["workspaceAdd"];

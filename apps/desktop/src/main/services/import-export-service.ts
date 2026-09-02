@@ -503,10 +503,7 @@ export class ImportExportService {
       terminalEncoding: entry.terminalEncoding,
       backspaceMode: entry.backspaceMode,
       deleteMode: entry.deleteMode,
-      monitorSession: entry.monitorSession,
-      // Imported files carry no agent authorization: overwriting also replaces the auth
-      // material, so any previously granted access is revoked rather than inherited.
-      agentAccess: "off"
+      monitorSession: entry.monitorSession
     };
   }
 

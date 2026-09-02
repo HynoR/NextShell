@@ -4,8 +4,8 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   outputShape,
   READ_ONLY_ANNOTATIONS,
+  sessionIdInputDescription,
   sessionInfoSchema,
-  targetInputDescription,
   toCallToolResult,
   type AgentToolContext
 } from "./shared";
@@ -22,10 +22,8 @@ export const registerSessionTools = (server: McpServer, ctx: AgentToolContext): 
     {
       title: "列出会话",
       description:
-        "List the live terminal sessions on authorized hosts. Sessions on hosts the agent cannot access are omitted. cwd is the directory the shell last reported via OSC 7 and is trustworthy even for background tabs; it is null only when the session never reported one (no shell integration). Pass a session id as exec's target to inherit that cwd.",
-      inputSchema: {
-        target: z.string().optional().describe(targetInputDescription)
-      },
+        "List the terminal tabs the user currently has open in NextShell — the only sessions an agent may touch. Each entry carries the session id, connection name, host and status. cwd is the directory the shell last reported via OSC 7 and is trustworthy even for background tabs; it is null only when the session never reported one (no shell integration). Pass a session id as exec's target to inherit that cwd.",
+      inputSchema: {},
       outputSchema: outputShape(
         z.object({
           sessions: z.array(sessionInfoSchema),
@@ -34,8 +32,7 @@ export const registerSessionTools = (server: McpServer, ctx: AgentToolContext): 
       ),
       annotations: READ_ONLY_ANNOTATIONS
     },
-    async (args) =>
-      toCallToolResult(await ctx.gateway.listSessions(ctx.client, { target: args.target }))
+    async () => toCallToolResult(await ctx.gateway.listSessions(ctx.client))
   );
 
   server.registerTool(
@@ -43,9 +40,9 @@ export const registerSessionTools = (server: McpServer, ctx: AgentToolContext): 
     {
       title: "读取会话命令记录",
       description:
-        "Read OSC-tracked commands, exit codes and bounded raw output for one live authorized session. Sessions without shell integration report limited capability instead of guessed command text.",
+        "Read OSC-tracked commands, exit codes and bounded raw output for one live session. Sessions without shell integration report limited capability instead of guessed command text.",
       inputSchema: {
-        target: z.string().min(1).describe("Live session id returned by session_list"),
+        target: z.string().min(1).describe(sessionIdInputDescription),
         limit: z.number().int().min(1).max(200).optional(),
         stripAnsi: z.boolean().optional()
       },
@@ -76,9 +73,9 @@ export const registerSessionTools = (server: McpServer, ctx: AgentToolContext): 
     {
       title: "读取会话屏幕",
       description:
-        "Read the rendered screen of a live authorized session, including background tabs. This is a real terminal emulation, so a full-screen program (top, htop, vim, an interactive installer) comes back as the frame a human would see rather than a pile of cursor-addressing escapes. Use `screen` for the current viewport and `scrollback` to include what scrolled off; for command output with exit codes prefer session_history.",
+        "Read the rendered screen of a live session, including background tabs. This is a real terminal emulation, so a full-screen program (top, htop, vim, an interactive installer) comes back as the frame a human would see rather than a pile of cursor-addressing escapes. Use `screen` for the current viewport and `scrollback` to include what scrolled off; for command output with exit codes prefer session_history.",
       inputSchema: {
-        target: z.string().min(1).describe("Live session id returned by session_list"),
+        target: z.string().min(1).describe(sessionIdInputDescription),
         mode: z
           .enum(["screen", "scrollback"])
           .optional()

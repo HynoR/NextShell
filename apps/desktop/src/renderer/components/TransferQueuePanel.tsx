@@ -121,16 +121,6 @@ export const TransferQueuePanel = ({
                     <span className="transfer-task-name" title={taskLabel(task)}>
                       {taskLabel(task)}
                     </span>
-                    {task.origin === "agent" ? (
-                      <Tag
-                        color="purple"
-                        bordered={false}
-                        className="transfer-task-tag"
-                        title="由 Agent 发起，可在此取消"
-                      >
-                        Agent
-                      </Tag>
-                    ) : null}
                     <Tag color={tag.color} bordered={false} className="transfer-task-tag">
                       {tag.text}
                     </Tag>

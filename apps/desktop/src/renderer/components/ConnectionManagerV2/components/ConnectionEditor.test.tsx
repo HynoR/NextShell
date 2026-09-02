@@ -6,7 +6,7 @@ describe("resolveEditorErrorSection", () => {
     expect(resolveEditorErrorSection([{ name: ["keepAliveIntervalSec"] }])).toBe("network");
     expect(resolveEditorErrorSection([{ name: ["hostFingerprint"] }])).toBe("security");
     expect(resolveEditorErrorSection([{ name: ["deleteMode"] }])).toBe("terminal");
-    expect(resolveEditorErrorSection([{ name: ["agentAccess"] }])).toBe("meta");
+    expect(resolveEditorErrorSection([{ name: ["tags"] }])).toBe("meta");
   });
 
   test("只看第一个出错字段——展开一个区块再滚过去，多开只会晃眼", () => {

@@ -1,49 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyCommandRisk } from "./index";
+import { matchDangerousCommand } from "./index";
 
-describe("classifyCommandRisk", () => {
-  it.each([
-    "du -sh -- * | sort -h | tail -20",
-    "systemctl --failed",
-    "systemctl status sshd",
-    "docker ps --format '{{.Names}}'",
-    "journalctl -u sshd -n 100",
-    "ps aux | grep node | head -20"
-  ])("accepts a proven read-only command: %s", (command) => {
-    expect(classifyCommandRisk(command)).toMatchObject({ level: "readonly", hasSudo: false });
-  });
-
-  it("reports sudo independently from the risk tier", () => {
-    expect(classifyCommandRisk("sudo -n ls -la /var/log")).toMatchObject({
-      level: "readonly",
-      hasSudo: true
-    });
-    expect(classifyCommandRisk("sudo -u root touch /tmp/agent-test")).toMatchObject({
-      level: "unknown",
-      hasSudo: true
-    });
-  });
-
-  it.each([
-    ["", "empty"],
-    ["touch /tmp/agent-test", "not in the read-only allowlist"],
-    ["ls -la > /tmp/list", "redirection"],
-    ["cat < /etc/hosts", "redirection"],
-    ["echo $(touch /tmp/agent-test)", "substitution"],
-    ["echo $HOME", "expansion"],
-    ["ps aux | tee /tmp/processes", "not in the read-only allowlist"],
-    ["ls && touch /tmp/agent-test", "not in the read-only allowlist"],
-    ["sh -c 'ls -la'", "not in the read-only allowlist"],
-    ["sort -o /tmp/sorted", "not in the read-only allowlist"],
-    ["journalctl --vacuum-time=1d", "not in the read-only allowlist"],
-    ["echo 'unterminated", "incomplete"]
-  ])("keeps an unproven command unknown: %s", (command, reasonFragment) => {
-    const result = classifyCommandRisk(command);
-    expect(result.level).toBe("unknown");
-    expect(result.reason.toLowerCase()).toContain(reasonFragment.toLowerCase());
-  });
-
+describe("matchDangerousCommand", () => {
   it.each([
     "rm -rf /",
     "/bin/rm --recursive --force -- /",
@@ -56,7 +15,7 @@ describe("classifyCommandRisk", () => {
     "chmod -R 777 /",
     "kill -9 -1"
   ])("recognizes a dangerous command: %s", (command) => {
-    expect(classifyCommandRisk(command).level).toBe("dangerous");
+    expect(matchDangerousCommand(command)).not.toBeNull();
   });
 
   it.each([
@@ -71,11 +30,19 @@ describe("classifyCommandRisk", () => {
     "busybox rm -rf /",
     "sh -c 'rm -rf /'"
   ])("does not allow a simple quoting or path bypass: %s", (command) => {
-    const result = classifyCommandRisk(command);
-    expect(result.level).toBe("dangerous");
+    expect(matchDangerousCommand(command)).not.toBeNull();
   });
 
-  it("does not treat harmless /dev/null output as device destruction", () => {
-    expect(classifyCommandRisk("grep error /var/log/app.log 2>/dev/null").level).toBe("unknown");
+  it.each([
+    "ls -la /var/log",
+    "du -sh -- * | sort -h | tail -20",
+    "systemctl restart sshd",
+    "touch /tmp/agent-test",
+    "grep error /var/log/app.log 2>/dev/null",
+    "rm -rf /tmp/agent-scratch",
+    "dd if=./disk.img of=./copy.img",
+    "kill -9 4242"
+  ])("lets an unlisted command through: %s", (command) => {
+    expect(matchDangerousCommand(command)).toBeNull();
   });
 });

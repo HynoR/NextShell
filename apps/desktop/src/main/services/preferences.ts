@@ -119,11 +119,11 @@ export const mergePreferences = (
     return value as number;
   };
 
-  const normalizeLocalRoots = (value: string[] | undefined, fallback: string[]): string[] => {
+  const normalizeStringList = (value: string[] | undefined, fallback: string[]): string[] => {
     if (!Array.isArray(value)) {
       return fallback;
     }
-    return value.map((root) => root.trim()).filter((root) => root.length > 0);
+    return value.map((entry) => entry.trim()).filter((entry) => entry.length > 0);
   };
 
   return {
@@ -232,31 +232,13 @@ export const mergePreferences = (
     },
     agent: {
       enabled: patch.agent?.enabled !== undefined ? patch.agent.enabled : current.agent.enabled,
-      socketEnabled:
-        patch.agent?.socketEnabled !== undefined
-          ? patch.agent.socketEnabled
-          : current.agent.socketEnabled,
-      tcpEnabled:
-        patch.agent?.tcpEnabled !== undefined ? patch.agent.tcpEnabled : current.agent.tcpEnabled,
-      tcpPort: normalizeBoundedInt(patch.agent?.tcpPort, current.agent.tcpPort, 0, 65535),
-      confirmWrites:
-        patch.agent?.confirmWrites !== undefined
-          ? patch.agent.confirmWrites
-          : current.agent.confirmWrites,
-      confirmUnknownCommands:
-        patch.agent?.confirmUnknownCommands !== undefined
-          ? patch.agent.confirmUnknownCommands
-          : current.agent.confirmUnknownCommands,
-      allowedLocalRoots: normalizeLocalRoots(
-        patch.agent?.allowedLocalRoots,
-        current.agent.allowedLocalRoots
-      ),
       execTimeoutSec: normalizeBoundedInt(
         patch.agent?.execTimeoutSec,
         current.agent.execTimeoutSec,
         1,
         3600
-      )
+      ),
+      blacklist: normalizeStringList(patch.agent?.blacklist, current.agent.blacklist)
     }
   };
 };

@@ -17,7 +17,7 @@ import type { AgentClientKind, AgentEndpointStatus } from "@nextshell/shared";
 import { useAgentActivityStore } from "../../store/useAgentActivityStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { formatErrorMessage } from "../../utils/errorMessage";
-import { SettingsCard, SettingsRow, SettingsSwitchRow } from "./shared-components";
+import { SettingsCard, SettingsRow } from "./shared-components";
 
 const CLIENT_OPTIONS: Array<{ label: string; value: AgentClientKind }> = [
   { label: "Claude Code", value: "claude-code" },
@@ -57,12 +57,11 @@ export const AgentSection = () => {
   const [status, setStatus] = useState<AgentEndpointStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
-  const [rotating, setRotating] = useState(false);
-  const [tokenVisible, setTokenVisible] = useState(false);
   const [clientKind, setClientKind] = useState<AgentClientKind>("claude-code");
   const [copyingConfig, setCopyingConfig] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [configResult, setConfigResult] = useState<{ command: string; json: string } | null>(null);
+  const [blacklistDraft, setBlacklistDraft] = useState("");
   const setPanelEnabled = useAgentActivityStore((s) => s.setEnabled);
 
   // The sidebar's Agent panel hides itself while agent access is off; keep its
@@ -109,7 +108,6 @@ export const AgentSection = () => {
         ? await window.nextshell.agent.enable()
         : await window.nextshell.agent.disable();
       applyStatus(result);
-      setTokenVisible(false);
       if (checked && result.lastError) {
         message.warning(`Agent 接入已开启，但监听未能建立：${result.lastError}`);
       } else {
@@ -122,20 +120,6 @@ export const AgentSection = () => {
     }
   };
 
-  const handleRotateToken = async (): Promise<void> => {
-    setRotating(true);
-    try {
-      const result = await window.nextshell.agent.rotateToken();
-      applyStatus(result);
-      setTokenVisible(false);
-      message.success("令牌已轮换，所有已连接客户端已断开");
-    } catch (error) {
-      message.error(`轮换令牌失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setRotating(false);
-    }
-  };
-
   const handleCopyText = async (text: string, label: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(text);
@@ -145,20 +129,15 @@ export const AgentSection = () => {
     }
   };
 
-  const handleAddAllowedRoot = async (): Promise<void> => {
-    try {
-      const result = await window.nextshell.dialog.openDirectory({
-        title: "选择 Agent 可访问的本地根目录"
-      });
-      if (result.canceled || !result.filePath) return;
-      if (agentPrefs.allowedLocalRoots.includes(result.filePath)) {
-        message.info("该目录已在允许列表中");
-        return;
-      }
-      save({ agent: { allowedLocalRoots: [...agentPrefs.allowedLocalRoots, result.filePath] } });
-    } catch (error) {
-      message.error(`选择目录失败：${formatErrorMessage(error, "请稍后重试")}`);
+  const handleAddBlacklistEntry = (): void => {
+    const entry = blacklistDraft.trim();
+    if (!entry) return;
+    if (agentPrefs.blacklist.includes(entry)) {
+      message.info("该条目已在黑名单中");
+      return;
     }
+    save({ agent: { blacklist: [...agentPrefs.blacklist, entry] } });
+    setBlacklistDraft("");
   };
 
   const handleCopyClientConfig = async (): Promise<void> => {
@@ -215,19 +194,19 @@ export const AgentSection = () => {
   const enabled = status?.enabled ?? false;
   const listening = status?.listening ?? false;
   const runningState = formatRunningState(enabled, listening, status?.halted ?? false);
-  const hasToken = Boolean(status?.token);
 
   return (
     <>
       <SettingsCard
         title="Agent 接入（MCP）"
-        description="允许 Claude Code 等 AI Agent 通过 MCP 协议连接本机，纳管你逐台授权的主机"
+        description="允许 Claude Code 等 AI Agent 通过 MCP 协议连接本机，接管你已经打开的服务器标签页"
       >
         <div className="stg-switch-row">
           <div className="stg-switch-label">
             <span>启用 Agent 接入</span>
             <span className="stg-row-hint">
-              开启后本机会监听一个仅当前系统用户可访问的本地端点，供 MCP 客户端连接。默认关闭，关闭时不会监听任何端点。
+              开启后本机会监听一个仅当前系统用户可访问的 Unix Socket（0600），供 MCP
+              客户端连接。默认关闭，关闭时不会监听任何端点。
             </span>
           </div>
           <Switch
@@ -260,11 +239,6 @@ export const AgentSection = () => {
             {status?.socketPath ?? "未监听"}
           </Typography.Text>
         </SettingsRow>
-        <SettingsRow label="TCP 端口">
-          <Typography.Text style={{ fontSize: 12 }} type={status?.tcpPort ? undefined : "secondary"}>
-            {status?.tcpPort ?? "未监听"}
-          </Typography.Text>
-        </SettingsRow>
         <SettingsRow label="已连接客户端">
           <Typography.Text style={{ fontSize: 12 }}>
             {formatClientCount(status?.clients.length ?? 0)}
@@ -277,79 +251,6 @@ export const AgentSection = () => {
           >
             {status?.endpointFilePath ?? "-"}
           </Typography.Text>
-        </SettingsRow>
-      </SettingsCard>
-
-      <SettingsCard
-        title="传输方式"
-        description="Unix Socket 为默认推荐方式；TCP 仅用于无法访问本地 Socket 的场景（如 WSL），安全性弱于 Socket"
-      >
-        <SettingsSwitchRow
-          label="Unix Socket（推荐）"
-          hint="通过 0600 文件权限授权，仅当前系统用户可访问，不签发令牌"
-          checked={agentPrefs.socketEnabled}
-          disabled={prefsLoading || !enabled}
-          onChange={(v) => save({ agent: { socketEnabled: v } })}
-        />
-        <SettingsSwitchRow
-          label="额外监听 127.0.0.1 TCP"
-          hint="用于 WSL 等无法访问 Unix Socket 的客户端，需搭配令牌使用，默认关闭"
-          checked={agentPrefs.tcpEnabled}
-          disabled={prefsLoading || !enabled}
-          onChange={(v) => save({ agent: { tcpEnabled: v } })}
-        />
-        {agentPrefs.tcpEnabled && (
-          <SettingsRow label="TCP 端口" hint="0 表示由系统自动分配">
-            <InputNumber
-              style={{ width: "100%" }}
-              min={0}
-              max={65535}
-              precision={0}
-              value={agentPrefs.tcpPort}
-              disabled={prefsLoading || !enabled}
-              onChange={(v) => {
-                if (typeof v === "number" && Number.isInteger(v)) {
-                  save({ agent: { tcpPort: v } });
-                }
-              }}
-            />
-          </SettingsRow>
-        )}
-        <div className="stg-note">修改传输方式后需重新启用 Agent 接入才会生效。</div>
-      </SettingsCard>
-
-      <SettingsCard title="访问令牌" description="仅 TCP 监听时使用；Socket 连接依赖文件权限，不签发令牌">
-        <SettingsRow label="当前令牌">
-          <div className="flex items-center gap-2">
-            <Input.Password
-              style={{ maxWidth: 360 }}
-              value={status?.token ?? ""}
-              visibilityToggle={{ visible: tokenVisible, onVisibleChange: setTokenVisible }}
-              readOnly
-              disabled={!hasToken}
-              placeholder={enabled && agentPrefs.tcpEnabled ? "启用 TCP 监听后生成" : "未启用 TCP 监听"}
-            />
-            <Button
-              size="small"
-              disabled={!hasToken}
-              onClick={() => hasToken && void handleCopyText(status!.token!, "令牌")}
-            >
-              复制
-            </Button>
-            <Popconfirm
-              title="轮换令牌？"
-              description="轮换后旧令牌立即失效，所有已连接的客户端都会被断开。"
-              onConfirm={() => void handleRotateToken()}
-              okText="轮换"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              disabled={!hasToken}
-            >
-              <Button size="small" danger loading={rotating} disabled={!hasToken}>
-                轮换
-              </Button>
-            </Popconfirm>
-          </div>
         </SettingsRow>
       </SettingsCard>
 
@@ -428,24 +329,51 @@ export const AgentSection = () => {
       </SettingsCard>
 
       <SettingsCard
-        title="写操作与命令确认"
-        description="Agent 执行写操作或不在只读白名单里的命令时，是否在应用内弹窗确认"
+        title="命令黑名单"
+        description="命中黑名单的命令会被 Agent 工具直接拒绝并附原因，没有“本次放行”。内置清单已覆盖 rm -rf /、mkfs、dd 写设备、shutdown/reboot、fork 炸弹等显而易见的危险命令，这里用于追加你自己的条目"
       >
-        <SettingsSwitchRow
-          label="写操作需要确认"
-          hint="文件写入 / 创建目录 / 重命名。关闭后这些操作不再弹窗；删除与文件传输始终确认，不受此项影响"
-          checked={agentPrefs.confirmWrites}
-          disabled={prefsLoading}
-          onChange={(v) => save({ agent: { confirmWrites: v } })}
-        />
-        <SettingsSwitchRow
-          label="未知命令需要确认"
-          hint="命令不在只读白名单也不在危险黑名单时弹窗。危险命令与 sudo 始终确认，不受此项影响"
-          checked={agentPrefs.confirmUnknownCommands}
-          disabled={prefsLoading}
-          onChange={(v) => save({ agent: { confirmUnknownCommands: v } })}
-        />
-        <SettingsRow label="命令超时（秒）" hint="Agent 发起的单条命令最长执行时间，上限 120 秒">
+        <SettingsRow
+          label="自定义黑名单"
+          hint="每条按子串匹配；若本身是合法正则，则同时按正则匹配"
+        >
+          <div className="flex flex-col gap-2">
+            {agentPrefs.blacklist.length > 0 ? (
+              <Space size={[4, 4]} wrap>
+                {agentPrefs.blacklist.map((entry) => (
+                  <Tag
+                    key={entry}
+                    closable
+                    onClose={() =>
+                      save({
+                        agent: { blacklist: agentPrefs.blacklist.filter((item) => item !== entry) }
+                      })
+                    }
+                  >
+                    {entry}
+                  </Tag>
+                ))}
+              </Space>
+            ) : (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                未追加自定义条目
+              </Typography.Text>
+            )}
+            <Space.Compact style={{ maxWidth: 480 }}>
+              <Input
+                size="small"
+                placeholder="例如：kubectl delete 或 ^rm\s"
+                value={blacklistDraft}
+                disabled={prefsLoading}
+                onChange={(event) => setBlacklistDraft(event.target.value)}
+                onPressEnter={handleAddBlacklistEntry}
+              />
+              <Button size="small" disabled={prefsLoading} onClick={handleAddBlacklistEntry}>
+                添加
+              </Button>
+            </Space.Compact>
+          </div>
+        </SettingsRow>
+        <SettingsRow label="命令超时（秒）" hint="Agent 发起的单条命令最长执行时间">
           <InputNumber
             style={{ width: "100%" }}
             min={1}
@@ -462,76 +390,14 @@ export const AgentSection = () => {
         </SettingsRow>
       </SettingsCard>
 
-      <SettingsCard
-        title="本地路径策略"
-        description="限制 Agent 在本机可读写的范围。文件传输是本机文件外泄与被篡改的唯一通道，这里是它的闸门"
-      >
-        <SettingsRow
-          label="允许的本地根目录"
-          hint="留空表示不限制目录（拒绝清单仍然生效）。设置后，Agent 的上传与下载只能落在这些目录内"
-        >
-          <div className="flex flex-col gap-2">
-            {agentPrefs.allowedLocalRoots.length > 0 ? (
-              <Space size={[4, 4]} wrap>
-                {agentPrefs.allowedLocalRoots.map((root) => (
-                  <Tag
-                    key={root}
-                    closable
-                    onClose={() =>
-                      save({
-                        agent: {
-                          allowedLocalRoots: agentPrefs.allowedLocalRoots.filter(
-                            (item) => item !== root
-                          )
-                        }
-                      })
-                    }
-                  >
-                    {root}
-                  </Tag>
-                ))}
-              </Space>
-            ) : (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                未限制目录
-              </Typography.Text>
-            )}
-            <Space>
-              <Button
-                size="small"
-                disabled={prefsLoading}
-                onClick={() => void handleAddAllowedRoot()}
-              >
-                添加目录…
-              </Button>
-              {agentPrefs.allowedLocalRoots.length > 0 && (
-                <Button
-                  size="small"
-                  type="text"
-                  danger
-                  disabled={prefsLoading}
-                  onClick={() => save({ agent: { allowedLocalRoots: [] } })}
-                >
-                  清空
-                </Button>
-              )}
-            </Space>
-          </div>
-        </SettingsRow>
-        <div className="stg-note">
-          无论是否设置允许根，以下始终拒绝：~/.ssh、~/.aws、~/.gnupg、~/.kube
-          等凭据目录，浏览器配置目录，NextShell 自身的数据目录，以及 .env / id_* / *.pem / *.key
-          等凭据文件模式。下载还会额外拒绝写入 ~/.zshrc、~/.bashrc、自启动目录与系统目录。
-        </div>
-      </SettingsCard>
-
       <SettingsCard title="安全说明">
         <div className="stg-note">
-          主机默认对 Agent 不可见。需要在「连接管理」中逐台编辑连接，在「属性」标签页把「Agent
-          授权」改为「只读」或「完全」并保存后，该主机才会出现在 Agent 可见的主机列表中。
+          Agent 只能接管你已经在 NextShell 里打开的标签页，不能自行连接新服务器；密码、私钥、
+          密钥口令等凭据永远不会通过 MCP 暴露给 Agent。
         </div>
         <div className="stg-note">
-          Agent 无法获取明文密码、私钥、密钥口令等凭据；上方令牌仅用于建立 MCP 连接本身，不是主机凭据。
+          当 Agent 正在操作某个标签页时你在其中敲了键盘，它的下一次注入或命令会直接报错并停手；
+          命中黑名单的命令会被直接拒绝。关闭总开关后端点立即停监听，活动面板里的断闸可以一键掐断所有调用。
         </div>
       </SettingsCard>
     </>

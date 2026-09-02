@@ -3,12 +3,9 @@ import type { SftpTransferStatusEvent } from "@nextshell/shared";
 
 export type TransferDirection = "upload" | "download";
 export type TransferTaskStatus = "queued" | "running" | "success" | "failed" | "cancelled";
-export type TransferOrigin = "user" | "agent";
 
 export interface TransferTask {
   id: string;
-  /** Agent-initiated tasks are badged in the queue so they are never mistaken for the user's own. */
-  origin: TransferOrigin;
   direction: TransferDirection;
   connectionId: string;
   localPath: string;
@@ -28,7 +25,6 @@ export interface TransferTask {
 
 interface EnqueueTransferInput {
   id?: string;
-  origin?: TransferOrigin;
   direction: TransferDirection;
   connectionId: string;
   localPath: string;
@@ -56,7 +52,6 @@ const createTask = (input: EnqueueTransferInput): TransferTask => {
   const now = nowIso();
   return {
     id: input.id ?? crypto.randomUUID(),
-    origin: input.origin ?? "user",
     direction: input.direction,
     connectionId: input.connectionId,
     localPath: input.localPath,
@@ -114,21 +109,14 @@ export const useTransferQueueStore = create<TransferQueueState>((set, get) => ({
         current ??
         createTask({
           id: event.taskId,
-          // Agent transfers are only ever announced by an event — there is no
-          // local enqueue for them — so the badge has to come off the wire.
-          origin: event.origin ?? "user",
           direction: event.direction,
           connectionId: event.connectionId,
           localPath: event.localPath,
-          remotePath: event.remotePath,
-          // The retry path re-invokes the renderer's own transfer helpers,
-          // which have no way to re-run something the agent started.
-          retryable: (event.origin ?? "user") === "user"
+          remotePath: event.remotePath
         });
 
       const next: TransferTask = {
         ...fallback,
-        origin: event.origin ?? fallback.origin,
         status: event.status,
         progress: event.progress,
         transferredBytes: event.transferredBytes ?? fallback.transferredBytes,

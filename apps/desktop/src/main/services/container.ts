@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, clipboard, dialog, Notification, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, shell } from "electron";
 import type { WebContents } from "electron";
 import type {
   ConnectionProfile,
@@ -54,11 +54,9 @@ import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
 import { forgetShellIntegrationInstalls } from "./terminal-shell-integration";
-import { createAgentMcpService, type AgentRemoteFileStat, type AgentSessionInfo } from "./mcp";
-import { AgentPromptBroker } from "./mcp/confirm";
+import { createAgentMcpService, type AgentSessionInfo } from "./mcp";
 import { OscTapRegistry } from "./mcp/osc-tap";
 import { ScreenMirrorRegistry } from "./mcp/screen-mirror";
-import { AgentTransferTracker } from "./mcp/transfers";
 
 const cloudSyncWorkspacePasswordRef = (workspaceId: string): string =>
   `secret://cloud-sync-ws-${workspaceId}`;
@@ -119,30 +117,11 @@ export const createServiceContainer = async (
       if (!window.isDestroyed()) window.webContents.send(channel, payload);
     }
   };
-  const agentPromptBroker = new AgentPromptBroker({
-    send: (request) => {
-      const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      if (!target || target.isDestroyed()) throw new Error("No renderer is available for prompt");
-      target.webContents.send(IPCChannel.AgentPromptRequest, request);
-    }
-  });
-  /**
-   * Declared here because `sendTransferStatus` consults it on every progress
-   * event to tell agent-owned tasks apart from user-owned ones.
-   */
-  const agentTransfers = new AgentTransferTracker();
 
   // ─── Shared State ────────────────────────────────────────────────────────
   const activeSessions = new Map<string, ActiveSession>();
   const oscTaps = new OscTapRegistry();
   const screenMirrors = new ScreenMirrorRegistry();
-
-  /**
-   * Last system-monitor snapshot per connection. MonitorService only pushes;
-   * the agent gateway needs a pull, and must never be able to start a monitor
-   * session of its own.
-   */
-  const latestMonitorSnapshots = new Map<string, MonitorSnapshot>();
 
   // ─── Connection Pool State ───────────────────────────────────────────────
   // One connection profile is backed by *several* ssh2 clients. Every shell,
@@ -167,24 +146,11 @@ export const createServiceContainer = async (
     if (!sender.isDestroyed()) sender.send(IPCChannel.SessionStatus, payload);
   };
 
-  /**
-   * User-initiated transfers report back to the window that started them.
-   * Agent-initiated ones have no sender, so they fan out to every window
-   * instead — otherwise the transfer the agent kicked off would be invisible in
-   * the GUI queue, which is the only place the user can watch or cancel it.
-   */
+  /** User-initiated transfers report back to the window that started them. */
   const sendTransferStatus = (
     sender: WebContents | undefined,
     payload: SftpTransferStatusEvent
   ): void => {
-    if (payload.taskId && agentTransfers.get(payload.taskId)) {
-      agentTransfers.applyProgress(payload);
-      broadcastToAllWindows(IPCChannel.SftpTransferStatus, {
-        ...payload,
-        origin: "agent" as const
-      });
-      return;
-    }
     if (!sender || sender.isDestroyed()) return;
     sender.send(IPCChannel.SftpTransferStatus, payload);
   };
@@ -411,7 +377,6 @@ export const createServiceContainer = async (
       remainingClients: clients.length
     });
     if (isLastClient) {
-      latestMonitorSnapshots.delete(connectionId);
       void remoteEditManager.cleanupByConnectionId(connectionId);
       // Reconnects must re-probe/re-install: the remote cache dir may be gone.
       forgetShellIntegrationInstalls(connectionId);
@@ -563,10 +528,7 @@ export const createServiceContainer = async (
     retainConnection,
     debugSenders: prefsSvc.debugSenders,
     emitDebugLog: (entry) => prefsSvc.emitDebugLog(entry),
-    emitSystemSnapshot: (sender, snapshot) => {
-      latestMonitorSnapshots.set(snapshot.connectionId, snapshot);
-      emitSystemMonitorSnapshot(sender, snapshot);
-    },
+    emitSystemSnapshot: emitSystemMonitorSnapshot,
     emitProcessSnapshot: emitProcessMonitorSnapshot,
     emitNetworkSnapshot: emitNetworkMonitorSnapshot
   });
@@ -625,13 +587,14 @@ export const createServiceContainer = async (
     warmupSftp: (id, conn) => sftpSvc.warmupSftp(id, conn),
     persistAuthOverride: (id, override) =>
       connectionSvc.persistSuccessfulAuthOverride(id, override),
-    // Both agent-facing layers hang off this one tap, and both are gated on the
-    // host being agent-visible: an unauthorized host costs nothing at all. They
-    // stay separate parsers on purpose — OscTap owns command boundaries and the
-    // raw bytes each command produced, which a terminal grid cannot reconstruct,
-    // while the mirror owns the rendered frame, which raw bytes cannot express.
+    // Both agent-facing layers hang off this one tap, mounted only while the
+    // agent endpoint is enabled: a disabled endpoint costs nothing per byte.
+    // They stay separate parsers on purpose — OscTap owns command boundaries
+    // and the raw bytes each command produced, which a terminal grid cannot
+    // reconstruct, while the mirror owns the rendered frame, which raw bytes
+    // cannot express. ScreenMirror's own LRU bounds the memory footprint.
     tapAgentSessionData: (sessionId, connectionId, data) => {
-      if ((connections.getById(connectionId)?.agentAccess ?? "off") === "off") {
+      if (!prefsSvc.getAppPreferences().agent.enabled) {
         oscTaps.dispose(sessionId);
         screenMirrors.dispose(sessionId);
         return;
@@ -718,14 +681,13 @@ export const createServiceContainer = async (
   });
 
   // ─── Agent (MCP) Endpoint ────────────────────────────────────────────────
-  // Every dependency below is read-only by construction: the gateway is handed
-  // no writer, no vault handle and no connect path, so a compromised MCP client
-  // cannot reach a credential even if it reaches the gateway.
+  // The agent only ever borrows sessions the user already opened: the gateway
+  // is handed no vault handle, no connect path and no way to open sessions of
+  // its own, so credentials never cross the MCP boundary.
   const agentMcpSvc = createAgentMcpService({
     userDataDir: options.userDataDir,
     appVersion: app.getVersion(),
     listConnections: () => connections.list({}),
-    isConnectionOnline: (connectionId) => listPooledClients(connectionId).length > 0,
     listSessions: () =>
       Array.from(activeSessions.values()).map<AgentSessionInfo>((session) => {
         // getSummary, not get: this runs for every session on every gateway
@@ -744,46 +706,12 @@ export const createServiceContainer = async (
           lastCommand: tap?.lastCommand ?? null
         };
       }),
-    getMonitorSnapshot: async (connectionId) => latestMonitorSnapshots.get(connectionId) ?? null,
-    listRemoteFiles: (connectionId, remotePath) =>
-      sftpSvc.listRemoteFiles(connectionId, remotePath),
-    statRemoteFile: async (connectionId, remotePath) => {
-      const connection = await ensureConnection(connectionId);
-      const stats = await connection.stat(remotePath);
-      // Anything that is not a plain file, directory or symlink must report
-      // "other": calling a character device a regular file is exactly what
-      // would let an agent ask for /dev/zero.
-      const type: AgentRemoteFileStat["type"] = stats.isDirectory()
-        ? "directory"
-        : stats.isSymbolicLink()
-          ? "link"
-          : stats.isFile()
-            ? "file"
-            : "other";
-      return {
-        path: remotePath,
-        type,
-        size: stats.size,
-        permissions: (stats.mode & 0o777).toString(8).padStart(4, "0"),
-        uid: stats.uid,
-        gid: stats.gid,
-        modifiedAt: new Date(stats.mtime * 1000).toISOString(),
-        accessedAt: new Date(stats.atime * 1000).toISOString()
-      };
-    },
-    readRemoteFile: async (connectionId, remotePath, maxBytes, signal) => {
-      const connection = await ensureConnection(connectionId);
-      // Bounded inside the SFTP stream, not after the fact: a stat-based check
-      // cannot protect against procfs files that report size 0.
-      const content = await connection.readFileContent(remotePath, { maxBytes, signal });
-      return {
-        bytes: content.subarray(0, maxBytes),
-        truncated: content.byteLength > maxBytes
-      };
-    },
-    // Deliberately no listCommandHistory: shell history has no connection id,
-    // so it cannot be scoped to the hosts the user granted.
-    listSavedCommands: (query) => connections.listSavedCommands(query),
+    // The library is exposed scoped (local + workspace); deliberately no
+    // listCommandHistory: shell history has no connection id, so it cannot be
+    // scoped to the hosts the user granted.
+    listScopedCommands: () => commandSvc.listScopedSavedCommands(),
+    saveCommand: (input) =>
+      commandSvc.upsertSavedCommand({ ...input, group: input.group ?? "默认" }),
     readSessionScreen: async (sessionId, options) =>
       (await screenMirrors.get(sessionId)?.read(options)) ?? null,
     writeSession: (sessionId, data) => {
@@ -799,22 +727,6 @@ export const createServiceContainer = async (
         output: entry.output,
         truncated: entry.truncated
       };
-    },
-    openSession: async (connectionId) => {
-      // Bound to a real window: an agent-opened tab must be one the user can
-      // see and close, not an invisible channel.
-      const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      if (!target || target.isDestroyed()) {
-        throw new Error("No NextShell window is available to host the session");
-      }
-      const descriptor = await sessionSvc.openSession(
-        { target: "remote", connectionId },
-        target.webContents
-      );
-      return { id: descriptor.id, title: descriptor.title, status: descriptor.status };
-    },
-    closeSession: async (sessionId) => {
-      await sessionSvc.closeSession(sessionId);
     },
     focusSession: (sessionId) => {
       const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -854,102 +766,10 @@ export const createServiceContainer = async (
     },
     execCommand: (connectionId, command, options) =>
       commandSvc.execCommand(connectionId, command, options),
-    writeRemoteFile: async (connectionId, remotePath, content) => {
-      const connection = await ensureConnection(connectionId);
-      await connection.writeFileContent(remotePath, content);
-    },
-    makeRemoteDirectory: async (connectionId, remotePath) => {
-      await sftpSvc.createRemoteDirectory(connectionId, remotePath);
-    },
-    renameRemotePath: async (connectionId, fromPath, toPath) => {
-      await sftpSvc.renameRemoteFile(connectionId, fromPath, toPath);
-    },
-    deleteRemotePath: async (connectionId, remotePath, type) => {
-      await sftpSvc.deleteRemoteFile(connectionId, remotePath, type);
-    },
-    statLocalPath: (localPath) => {
-      try {
-        // lstat, not stat: a symlink must be reported as what it is so the
-        // path policy decides, rather than being silently followed here.
-        const stats = fs.lstatSync(localPath);
-        return {
-          type: stats.isDirectory() ? "directory" : stats.isFile() ? "file" : "other",
-          size: stats.size
-        };
-      } catch {
-        return null;
-      }
-    },
-    localPathContext: () => ({
-      homeDir: app.getPath("home"),
-      appDataDir: options.userDataDir,
-      allowedRoots: prefsSvc.getAppPreferences().agent.allowedLocalRoots
-    }),
-    startUpload: ({ clientId, connectionId, localPath, remotePath, packed }) =>
-      agentTransfers.start({
-        clientId,
-        connectionId,
-        direction: "upload",
-        localPath,
-        remotePath,
-        packed,
-        // A directory goes over as one tar.gz and is unpacked remotely, which
-        // is the whole reason routing an agent through NextShell beats letting
-        // it drive scp itself.
-        run: (taskId) => {
-          const release = retainConnection(connectionId);
-          const done = packed
-            ? sftpSvc.uploadRemotePacked(
-                connectionId,
-                [localPath],
-                remotePath,
-                undefined,
-                undefined,
-                taskId
-              )
-            : sftpSvc.uploadRemoteFile(connectionId, localPath, remotePath, undefined, taskId);
-          return done.finally(() => {
-            release();
-            void closeConnectionIfIdle(connectionId).catch(() => undefined);
-          });
-        }
-      }),
-    startDownload: ({ clientId, connectionId, remotePath, localPath }) =>
-      agentTransfers.start({
-        clientId,
-        connectionId,
-        direction: "download",
-        localPath,
-        remotePath,
-        packed: false,
-        run: (taskId) => {
-          const release = retainConnection(connectionId);
-          return sftpSvc
-            .downloadRemoteFile(connectionId, remotePath, localPath, undefined, taskId)
-            .finally(() => {
-              release();
-              void closeConnectionIfIdle(connectionId).catch(() => undefined);
-            });
-        }
-      }),
-    getTransfer: (taskId, clientId) => agentTransfers.getForClient(taskId, clientId),
-    cancelTransfer: (taskId) => sftpSvc.cancelTransfer(taskId).cancelled,
-    runningTransferCount: (clientId) => agentTransfers.runningCountForClient(clientId),
     retainConnection,
     closeConnectionIfIdle,
-    promptUser: (request) => agentPromptBroker.request(request),
-    respondToPrompt: (response) => {
-      agentPromptBroker.respond(response);
-    },
-    notifyUser: (title, body) => {
-      if (Notification.isSupported()) new Notification({ title, body }).show();
-    },
     emitActivity: (event) => broadcastToAllWindows(IPCChannel.AgentActivityEvent, event),
     getPreferences: () => prefsSvc.getAppPreferences(),
-    tokenStore: {
-      read: () => connections.getJsonSetting<string>("agent.mcp.token") ?? null,
-      write: (value) => connections.saveJsonSetting("agent.mcp.token", value)
-    },
     // Packaged: build/electron-builder.yml copies apps/mcp-bridge/dist here as
     // an extraResource. Dev: the workspace build output. The bridge is not on
     // npm, so `npx @nextshell/mcp-bridge` would simply 404 for the user.
@@ -990,7 +810,6 @@ export const createServiceContainer = async (
     await agentMcpSvc.dispose().catch((error) => {
       logger.warn("[Agent] failed to dispose the MCP endpoint", normalizeError(error));
     });
-    agentPromptBroker.dispose();
     oscTaps.disposeAll();
     screenMirrors.disposeAll();
 
