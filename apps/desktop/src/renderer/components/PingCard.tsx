@@ -9,7 +9,7 @@ interface PingCardProps {
   /** 当前选中连接的 host，无则不显示卡片 */
   host?: string;
   /** 打开当前连接的路由追踪抽屉 */
-  onClick?: () => void;
+  onClick: () => void;
 }
 
 /** 折叠时展示的摘要文案 */
@@ -133,7 +133,7 @@ export const PingCard = ({ host, onClick }: PingCardProps) => {
       <div className="monitor-panel-header">
         <button
           type="button"
-          className="shrink-0 border-0 bg-transparent p-0"
+          className="shrink-0 flex items-center justify-center min-w-6 min-h-6 border-0 bg-transparent p-1"
           aria-label={collapsed ? "展开 Ping 延迟" : "折叠 Ping 延迟"}
           onClick={() => setCollapsed((prev) => !prev)}
         >
@@ -146,8 +146,8 @@ export const PingCard = ({ host, onClick }: PingCardProps) => {
           type="button"
           className="flex min-w-0 flex-1 items-center gap-1 border-0 bg-transparent p-0 text-left text-[13px] text-[var(--t2)] cursor-pointer"
           onClick={onClick}
-          title={onClick ? "查看路由" : undefined}
-          disabled={!onClick}
+          title="查看路由"
+          aria-label={`查看 ${host} 的路由追踪`}
         >
           <span className="text-[10px] font-semibold tracking-[0.08em] uppercase text-[var(--t3)]">
             Ping 延迟
