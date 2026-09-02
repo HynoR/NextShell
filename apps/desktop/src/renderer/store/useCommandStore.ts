@@ -32,11 +32,14 @@ interface CommandStoreState {
     workspaceId?: string;
   }) => Promise<boolean>;
   remove: (cmd: ScopedCommandItem) => Promise<boolean>;
-  createEphemeralFolder: () => string;
+  createEphemeralFolder: (desiredName?: string) => string;
   renameLocalFolder: (oldName: string, newName: string) => Promise<boolean>;
   removeLocalFolder: (name: string) => Promise<boolean>;
   setActiveTab: (tab: CommandTabId) => void;
 }
+
+export const folderOf = (command: ScopedCommandItem): string =>
+  command.group.trim() || DEFAULT_COMMAND_FOLDER;
 
 const localTab = (group: string): CommandTab => ({
   id: `local:${group}`,
@@ -59,7 +62,7 @@ export function getCommandTabs(
 ): CommandTab[] {
   const groups = new Set([DEFAULT_COMMAND_FOLDER, ...ephemeralFolders]);
   for (const command of commands) {
-    if (command.scope === "local") groups.add(command.group.trim() || DEFAULT_COMMAND_FOLDER);
+    if (command.scope === "local") groups.add(folderOf(command));
   }
   return [
     ...Array.from(groups)
@@ -76,7 +79,7 @@ export function getCommandsForTab(
   if (!tab) return [];
   const scoped = commands.filter((command) =>
     tab.scope === "local"
-      ? command.scope === "local" && (command.group.trim() || DEFAULT_COMMAND_FOLDER) === tab.group
+      ? command.scope === "local" && folderOf(command) === tab.group
       : command.scope === "workspace" && command.workspaceId === tab.workspaceId
   );
   return scoped.sort((a, b) =>
@@ -140,11 +143,12 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
     }
   },
 
-  createEphemeralFolder: () => {
+  createEphemeralFolder: (desiredName) => {
     const folders = get().ephemeralFolders;
+    const base = desiredName?.trim() || "新文件夹";
     let index = 1;
-    let name = "新文件夹";
-    while (folders.includes(name)) name = `新文件夹 ${++index}`;
+    let name = base;
+    while (folders.includes(name)) name = `${base} ${++index}`;
     set({ ephemeralFolders: [...folders, name], activeTab: `local:${name}` });
     return name;
   },
@@ -153,8 +157,7 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
     const newName = rawNewName.trim();
     if (!newName || oldName === newName) return Boolean(newName);
     const commands = get().allCommands.filter(
-      (command) =>
-        command.scope === "local" && (command.group || DEFAULT_COMMAND_FOLDER) === oldName
+      (command) => command.scope === "local" && folderOf(command) === oldName
     );
     try {
       await Promise.all(
@@ -185,7 +188,7 @@ export const useCommandStore = create<CommandStoreState>((set, get) => ({
 
   removeLocalFolder: async (name) => {
     const commands = get().allCommands.filter(
-      (command) => command.scope === "local" && (command.group || DEFAULT_COMMAND_FOLDER) === name
+      (command) => command.scope === "local" && folderOf(command) === name
     );
     try {
       await Promise.all(

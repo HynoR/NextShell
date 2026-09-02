@@ -4,7 +4,6 @@ import type { ScopedCommandItem } from "@nextshell/core";
 
 interface CommandEditModalProps {
   open: boolean;
-  scopeLabel: string;
   editingCommand: ScopedCommandItem | null;
   onSubmit: (values: { name: string; command: string; appendCr: boolean }) => void;
   onCancel: () => void;
@@ -17,7 +16,6 @@ interface Selection {
 
 export const CommandEditModal = ({
   open,
-  scopeLabel,
   editingCommand,
   onSubmit,
   onCancel
@@ -68,9 +66,6 @@ export const CommandEditModal = ({
       width={560}
     >
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          当前文件夹：{scopeLabel}
-        </Typography.Text>
         <div>
           <Typography.Text type="secondary">名称</Typography.Text>
           <Input

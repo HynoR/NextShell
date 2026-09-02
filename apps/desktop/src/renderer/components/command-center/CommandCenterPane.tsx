@@ -3,7 +3,6 @@ import {
   App as AntdApp,
   AutoComplete,
   Button,
-  Checkbox,
   Dropdown,
   Select,
   Space,
@@ -25,6 +24,7 @@ import {
   saveParamsToStorage,
   substituteTemplate
 } from "../../utils/commandTemplate";
+import { promptModal } from "../../utils/promptModal";
 import { CommandEditModal } from "./CommandEditModal";
 
 interface CommandCenterPaneProps {
@@ -111,7 +111,14 @@ export const CommandCenterPane = ({
     setParamValues(
       Object.fromEntries(placeholderKeys.map((key) => [key, history[key]?.[0] ?? ""]))
     );
-  }, [placeholderKeys, selectedCommand, storageKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- key on identity/command primitives,
+    // not selectedCommand's object identity, so a cloud-sync reload doesn't clear params mid-edit.
+  }, [
+    selectedCommand?.id,
+    selectedCommand?.scope,
+    selectedCommand?.workspaceId,
+    selectedCommand?.command
+  ]);
 
   useEffect(() => {
     if (selectedKey && !commands.some((command) => commandKey(command) === selectedKey)) {
@@ -133,10 +140,9 @@ export const CommandCenterPane = ({
       const scope = editingCommand?.scope === "workspace" ? "workspace" : activeTab?.scope;
       const workspaceId =
         editingCommand?.scope === "workspace" ? editingCommand.workspaceId : activeTab?.workspaceId;
-      const group =
-        editingCommand?.scope === "local"
-          ? editingCommand.group || DEFAULT_COMMAND_FOLDER
-          : activeTab?.group || DEFAULT_COMMAND_FOLDER;
+      const group = editingCommand
+        ? editingCommand.group || DEFAULT_COMMAND_FOLDER
+        : activeTab?.group || DEFAULT_COMMAND_FOLDER;
       try {
         await upsert({
           id: editingCommand?.id,
@@ -173,14 +179,22 @@ export const CommandCenterPane = ({
 
   const handleRenameFolder = useCallback(
     (name: string) => {
-      const next = window.prompt("重命名文件夹", name);
-      if (next === null) return;
-      void renameLocalFolder(name, next).then((ok) => {
-        if (!ok) message.error("文件夹重命名失败");
+      void promptModal(modal, "重命名文件夹", undefined, name).then((next) => {
+        if (!next) return;
+        void renameLocalFolder(name, next).then((ok) => {
+          if (!ok) message.error("文件夹重命名失败");
+        });
       });
     },
-    [message, renameLocalFolder]
+    [message, modal, renameLocalFolder]
   );
+
+  const handleCreateFolder = useCallback(() => {
+    void promptModal(modal, "新建文件夹", "文件夹名称").then((name) => {
+      if (!name) return;
+      createEphemeralFolder(name);
+    });
+  }, [createEphemeralFolder, modal]);
 
   const handleRemoveFolder = useCallback(
     (name: string) => {
@@ -228,7 +242,7 @@ export const CommandCenterPane = ({
     ],
     onClick: ({ key }: { key: string }) => {
       if (key === "add") openEditor(null);
-      if (key === "folder") createEphemeralFolder();
+      if (key === "folder") handleCreateFolder();
     }
   };
 
@@ -384,9 +398,6 @@ export const CommandCenterPane = ({
                   }
                 ]}
               />
-              <Checkbox checked={selectedCommand.appendCr !== false} disabled>
-                末尾加回车
-              </Checkbox>
               <Button
                 type="primary"
                 size="small"
@@ -406,7 +417,6 @@ export const CommandCenterPane = ({
 
       <CommandEditModal
         open={editOpen}
-        scopeLabel={activeTab?.label ?? DEFAULT_COMMAND_FOLDER}
         editingCommand={editingCommand}
         onSubmit={(values) => void handleEditSubmit(values)}
         onCancel={() => setEditOpen(false)}
