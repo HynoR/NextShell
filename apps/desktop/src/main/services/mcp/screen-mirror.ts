@@ -102,10 +102,7 @@ export class ScreenMirror {
 
   resize(cols: number, rows: number): void {
     if (this.disposed) return;
-    this.term.resize(
-      clamp(cols, this.term.cols, 1, 1000),
-      clamp(rows, this.term.rows, 1, 500)
-    );
+    this.term.resize(clamp(cols, this.term.cols, 1, 1000), clamp(rows, this.term.rows, 1, 500));
   }
 
   /** Awaits the write queue first — reading early returns a stale frame. */

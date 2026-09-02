@@ -1,4 +1,3 @@
-
 export const normalizeRemotePath = (rawPath: string): string => {
   const value = rawPath.trim();
   if (!value) return "/";

@@ -7,12 +7,7 @@ import {
   reconcileCurrentFolder
 } from "./folderNavigation";
 
-const folder = (
-  id: string,
-  name: string,
-  parentId?: string,
-  sortIndex = 0
-): ConnectionFolder => ({
+const folder = (id: string, name: string, parentId?: string, sortIndex = 0): ConnectionFolder => ({
   id,
   scopeKey: "local-default",
   parentId,

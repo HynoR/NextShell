@@ -17,7 +17,7 @@ describe("CommandService agent execution options", () => {
     const service = new CommandService({
       connections: {} as CachedConnectionRepository,
       getConnectionOrThrow: () => profile,
-      ensureConnection: async () => ({ exec } as unknown as SshConnection),
+      ensureConnection: async () => ({ exec }) as unknown as SshConnection,
       listWorkspaces: () => [],
       markWorkspaceCommandsDirty: () => undefined
     });

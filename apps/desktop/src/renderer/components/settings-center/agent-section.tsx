@@ -254,7 +254,10 @@ export const AgentSection = () => {
         </SettingsRow>
       </SettingsCard>
 
-      <SettingsCard title="一键接入客户端" description="按客户端类型生成接入配置，点击后直接复制到剪贴板">
+      <SettingsCard
+        title="一键接入客户端"
+        description="按客户端类型生成接入配置，点击后直接复制到剪贴板"
+      >
         <SettingsRow label="客户端类型">
           <Radio.Group
             value={clientKind}
@@ -265,7 +268,11 @@ export const AgentSection = () => {
           />
         </SettingsRow>
         <Space wrap>
-          <Button type="primary" loading={copyingConfig} onClick={() => void handleCopyClientConfig()}>
+          <Button
+            type="primary"
+            loading={copyingConfig}
+            onClick={() => void handleCopyClientConfig()}
+          >
             生成并复制接入配置
           </Button>
           {clientKind === "cursor" && (
@@ -297,7 +304,10 @@ export const AgentSection = () => {
                 <Typography.Text code style={{ fontSize: 12, wordBreak: "break-all" }}>
                   {configResult.command}
                 </Typography.Text>
-                <Button size="small" onClick={() => void handleCopyText(configResult.command, "命令")}>
+                <Button
+                  size="small"
+                  onClick={() => void handleCopyText(configResult.command, "命令")}
+                >
                   复制
                 </Button>
               </div>
@@ -332,10 +342,7 @@ export const AgentSection = () => {
         title="命令黑名单"
         description="命中黑名单的命令会被 Agent 工具直接拒绝并附原因，没有“本次放行”。内置清单已覆盖 rm -rf /、mkfs、dd 写设备、shutdown/reboot、fork 炸弹等显而易见的危险命令，这里用于追加你自己的条目"
       >
-        <SettingsRow
-          label="自定义黑名单"
-          hint="每条按子串匹配；若本身是合法正则，则同时按正则匹配"
-        >
+        <SettingsRow label="自定义黑名单" hint="每条按子串匹配；若本身是合法正则，则同时按正则匹配">
           <div className="flex flex-col gap-2">
             {agentPrefs.blacklist.length > 0 ? (
               <Space size={[4, 4]} wrap>

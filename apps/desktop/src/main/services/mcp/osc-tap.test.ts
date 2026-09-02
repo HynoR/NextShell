@@ -180,12 +180,7 @@ describe("session retention budget", () => {
 
     const history = tap.getSnapshot().history;
     // Every command survives with its exit code; only the bytes are released.
-    expect(history.map((entry) => entry.command)).toEqual([
-      "first",
-      "second",
-      "third",
-      "fourth"
-    ]);
+    expect(history.map((entry) => entry.command)).toEqual(["first", "second", "third", "fourth"]);
     expect(history.map((entry) => entry.output.length)).toEqual([0, 0, 1024, 1024]);
     expect(history.map((entry) => entry.truncated)).toEqual([true, true, false, false]);
     // The reported byte count still reflects what the command actually produced.

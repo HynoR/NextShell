@@ -36,12 +36,9 @@ export const crc32 = (data: Buffer): number => {
 };
 
 const toDosDateTime = (date: Date): { time: number; date: number } => ({
-  time:
-    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
+  time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2),
   date:
-    (Math.max(0, date.getFullYear() - 1980) << 9) |
-    ((date.getMonth() + 1) << 5) |
-    date.getDate()
+    (Math.max(0, date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()
 });
 
 export interface ZipEntry {

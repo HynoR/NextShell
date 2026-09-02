@@ -874,10 +874,7 @@ const WorkspaceLayoutComponent = ({
                   icon="ri-links-line"
                 />
               ) : (
-                <ConnectionPrompt
-                  message="先选择一个连接再浏览文件。"
-                  icon="ri-folder-open-line"
-                />
+                <ConnectionPrompt message="先选择一个连接再浏览文件。" icon="ri-folder-open-line" />
               )
             ) : null}
             {fileExplorerConnections.map((connection) => {

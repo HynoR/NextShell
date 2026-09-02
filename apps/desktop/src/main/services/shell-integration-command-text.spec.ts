@@ -46,7 +46,9 @@ describe("shell integration command text", () => {
     );
     // The status-capture entry appears once → the hooks were spliced once.
     expect(result.stdout.match(/__nextshell_status=\$\?/g)).toHaveLength(1);
-    expect(result.stdout.endsWith(`\u001B]133;C;${sanitizeOscCommand(commandText)}\u0007`)).toBe(true);
+    expect(result.stdout.endsWith(`\u001B]133;C;${sanitizeOscCommand(commandText)}\u0007`)).toBe(
+      true
+    );
   });
 
   test("zsh preserves hook arrays, stays idempotent and sanitizes preexec", () => {
@@ -64,7 +66,9 @@ describe("shell integration command text", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("PRECMD:__nextshell_precmd,user_precmd,__nextshell_prompt_end");
     expect(result.stdout).toContain("PREEXEC:user_preexec,__nextshell_preexec");
-    expect(result.stdout.endsWith(`\u001B]133;C;${sanitizeOscCommand(commandText)}\u0007`)).toBe(true);
+    expect(result.stdout.endsWith(`\u001B]133;C;${sanitizeOscCommand(commandText)}\u0007`)).toBe(
+      true
+    );
   });
 
   test("a child bash inheriting the exported hook strings stays silent", () => {

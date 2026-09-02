@@ -169,9 +169,7 @@ describe("assertFolderMoveAllowed", () => {
 
   test("allows moving under an unrelated folder in the same scope", () => {
     const sibling = folder({ id: "s" });
-    expect(() =>
-      assertFolderMoveAllowed(c, "s", lookupFrom([a, b, c, sibling]))
-    ).not.toThrow();
+    expect(() => assertFolderMoveAllowed(c, "s", lookupFrom([a, b, c, sibling]))).not.toThrow();
   });
 
   test("rejects moving a folder into itself", () => {
@@ -185,9 +183,7 @@ describe("assertFolderMoveAllowed", () => {
 
   test("rejects moving across scopes", () => {
     const cloud = folder({ id: "z", scopeKey: CLOUD_SCOPE });
-    expect(() => assertFolderMoveAllowed(cloud, "a", lookupFrom([a, cloud]))).toThrow(
-      "跨来源范围"
-    );
+    expect(() => assertFolderMoveAllowed(cloud, "a", lookupFrom([a, cloud]))).toThrow("跨来源范围");
   });
 
   test("rejects a missing target", () => {

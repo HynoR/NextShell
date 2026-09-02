@@ -43,17 +43,27 @@ describe("resolveSessionTabShortcut", () => {
       index: "last"
     });
     // 数字键在非 mac 上要求 Ctrl,meta 不算
-    expect(resolveSessionTabShortcut(event({ code: "Digit1", metaKey: true }), false)).toBeUndefined();
+    expect(
+      resolveSessionTabShortcut(event({ code: "Digit1", metaKey: true }), false)
+    ).toBeUndefined();
     // Digit0 不是合法标签序号
-    expect(resolveSessionTabShortcut(event({ code: "Digit0", metaKey: true }), true)).toBeUndefined();
+    expect(
+      resolveSessionTabShortcut(event({ code: "Digit0", metaKey: true }), true)
+    ).toBeUndefined();
   });
 
   test("mod+shift+brackets and Ctrl+Page keys move to adjacent tabs", () => {
     expect(
-      resolveSessionTabShortcut(event({ code: "BracketRight", metaKey: true, shiftKey: true }), true)
+      resolveSessionTabShortcut(
+        event({ code: "BracketRight", metaKey: true, shiftKey: true }),
+        true
+      )
     ).toEqual({ type: "adjacent", delta: 1 });
     expect(
-      resolveSessionTabShortcut(event({ code: "BracketLeft", ctrlKey: true, shiftKey: true }), false)
+      resolveSessionTabShortcut(
+        event({ code: "BracketLeft", ctrlKey: true, shiftKey: true }),
+        false
+      )
     ).toEqual({ type: "adjacent", delta: -1 });
     expect(resolveSessionTabShortcut(event({ code: "PageDown", ctrlKey: true }), false)).toEqual({
       type: "adjacent",
@@ -72,7 +82,9 @@ describe("resolveSessionTabShortcut", () => {
     expect(
       resolveSessionTabShortcut(event({ code: "KeyW", ctrlKey: true, shiftKey: true }), false)
     ).toEqual({ type: "close" });
-    expect(resolveSessionTabShortcut(event({ code: "KeyW", ctrlKey: true }), false)).toBeUndefined();
+    expect(
+      resolveSessionTabShortcut(event({ code: "KeyW", ctrlKey: true }), false)
+    ).toBeUndefined();
   });
 
   test("mod+shift+D duplicates; alt combos never match", () => {

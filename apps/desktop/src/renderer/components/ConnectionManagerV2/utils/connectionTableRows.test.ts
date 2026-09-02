@@ -183,7 +183,10 @@ describe("buildConnectionTableRows — 层级", () => {
     const first = buildConnectionTableRows(input);
     const second = buildConnectionTableRows(input);
     const keysOf = (rows: ConnectionTableRow[]): string[] =>
-      rows.flatMap((row) => [row.key, ...(row.kind === "folder" ? keysOf(row.children ?? []) : [])]);
+      rows.flatMap((row) => [
+        row.key,
+        ...(row.kind === "folder" ? keysOf(row.children ?? []) : [])
+      ]);
     expect(keysOf(first)).toEqual(keysOf(second));
   });
 

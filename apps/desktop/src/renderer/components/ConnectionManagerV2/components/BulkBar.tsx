@@ -24,7 +24,11 @@ export const BulkBar = ({
   <div className="cm2-bulk-bar" role="toolbar" aria-label="批量操作">
     <span className="cm2-bulk-count">已选 {count}</span>
     <Space size={8} wrap>
-      <Button size="small" icon={<i className="ri-key-2-line" aria-hidden="true" />} onClick={onBindAuth}>
+      <Button
+        size="small"
+        icon={<i className="ri-key-2-line" aria-hidden="true" />}
+        onClick={onBindAuth}
+      >
         绑定认证
       </Button>
       <Button

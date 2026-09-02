@@ -226,7 +226,9 @@ const ConnectionGridInner = ({
             ) : null}
           </span>
           <span className="cm2-tile-name">
-            {connection.favorite ? <i className="ri-star-fill cm2-star" aria-hidden="true" /> : null}
+            {connection.favorite ? (
+              <i className="ri-star-fill cm2-star" aria-hidden="true" />
+            ) : null}
             {connection.name}
           </span>
           <span className="cm2-tile-sub">{connection.host}</span>

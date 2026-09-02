@@ -5,7 +5,8 @@ var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var DEFAULT_CONNECT_TIMEOUT_MS = 4e3;
 var DEFAULT_REQUEST_TIMEOUT_MS = 3e4;
 var DEFAULT_CALL_TIMEOUT_MS = 3e5;
-var UNAVAILABLE_MESSAGE = "\u65E0\u6CD5\u8FDE\u63A5\u5230 NextShell\uFF1A\u5E94\u7528\u672A\u8FD0\u884C\uFF0C\u6216\u672A\u5728\u8BBE\u7F6E\u4E2D\u5FC3\u5F00\u542F Agent \u63A5\u5165\u3002\u8BF7\u542F\u52A8 NextShell \u684C\u9762\u5E94\u7528\uFF0C\u5728\u300C\u8BBE\u7F6E\u4E2D\u5FC3 \u2192 Agent \u63A5\u5165\u300D\u4E2D\u5F00\u542F\u540E\u91CD\u8BD5\u3002";
+var UNAVAILABLE_MESSAGE =
+  "\u65E0\u6CD5\u8FDE\u63A5\u5230 NextShell\uFF1A\u5E94\u7528\u672A\u8FD0\u884C\uFF0C\u6216\u672A\u5728\u8BBE\u7F6E\u4E2D\u5FC3\u5F00\u542F Agent \u63A5\u5165\u3002\u8BF7\u542F\u52A8 NextShell \u684C\u9762\u5E94\u7528\uFF0C\u5728\u300C\u8BBE\u7F6E\u4E2D\u5FC3 \u2192 Agent \u63A5\u5165\u300D\u4E2D\u5F00\u542F\u540E\u91CD\u8BD5\u3002";
 
 // src/json-rpc.ts
 var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -16,7 +17,8 @@ var emptySchema = () => ({ type: "object", properties: {} });
 var BRIDGE_STATUS_TOOL_DESCRIPTOR = {
   name: BRIDGE_STATUS_TOOL,
   title: "NextShell \u6865\u63A5\u72B6\u6001",
-  description: "\u68C0\u67E5 NextShell \u684C\u9762\u5E94\u7528\u662F\u5426\u53EF\u8FBE\u3001Agent \u63A5\u5165\u662F\u5426\u5DF2\u5F00\u542F\u3002NextShell \u672A\u8FD0\u884C\u65F6\u5176\u4ED6\u5DE5\u5177\u4F1A\u5931\u8D25\uFF0C\u5148\u7528\u5B83\u786E\u8BA4\u3002",
+  description:
+    "\u68C0\u67E5 NextShell \u684C\u9762\u5E94\u7528\u662F\u5426\u53EF\u8FBE\u3001Agent \u63A5\u5165\u662F\u5426\u5DF2\u5F00\u542F\u3002NextShell \u672A\u8FD0\u884C\u65F6\u5176\u4ED6\u5DE5\u5177\u4F1A\u5931\u8D25\uFF0C\u5148\u7528\u5B83\u786E\u8BA4\u3002",
   inputSchema: emptySchema(),
   annotations: { readOnlyHint: true, openWorldHint: false }
 };
@@ -30,35 +32,40 @@ var STATIC_TOOLS = [
   {
     name: "host_list",
     title: "\u5217\u51FA\u4E3B\u673A",
-    description: "\u5217\u51FA\u5DF2\u6388\u6743 Agent \u8BBF\u95EE\u7684 NextShell \u4E3B\u673A\u6458\u8981\uFF08\u4E0D\u542B\u4EFB\u4F55\u51ED\u636E\u5B57\u6BB5\uFF09\u3002",
+    description:
+      "\u5217\u51FA\u5DF2\u6388\u6743 Agent \u8BBF\u95EE\u7684 NextShell \u4E3B\u673A\u6458\u8981\uFF08\u4E0D\u542B\u4EFB\u4F55\u51ED\u636E\u5B57\u6BB5\uFF09\u3002",
     inputSchema: emptySchema(),
     annotations: { readOnlyHint: true }
   },
   {
     name: "host_describe",
     title: "\u67E5\u770B\u4E3B\u673A",
-    description: "\u67E5\u770B\u4E00\u53F0\u5DF2\u6388\u6743\u4E3B\u673A\u3001\u6D3B\u52A8\u4F1A\u8BDD\u4E0E\u76D1\u63A7\u6458\u8981\u3002",
+    description:
+      "\u67E5\u770B\u4E00\u53F0\u5DF2\u6388\u6743\u4E3B\u673A\u3001\u6D3B\u52A8\u4F1A\u8BDD\u4E0E\u76D1\u63A7\u6458\u8981\u3002",
     inputSchema: targetSchema(),
     annotations: { readOnlyHint: true }
   },
   {
     name: "session_list",
     title: "\u5217\u51FA\u4F1A\u8BDD",
-    description: "\u5217\u51FA\u5DF2\u6388\u6743\u4E3B\u673A\u7684\u6D3B\u52A8\u4F1A\u8BDD\u4E0E OSC \u8DDF\u8E2A\u7684 cwd\u3002",
+    description:
+      "\u5217\u51FA\u5DF2\u6388\u6743\u4E3B\u673A\u7684\u6D3B\u52A8\u4F1A\u8BDD\u4E0E OSC \u8DDF\u8E2A\u7684 cwd\u3002",
     inputSchema: emptySchema(),
     annotations: { readOnlyHint: true }
   },
   {
     name: "session_history",
     title: "\u8BFB\u53D6\u4F1A\u8BDD\u5386\u53F2",
-    description: "\u8BFB\u53D6\u6D3B\u52A8\u4F1A\u8BDD\u7684\u547D\u4EE4\u3001\u9000\u51FA\u7801\u4E0E\u6709\u754C\u8F93\u51FA\u3002",
+    description:
+      "\u8BFB\u53D6\u6D3B\u52A8\u4F1A\u8BDD\u7684\u547D\u4EE4\u3001\u9000\u51FA\u7801\u4E0E\u6709\u754C\u8F93\u51FA\u3002",
     inputSchema: targetSchema(),
     annotations: { readOnlyHint: true }
   },
   {
     name: "session_read",
     title: "\u8BFB\u53D6\u4F1A\u8BDD\u5C4F\u5E55",
-    description: "\u8BFB\u53D6\u6D3B\u52A8\u4F1A\u8BDD\u6E32\u67D3\u540E\u7684\u5C4F\u5E55\uFF08\u542B\u540E\u53F0\u6807\u7B7E\uFF09\u3002\u5168\u5C4F\u7A0B\u5E8F\uFF08top / vim / \u4EA4\u4E92\u5F0F\u5B89\u88C5\u5668\uFF09\u8FD4\u56DE\u4EBA\u773C\u6240\u89C1\u7684\u90A3\u4E00\u5E27\uFF0C\u800C\u975E\u4E00\u5806\u5149\u6807\u5B9A\u4F4D\u8F6C\u4E49\u5E8F\u5217\u3002",
+    description:
+      "\u8BFB\u53D6\u6D3B\u52A8\u4F1A\u8BDD\u6E32\u67D3\u540E\u7684\u5C4F\u5E55\uFF08\u542B\u540E\u53F0\u6807\u7B7E\uFF09\u3002\u5168\u5C4F\u7A0B\u5E8F\uFF08top / vim / \u4EA4\u4E92\u5F0F\u5B89\u88C5\u5668\uFF09\u8FD4\u56DE\u4EBA\u773C\u6240\u89C1\u7684\u90A3\u4E00\u5E27\uFF0C\u800C\u975E\u4E00\u5806\u5149\u6807\u5B9A\u4F4D\u8F6C\u4E49\u5E8F\u5217\u3002",
     inputSchema: targetSchema({
       mode: { type: "string", enum: ["screen", "scrollback"] },
       lines: { type: "integer", minimum: 1, maximum: 2e3 },
@@ -99,7 +106,8 @@ var STATIC_TOOLS = [
   {
     name: "exec",
     title: "\u6267\u884C\u8FDC\u7A0B\u547D\u4EE4",
-    description: "\u5728\u5DF2\u6388\u6743\u4E3B\u673A\u4E0A\u6267\u884C\u4E00\u6761\u547D\u4EE4\u5E76\u8FD4\u56DE\u8F93\u51FA\u3002",
+    description:
+      "\u5728\u5DF2\u6388\u6743\u4E3B\u673A\u4E0A\u6267\u884C\u4E00\u6761\u547D\u4EE4\u5E76\u8FD4\u56DE\u8F93\u51FA\u3002",
     inputSchema: {
       type: "object",
       properties: {
@@ -114,7 +122,8 @@ var STATIC_TOOLS = [
   {
     name: "file_write",
     title: "\u5199\u5165\u8FDC\u7AEF\u6587\u4EF6",
-    description: "\u5199\u5165\u4E00\u4E2A\u5C0F\u6587\u4EF6\uFF081MB \u4EE5\u5185\uFF09\uFF0C\u5DF2\u5B58\u5728\u5219\u8986\u76D6\u3002\u5927\u6587\u4EF6\u6216\u6574\u4E2A\u76EE\u5F55\u8BF7\u7528 transfer_upload\u3002",
+    description:
+      "\u5199\u5165\u4E00\u4E2A\u5C0F\u6587\u4EF6\uFF081MB \u4EE5\u5185\uFF09\uFF0C\u5DF2\u5B58\u5728\u5219\u8986\u76D6\u3002\u5927\u6587\u4EF6\u6216\u6574\u4E2A\u76EE\u5F55\u8BF7\u7528 transfer_upload\u3002",
     inputSchema: targetSchema({
       path: { type: "string" },
       content: { type: "string" },
@@ -135,7 +144,8 @@ var STATIC_TOOLS = [
   {
     name: "file_delete",
     title: "\u5220\u9664\u8FDC\u7AEF\u8DEF\u5F84",
-    description: "\u5220\u9664\u8FDC\u7AEF\u8DEF\u5F84\u3002\u76EE\u5F55\u4F1A\u88AB\u9012\u5F52\u5220\u9664\u4E14\u4E0D\u53EF\u6062\u590D\uFF0C\u59CB\u7EC8\u9700\u8981\u7528\u6237\u5728 NextShell \u5185\u786E\u8BA4\u3002",
+    description:
+      "\u5220\u9664\u8FDC\u7AEF\u8DEF\u5F84\u3002\u76EE\u5F55\u4F1A\u88AB\u9012\u5F52\u5220\u9664\u4E14\u4E0D\u53EF\u6062\u590D\uFF0C\u59CB\u7EC8\u9700\u8981\u7528\u6237\u5728 NextShell \u5185\u786E\u8BA4\u3002",
     inputSchema: targetSchema({
       path: { type: "string" },
       type: { type: "string", enum: ["file", "directory", "link"] }
@@ -145,7 +155,8 @@ var STATIC_TOOLS = [
   {
     name: "transfer_upload",
     title: "\u4E0A\u4F20\u5230\u8FDC\u7AEF",
-    description: "\u628A\u672C\u673A\u6587\u4EF6\u6216\u76EE\u5F55\u4F20\u5230\u4E3B\u673A\uFF08\u76EE\u5F55\u81EA\u52A8\u6253\u5305\u4E3A tar.gz \u5E76\u5728\u8FDC\u7AEF\u89E3\u5305\uFF09\u3002\u7ACB\u5373\u8FD4\u56DE taskId\uFF0C\u7528 transfer_status \u8F6E\u8BE2\u3002",
+    description:
+      "\u628A\u672C\u673A\u6587\u4EF6\u6216\u76EE\u5F55\u4F20\u5230\u4E3B\u673A\uFF08\u76EE\u5F55\u81EA\u52A8\u6253\u5305\u4E3A tar.gz \u5E76\u5728\u8FDC\u7AEF\u89E3\u5305\uFF09\u3002\u7ACB\u5373\u8FD4\u56DE taskId\uFF0C\u7528 transfer_status \u8F6E\u8BE2\u3002",
     inputSchema: targetSchema({
       localPath: { type: "string" },
       remotePath: { type: "string" }
@@ -154,7 +165,8 @@ var STATIC_TOOLS = [
   {
     name: "transfer_download",
     title: "\u4E0B\u8F7D\u5230\u672C\u673A",
-    description: "\u628A\u8FDC\u7AEF\u6587\u4EF6\u4E0B\u8F7D\u5230\u672C\u673A\u3002\u7ACB\u5373\u8FD4\u56DE taskId\uFF0C\u7528 transfer_status \u8F6E\u8BE2\u3002",
+    description:
+      "\u628A\u8FDC\u7AEF\u6587\u4EF6\u4E0B\u8F7D\u5230\u672C\u673A\u3002\u7ACB\u5373\u8FD4\u56DE taskId\uFF0C\u7528 transfer_status \u8F6E\u8BE2\u3002",
     inputSchema: targetSchema({
       remotePath: { type: "string" },
       localPath: { type: "string" }
@@ -183,7 +195,8 @@ var STATIC_TOOLS = [
   {
     name: "session_send_keys",
     title: "\u5411\u4F1A\u8BDD\u6CE8\u5165\u8F93\u5165",
-    description: "\u50CF\u7528\u6237\u4E00\u6837\u5F80\u6D3B\u52A8\u4F1A\u8BDD\u7684 PTY \u91CC\u6253\u5B57\u3002\u9664\u975E\u72B6\u6001\u5C31\u6D3B\u5728\u90A3\u4E2A shell \u91CC\uFF08TUI\u3001\u4EA4\u4E92\u5F0F\u63D0\u793A\u3001\u5DF2\u8FDB\u5165\u7684 venv \u6216\u5BB9\u5668\uFF09\uFF0C\u5426\u5219\u4F18\u5148\u7528 exec\u3002\u59CB\u7EC8\u9700\u8981\u7528\u6237\u786E\u8BA4\uFF1B\u7528\u6237\u6B63\u5728\u8BE5\u4F1A\u8BDD\u91CC\u6253\u5B57\u65F6\u4F1A\u88AB\u62D2\u7EDD\u3002",
+    description:
+      "\u50CF\u7528\u6237\u4E00\u6837\u5F80\u6D3B\u52A8\u4F1A\u8BDD\u7684 PTY \u91CC\u6253\u5B57\u3002\u9664\u975E\u72B6\u6001\u5C31\u6D3B\u5728\u90A3\u4E2A shell \u91CC\uFF08TUI\u3001\u4EA4\u4E92\u5F0F\u63D0\u793A\u3001\u5DF2\u8FDB\u5165\u7684 venv \u6216\u5BB9\u5668\uFF09\uFF0C\u5426\u5219\u4F18\u5148\u7528 exec\u3002\u59CB\u7EC8\u9700\u8981\u7528\u6237\u786E\u8BA4\uFF1B\u7528\u6237\u6B63\u5728\u8BE5\u4F1A\u8BDD\u91CC\u6253\u5B57\u65F6\u4F1A\u88AB\u62D2\u7EDD\u3002",
     inputSchema: targetSchema({
       text: { type: "string" },
       submit: { type: "boolean" },
@@ -195,7 +208,8 @@ var STATIC_TOOLS = [
   {
     name: "session_send_signal",
     title: "\u5411\u4F1A\u8BDD\u53D1\u9001\u63A7\u5236\u4FE1\u53F7",
-    description: "\u5411\u6D3B\u52A8\u4F1A\u8BDD\u53D1\u9001\u63A7\u5236\u5B57\u7B26\uFF1Ainterrupt\uFF08Ctrl-C\uFF09/ eof / suspend / quit\u3002",
+    description:
+      "\u5411\u6D3B\u52A8\u4F1A\u8BDD\u53D1\u9001\u63A7\u5236\u5B57\u7B26\uFF1Ainterrupt\uFF08Ctrl-C\uFF09/ eof / suspend / quit\u3002",
     inputSchema: targetSchema({
       signal: { type: "string", enum: ["interrupt", "eof", "suspend", "quit"] }
     }),
@@ -204,7 +218,8 @@ var STATIC_TOOLS = [
   {
     name: "session_open",
     title: "\u6253\u5F00\u7EC8\u7AEF\u6807\u7B7E",
-    description: "\u5728\u4E3B\u673A\u4E0A\u6253\u5F00\u4E00\u4E2A\u771F\u5B9E\u53EF\u89C1\u7684\u7EC8\u7AEF\u6807\u7B7E\uFF0C\u5E76\u6807\u8BB0\u4E3A Agent \u63A7\u5236\u4E2D\u3002",
+    description:
+      "\u5728\u4E3B\u673A\u4E0A\u6253\u5F00\u4E00\u4E2A\u771F\u5B9E\u53EF\u89C1\u7684\u7EC8\u7AEF\u6807\u7B7E\uFF0C\u5E76\u6807\u8BB0\u4E3A Agent \u63A7\u5236\u4E2D\u3002",
     inputSchema: targetSchema()
   },
   {
@@ -216,17 +231,22 @@ var STATIC_TOOLS = [
   {
     name: "session_focus",
     title: "\u805A\u7126\u7EC8\u7AEF\u6807\u7B7E",
-    description: "\u628A NextShell \u7A97\u53E3\u7F6E\u9876\u5E76\u5207\u5230\u8BE5\u4F1A\u8BDD\u7684\u6807\u7B7E\uFF0C\u7528\u4E8E\u628A\u4E8B\u60C5\u4EA4\u56DE\u7ED9\u4EBA\u3002",
+    description:
+      "\u628A NextShell \u7A97\u53E3\u7F6E\u9876\u5E76\u5207\u5230\u8BE5\u4F1A\u8BDD\u7684\u6807\u7B7E\uFF0C\u7528\u4E8E\u628A\u4E8B\u60C5\u4EA4\u56DE\u7ED9\u4EBA\u3002",
     inputSchema: targetSchema(),
     annotations: { idempotentHint: true }
   },
   {
     name: "ask_user",
     title: "\u8BE2\u95EE\u7528\u6237",
-    description: "\u5728 NextShell \u5185\u5F39\u51FA\u786E\u8BA4\u3001\u9009\u62E9\u6216\u6587\u672C\u95EE\u8BE2\u3002",
+    description:
+      "\u5728 NextShell \u5185\u5F39\u51FA\u786E\u8BA4\u3001\u9009\u62E9\u6216\u6587\u672C\u95EE\u8BE2\u3002",
     inputSchema: {
       type: "object",
-      properties: { question: { type: "string" }, choices: { type: "array", items: { type: "string" } } },
+      properties: {
+        question: { type: "string" },
+        choices: { type: "array", items: { type: "string" } }
+      },
       required: ["question"]
     }
   },
@@ -260,7 +280,14 @@ var coerceFlagValue = (raw) => {
   if (trimmed.length === 0) {
     return raw;
   }
-  const looksJson = trimmed === "true" || trimmed === "false" || trimmed === "null" || /^-?\d+(\.\d+)?$/.test(trimmed) || trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith('"');
+  const looksJson =
+    trimmed === "true" ||
+    trimmed === "false" ||
+    trimmed === "null" ||
+    /^-?\d+(\.\d+)?$/.test(trimmed) ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[") ||
+    trimmed.startsWith('"');
   if (!looksJson) {
     return raw;
   }
@@ -286,7 +313,9 @@ var parseCliInvocation = (argv) => {
     return usage("tools \u53EA\u63A5\u53D7 --full");
   }
   if (command.startsWith("-")) {
-    return usage(`\u672A\u77E5\u9009\u9879\uFF1A${command}\uFF08\u5DE5\u5177\u540D\u5FC5\u987B\u662F\u7B2C\u4E00\u4E2A\u53C2\u6570\uFF09`);
+    return usage(
+      `\u672A\u77E5\u9009\u9879\uFF1A${command}\uFF08\u5DE5\u5177\u540D\u5FC5\u987B\u662F\u7B2C\u4E00\u4E2A\u53C2\u6570\uFF09`
+    );
   }
   const args = {};
   let full = false;
@@ -294,7 +323,9 @@ var parseCliInvocation = (argv) => {
   for (let i = 0; i < rest.length; i += 1) {
     const token = rest[i] ?? "";
     if (!token.startsWith("--")) {
-      return usage(`\u591A\u4F59\u7684\u4F4D\u7F6E\u53C2\u6570\uFF1A${token}\uFF08\u5DE5\u5177\u53C2\u6570\u5199\u6210 --key value\uFF09`);
+      return usage(
+        `\u591A\u4F59\u7684\u4F4D\u7F6E\u53C2\u6570\uFF1A${token}\uFF08\u5DE5\u5177\u53C2\u6570\u5199\u6210 --key value\uFF09`
+      );
     }
     const body = token.slice(2);
     const eq = body.indexOf("=");
@@ -376,12 +407,14 @@ var renderToolList = (tools, full) => {
     return JSON.stringify(tools, null, 2);
   }
   const width = Math.max(...tools.map((tool) => tool.name.length));
-  return tools.map((tool) => {
-    const label = tool.title ?? "";
-    const summary = tool.description ?? "";
-    const doc = label && summary ? `${label} \u2014 ${summary}` : label || summary;
-    return `${tool.name.padEnd(width)}  ${doc}`.trimEnd();
-  }).join("\n");
+  return tools
+    .map((tool) => {
+      const label = tool.title ?? "";
+      const summary = tool.description ?? "";
+      const doc = label && summary ? `${label} \u2014 ${summary}` : label || summary;
+      return `${tool.name.padEnd(width)}  ${doc}`.trimEnd();
+    })
+    .join("\n");
 };
 var HELP_TEXT = `nextshell-cli \u2014 \u901A\u8FC7\u672C\u673A\u8FD0\u884C\u7684 NextShell \u684C\u9762\u5E94\u7528\u64CD\u4F5C\u8FDC\u7A0B\u670D\u52A1\u5668
 
@@ -414,7 +447,8 @@ var ENDPOINT_DIRECTORY_NAME = "mcp";
 var ENDPOINT_FILE_NAME = "endpoint.json";
 var APP_DIRECTORY_CANDIDATES = ["NextShell", "nextshell"];
 var WINDOWS_PIPE_PREFIX = "\\\\.\\pipe\\";
-var isNamedPipe = (value) => value.startsWith(WINDOWS_PIPE_PREFIX) || value.startsWith("\\\\?\\pipe\\");
+var isNamedPipe = (value) =>
+  value.startsWith(WINDOWS_PIPE_PREFIX) || value.startsWith("\\\\?\\pipe\\");
 var isProcessAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) {
     return false;
@@ -508,14 +542,17 @@ var parseEndpointRecords = (raw, source) => {
       tcpPort,
       token: readString(entry, ["token"]),
       httpPath: normalizeHttpPath(readString(entry, ["httpPath", "path", "endpointPath"])),
-      pid: typeof pidValue === "number" && Number.isInteger(pidValue) && pidValue > 0 ? pidValue : null,
+      pid:
+        typeof pidValue === "number" && Number.isInteger(pidValue) && pidValue > 0
+          ? pidValue
+          : null,
       updatedAt: readTimestamp(entry, ["updatedAt", "startedAt", "timestamp", "mtime"]),
       source
     });
   }
   return records;
 };
-var pathFor = (platform) => platform === "win32" ? path.win32 : path.posix;
+var pathFor = (platform) => (platform === "win32" ? path.win32 : path.posix);
 var resolveUserDataDirs = (deps = {}) => {
   const env = deps.env ?? process.env;
   const platform = deps.platform ?? process.platform;
@@ -525,7 +562,9 @@ var resolveUserDataDirs = (deps = {}) => {
   if (platform === "win32") {
     const appData = env.APPDATA;
     bases.push(
-      appData !== void 0 && appData.length > 0 ? appData : join(env.USERPROFILE ?? homeDir(), "AppData", "Roaming")
+      appData !== void 0 && appData.length > 0
+        ? appData
+        : join(env.USERPROFILE ?? homeDir(), "AppData", "Roaming")
     );
   } else if (platform === "darwin") {
     bases.push(join(env.HOME ?? homeDir(), "Library", "Application Support"));
@@ -544,7 +583,8 @@ var resolveUserDataDirs = (deps = {}) => {
   }
   return dirs;
 };
-var recordKey = (record) => `${record.socketPath ?? ""}|${record.host}|${record.tcpPort ?? 0}|${record.pid ?? 0}`;
+var recordKey = (record) =>
+  `${record.socketPath ?? ""}|${record.host}|${record.tcpPort ?? 0}|${record.pid ?? 0}`;
 var readEndpointRecords = (deps = {}) => {
   const readFile = deps.readFile ?? defaultReadFile;
   const readDir = deps.readDir ?? defaultReadDir;
@@ -815,155 +855,156 @@ var buildHeaders = (target, sessionId, protocolVersion, extra = {}) => {
   }
   return headers;
 };
-var postJsonRpc = (args) => new Promise((resolve, reject) => {
-  const payload = Buffer.from(JSON.stringify(args.message), "utf8");
-  const headers = buildHeaders(args.target, args.sessionId, args.protocolVersion, {
-    "content-type": "application/json",
-    "content-length": String(payload.byteLength)
-  });
-  const request = http.request(buildRequestOptions(args.target, "POST", headers));
-  let settled = false;
-  const timer = setTimeout(() => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    request.destroy();
-    reject(new UpstreamError("upstream request timed out", "TIMEOUT"));
-  }, args.timeoutMs);
-  timer.unref();
-  const succeed = (outcome) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    clearTimeout(timer);
-    resolve(outcome);
-  };
-  const fail2 = (error) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    clearTimeout(timer);
-    reject(toUpstreamError(error));
-  };
-  request.on("error", fail2);
-  request.on("response", (response) => {
-    const status = response.statusCode ?? 0;
-    const sessionId = headerValue(response.headers["mcp-session-id"]);
-    const contentType = (headerValue(response.headers["content-type"]) ?? "").toLowerCase();
-    response.setEncoding("utf8");
-    if (status >= 400) {
-      let body = "";
-      response.on("data", (chunk) => {
-        if (body.length < MAX_ERROR_BODY_CHARS) {
-          body += chunk;
-        }
-      });
-      response.on("end", () => {
-        const detail = body.slice(0, MAX_ERROR_BODY_CHARS).replace(/\s+/g, " ").trim();
-        if (status === 401 || status === 403) {
-          fail2(
-            new UpstreamError(`upstream rejected the bridge: ${detail}`, "UNAUTHORIZED", status)
-          );
-          return;
-        }
-        if (status === 404) {
-          fail2(new UpstreamError("upstream session is gone", "SESSION_EXPIRED", status));
-          return;
-        }
-        fail2(
-          new UpstreamError(`upstream returned HTTP ${status}: ${detail}`, "HTTP_ERROR", status)
-        );
-      });
-      response.on("error", fail2);
-      return;
-    }
-    if (args.awaitId === null) {
-      response.resume();
-      response.on("end", () => succeed({ status, sessionId, response: null }));
-      response.on("error", fail2);
-      return;
-    }
-    const consume = (message) => {
-      if (!isRecord(message)) {
-        return false;
-      }
-      if (typeof message.method === "string") {
-        if (message.id === void 0) {
-          args.onNotification?.(message);
-        } else {
-          args.log?.(`ignoring unsupported upstream request: ${message.method}`);
-        }
-        return false;
-      }
-      if (message.id === args.awaitId) {
-        succeed({ status, sessionId, response: message });
-        response.destroy();
-        request.destroy();
-        return true;
-      }
-      return false;
-    };
-    let received = 0;
-    if (contentType.startsWith("text/event-stream")) {
-      const parser = new SseParser();
-      response.on("data", (chunk) => {
-        received += chunk.length;
-        if (received > MAX_RESPONSE_BYTES) {
-          fail2(new UpstreamError("upstream response exceeded the size limit", "PROTOCOL"));
-          response.destroy();
-          request.destroy();
-          return;
-        }
-        for (const message of parser.push(chunk)) {
-          if (consume(message)) {
-            return;
-          }
-        }
-      });
-    } else {
-      let body = "";
-      response.on("data", (chunk) => {
-        received += chunk.length;
-        if (received > MAX_RESPONSE_BYTES) {
-          fail2(new UpstreamError("upstream response exceeded the size limit", "PROTOCOL"));
-          response.destroy();
-          request.destroy();
-          return;
-        }
-        body += chunk;
-      });
-      response.on("end", () => {
-        if (settled) {
-          return;
-        }
-        let parsed;
-        try {
-          parsed = JSON.parse(body);
-        } catch {
-          fail2(new UpstreamError("upstream returned malformed JSON", "PROTOCOL"));
-          return;
-        }
-        const entries = Array.isArray(parsed) ? parsed : [parsed];
-        for (const entry of entries) {
-          if (consume(entry)) {
-            return;
-          }
-        }
-        fail2(new UpstreamError("upstream response carried no matching reply", "PROTOCOL"));
-      });
-    }
-    response.on("end", () => {
-      if (!settled) {
-        fail2(new UpstreamError("upstream closed the stream before replying", "PROTOCOL"));
-      }
+var postJsonRpc = (args) =>
+  new Promise((resolve, reject) => {
+    const payload = Buffer.from(JSON.stringify(args.message), "utf8");
+    const headers = buildHeaders(args.target, args.sessionId, args.protocolVersion, {
+      "content-type": "application/json",
+      "content-length": String(payload.byteLength)
     });
-    response.on("error", fail2);
+    const request = http.request(buildRequestOptions(args.target, "POST", headers));
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      request.destroy();
+      reject(new UpstreamError("upstream request timed out", "TIMEOUT"));
+    }, args.timeoutMs);
+    timer.unref();
+    const succeed = (outcome) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(outcome);
+    };
+    const fail2 = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(toUpstreamError(error));
+    };
+    request.on("error", fail2);
+    request.on("response", (response) => {
+      const status = response.statusCode ?? 0;
+      const sessionId = headerValue(response.headers["mcp-session-id"]);
+      const contentType = (headerValue(response.headers["content-type"]) ?? "").toLowerCase();
+      response.setEncoding("utf8");
+      if (status >= 400) {
+        let body = "";
+        response.on("data", (chunk) => {
+          if (body.length < MAX_ERROR_BODY_CHARS) {
+            body += chunk;
+          }
+        });
+        response.on("end", () => {
+          const detail = body.slice(0, MAX_ERROR_BODY_CHARS).replace(/\s+/g, " ").trim();
+          if (status === 401 || status === 403) {
+            fail2(
+              new UpstreamError(`upstream rejected the bridge: ${detail}`, "UNAUTHORIZED", status)
+            );
+            return;
+          }
+          if (status === 404) {
+            fail2(new UpstreamError("upstream session is gone", "SESSION_EXPIRED", status));
+            return;
+          }
+          fail2(
+            new UpstreamError(`upstream returned HTTP ${status}: ${detail}`, "HTTP_ERROR", status)
+          );
+        });
+        response.on("error", fail2);
+        return;
+      }
+      if (args.awaitId === null) {
+        response.resume();
+        response.on("end", () => succeed({ status, sessionId, response: null }));
+        response.on("error", fail2);
+        return;
+      }
+      const consume = (message) => {
+        if (!isRecord(message)) {
+          return false;
+        }
+        if (typeof message.method === "string") {
+          if (message.id === void 0) {
+            args.onNotification?.(message);
+          } else {
+            args.log?.(`ignoring unsupported upstream request: ${message.method}`);
+          }
+          return false;
+        }
+        if (message.id === args.awaitId) {
+          succeed({ status, sessionId, response: message });
+          response.destroy();
+          request.destroy();
+          return true;
+        }
+        return false;
+      };
+      let received = 0;
+      if (contentType.startsWith("text/event-stream")) {
+        const parser = new SseParser();
+        response.on("data", (chunk) => {
+          received += chunk.length;
+          if (received > MAX_RESPONSE_BYTES) {
+            fail2(new UpstreamError("upstream response exceeded the size limit", "PROTOCOL"));
+            response.destroy();
+            request.destroy();
+            return;
+          }
+          for (const message of parser.push(chunk)) {
+            if (consume(message)) {
+              return;
+            }
+          }
+        });
+      } else {
+        let body = "";
+        response.on("data", (chunk) => {
+          received += chunk.length;
+          if (received > MAX_RESPONSE_BYTES) {
+            fail2(new UpstreamError("upstream response exceeded the size limit", "PROTOCOL"));
+            response.destroy();
+            request.destroy();
+            return;
+          }
+          body += chunk;
+        });
+        response.on("end", () => {
+          if (settled) {
+            return;
+          }
+          let parsed;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            fail2(new UpstreamError("upstream returned malformed JSON", "PROTOCOL"));
+            return;
+          }
+          const entries = Array.isArray(parsed) ? parsed : [parsed];
+          for (const entry of entries) {
+            if (consume(entry)) {
+              return;
+            }
+          }
+          fail2(new UpstreamError("upstream response carried no matching reply", "PROTOCOL"));
+        });
+      }
+      response.on("end", () => {
+        if (!settled) {
+          fail2(new UpstreamError("upstream closed the stream before replying", "PROTOCOL"));
+        }
+      });
+      response.on("error", fail2);
+    });
+    request.end(payload);
   });
-  request.end(payload);
-});
 var UpstreamSession = class _UpstreamSession {
   constructor(target, options, sessionId, protocolVersion, serverInfo) {
     this.target = target;
@@ -1010,9 +1051,13 @@ var UpstreamSession = class _UpstreamSession {
       throw new UpstreamRpcError(response.error);
     }
     const result = isRecord(response.result) ? response.result : {};
-    const protocolVersion = typeof result.protocolVersion === "string" ? result.protocolVersion : options.protocolVersion;
+    const protocolVersion =
+      typeof result.protocolVersion === "string" ? result.protocolVersion : options.protocolVersion;
     const info = isRecord(result.serverInfo) ? result.serverInfo : null;
-    const serverInfo = info !== null && typeof info.name === "string" ? { name: info.name, version: typeof info.version === "string" ? info.version : "" } : null;
+    const serverInfo =
+      info !== null && typeof info.name === "string"
+        ? { name: info.name, version: typeof info.version === "string" ? info.version : "" }
+        : null;
     const session = new _UpstreamSession(
       target,
       options,
@@ -1026,7 +1071,7 @@ var UpstreamSession = class _UpstreamSession {
   async notify(method, params) {
     await postJsonRpc({
       target: this.target,
-      message: { jsonrpc: "2.0", method, ...params === void 0 ? {} : { params } },
+      message: { jsonrpc: "2.0", method, ...(params === void 0 ? {} : { params }) },
       awaitId: null,
       sessionId: this.sessionId,
       protocolVersion: this.protocolVersion,
@@ -1041,7 +1086,7 @@ var UpstreamSession = class _UpstreamSession {
     const id = this.nextId++;
     const outcome = await postJsonRpc({
       target: this.target,
-      message: { jsonrpc: "2.0", id, method, ...params === void 0 ? {} : { params } },
+      message: { jsonrpc: "2.0", id, method, ...(params === void 0 ? {} : { params }) },
       awaitId: id,
       sessionId: this.sessionId,
       protocolVersion: this.protocolVersion,
@@ -1103,8 +1148,7 @@ var connect = async () => {
         connectTimeoutMs: DEFAULT_CONNECT_TIMEOUT_MS,
         requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS
       });
-    } catch {
-    }
+    } catch {}
   }
   return null;
 };
@@ -1116,9 +1160,12 @@ var main = async () => {
     return;
   }
   if (invocation.kind === "usage-error") {
-    fail(EXIT_USAGE, `${invocation.message}
+    fail(
+      EXIT_USAGE,
+      `${invocation.message}
 
-${HELP_TEXT}`);
+${HELP_TEXT}`
+    );
     return;
   }
   if (invocation.kind === "status") {
@@ -1145,7 +1192,9 @@ ${HELP_TEXT}`);
         await session2.close();
       }
     } else {
-      process.stderr.write("NextShell \u672A\u8FDE\u63A5\uFF0C\u4EE5\u4E0B\u662F\u9759\u6001\u6E05\u5355\uFF08\u5B9E\u9645\u53EF\u7528\u6027\u4EE5\u8FD0\u884C\u4E2D\u7684\u5E94\u7528\u4E3A\u51C6\uFF09\n");
+      process.stderr.write(
+        "NextShell \u672A\u8FDE\u63A5\uFF0C\u4EE5\u4E0B\u662F\u9759\u6001\u6E05\u5355\uFF08\u5B9E\u9645\u53EF\u7528\u6027\u4EE5\u8FD0\u884C\u4E2D\u7684\u5E94\u7528\u4E3A\u51C6\uFF09\n"
+      );
     }
     process.stdout.write(`${renderToolList(tools, invocation.full)}
 `);
@@ -1157,7 +1206,8 @@ ${HELP_TEXT}`);
     return;
   }
   try {
-    const timeoutMs = invocation.timeoutSec !== null ? invocation.timeoutSec * 1e3 : DEFAULT_CALL_TIMEOUT_MS;
+    const timeoutMs =
+      invocation.timeoutSec !== null ? invocation.timeoutSec * 1e3 : DEFAULT_CALL_TIMEOUT_MS;
     const result = await session.request(
       "tools/call",
       { name: invocation.tool, arguments: invocation.args },
@@ -1171,10 +1221,16 @@ ${HELP_TEXT}`);
     }
   } catch (error) {
     if (error instanceof UpstreamRpcError) {
-      fail(EXIT_TOOL_ERROR, `\u5DE5\u5177\u8C03\u7528\u88AB\u62D2\u7EDD\uFF1A${error.body.message}`);
+      fail(
+        EXIT_TOOL_ERROR,
+        `\u5DE5\u5177\u8C03\u7528\u88AB\u62D2\u7EDD\uFF1A${error.body.message}`
+      );
     }
     if (error instanceof UpstreamError) {
-      fail(EXIT_UNREACHABLE, `\u8FDE\u63A5 NextShell \u5931\u8D25\uFF08${error.code}\uFF09\uFF1A${error.message}`);
+      fail(
+        EXIT_UNREACHABLE,
+        `\u8FDE\u63A5 NextShell \u5931\u8D25\uFF08${error.code}\uFF09\uFF1A${error.message}`
+      );
     }
     throw error;
   } finally {

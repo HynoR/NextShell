@@ -90,8 +90,7 @@ export const STATIC_TOOLS: ToolDescriptor[] = [
   {
     name: "exec",
     title: "执行远程命令",
-    description:
-      "在某个已打开会话的既有连接上执行一条命令并返回输出；命中黑名单直接报错。",
+    description: "在某个已打开会话的既有连接上执行一条命令并返回输出；命中黑名单直接报错。",
     inputSchema: {
       type: "object",
       properties: {

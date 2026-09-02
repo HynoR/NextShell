@@ -255,13 +255,7 @@ export class ConnectionService {
   }
 
   async upsertConnection(input: ConnectionUpsertInput): Promise<ConnectionProfile> {
-    const {
-      connections,
-      sshKeyRepo,
-      proxyRepo,
-      vault,
-      disposeAllMonitorSessions
-    } = this.options;
+    const { connections, sshKeyRepo, proxyRepo, vault, disposeAllMonitorSessions } = this.options;
 
     const now = new Date().toISOString();
     const id = input.id ?? randomUUID();
@@ -755,5 +749,4 @@ export class ConnectionService {
       return "认证成功，但自动保存凭据失败，请在连接管理器中手动保存。";
     }
   }
-
 }

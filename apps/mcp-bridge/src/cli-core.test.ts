@@ -84,7 +84,13 @@ describe("coerceFlagValue", () => {
 describe("renderCallResult", () => {
   it("extracts text content and flags isError", () => {
     const rendered = renderCallResult(
-      { content: [{ type: "text", text: "line1" }, { type: "text", text: "line2" }], isError: true },
+      {
+        content: [
+          { type: "text", text: "line1" },
+          { type: "text", text: "line2" }
+        ],
+        isError: true
+      },
       false
     );
     expect(rendered).toEqual({ text: "line1\nline2", isError: true });

@@ -8,7 +8,10 @@ export interface SessionResultItem {
 
 const MAX_SESSION_RESULTS = 8;
 
-function sessionSearchable(session: SessionDescriptor, connection: ConnectionProfile | undefined): string {
+function sessionSearchable(
+  session: SessionDescriptor,
+  connection: ConnectionProfile | undefined
+): string {
   const connectionBits = connection
     ? `${connection.name} ${connection.host} ${connection.username ?? ""}`
     : "";
@@ -60,7 +63,9 @@ export function buildQuickConnectSessionResults(params: {
 
   return sessions
     .filter((session) => {
-      const connection = session.connectionId ? connectionById.get(session.connectionId) : undefined;
+      const connection = session.connectionId
+        ? connectionById.get(session.connectionId)
+        : undefined;
       return sessionSearchable(session, connection).includes(lower);
     })
     .map((session) => ({

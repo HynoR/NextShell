@@ -26,9 +26,9 @@ describe("createZipArchive", () => {
     expect(zip.readUInt32LE(14)).toBe(crc32(data));
     expect(zip.readUInt32LE(18)).toBe(data.length);
     expect(zip.toString("utf8", 30, 30 + "manifest.json".length)).toBe("manifest.json");
-    expect(zip.subarray(30 + "manifest.json".length, 30 + "manifest.json".length + data.length)).toEqual(
-      data
-    );
+    expect(
+      zip.subarray(30 + "manifest.json".length, 30 + "manifest.json".length + data.length)
+    ).toEqual(data);
 
     // End of central directory
     const eocdOffset = zip.length - 22;
@@ -65,8 +65,8 @@ describe("createZipArchive", () => {
     expect(zip.readUInt32LE(second + 42)).toBe(30 + "manifest.json".length + a.length);
     // External attributes carry regular-file type + 0755.
     expect(zip.readUInt32LE(second + 38)).toBe(((0o100000 | 0o755) << 16) >>> 0);
-    expect(
-      zip.toString("utf8", second + 46, second + 46 + "server/index.js".length)
-    ).toBe("server/index.js");
+    expect(zip.toString("utf8", second + 46, second + 46 + "server/index.js".length)).toBe(
+      "server/index.js"
+    );
   });
 });

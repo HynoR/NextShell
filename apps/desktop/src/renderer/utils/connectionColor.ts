@@ -14,8 +14,7 @@ const hashString = (value: string): number => {
 };
 
 /** 色相间隔取 360/24=15°,避免相邻哈希落在肉眼不可分的色相上。 */
-export const connectionHue = (connectionId: string): number =>
-  (hashString(connectionId) % 24) * 15;
+export const connectionHue = (connectionId: string): number => (hashString(connectionId) % 24) * 15;
 
 export const connectionColor = (connectionId: string): string =>
   `hsl(${connectionHue(connectionId)} 62% 52%)`;

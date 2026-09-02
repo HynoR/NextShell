@@ -103,9 +103,7 @@ export const parseSshKeyMaterial = (
   passphrase?: string
 ): SshKeyMaterialInfo => {
   const utils = loadSsh2Utils();
-  const parsed = passphrase
-    ? utils.parseKey(privateKey, passphrase)
-    : utils.parseKey(privateKey);
+  const parsed = passphrase ? utils.parseKey(privateKey, passphrase) : utils.parseKey(privateKey);
   if (parsed instanceof Error) {
     throw new Error(`无法解析私钥：${parsed.message}`);
   }
@@ -141,11 +139,7 @@ export const parseSshKeyMaterial = (
  * 编码为 OpenSSH 私钥格式而不是 PKCS8 PEM:ssh2 解析不了 PKCS8 的 ed25519
  * (`Unsupported key format`),而 OpenSSH 格式两边都认。
  */
-const encodeOpenSshEd25519 = (
-  rawPrivate: Buffer,
-  rawPublic: Buffer,
-  comment: string
-): string => {
+const encodeOpenSshEd25519 = (rawPrivate: Buffer, rawPublic: Buffer, comment: string): string => {
   const publicBlob = Buffer.concat([sshText("ssh-ed25519"), sshString(rawPublic)]);
   // 两个 checkint 必须相等,解密方靠它判断 passphrase 是否正确;这里不加密,随机值即可。
   const checkInt = randomBytes(4);
@@ -181,10 +175,7 @@ const encodeOpenSshEd25519 = (
  * 生成一把新密钥。ed25519 走 OpenSSH 格式手工编码,RSA 直接用 PKCS#1 PEM(ssh2 原生支持)。
  * 不加 passphrase:私钥立即进 vault,再叠一层用户口令只会让"生成→绑定"多一道坎。
  */
-export const generateSshKeyPair = (
-  algorithm: SshKeyAlgorithm,
-  comment = ""
-): GeneratedSshKey => {
+export const generateSshKeyPair = (algorithm: SshKeyAlgorithm, comment = ""): GeneratedSshKey => {
   if (algorithm === "ed25519") {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     // 原始 32 字节标量/公钥分别位于 PKCS8 与 SPKI DER 的尾部,固定长度所以可以直接截取。

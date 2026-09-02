@@ -61,7 +61,10 @@ export const registerCommandTools = (server: McpServer, ctx: AgentToolContext): 
           .describe("Write into this workspace's command list instead of the local library"),
         name: z.string().min(1).max(200),
         group: z.string().max(200).optional(),
-        command: z.string().min(1).max(64 * 1024),
+        command: z
+          .string()
+          .min(1)
+          .max(64 * 1024),
         appendCr: z
           .boolean()
           .optional()

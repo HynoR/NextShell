@@ -20,7 +20,6 @@ const AUTH_LABELS: Record<ConnectionProfile["authType"], string> = {
   agent: "Agent"
 };
 
-
 /** 根目录默认只显示这么多台——1000+ 连接全量渲染会把刚打开的界面卡住,而且没人从全量列表里找机器。 */
 export const RECENT_ROOT_LIMIT = 30;
 
@@ -46,8 +45,7 @@ export const selectRecentConnections = (
     (connection.lastConnectedAt ? connected : never).push(connection);
   }
   connected.sort(
-    (a, b) =>
-      timeOf(b.lastConnectedAt) - timeOf(a.lastConnectedAt) || a.name.localeCompare(b.name)
+    (a, b) => timeOf(b.lastConnectedAt) - timeOf(a.lastConnectedAt) || a.name.localeCompare(b.name)
   );
   never.sort((a, b) => timeOf(b.createdAt) - timeOf(a.createdAt) || a.name.localeCompare(b.name));
   return [...connected, ...never].slice(0, limit);

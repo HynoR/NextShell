@@ -1755,7 +1755,6 @@ export class SQLiteConnectionRepository implements ConnectionRepository {
         notes: connection.notes ?? null,
         favorite: connection.favorite ? 1 : 0,
         monitor_session: connection.monitorSession ? 1 : 0,
-        // ÜÚ:;: agentAccess ËÅÚè Agent Õæ° d,›YFR:ÿ§<
         agent_access: "off",
         created_at: connection.createdAt,
         updated_at: connection.updatedAt,

@@ -181,7 +181,9 @@ describe("agent mcp service", () => {
     const result = await service.installCursor();
     expect(result.ok).toBe(true);
     expect(opened).toEqual([result.deeplink]);
-    expect(result.deeplink).toContain("cursor://anysphere.cursor-deeplink/mcp/install?name=nextshell");
+    expect(result.deeplink).toContain(
+      "cursor://anysphere.cursor-deeplink/mcp/install?name=nextshell"
+    );
     const encoded = decodeURIComponent(result.deeplink.split("config=")[1]!);
     const decoded = JSON.parse(Buffer.from(encoded, "base64").toString("utf8"));
     expect(decoded.command).toBe("/apps/NextShell");

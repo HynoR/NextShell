@@ -270,11 +270,7 @@ describe("exec", () => {
       cwd: "/etc"
     });
     expect(ok.ok).toBe(true);
-    expect(exec).toHaveBeenCalledWith(
-      prodHk.id,
-      "ls",
-      expect.objectContaining({ cwd: "/etc" })
-    );
+    expect(exec).toHaveBeenCalledWith(prodHk.id, "ls", expect.objectContaining({ cwd: "/etc" }));
 
     const bad = await gateway.execCommand(CLIENT, {
       target: "sess-full",

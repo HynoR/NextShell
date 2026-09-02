@@ -90,6 +90,4 @@ export const describeManagerDropWarning = ({
 }: {
   allPathsEmpty: boolean;
 }): string =>
-  allPathsEmpty
-    ? "无法读取拖入文件的路径，请改用「导入」按钮选择文件"
-    : "当前仅支持拖入文件";
+  allPathsEmpty ? "无法读取拖入文件的路径，请改用「导入」按钮选择文件" : "当前仅支持拖入文件";

@@ -141,7 +141,9 @@ describe("ProxyPane", () => {
   });
 
   test("renders the empty state", () => {
-    const html = renderToStaticMarkup(<ProxyPane proxies={[]} onReload={() => Promise.resolve()} />);
+    const html = renderToStaticMarkup(
+      <ProxyPane proxies={[]} onReload={() => Promise.resolve()} />
+    );
     expect(html).toContain("当前作用域没有代理");
   });
 });
@@ -157,7 +159,9 @@ describe("SshKeyPane", () => {
   });
 
   test("renders the empty state", () => {
-    const html = renderToStaticMarkup(<SshKeyPane sshKeys={[]} onReload={() => Promise.resolve()} />);
+    const html = renderToStaticMarkup(
+      <SshKeyPane sshKeys={[]} onReload={() => Promise.resolve()} />
+    );
     expect(html).toContain("当前作用域没有密钥");
     expect(html).toContain("单击一行查看密钥详情");
   });
@@ -317,7 +321,12 @@ describe("GridPathBar", () => {
 
   test("搜索中用命中数取代面包屑", () => {
     const html = renderToStaticMarkup(
-      <GridPathBar {...pathProps} segments={buildBreadcrumb(undefined, [], "本地")} searching resultCount={12} />
+      <GridPathBar
+        {...pathProps}
+        segments={buildBreadcrumb(undefined, [], "本地")}
+        searching
+        resultCount={12}
+      />
     );
     expect(html).toContain("搜索结果 12 台");
     expect(html).not.toContain("cm2-pathbar-link");

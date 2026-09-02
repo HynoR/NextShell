@@ -1,8 +1,4 @@
-import {
-  __resetScryptImplForTesting,
-  __setScryptImplForTesting,
-  deriveKey
-} from "./index";
+import { __resetScryptImplForTesting, __setScryptImplForTesting, deriveKey } from "./index";
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {

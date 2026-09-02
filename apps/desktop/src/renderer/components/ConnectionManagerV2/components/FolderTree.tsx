@@ -62,9 +62,7 @@ const FolderTreeInner = ({
 }: FolderTreeProps) => {
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([FOLDER_TREE_ROOT_KEY]);
   const [dropKey, setDropKey] = useState<string>();
-  const [menu, setMenu] = useState<{ x: number; y: number; items: PointerMenuItem[] } | null>(
-    null
-  );
+  const [menu, setMenu] = useState<{ x: number; y: number; items: PointerMenuItem[] } | null>(null);
 
   const folderById = useMemo(
     () => new Map(folders.map((folder) => [folder.id, folder])),

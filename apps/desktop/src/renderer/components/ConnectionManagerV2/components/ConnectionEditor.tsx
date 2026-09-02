@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import { Button, Collapse, Form, Input, InputNumber, Select, Switch } from "antd";
-import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type {
+  ConnectionFolder,
+  ConnectionProfile,
+  ProxyProfile,
+  SshKeyProfile
+} from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
 import { buildFolderPathLabels } from "../utils/folderTree";
 
@@ -146,7 +151,8 @@ export const ConnectionEditor = ({
           connection?.terminalEncoding ?? CONNECTION_EDITOR_DEFAULT_VALUES.terminalEncoding,
         backspaceMode: connection?.backspaceMode ?? CONNECTION_EDITOR_DEFAULT_VALUES.backspaceMode,
         deleteMode: connection?.deleteMode ?? CONNECTION_EDITOR_DEFAULT_VALUES.deleteMode,
-        monitorSession: connection?.monitorSession ?? CONNECTION_EDITOR_DEFAULT_VALUES.monitorSession,
+        monitorSession:
+          connection?.monitorSession ?? CONNECTION_EDITOR_DEFAULT_VALUES.monitorSession,
         tags: connection?.tags ?? CONNECTION_EDITOR_DEFAULT_VALUES.tags,
         notes: connection?.notes,
         favorite: connection?.favorite ?? CONNECTION_EDITOR_DEFAULT_VALUES.favorite,

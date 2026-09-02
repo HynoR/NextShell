@@ -81,12 +81,7 @@ export const useConnectionPasswordReveal = ({
         }
       }
     });
-  }, [
-    message,
-    modal,
-    primarySelectedId,
-    selectedConnection
-  ]);
+  }, [message, modal, primarySelectedId, selectedConnection]);
 
   return {
     clearRevealConnectionPassword,

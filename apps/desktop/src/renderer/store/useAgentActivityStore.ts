@@ -53,8 +53,7 @@ export const useAgentActivityStore = create<AgentActivityState>((set) => ({
       };
     }),
   // Halting drops every badge: no agent is driving anything any more.
-  setHalted: (halted) =>
-    set(() => (halted ? { halted, controlledSessions: {} } : { halted })),
+  setHalted: (halted) => set(() => (halted ? { halted, controlledSessions: {} } : { halted })),
   setEnabled: (enabled) => set({ enabled }),
   clearFinished: () =>
     set((state) => ({

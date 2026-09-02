@@ -12,12 +12,7 @@ import {
   LATEST_PROTOCOL_VERSION,
   UNAVAILABLE_MESSAGE
 } from "./constants.js";
-import {
-  HELP_TEXT,
-  parseCliInvocation,
-  renderCallResult,
-  renderToolList
-} from "./cli-core.js";
+import { HELP_TEXT, parseCliInvocation, renderCallResult, renderToolList } from "./cli-core.js";
 import { discoverEndpointTargets } from "./endpoint.js";
 import { parseToolDescriptors, STATIC_TOOLS } from "./tools.js";
 import { UpstreamError, UpstreamRpcError, UpstreamSession, type UpstreamLike } from "./upstream.js";

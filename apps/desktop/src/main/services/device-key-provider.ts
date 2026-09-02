@@ -41,7 +41,9 @@ export class DeviceKeyProvider {
       this.status = result.storedIn;
       logger.info("[Security] device key stored in local database");
       if (result.credentialsUnrecoverable) {
-        logger.warn("[Security] legacy keychain device key unreadable; stored credentials must be re-entered");
+        logger.warn(
+          "[Security] legacy keychain device key unreadable; stored credentials must be re-entered"
+        );
         this.options.onCredentialsUnrecoverable?.();
       }
       return this.resolved;

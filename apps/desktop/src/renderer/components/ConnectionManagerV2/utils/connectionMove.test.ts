@@ -155,16 +155,16 @@ describe("profileToUpsertPayload — 逐字段保真", () => {
 
 describe("profileToUpsertPayload — overrides", () => {
   test("folderId 覆盖成目标目录", () => {
-    expect(
-      profileToUpsertPayload(conn(), { folderId: TARGET_FOLDER_UUID }).folderId
-    ).toBe(TARGET_FOLDER_UUID);
+    expect(profileToUpsertPayload(conn(), { folderId: TARGET_FOLDER_UUID }).folderId).toBe(
+      TARGET_FOLDER_UUID
+    );
   });
 
   test("folderId 传 null 表示移到顶层——传 undefined 会被主进程理解成「别动目录」", () => {
     expect(profileToUpsertPayload(conn(), { folderId: null }).folderId).toBeNull();
-    expect(connectionUpsertSchema.safeParse(profileToUpsertPayload(conn(), { folderId: null })).success).toBe(
-      true
-    );
+    expect(
+      connectionUpsertSchema.safeParse(profileToUpsertPayload(conn(), { folderId: null })).success
+    ).toBe(true);
   });
 
   test("没给 folderId 键时沿用连接自身的目录", () => {
@@ -184,10 +184,9 @@ describe("planConnectionMove", () => {
   const c = conn({ id: "c", folderId: TARGET_FOLDER_UUID });
 
   test("只挑真正需要换目录的连接", () => {
-    expect(planConnectionMove([a, b, c], ["a", "b", "c"], TARGET_FOLDER_UUID).map((x) => x.id)).toEqual([
-      "a",
-      "b"
-    ]);
+    expect(
+      planConnectionMove([a, b, c], ["a", "b", "c"], TARGET_FOLDER_UUID).map((x) => x.id)
+    ).toEqual(["a", "b"]);
   });
 
   test("拖到自己已在的目录 = 空计划(不该弹任何 toast)", () => {
@@ -199,9 +198,9 @@ describe("planConnectionMove", () => {
   });
 
   test("忽略不在当前作用域列表里的 id", () => {
-    expect(planConnectionMove([a], ["a", "not-here"], TARGET_FOLDER_UUID).map((x) => x.id)).toEqual([
-      "a"
-    ]);
+    expect(planConnectionMove([a], ["a", "not-here"], TARGET_FOLDER_UUID).map((x) => x.id)).toEqual(
+      ["a"]
+    );
   });
 });
 

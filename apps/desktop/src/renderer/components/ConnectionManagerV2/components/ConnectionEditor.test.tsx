@@ -10,9 +10,9 @@ describe("resolveEditorErrorSection", () => {
   });
 
   test("只看第一个出错字段——展开一个区块再滚过去，多开只会晃眼", () => {
-    expect(
-      resolveEditorErrorSection([{ name: ["proxyId"] }, { name: ["hostFingerprint"] }])
-    ).toBe("network");
+    expect(resolveEditorErrorSection([{ name: ["proxyId"] }, { name: ["hostFingerprint"] }])).toBe(
+      "network"
+    );
   });
 
   test("常驻字段不需要展开任何区块", () => {

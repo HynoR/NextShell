@@ -227,7 +227,10 @@ const ProxyEditor = ({
             <InputNumber min={1} max={65535} precision={0} style={{ width: "100%" }} />
           </Form.Item>
         </div>
-        <Form.Item label={proxyType === "socks4" ? "User ID（可选）" : "用户名（可选）"} name="username">
+        <Form.Item
+          label={proxyType === "socks4" ? "User ID（可选）" : "用户名（可选）"}
+          name="username"
+        >
           <Input placeholder="可选" />
         </Form.Item>
         {proxyType === "socks5" ? (

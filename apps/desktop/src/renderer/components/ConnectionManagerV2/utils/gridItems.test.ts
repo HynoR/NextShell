@@ -46,8 +46,7 @@ const rowsOf = (connections: ConnectionProfile[]): ConnectionRow[] =>
 const nameOf = (item: GridItem): string =>
   item.kind === "folder" ? item.folder.name : item.row.connection.name;
 
-const namesOf = (section: GridSection | undefined): string[] =>
-  (section?.items ?? []).map(nameOf);
+const namesOf = (section: GridSection | undefined): string[] => (section?.items ?? []).map(nameOf);
 
 const ASC = { key: "name", direction: "asc" } as const;
 
@@ -92,7 +91,13 @@ describe("buildGridSections — 搜索", () => {
 
   test("搜索中不追加「最近连接」段——那是根目录浏览态才有的东西", () => {
     const rows = rowsOf([conn({ id: "c1", name: "alpha" })]);
-    const sections = buildGridSections({ rows, folders, searching: true, mode: "browse", sort: ASC });
+    const sections = buildGridSections({
+      rows,
+      folders,
+      searching: true,
+      mode: "browse",
+      sort: ASC
+    });
     expect(sections.map((section) => section.key)).toEqual(["search"]);
   });
 });
@@ -244,10 +249,7 @@ describe("buildGridSections — 目录层", () => {
   });
 
   test("目录磁贴按 sortIndex 再按名称排,不受连接排序影响", () => {
-    const ordered = [
-      folder("z", "z-folder", undefined, 0),
-      folder("a", "a-folder", undefined, 1)
-    ];
+    const ordered = [folder("z", "z-folder", undefined, 0), folder("a", "a-folder", undefined, 1)];
     const sections = buildGridSections({
       rows: [],
       folders: ordered,
@@ -319,7 +321,12 @@ describe("collectGridConnectionIds", () => {
   test("只收连接磁贴的 id,跨段合并,目录不算", () => {
     const rows = rowsOf([
       conn({ id: "root-a", name: "root-a" }),
-      conn({ id: "deep", name: "deep", folderId: "db", lastConnectedAt: "2026-03-01T00:00:00.000Z" })
+      conn({
+        id: "deep",
+        name: "deep",
+        folderId: "db",
+        lastConnectedAt: "2026-03-01T00:00:00.000Z"
+      })
     ]);
     const browse = buildGridSections({
       rows,

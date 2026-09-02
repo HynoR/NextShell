@@ -210,10 +210,7 @@ const dangerousReason = (
     return "Fork bomb pattern is forbidden";
   }
   const deviceRedirect = dequoted.match(/(?:^|[^>])>{1,2}\s*(\/dev\/[^\s;&|]+)/iu)?.[1];
-  if (
-    deviceRedirect &&
-    !/^\/dev\/(?:null|stdout|stderr|fd(?:\/|$))/iu.test(deviceRedirect)
-  ) {
+  if (deviceRedirect && !/^\/dev\/(?:null|stdout|stderr|fd(?:\/|$))/iu.test(deviceRedirect)) {
     return "Output redirection to a device file is dangerous";
   }
 
@@ -224,10 +221,7 @@ const dangerousReason = (
     const executable = unwrapped.executable;
     const args = unwrapped.args;
 
-    if (
-      recursionDepth < 2 &&
-      ["bash", "dash", "fish", "ksh", "sh", "zsh"].includes(executable)
-    ) {
+    if (recursionDepth < 2 && ["bash", "dash", "fish", "ksh", "sh", "zsh"].includes(executable)) {
       const commandIndex = args.findIndex((arg) => arg === "-c" || arg === "--command");
       const nested = commandIndex >= 0 ? args[commandIndex + 1] : undefined;
       if (nested) {

@@ -25,17 +25,17 @@ describe("clampDialogSize", () => {
 
 describe("fitDialogToViewport", () => {
   test("leaves a size that fits alone", () => {
-    expect(fitDialogToViewport({ width: 1180, height: 760 }, { width: 1920, height: 1080 })).toEqual(
-      { width: 1180, height: 760 }
-    );
+    expect(
+      fitDialogToViewport({ width: 1180, height: 760 }, { width: 1920, height: 1080 })
+    ).toEqual({ width: 1180, height: 760 });
   });
 
   test("shrinks a size remembered from a bigger screen", () => {
     // 2400×1400 saved on a desktop, reopened on a laptop. 高度扣的是 120 而不是 64——
     // 壳体上面还有 top:40 的偏移和标题栏，只扣 64 会把右下角的缩放手柄顶出屏幕。
-    expect(fitDialogToViewport({ width: 2400, height: 1400 }, { width: 1440, height: 900 })).toEqual(
-      { width: 1408, height: 780 }
-    );
+    expect(
+      fitDialogToViewport({ width: 2400, height: 1400 }, { width: 1440, height: 900 })
+    ).toEqual({ width: 1408, height: 780 });
   });
 
   test("never collapses below a usable size on a tiny viewport", () => {

@@ -11,8 +11,7 @@ export interface QuickConnectAddress {
 }
 
 export type QuickConnectParseResult =
-  | { ok: true; value: QuickConnectAddress }
-  | { ok: false; message: string };
+  { ok: true; value: QuickConnectAddress } | { ok: false; message: string };
 
 export const parseQuickConnectInput = (raw: string): QuickConnectParseResult => {
   const text = raw.trim();

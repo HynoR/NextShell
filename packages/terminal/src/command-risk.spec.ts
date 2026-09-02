@@ -24,7 +24,7 @@ describe("matchDangerousCommand", () => {
     "sudo -- rm -rf //",
     "sudo -u root /sbin/mkfs.xfs /dev/sdb1",
     "dd 'of=/dev/disk0' if=/dev/zero",
-    "printf x 2>\"/dev/sda\"",
+    'printf x 2>"/dev/sda"',
     "command rm -rf /",
     "env LC_ALL=C rm -rf /",
     "busybox rm -rf /",

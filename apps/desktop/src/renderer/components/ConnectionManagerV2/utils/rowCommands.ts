@@ -5,14 +5,7 @@ import type { ConnectionProfile } from "@nextshell/core";
  * 时想改的是那一行,右击选区时想做的是批量操作。
  */
 export type RowCommand =
-  | "edit"
-  | "connect"
-  | "rename"
-  | "copyAddress"
-  | "copyToScope"
-  | "bindAuth"
-  | "export"
-  | "delete";
+  "edit" | "connect" | "rename" | "copyAddress" | "copyToScope" | "bindAuth" | "export" | "delete";
 
 export interface RowCommandContext {
   /** 被右击的那一行。 */

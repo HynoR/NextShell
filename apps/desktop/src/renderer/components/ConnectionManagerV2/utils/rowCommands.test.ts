@@ -2,8 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { ConnectionProfile } from "@nextshell/core";
 import { describeAffected, planRowCommands } from "./rowCommands";
 
-const conn = (id: string, name: string): ConnectionProfile =>
-  ({ id, name }) as ConnectionProfile;
+const conn = (id: string, name: string): ConnectionProfile => ({ id, name }) as ConnectionProfile;
 
 describe("planRowCommands", () => {
   test("offers the single-row commands with edit first", () => {

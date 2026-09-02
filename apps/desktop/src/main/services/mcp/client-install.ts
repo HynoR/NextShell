@@ -28,9 +28,19 @@ export const resolveClaudeDesktopConfigPath = (
 ): string => {
   switch (platform) {
     case "darwin":
-      return path.join(homeDir, "Library", "Application Support", "Claude", "claude_desktop_config.json");
+      return path.join(
+        homeDir,
+        "Library",
+        "Application Support",
+        "Claude",
+        "claude_desktop_config.json"
+      );
     case "win32":
-      return path.join(appDataDir ?? path.join(homeDir, "AppData", "Roaming"), "Claude", "claude_desktop_config.json");
+      return path.join(
+        appDataDir ?? path.join(homeDir, "AppData", "Roaming"),
+        "Claude",
+        "claude_desktop_config.json"
+      );
     default:
       return path.join(homeDir, ".config", "Claude", "claude_desktop_config.json");
   }
@@ -62,7 +72,9 @@ export const mergeClaudeDesktopConfig = (
   }
 
   const servers =
-    typeof root.mcpServers === "object" && root.mcpServers !== null && !Array.isArray(root.mcpServers)
+    typeof root.mcpServers === "object" &&
+    root.mcpServers !== null &&
+    !Array.isArray(root.mcpServers)
       ? (root.mcpServers as Record<string, unknown>)
       : {};
   root.mcpServers = { ...servers, [serverKey]: serverConfig };

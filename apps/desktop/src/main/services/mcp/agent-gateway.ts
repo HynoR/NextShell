@@ -233,7 +233,8 @@ export interface AgentGatewayDeps {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const AGENT_REDACTED = "«redacted»";
-const ANSI_ESCAPE_PATTERN = /[][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\x2f#&.:=?%@~_]+)*)?)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+const ANSI_ESCAPE_PATTERN =
+  /[][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\x2f#&.:=?%@~_]+)*)?)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
 const MAX_LIST_ITEMS = 500;
 /** Ceiling on `session_send_keys` `waitForPrompt`. */
@@ -423,9 +424,7 @@ export class AgentGateway {
    * the tab is the grant. Local shells have no connection and stay invisible.
    */
   private openRemoteSessions(): AgentSessionInfo[] {
-    return this.deps
-      .listSessions()
-      .filter((session) => session.connectionId !== null);
+    return this.deps.listSessions().filter((session) => session.connectionId !== null);
   }
 
   // ─── Call plumbing ────────────────────────────────────────────────────────
@@ -481,7 +480,8 @@ export class AgentGateway {
   ): Promise<AgentToolResult<T>> {
     const { connectionId, requestedTimeoutMs } = options;
     const activityId = `${client.id}:${++this.activitySequence}`;
-    const commandSummary = typeof params.command === "string" ? redactText(params.command) : undefined;
+    const commandSummary =
+      typeof params.command === "string" ? redactText(params.command) : undefined;
     this.emitActivity(client, activityId, tool, "running", connectionId, commandSummary);
 
     if (this.halted) {
@@ -691,7 +691,9 @@ export class AgentGateway {
         const entries = snapshot.entries.slice(-limit).map((entry) => ({
           ...entry,
           command: entry.command === null ? null : redactText(entry.command),
-          output: redactText(input.stripAnsi ? entry.output.replace(ANSI_ESCAPE_PATTERN, "") : entry.output)
+          output: redactText(
+            input.stripAnsi ? entry.output.replace(ANSI_ESCAPE_PATTERN, "") : entry.output
+          )
         }));
         return {
           sessionId: session.id,
@@ -980,10 +982,7 @@ export class AgentGateway {
     // Kept strictly under the call ceiling: if the wait could outlive the call,
     // a slow command would surface as a `timeout` error instead of the honest
     // `waitTimedOut: true` the tool promises.
-    const waitMs = Math.min(
-      clampInt(input.timeoutSec, 30, 1, 3600) * 1000,
-      MAX_WAIT_FOR_PROMPT_MS
-    );
+    const waitMs = Math.min(clampInt(input.timeoutSec, 30, 1, 3600) * 1000, MAX_WAIT_FOR_PROMPT_MS);
 
     return this.execute(
       client,
@@ -1022,9 +1021,7 @@ export class AgentGateway {
       {
         connectionId,
         // The wait is the point of the call, so it gets the whole budget.
-        requestedTimeoutMs: input.waitForPrompt
-          ? waitMs + WAIT_FOR_PROMPT_HEADROOM_MS
-          : undefined
+        requestedTimeoutMs: input.waitForPrompt ? waitMs + WAIT_FOR_PROMPT_HEADROOM_MS : undefined
       }
     );
   }

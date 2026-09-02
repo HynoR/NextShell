@@ -87,8 +87,7 @@ export const TerminalSection = ({
 
   const persistAppBackgroundOpacity = useCallback(
     (value: number | null) => {
-      const numeric =
-        value !== null && Number.isFinite(value) ? value : appBackgroundOpacity;
+      const numeric = value !== null && Number.isFinite(value) ? value : appBackgroundOpacity;
       // 输入途中可能越界(比如要输 35 时先敲出 "3"),先钳制再保存,Zod patch 只收 30..80。
       const clamped = clampAppBackgroundOpacity(numeric);
       if (clamped !== appBackgroundOpacity) {

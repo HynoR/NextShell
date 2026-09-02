@@ -51,9 +51,7 @@ export const buildImportGroupPathFromRelativeFile = (relativePath: string): stri
     .map((segment) => segment.trim())
     .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 
-  return segments.length > 0
-    ? `/${segments.join("/")}`
-    : "/";
+  return segments.length > 0 ? `/${segments.join("/")}` : "/";
 };
 
 export const scanConnectionImportDirectory = async (

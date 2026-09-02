@@ -38,7 +38,10 @@ export interface ShellIntegrationExecLike {
  */
 const launchCommandByConnectionId = new Map<string, Promise<string | undefined>>();
 /** Weak, so connections without an id take their bookkeeping with them. */
-let launchCommandByConnection = new WeakMap<ShellIntegrationExecLike, Promise<string | undefined>>();
+let launchCommandByConnection = new WeakMap<
+  ShellIntegrationExecLike,
+  Promise<string | undefined>
+>();
 
 /**
  * Drops the cached launch command for one connection (or all of them). Call it
@@ -63,7 +66,9 @@ export interface ShellIntegrationLaunchOptions {
   log?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
-const probeAndInstall = async (options: ShellIntegrationLaunchOptions): Promise<string | undefined> => {
+const probeAndInstall = async (
+  options: ShellIntegrationLaunchOptions
+): Promise<string | undefined> => {
   const { connection, scriptText, log = () => undefined } = options;
 
   let family: ShellIntegrationFamily | undefined;

@@ -1,7 +1,12 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent, KeyboardEvent, MouseEvent } from "react";
 import { App as AntdApp, Modal } from "antd";
-import type { ConnectionFolder, ConnectionProfile, ProxyProfile, SshKeyProfile } from "@nextshell/core";
+import type {
+  ConnectionFolder,
+  ConnectionProfile,
+  ProxyProfile,
+  SshKeyProfile
+} from "@nextshell/core";
 import { formatErrorMessage } from "../../utils/errorMessage";
 import { promptModal } from "../../utils/promptModal";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
@@ -238,30 +243,28 @@ export const ConnectionManagerV2 = ({
     [confirmDiscardEdits, openDetail]
   );
 
-  const {
-    handleRevealConnectionPassword,
-    revealedLoginPassword,
-    revealingLoginPassword
-  } = useConnectionPasswordReveal({
-    activeAuthType: editingConnection?.authType,
-    modal,
-    message,
-    primarySelectedId: editingConnection?.id,
-    selectedConnection: editingConnection
-  });
+  const { handleRevealConnectionPassword, revealedLoginPassword, revealingLoginPassword } =
+    useConnectionPasswordReveal({
+      activeAuthType: editingConnection?.authType,
+      modal,
+      message,
+      primarySelectedId: editingConnection?.id,
+      selectedConnection: editingConnection
+    });
 
   const notifyError = useCallback((text: string) => message.error(text), [message]);
-  const importFlow = useConnectionImportFlow({ modal, message, onConnectionsImported: onReloadConnections });
-  const onOpenBatchAuth = useCallback(
-    (connectionIds: string[]) => {
-      setBatchAuthTarget({
-        type: "connections",
-        connectionIds,
-        label: `选中的 ${connectionIds.length} 个连接`
-      });
-    },
-    []
-  );
+  const importFlow = useConnectionImportFlow({
+    modal,
+    message,
+    onConnectionsImported: onReloadConnections
+  });
+  const onOpenBatchAuth = useCallback((connectionIds: string[]) => {
+    setBatchAuthTarget({
+      type: "connections",
+      connectionIds,
+      label: `选中的 ${connectionIds.length} 个连接`
+    });
+  }, []);
   const scope = useManagerScope({ open, onError: notifyError });
 
   const dialogSize = useMemo(
@@ -362,8 +365,7 @@ export const ConnectionManagerV2 = ({
   }, [gridConnectionIds]);
 
   const folderLabel = useMemo(() => {
-    const target =
-      detail.kind === "view" ? detail.connection.folderId : undefined;
+    const target = detail.kind === "view" ? detail.connection.folderId : undefined;
     return buildBreadcrumb(target, scope.folders, scope.activeScope.label)
       .map((segment) => segment.label)
       .join(" / ");
@@ -490,12 +492,9 @@ export const ConnectionManagerV2 = ({
     message
   });
 
-  const handleExport = useCallback(
-    (ids: string[]) => {
-      setExportIds(ids);
-    },
-    []
-  );
+  const handleExport = useCallback((ids: string[]) => {
+    setExportIds(ids);
+  }, []);
 
   // hook 读的是 selectedIds 快照，所以要等 state 落地后再触发。
   // 导出流程中间有三个 await 的弹窗（选模式、输密码、选目录），期间云同步的 onApplied 会
@@ -1385,9 +1384,7 @@ export const ConnectionManagerV2 = ({
                 }
                 onOpenLocalTerminal={handleOpenLocalTerminal}
                 onImportNextShellFile={() => void importFlow.handleImportNextShell()}
-                onImportNextShellDirectory={() =>
-                  void importFlow.handleImportNextShellDirectory()
-                }
+                onImportNextShellDirectory={() => void importFlow.handleImportNextShellDirectory()}
                 onImportFinalShellFile={() => void importFlow.handleImportFinalShell()}
                 onImportFinalShellDirectory={() =>
                   void importFlow.handleImportFinalShellDirectory()
@@ -1450,44 +1447,44 @@ export const ConnectionManagerV2 = ({
 
             {detail.kind !== "empty" ? (
               <>
-            <div
-              className="cm2-resizer cm2-resizer--flush"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="调整详情栏宽度"
-              onPointerDown={startDetailResize}
-            />
+                <div
+                  className="cm2-resizer cm2-resizer--flush"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="调整详情栏宽度"
+                  onPointerDown={startDetailResize}
+                />
 
-            <div className="cm2-detail-col">
-              {detail.kind === "view" ? (
-                <DetailCard
-                  connection={detail.connection}
-                  sshKeys={scopedSshKeys}
-                  folderLabel={folderLabel}
-                  onEdit={() => openDetail({ kind: "edit", connection: detail.connection })}
-                  onConnect={() => handleConnect(detail.connection.id)}
-                />
-              ) : detail.kind === "edit" ? (
-                <ConnectionEditor
-                  // 换连接时整体重挂载，让 initialValues 生效。换目标前的未保存改动由守卫兜。
-                  key={detail.connection?.id ?? "__new__"}
-                  editorRef={editorRef}
-                  connection={detail.connection}
-                  folders={scope.folders}
-                  currentFolderId={scope.currentFolderId}
-                  sshKeys={scopedSshKeys}
-                  proxies={scopedProxies}
-                  saving={saving}
-                  revealedPassword={revealedLoginPassword}
-                  revealingPassword={revealingLoginPassword}
-                  onRevealPassword={() => void handleRevealConnectionPassword()}
-                  onSubmit={(values, intent) => void handleSubmit(values, intent)}
-                  onCancel={() => runGuarded(leaveEdit)}
-                  onDirtyChange={handleEditorDirtyChange}
-                  onCreateKey={() => setInlineKeyOpen(true)}
-                />
-              ) : null}
-            </div>
+                <div className="cm2-detail-col">
+                  {detail.kind === "view" ? (
+                    <DetailCard
+                      connection={detail.connection}
+                      sshKeys={scopedSshKeys}
+                      folderLabel={folderLabel}
+                      onEdit={() => openDetail({ kind: "edit", connection: detail.connection })}
+                      onConnect={() => handleConnect(detail.connection.id)}
+                    />
+                  ) : detail.kind === "edit" ? (
+                    <ConnectionEditor
+                      // 换连接时整体重挂载，让 initialValues 生效。换目标前的未保存改动由守卫兜。
+                      key={detail.connection?.id ?? "__new__"}
+                      editorRef={editorRef}
+                      connection={detail.connection}
+                      folders={scope.folders}
+                      currentFolderId={scope.currentFolderId}
+                      sshKeys={scopedSshKeys}
+                      proxies={scopedProxies}
+                      saving={saving}
+                      revealedPassword={revealedLoginPassword}
+                      revealingPassword={revealingLoginPassword}
+                      onRevealPassword={() => void handleRevealConnectionPassword()}
+                      onSubmit={(values, intent) => void handleSubmit(values, intent)}
+                      onCancel={() => runGuarded(leaveEdit)}
+                      onDirtyChange={handleEditorDirtyChange}
+                      onCreateKey={() => setInlineKeyOpen(true)}
+                    />
+                  ) : null}
+                </div>
               </>
             ) : null}
           </div>

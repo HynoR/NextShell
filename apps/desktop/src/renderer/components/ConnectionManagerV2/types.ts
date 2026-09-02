@@ -7,14 +7,7 @@ export type ResourceTab = "connections" | "keys" | "proxies";
  * 这里的键序同时是「列…」下拉重新勾选时的插入序,所以它必须等于期望的显示顺序。
  */
 export type ConnectionColumnKey =
-  | "name"
-  | "address"
-  | "username"
-  | "auth"
-  | "notes"
-  | "tags"
-  | "lastConnected"
-  | "createdAt";
+  "name" | "address" | "username" | "auth" | "notes" | "tags" | "lastConnected" | "createdAt";
 
 export const DEFAULT_CONNECTION_COLUMNS: ConnectionColumnKey[] = [
   "name",

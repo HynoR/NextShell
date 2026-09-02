@@ -670,9 +670,7 @@ export const appPreferencesPatchSchema = z.object({
     .object({
       enabled: z.boolean().optional(),
       execTimeoutSec: z.coerce.number().int().min(1).max(3600).optional(),
-      blacklist: z
-        .preprocess(trimAndFilterStringArray, z.array(z.string().min(1)))
-        .optional()
+      blacklist: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1))).optional()
     })
     .optional()
 });

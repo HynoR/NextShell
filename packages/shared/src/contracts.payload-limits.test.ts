@@ -84,7 +84,10 @@ const makeUuid = (index: number): string =>
     remotePath: "/etc/nginx/nginx.conf",
     content: "hello"
   });
-  assert(parsed.success, "sftpEditWriteFileSchema should accept connectionId + remotePath + content");
+  assert(
+    parsed.success,
+    "sftpEditWriteFileSchema should accept connectionId + remotePath + content"
+  );
 })();
 
 (() => {

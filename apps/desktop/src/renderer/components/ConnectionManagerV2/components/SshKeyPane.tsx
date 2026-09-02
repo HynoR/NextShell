@@ -104,7 +104,10 @@ export const SshKeyPane = ({ sshKeys, workspaceId, onReload }: SshKeyPaneProps) 
    * 与 `InlineSshKeyModal` 共用 `readPrivateKeyFile`,两处行为保持一致。
    */
   const handlePickKeyFile = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>, apply: (text: string, fileName: string) => void) => {
+    async (
+      event: ChangeEvent<HTMLInputElement>,
+      apply: (text: string, fileName: string) => void
+    ) => {
       const file = event.target.files?.[0];
       // 读完就把 input 清空，否则连选两次同一个文件不会触发 change。
       event.target.value = "";
@@ -129,7 +132,12 @@ export const SshKeyPane = ({ sshKeys, workspaceId, onReload }: SshKeyPaneProps) 
     if (!selected) {
       return;
     }
-    const name = await promptModal(modal, `重命名密钥「${selected.name}」`, "请输入新的名称", selected.name);
+    const name = await promptModal(
+      modal,
+      `重命名密钥「${selected.name}」`,
+      "请输入新的名称",
+      selected.name
+    );
     const payload = planSshKeyRename({ key: selected, name: name ?? "", workspaceId });
     if (!payload) {
       return;

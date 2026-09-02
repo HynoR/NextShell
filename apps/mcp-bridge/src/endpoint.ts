@@ -178,8 +178,7 @@ export const resolveUserDataDirs = (deps: EndpointDiscoveryDeps = {}): string[] 
   return dirs;
 };
 
-const recordKey = (record: EndpointRecord): string =>
-  `${record.socketPath}|${record.pid ?? 0}`;
+const recordKey = (record: EndpointRecord): string => `${record.socketPath}|${record.pid ?? 0}`;
 
 export const readEndpointRecords = (deps: EndpointDiscoveryDeps = {}): EndpointRecord[] => {
   const readFile = deps.readFile ?? defaultReadFile;

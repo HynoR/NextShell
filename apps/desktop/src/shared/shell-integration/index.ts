@@ -96,7 +96,7 @@ export const SHELL_INTEGRATION_BASH_INIT_PATH = `${SHELL_INTEGRATION_REMOTE_DIR}
  */
 export const BASH_INIT_FILE_TEXT = [
   "# NextShell shell-integration bootstrap (bash --init-file). Generated file.",
-  '[ -f /etc/profile ] && . /etc/profile',
+  "[ -f /etc/profile ] && . /etc/profile",
   'if [ -f "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"',
   'elif [ -f "$HOME/.bash_login" ]; then . "$HOME/.bash_login"',
   'elif [ -f "$HOME/.profile" ]; then . "$HOME/.profile"',
@@ -274,7 +274,8 @@ export const buildInstallCommand = (
 export const buildBootstrapInstallCommand = (
   family: ShellIntegrationFamily,
   readScript?: (family: ShellIntegrationFamily) => string
-): string => wrapForPosixShell(buildFileInstallScript(integrationBootstrapFiles(family, readScript)));
+): string =>
+  wrapForPosixShell(buildFileInstallScript(integrationBootstrapFiles(family, readScript)));
 
 const MANUAL_RC_FILE_BY_FAMILY: Record<ShellIntegrationFamily, string> = {
   bash: "~/.bashrc",

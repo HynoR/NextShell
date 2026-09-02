@@ -39,11 +39,7 @@ export const DIALOG_MIN_VISIBLE = 320;
  * 就会出现"命令式写进 DOM 的高度是 560,React 认为是 520",而 React 因为自己那份值没变
  * 根本不会去改写内联样式,DOM 就永远停在那个顶出视口的尺寸上。
  */
-const fitDimension = (
-  dimension: "width" | "height",
-  value: number,
-  available: number
-): number => {
+const fitDimension = (dimension: "width" | "height", value: number, available: number): number => {
   const clamped = clampDialogSize(dimension, value);
   // 视口读数坏掉(NaN/Infinity)时宁可不夹——夹出 NaN 会把尺寸整个写废。
   if (!Number.isFinite(available)) {

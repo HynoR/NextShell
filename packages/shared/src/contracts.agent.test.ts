@@ -22,16 +22,12 @@ const assert = (condition: boolean, message: string): void => {
     "agent endpoint must default to disabled in schema parsing"
   );
   assert(parsed.agent.execTimeoutSec === 60, "agent exec timeout should default to 60s");
-  assert(
-    parsed.agent.blacklist.length === 0,
-    "agent blacklist should default to an empty list"
-  );
+  assert(parsed.agent.blacklist.length === 0, "agent blacklist should default to an empty list");
 })();
 
 (() => {
   // Preferences persisted before this feature existed carry no agent block.
-  const parsed = appPreferencesSchema.safeParse({
-  });
+  const parsed = appPreferencesSchema.safeParse({});
 
   assert(parsed.success, "appPreferencesSchema should accept preferences without an agent block");
   if (!parsed.success) {

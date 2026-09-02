@@ -74,11 +74,7 @@
   height: 16px;
   cursor: nwse-resize;
   touch-action: none;
-  background: repeating-linear-gradient(
-    135deg,
-    transparent 0 3px,
-    var(--border) 3px 4px
-  );
+  background: repeating-linear-gradient(135deg, transparent 0 3px, var(--border) 3px 4px);
 }
 
 .cm2-dialog-resize:hover {

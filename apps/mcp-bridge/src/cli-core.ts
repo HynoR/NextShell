@@ -33,11 +33,7 @@ export interface CliCallCommand {
 }
 
 export type CliInvocation =
-  | CliUsageError
-  | CliHelpCommand
-  | CliStatusCommand
-  | CliToolsCommand
-  | CliCallCommand;
+  CliUsageError | CliHelpCommand | CliStatusCommand | CliToolsCommand | CliCallCommand;
 
 /** Flags consumed by the CLI itself; everything else becomes a tool argument. */
 const RESERVED_FLAGS = new Set(["json", "full", "timeout", "help"]);
@@ -158,7 +154,10 @@ export const parseCliInvocation = (argv: string[]): CliInvocation => {
 };
 
 /** MCP CallToolResult → printable text: concatenated text parts, or raw JSON. */
-export const renderCallResult = (result: unknown, full: boolean): { text: string; isError: boolean } => {
+export const renderCallResult = (
+  result: unknown,
+  full: boolean
+): { text: string; isError: boolean } => {
   if (!isRecord(result)) {
     return { text: JSON.stringify(result), isError: false };
   }

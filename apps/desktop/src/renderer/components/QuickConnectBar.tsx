@@ -5,7 +5,10 @@ import {
   isQuickConnectShortcut,
   shouldIgnoreQuickConnectShortcutTarget
 } from "../utils/quickConnectShortcut";
-import { buildQuickConnectSessionResults, type SessionResultItem } from "../utils/quickConnectSessions";
+import {
+  buildQuickConnectSessionResults,
+  type SessionResultItem
+} from "../utils/quickConnectSessions";
 import { useWorkspaceStore } from "../store/useWorkspaceStore";
 
 interface QuickConnectBarProps {

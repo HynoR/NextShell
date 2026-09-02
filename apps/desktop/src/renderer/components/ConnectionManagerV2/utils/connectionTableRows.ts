@@ -141,10 +141,7 @@ export const buildConnectionTableRows = ({
     return children.length > 0 ? { ...base, children } : base;
   };
 
-  return [
-    ...startNodes.map(toFolderRow),
-    ...sortConnectionRows(loose, sort).map(toConnectionRow)
-  ];
+  return [...startNodes.map(toFolderRow), ...sortConnectionRows(loose, sort).map(toConnectionRow)];
 };
 
 /**

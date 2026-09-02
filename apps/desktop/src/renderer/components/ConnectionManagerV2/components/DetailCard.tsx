@@ -65,7 +65,11 @@ export const DetailCard = ({
         ) : null}
         {connection.proxyId ? <Row label="代理">已配置</Row> : null}
         <Row label="标签">
-          {connection.tags.length > 0 ? connection.tags.join("、") : <span className="cm2-muted">—</span>}
+          {connection.tags.length > 0 ? (
+            connection.tags.join("、")
+          ) : (
+            <span className="cm2-muted">—</span>
+          )}
         </Row>
         <Row label="最后连接">
           {connection.lastConnectedAt ? (

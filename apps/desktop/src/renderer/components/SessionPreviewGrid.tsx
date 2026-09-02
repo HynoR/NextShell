@@ -147,7 +147,11 @@ export const SessionPreviewGrid = ({
             ) : null}
             <span className="session-preview-cell-title">{session.title}</span>
             <span className="session-preview-cell-status">
-              {session.status === "connected" ? "" : session.status === "connecting" ? "连接中" : "已断开"}
+              {session.status === "connected"
+                ? ""
+                : session.status === "connecting"
+                  ? "连接中"
+                  : "已断开"}
             </span>
           </button>
           <div

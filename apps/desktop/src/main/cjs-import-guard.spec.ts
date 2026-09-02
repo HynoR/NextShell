@@ -55,7 +55,10 @@ const collectNamedImports = (moduleName: string): Map<string, string[]> => {
     }
     for (const match of readFileSync(file, "utf-8").matchAll(pattern)) {
       for (const clause of (match[1] ?? "").split(",")) {
-        const imported = clause.trim().split(/\s+as\s+/)[0]?.trim();
+        const imported = clause
+          .trim()
+          .split(/\s+as\s+/)[0]
+          ?.trim();
         // 具名子句里也可能混着 `type Foo`，同样擦除，跳过。
         if (!imported || imported.startsWith("type ")) {
           continue;

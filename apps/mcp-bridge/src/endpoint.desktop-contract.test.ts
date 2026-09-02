@@ -8,7 +8,11 @@ import { afterAll, describe, expect, it } from "vitest";
 // directory layout and a record shape that neither package's own tests can
 // verify alone, and a mismatch silently disables zero-config discovery.
 import { EndpointDiscoveryFile } from "../../desktop/src/main/services/mcp/discovery.js";
-import { discoverEndpointTargets, ENDPOINT_DIRECTORY_NAME, ENDPOINT_FILE_NAME } from "./endpoint.js";
+import {
+  discoverEndpointTargets,
+  ENDPOINT_DIRECTORY_NAME,
+  ENDPOINT_FILE_NAME
+} from "./endpoint.js";
 
 const tempDirs: string[] = [];
 

@@ -100,7 +100,9 @@ export const AgentActivityPanel = () => {
                       <span className="truncate font-medium">
                         {activity.clientName ?? "未知客户端"} · {activity.tool}
                       </span>
-                      <Tag color={status.color} className="m-0">{status.label}</Tag>
+                      <Tag color={status.color} className="m-0">
+                        {status.label}
+                      </Tag>
                     </div>
                     <div
                       className="mt-1 truncate text-[var(--text-secondary)]"

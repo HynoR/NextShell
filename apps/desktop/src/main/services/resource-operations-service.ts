@@ -216,7 +216,6 @@ export class ResourceOperationsService {
     if (conn.credentialRef) {
       await vault.deleteCredential(conn.credentialRef).catch(() => {});
     }
-
   }
 
   // ── Delete SSH Key ──────────────────────────────────────────────────
@@ -286,7 +285,6 @@ export class ResourceOperationsService {
     // Step 4: Clean up credentials
     if (key.keyContentRef) await vault.deleteCredential(key.keyContentRef).catch(() => {});
     if (key.passphraseRef) await vault.deleteCredential(key.passphraseRef).catch(() => {});
-
   }
 
   // ── Recycle Bin Operations ──────────────────────────────────────────
@@ -434,7 +432,6 @@ export class ResourceOperationsService {
    */
   purgeRecycleBinEntry(id: string): void {
     this.deps.removeRecycleBinEntry(id);
-
   }
 
   // ── Private helpers ─────────────────────────────────────────────────
@@ -598,16 +595,14 @@ export class ResourceOperationsService {
     if (!originalScopeKey || originalScopeKey === LOCAL_DEFAULT_SCOPE_KEY) {
       return { scopeKey: LOCAL_DEFAULT_SCOPE_KEY, originKind: "local" };
     }
-    const workspace = this.deps.cloudSyncManager
-      ?.listWorkspaces()
-      .find(
-        (item) =>
-          buildScopeKey({
-            kind: "cloud",
-            apiBaseUrl: item.apiBaseUrl,
-            workspaceName: item.workspaceName
-          }) === originalScopeKey
-      );
+    const workspace = this.deps.cloudSyncManager?.listWorkspaces().find(
+      (item) =>
+        buildScopeKey({
+          kind: "cloud",
+          apiBaseUrl: item.apiBaseUrl,
+          workspaceName: item.workspaceName
+        }) === originalScopeKey
+    );
     if (!workspace) {
       return { scopeKey: LOCAL_DEFAULT_SCOPE_KEY, originKind: "local" };
     }

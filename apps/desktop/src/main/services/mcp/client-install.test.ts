@@ -15,9 +15,9 @@ describe("buildCursorDeeplink", () => {
   it("encodes the server config as base64 in the deeplink", () => {
     const config = { command: "/bin/node", args: ["/x/bridge.mjs"] };
     const link = buildCursorDeeplink("nextshell", config);
-    expect(link.startsWith("cursor://anysphere.cursor-deeplink/mcp/install?name=nextshell&config=")).toBe(
-      true
-    );
+    expect(
+      link.startsWith("cursor://anysphere.cursor-deeplink/mcp/install?name=nextshell&config=")
+    ).toBe(true);
     const encoded = decodeURIComponent(link.split("config=")[1]!);
     expect(JSON.parse(Buffer.from(encoded, "base64").toString("utf8"))).toEqual(config);
   });
@@ -26,11 +26,17 @@ describe("buildCursorDeeplink", () => {
 describe("resolveClaudeDesktopConfigPath", () => {
   it("maps each platform to its Claude config location", () => {
     expect(resolveClaudeDesktopConfigPath("darwin", "/Users/a")).toBe(
-      path.join("/Users/a", "Library", "Application Support", "Claude", "claude_desktop_config.json")
+      path.join(
+        "/Users/a",
+        "Library",
+        "Application Support",
+        "Claude",
+        "claude_desktop_config.json"
+      )
     );
-    expect(resolveClaudeDesktopConfigPath("win32", "C:\\Users\\a", "C:\\Users\\a\\AppData\\Roaming")).toBe(
-      path.join("C:\\Users\\a\\AppData\\Roaming", "Claude", "claude_desktop_config.json")
-    );
+    expect(
+      resolveClaudeDesktopConfigPath("win32", "C:\\Users\\a", "C:\\Users\\a\\AppData\\Roaming")
+    ).toBe(path.join("C:\\Users\\a\\AppData\\Roaming", "Claude", "claude_desktop_config.json"));
     expect(resolveClaudeDesktopConfigPath("linux", "/home/a")).toBe(
       path.join("/home/a", ".config", "Claude", "claude_desktop_config.json")
     );
@@ -65,7 +71,10 @@ describe("mergeClaudeDesktopConfig", () => {
 describe("installClaudeDesktopConfig", () => {
   const server = { command: "/bin/node" };
 
-  const memoryFs = (files: Record<string, string>, dirs: string[]): ClaudeDesktopFs & {
+  const memoryFs = (
+    files: Record<string, string>,
+    dirs: string[]
+  ): ClaudeDesktopFs & {
     files: Record<string, string>;
   } => ({
     files,

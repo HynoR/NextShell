@@ -8,12 +8,7 @@ import {
   planSiblingReorder
 } from "./folderTree";
 
-const folder = (
-  id: string,
-  name: string,
-  parentId?: string,
-  sortIndex = 0
-): ConnectionFolder => ({
+const folder = (id: string, name: string, parentId?: string, sortIndex = 0): ConnectionFolder => ({
   id,
   scopeKey: "local-default",
   parentId,
@@ -127,14 +122,18 @@ describe("planSiblingReorder", () => {
   // 三个的 sortIndex 都已经是 0，所以"新下标恰好也是 0"的那一个会被过滤掉，
   // 剩下的两条足以把整层排成 c / a / b。
   test("拖到某个节点之前", () => {
-    expect(planSiblingReorder({ folders: level, dragId: "c", dropId: "a", placeAfter: false })).toEqual([
+    expect(
+      planSiblingReorder({ folders: level, dragId: "c", dropId: "a", placeAfter: false })
+    ).toEqual([
       { id: "a", sortIndex: 1 },
       { id: "b", sortIndex: 2 }
     ]);
   });
 
   test("拖到某个节点之后", () => {
-    expect(planSiblingReorder({ folders: level, dragId: "a", dropId: "b", placeAfter: true })).toEqual([
+    expect(
+      planSiblingReorder({ folders: level, dragId: "a", dropId: "b", placeAfter: true })
+    ).toEqual([
       { id: "a", sortIndex: 1 },
       { id: "c", sortIndex: 2 }
     ]);
@@ -143,7 +142,11 @@ describe("planSiblingReorder", () => {
   test("整层重编号，但只返回真正变了的项", () => {
     // b 已经在 1 号位，重编号后仍是 1，不该为它白发一次 IPC。
     const steps = planSiblingReorder({
-      folders: [folder("a", "a", undefined, 0), folder("b", "b", undefined, 1), folder("c", "c", undefined, 2)],
+      folders: [
+        folder("a", "a", undefined, 0),
+        folder("b", "b", undefined, 1),
+        folder("c", "c", undefined, 2)
+      ],
       dragId: "a",
       dropId: "c",
       placeAfter: false
@@ -156,7 +159,12 @@ describe("planSiblingReorder", () => {
 
   test("跨层拖到别人的缝隙里:按目标层重编号，被拖的那个也在计划里", () => {
     // 目标层是 prod 的孩子 [asia, edge]，staging 插到 asia 之后 → asia / staging / edge。
-    const steps = planSiblingReorder({ folders, dragId: "staging", dropId: "asia", placeAfter: true });
+    const steps = planSiblingReorder({
+      folders,
+      dragId: "staging",
+      dropId: "asia",
+      placeAfter: true
+    });
     expect(steps).toEqual([
       { id: "staging", sortIndex: 1 },
       { id: "edge", sortIndex: 2 }
@@ -164,17 +172,24 @@ describe("planSiblingReorder", () => {
   });
 
   test("拖到自己身上、或落点目录不存在时给空计划", () => {
-    expect(planSiblingReorder({ folders: level, dragId: "a", dropId: "a", placeAfter: true })).toEqual([]);
-    expect(planSiblingReorder({ folders: level, dragId: "a", dropId: "gone", placeAfter: true })).toEqual(
-      []
-    );
-    expect(planSiblingReorder({ folders: level, dragId: "gone", dropId: "a", placeAfter: true })).toEqual(
-      []
-    );
+    expect(
+      planSiblingReorder({ folders: level, dragId: "a", dropId: "a", placeAfter: true })
+    ).toEqual([]);
+    expect(
+      planSiblingReorder({ folders: level, dragId: "a", dropId: "gone", placeAfter: true })
+    ).toEqual([]);
+    expect(
+      planSiblingReorder({ folders: level, dragId: "gone", dropId: "a", placeAfter: true })
+    ).toEqual([]);
   });
 
   test("重编号的结果与 buildFolderTree 的显示顺序一致", () => {
-    const steps = planSiblingReorder({ folders: level, dragId: "c", dropId: "a", placeAfter: false });
+    const steps = planSiblingReorder({
+      folders: level,
+      dragId: "c",
+      dropId: "a",
+      placeAfter: false
+    });
     const applied = level.map((f) => {
       const step = steps.find((candidate) => candidate.id === f.id);
       return step ? { ...f, sortIndex: step.sortIndex } : f;

@@ -23,9 +23,4 @@ export const registerAgentTools = (server: McpServer, ctx: AgentToolContext): vo
 };
 
 export type { AgentToolContext } from "./shared";
-export {
-  registerCommandTools,
-  registerControlTools,
-  registerExecTools,
-  registerSessionTools
-};
+export { registerCommandTools, registerControlTools, registerExecTools, registerSessionTools };

@@ -81,7 +81,9 @@ describe("prepareShellIntegrationLaunch", () => {
 
   test("a probe failure resolves undefined and is retried by the next session", async () => {
     const failing = createFakeConnection({ failProbe: true });
-    expect(await prepareShellIntegrationLaunch({ connection: failing, connectionId: "c1" })).toBeUndefined();
+    expect(
+      await prepareShellIntegrationLaunch({ connection: failing, connectionId: "c1" })
+    ).toBeUndefined();
 
     // Failure was not cached: a healthy connection under the same id retries.
     const healthy = createFakeConnection({ shellPath: "/bin/bash" });

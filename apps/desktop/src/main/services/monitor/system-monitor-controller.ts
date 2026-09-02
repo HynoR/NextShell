@@ -73,7 +73,12 @@ const toSnapshot = (
   networkInterfaceOptions: string[]
 ): MonitorSnapshot => {
   // With PROBE_OPTIONS all on, the parser always fills these; defaults only satisfy the types.
-  const memory = frame.memory ?? { memTotalKb: 0, memAvailableKb: 0, swapTotalKb: 0, swapFreeKb: 0 };
+  const memory = frame.memory ?? {
+    memTotalKb: 0,
+    memAvailableKb: 0,
+    swapTotalKb: 0,
+    swapFreeKb: 0
+  };
   const disk = frame.disk ?? { diskTotalKb: 0, diskUsedKb: 0 };
   const memoryUsedKb = Math.max(0, memory.memTotalKb - memory.memAvailableKb);
   const swapUsedKb = Math.max(0, memory.swapTotalKb - memory.swapFreeKb);

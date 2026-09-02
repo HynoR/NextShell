@@ -40,11 +40,11 @@
    * 字号五档。旧的连接管理器 CSS 里有 13 种取值，其中 9 种挤在 9.5–14px 之间：相邻档只差
    * 0.5–1.5px，读不出层级，又都偏小所以都难读。新界面只用这五档。
    */
-  --fs-xs: 11px;   /* 元数据、计数徽标 */
-  --fs-sm: 12px;   /* 表单标签、次要列 */
+  --fs-xs: 11px; /* 元数据、计数徽标 */
+  --fs-sm: 12px; /* 表单标签、次要列 */
   --fs-base: 13px; /* 列表行、正文、输入框 */
-  --fs-md: 15px;   /* 面板标题 */
-  --fs-lg: 18px;   /* 空状态标题 */
+  --fs-md: 15px; /* 面板标题 */
+  --fs-lg: 18px; /* 空状态标题 */
 
   --app-background-opacity: 60;
   /* Keep in sync with apps/desktop/src/main/window-theme.ts via src/shared/window-ui.ts. */

@@ -93,10 +93,7 @@ const assertEqual = <T>(actual: T, expected: T, message: string): void => {
 // backwards — each must open its own tab rather than silently reuse a stale
 // handshake.
 (() => {
-  assert(
-    resolveCoalescedStart(undefined, 1_000) === undefined,
-    "a first click must not coalesce"
-  );
+  assert(resolveCoalescedStart(undefined, 1_000) === undefined, "a first click must not coalesce");
   assert(
     resolveCoalescedStart({ at: 1_000, promise: "open-1" }, 1_000 + DOUBLE_START_COALESCE_MS) ===
       undefined,

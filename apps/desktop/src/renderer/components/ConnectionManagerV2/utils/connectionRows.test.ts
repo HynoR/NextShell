@@ -47,10 +47,9 @@ describe("buildConnectionRow", () => {
   });
 
   test("names the bound key for private-key auth", () => {
-    const row = buildConnectionRow(
-      conn({ id: "a", authType: "privateKey", sshKeyId: "k1" }),
-      [key("k1", "deploy")]
-    );
+    const row = buildConnectionRow(conn({ id: "a", authType: "privateKey", sshKeyId: "k1" }), [
+      key("k1", "deploy")
+    ]);
     expect(row.authLabel).toBe("私钥 · deploy");
     expect(row.authMissing).toBe(false);
   });
@@ -63,10 +62,9 @@ describe("buildConnectionRow", () => {
 
   test("flags a key id that no longer resolves", () => {
     // Deleting the key elsewhere leaves the id behind; connecting would fail just the same.
-    const row = buildConnectionRow(
-      conn({ id: "a", authType: "privateKey", sshKeyId: "gone" }),
-      [key("k1", "deploy")]
-    );
+    const row = buildConnectionRow(conn({ id: "a", authType: "privateKey", sshKeyId: "gone" }), [
+      key("k1", "deploy")
+    ]);
     expect(row.authMissing).toBe(true);
   });
 
@@ -226,10 +224,7 @@ describe("selectRecentConnections", () => {
   });
 
   test("坏时间戳不炸,按 0 处理并落到名称序", () => {
-    const picked = selectRecentConnections(
-      [conn("b", "not-a-date"), conn("a", "also-bad")],
-      5
-    );
+    const picked = selectRecentConnections([conn("b", "not-a-date"), conn("a", "also-bad")], 5);
     expect(picked.map((c: { id: string }) => c.id)).toEqual(["a", "b"]);
   });
 });

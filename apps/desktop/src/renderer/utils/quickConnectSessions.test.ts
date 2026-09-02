@@ -32,13 +32,28 @@ function makeSession(overrides: Partial<SessionDescriptor> & { id: string }): Se
 }
 
 describe("buildQuickConnectSessionResults", () => {
-  const connA = makeConnection({ id: "conn-a", name: "Prod Web", host: "1.2.3.4", username: "deploy" });
-  const connB = makeConnection({ id: "conn-b", name: "Staging DB", host: "db.internal", username: "root" });
+  const connA = makeConnection({
+    id: "conn-a",
+    name: "Prod Web",
+    host: "1.2.3.4",
+    username: "deploy"
+  });
+  const connB = makeConnection({
+    id: "conn-b",
+    name: "Staging DB",
+    host: "db.internal",
+    username: "root"
+  });
   const connections = [connA, connB];
 
   const sA = makeSession({ id: "s-a", title: "Prod Web #1", connectionId: "conn-a" });
   const sB = makeSession({ id: "s-b", title: "Staging DB #1", connectionId: "conn-b" });
-  const sC = makeSession({ id: "s-c", title: "Prod Web #2", connectionId: "conn-a", status: "disconnected" });
+  const sC = makeSession({
+    id: "s-c",
+    title: "Prod Web #2",
+    connectionId: "conn-a",
+    status: "disconnected"
+  });
   const sessions = [sA, sB, sC];
 
   it("returns sessions in MRU order, skipping the active session, when keyword is empty", () => {

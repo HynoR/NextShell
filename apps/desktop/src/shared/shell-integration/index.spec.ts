@@ -95,7 +95,6 @@ describe("script assets", () => {
     expect(code).not.toMatch(/\blocal\b/);
     expect(code).not.toMatch(/\bfunction\b/);
   });
-
 });
 
 describe("posixSingleQuote", () => {

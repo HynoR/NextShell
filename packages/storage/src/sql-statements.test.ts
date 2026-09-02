@@ -127,7 +127,13 @@ describe("SQL INSERT column/value alignment", () => {
   test("ssh_keys upsert bind covers every declared column including key material", () => {
     const columns = parseStringArrayConst("SSH_KEY_COLUMN_LIST");
     expect(columns).toEqual(
-      expect.arrayContaining(["key_type", "key_bits", "key_comment", "fingerprint", "public_key_line"])
+      expect.arrayContaining([
+        "key_type",
+        "key_bits",
+        "key_comment",
+        "fingerprint",
+        "public_key_line"
+      ])
     );
     expect(parseInterfaceFields("SshKeyRow")).toEqual(columns);
 

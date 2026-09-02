@@ -22,15 +22,15 @@ app's endpoint file automatically; if NextShell is not running, tools return a c
 
 ## What's inside
 
-| Path | What it is |
-| --- | --- |
-| `bin/bridge.mjs` | Zero-credential stdio ↔ NextShell bridge (self-contained, answers `initialize`/`tools/list` even when the app is down) |
-| `skills/remote-triage` | "看一下 xx 服务器" — snapshot first, read-only drill-down |
-| `skills/deploy-upload` | "把打包文件传到 /opt/app" — verify → upload via transfer queue → verify → unpack |
-| `skills/disk-forensics` | "哪个文件夹占用最大" — du drill-down anchored on the user's session cwd |
-| `commands/nextshell-triage.md` | `/nextshell:nextshell-triage <host>` |
-| `agents/sre-operator.md` | Subagent restricted to the read-only tool tier |
-| `skills/nextshell-cli` | MCP-free access: a self-contained CLI + SKILL.md for agents that speak shell but not MCP |
+| Path                           | What it is                                                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `bin/bridge.mjs`               | Zero-credential stdio ↔ NextShell bridge (self-contained, answers `initialize`/`tools/list` even when the app is down) |
+| `skills/remote-triage`         | "看一下 xx 服务器" — snapshot first, read-only drill-down                                                              |
+| `skills/deploy-upload`         | "把打包文件传到 /opt/app" — verify → upload via transfer queue → verify → unpack                                       |
+| `skills/disk-forensics`        | "哪个文件夹占用最大" — du drill-down anchored on the user's session cwd                                                |
+| `commands/nextshell-triage.md` | `/nextshell:nextshell-triage <host>`                                                                                   |
+| `agents/sre-operator.md`       | Subagent restricted to the read-only tool tier                                                                         |
+| `skills/nextshell-cli`         | MCP-free access: a self-contained CLI + SKILL.md for agents that speak shell but not MCP                               |
 
 ## No MCP? Use the skill instead
 

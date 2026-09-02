@@ -262,7 +262,10 @@ export const resolveDeviceKey = async (
         return { deviceKeyHex: keychainKey, storedIn: "database" };
       }
     } catch (error) {
-      console.warn("[Security] legacy device keychain read failed; generating a new device key", error);
+      console.warn(
+        "[Security] legacy device keychain read failed; generating a new device key",
+        error
+      );
       const deviceKeyHex = generate();
       db.saveLegacy(deviceKeyHex);
       return { deviceKeyHex, storedIn: "database", credentialsUnrecoverable: true };

@@ -56,18 +56,18 @@ const GridPathBarInner = ({
       )}
     </div>
     {recent && !searching ? null : (
-    <Select
-      className="cm2-pathbar-sort"
-      size="small"
-      variant="borderless"
-      value={gridSortValue(sort)}
-      onChange={(value) => onSortChange(resolveGridSort(value))}
-      options={GRID_SORT_OPTIONS.map((option) => ({
-        value: option.value,
-        label: option.label
-      }))}
-      aria-label="排序方式"
-    />
+      <Select
+        className="cm2-pathbar-sort"
+        size="small"
+        variant="borderless"
+        value={gridSortValue(sort)}
+        onChange={(value) => onSortChange(resolveGridSort(value))}
+        options={GRID_SORT_OPTIONS.map((option) => ({
+          value: option.value,
+          label: option.label
+        }))}
+        aria-label="排序方式"
+      />
     )}
   </div>
 );

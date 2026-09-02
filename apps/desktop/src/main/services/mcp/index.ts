@@ -15,11 +15,7 @@ import {
   buildMcpbArchive,
   installClaudeDesktopConfig
 } from "./client-install";
-import {
-  AgentGateway,
-  type AgentClientIdentity,
-  type AgentGatewayDeps
-} from "./agent-gateway";
+import { AgentGateway, type AgentClientIdentity, type AgentGatewayDeps } from "./agent-gateway";
 import { EndpointDiscoveryFile } from "./discovery";
 import { McpEndpointServer, type AgentLogger } from "./endpoint-server";
 import { registerAgentTools } from "./tools";
@@ -180,7 +176,12 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       [RUN_AS_NODE_ENV_VAR]: "1",
       [ENDPOINT_ENV_VAR]: discovery.primaryPath
     };
-    return { bridgeEntry, runtime, env, serverConfig: { command: runtime, args: [bridgeEntry], env } };
+    return {
+      bridgeEntry,
+      runtime,
+      env,
+      serverConfig: { command: runtime, args: [bridgeEntry], env }
+    };
   };
 
   const reconcile = async (): Promise<void> => {
@@ -206,7 +207,11 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
         status.endpointFilePath
       )} -- ${shellQuote(stdio.runtime)} ${shellQuote(stdio.bridgeEntry)}`;
 
-      const json = JSON.stringify({ mcpServers: { [MCP_CLIENT_KEY]: stdio.serverConfig } }, null, 2);
+      const json = JSON.stringify(
+        { mcpServers: { [MCP_CLIENT_KEY]: stdio.serverConfig } },
+        null,
+        2
+      );
       deps.writeClipboard?.(client === "claude-code" ? command : json);
       return { ok: true, command, json };
     },
