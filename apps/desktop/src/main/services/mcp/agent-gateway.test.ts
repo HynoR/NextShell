@@ -774,6 +774,39 @@ describe("command search", () => {
       expect(serialized).not.toContain(secret);
     }
   });
+
+  test("redacts private key blocks, bearer tokens, and CLI secret flags", async () => {
+    const AGENT_REDACTED = "«redacted»";
+    const leaky = [
+      "echo start-marker\n-----BEGIN RSA PRIVATE KEY-----\nMIIEpQIBAAKCAQEA1234567890abcdefGHIJKLMNOP\n-----END RSA PRIVATE KEY-----\necho end-marker",
+      "curl -H 'Authorization: Bearer sk-live-AbCdEf123456'",
+      "curl -H 'authorization: bearer sk-live-ZyXwVu654321'",
+      "terraform apply --password=Sup3rSecretFlagOne",
+      "aws configure --token Sup3rSecretFlagTwo"
+    ];
+    const { gateway } = createHarness({
+      listSavedCommands: () => leaky.map((command, index) => savedCommand(command, `cmd-${index}`))
+    });
+
+    const result = await gateway.searchCommands(CLIENT, {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.data.matches).toHaveLength(leaky.length);
+    const serialized = JSON.stringify(result.data);
+    for (const secret of [
+      "MIIEpQIBAAKCAQEA1234567890abcdefGHIJKLMNOP",
+      "sk-live-AbCdEf123456",
+      "sk-live-ZyXwVu654321",
+      "Sup3rSecretFlagOne",
+      "Sup3rSecretFlagTwo"
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).toContain("echo start-marker");
+    expect(serialized).toContain("echo end-marker");
+    expect(serialized.split(AGENT_REDACTED).length - 1).toBeGreaterThanOrEqual(leaky.length);
+  });
 });
 
 describe("prompt-flooding guards", () => {

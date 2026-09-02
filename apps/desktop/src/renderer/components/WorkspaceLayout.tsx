@@ -41,6 +41,7 @@ import { TransferQueuePanel } from "./TransferQueuePanel";
 import { AgentActivityPanel } from "./AgentActivityPanel";
 import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
+import { useDeviceKeyNotice } from "../hooks/useDeviceKeyNotice";
 import { useSessionTabShortcuts, type SessionSwitcherState } from "../hooks/useSessionTabShortcuts";
 import { SessionSwitcherOverlay } from "./SessionSwitcherOverlay";
 import { resolveSwitcherSelection } from "./SessionSwitcherOverlay.selection";
@@ -451,6 +452,7 @@ const WorkspaceLayoutComponent = ({
   const terminalPaneRef = useRef<TerminalPaneHandle | null>(null);
   const resizeFitRafRef = useRef(0);
   const commandHistory = useCommandHistory();
+  useDeviceKeyNotice();
   const activeTerminalSessionId = activeTerminalSession?.id;
   const activeTerminalSessionStatus = activeTerminalSession?.status;
 

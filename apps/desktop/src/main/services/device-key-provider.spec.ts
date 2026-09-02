@@ -33,13 +33,21 @@ describe("DeviceKeyProvider", () => {
       },
       clear: async () => {}
     };
-    const provider = new DeviceKeyProvider({ store, db });
+    let unrecoverable = 0;
+    const provider = new DeviceKeyProvider({
+      store,
+      db,
+      onCredentialsUnrecoverable: () => {
+        unrecoverable += 1;
+      }
+    });
 
     expect(recalls).toBe(0);
     expect(provider.getStatus()).toBe("unresolved");
     expect((await provider.get()).toString("hex")).toBe(KEY);
     expect(recalls).toBe(0);
     expect(provider.getStatus()).toBe("database");
+    expect(unrecoverable).toBe(0);
   });
 
   test("drains a legacy keychain key into the database once", async () => {
@@ -56,7 +64,14 @@ describe("DeviceKeyProvider", () => {
         clears += 1;
       }
     };
-    const provider = new DeviceKeyProvider({ store, db });
+    let unrecoverable = 0;
+    const provider = new DeviceKeyProvider({
+      store,
+      db,
+      onCredentialsUnrecoverable: () => {
+        unrecoverable += 1;
+      }
+    });
 
     await provider.get();
     await provider.get();
@@ -65,6 +80,7 @@ describe("DeviceKeyProvider", () => {
     expect(recalls).toBe(1);
     expect(clears).toBe(1);
     expect(provider.getStatus()).toBe("database");
+    expect(unrecoverable).toBe(0);
   });
 
   test("creates a database key when the legacy keychain read is denied", async () => {
@@ -78,7 +94,14 @@ describe("DeviceKeyProvider", () => {
       },
       clear: async () => {}
     };
-    const provider = new DeviceKeyProvider({ store, db });
+    let unrecoverable = 0;
+    const provider = new DeviceKeyProvider({
+      store,
+      db,
+      onCredentialsUnrecoverable: () => {
+        unrecoverable += 1;
+      }
+    });
 
     expect((await provider.get()).toString("hex")).toMatch(/^[0-9a-f]{64}$/);
     await provider.get();
@@ -86,5 +109,6 @@ describe("DeviceKeyProvider", () => {
     expect(db.value).toMatch(/^[0-9a-f]{64}$/);
     expect(recalls).toBe(1);
     expect(provider.getStatus()).toBe("database");
+    expect(unrecoverable).toBe(1);
   });
 });

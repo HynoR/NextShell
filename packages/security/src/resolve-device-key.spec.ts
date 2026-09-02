@@ -38,6 +38,7 @@ describe("resolveDeviceKey", () => {
     const result = await resolveDeviceKey(store, db, generate);
 
     expect(result).toEqual({ deviceKeyHex: legacy, storedIn: "database" });
+    expect(result.credentialsUnrecoverable).toBeUndefined();
     expect(recalls).toBe(0);
   });
 
@@ -55,6 +56,7 @@ describe("resolveDeviceKey", () => {
     const result = await resolveDeviceKey(store, db, generate);
 
     expect(result).toEqual({ deviceKeyHex: FIXED_KEY, storedIn: "database" });
+    expect(result.credentialsUnrecoverable).toBeUndefined();
     expect(db.value).toBe(FIXED_KEY);
     expect(cleared).toBe(1);
   });
@@ -71,7 +73,26 @@ describe("resolveDeviceKey", () => {
 
     const result = await resolveDeviceKey(store, db, generate);
 
-    expect(result).toEqual({ deviceKeyHex: FIXED_KEY, storedIn: "database" });
+    expect(result).toEqual({
+      deviceKeyHex: FIXED_KEY,
+      storedIn: "database",
+      credentialsUnrecoverable: true
+    });
     expect(db.value).toBe(FIXED_KEY);
+  });
+
+  test("does not flag credentials when the keychain is unavailable or empty", async () => {
+    const empty: DeviceKeyStore = {
+      isAvailable: () => true,
+      recall: async () => undefined,
+      clear: async () => {}
+    };
+    const unavailable: DeviceKeyStore = { ...empty, isAvailable: () => false };
+
+    for (const store of [empty, unavailable]) {
+      const result = await resolveDeviceKey(store, makeDb(), generate);
+      expect(result).toEqual({ deviceKeyHex: FIXED_KEY, storedIn: "database" });
+      expect(result.credentialsUnrecoverable).toBeUndefined();
+    }
   });
 });

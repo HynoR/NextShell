@@ -801,6 +801,20 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     dispatch: (services) => services.networkTools.checkForUpdate()
   }),
   define({
+    channel: IPCChannel.SecurityDeviceKeyNoticeGet,
+    schema: emptyObjectSchema,
+    label: "设备密钥提示查询",
+    coerceEmptyPayload: true,
+    dispatch: (services) => services.getDeviceKeyNotice()
+  }),
+  define({
+    channel: IPCChannel.SecurityDeviceKeyNoticeAcknowledge,
+    schema: emptyObjectSchema,
+    label: "设备密钥提示确认",
+    coerceEmptyPayload: true,
+    dispatch: (services) => services.acknowledgeDeviceKeyNotice()
+  }),
+  define({
     channel: IPCChannel.Ping,
     schema: pingRequestSchema,
     label: "Ping",

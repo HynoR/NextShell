@@ -7,6 +7,7 @@ import type {
   SessionDescriptor,
   TerminalEncoding
 } from "../../../../../packages/core/src/index";
+import type { DeviceKeyNotice } from "../../../../../packages/shared/src/index";
 import type { ConnectionFolderService } from "./connection-folder-service";
 import type { SshShellChannel, SshConnection } from "../../../../../packages/ssh/src/index";
 import type { IPty } from "node-pty";
@@ -133,5 +134,8 @@ export interface ServiceContainer {
   pauseMonitors: () => void;
   resumeMonitors: () => void;
   getAppPreferences: () => AppPreferences;
+  /** One-time notice: the legacy keychain device key was unreadable and stored credentials are lost. */
+  getDeviceKeyNotice: () => DeviceKeyNotice;
+  acknowledgeDeviceKeyNotice: () => { ok: true };
   dispose: () => Promise<void>;
 }

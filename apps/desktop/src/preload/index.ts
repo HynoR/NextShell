@@ -6,6 +6,7 @@ import type {
   AgentSessionFocusEvent,
   CloudSyncManagerStatusEvent,
   DebugLogEntry,
+  DeviceKeyNotice,
   SessionDataEvent,
   SessionStatusEvent,
   SftpEditStatusEvent,
@@ -295,6 +296,19 @@ const api: NextShellApi = {
   },
   about: {
     checkUpdate: () => invoke(IPCChannel.UpdateCheck, {})
+  },
+  security: {
+    getDeviceKeyNotice: () => invoke(IPCChannel.SecurityDeviceKeyNoticeGet, {}),
+    acknowledgeDeviceKeyNotice: () => invoke(IPCChannel.SecurityDeviceKeyNoticeAcknowledge, {}),
+    onDeviceKeyNotice: (listener: (event: DeviceKeyNotice) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: DeviceKeyNotice) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.SecurityDeviceKeyNoticeEvent, handler);
+      return () => {
+        ipcRenderer.off(IPCChannel.SecurityDeviceKeyNoticeEvent, handler);
+      };
+    }
   },
   ping: {
     probe: (payload: { host: string }) => invoke(IPCChannel.Ping, payload)

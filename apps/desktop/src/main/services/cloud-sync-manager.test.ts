@@ -718,6 +718,93 @@ describe("CloudSyncManager workspace repo sync", () => {
 
     expect(reencryptedFingerprint).toBe(fingerprint);
   });
+
+  test("fingerprint is independent of asset traversal order", () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const connA: ConnectionProfile = {
+      id: "conn-a",
+      name: "Alpha",
+      host: "alpha.example.com",
+      port: 22,
+      username: "root",
+      authType: "agent",
+      strictHostKeyChecking: false,
+      groupPath: "/workspace/prod-team",
+      tags: [],
+      favorite: false,
+      monitorSession: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "conn-a",
+      originKind: "cloud",
+      originScopeKey: "cloud-scope",
+      originWorkspaceId: workspace.id
+    };
+    const connB: ConnectionProfile = {
+      ...connA,
+      id: "conn-b",
+      name: "Beta",
+      host: "beta.example.com",
+      uuidInScope: "conn-b",
+      updatedAt: "2026-03-16T00:00:00.000Z"
+    };
+
+    const forwardState = createMutableState(workspace, { connections: [connA, connB] });
+    const forward = (
+      new CloudSyncManager(createMutableDeps(forwardState)) as unknown as {
+        workspaceFingerprint: (workspaceId: string) => string;
+      }
+    ).workspaceFingerprint(workspace.id);
+
+    const reversedState = createMutableState(workspace, { connections: [connB, connA] });
+    const reversed = (
+      new CloudSyncManager(createMutableDeps(reversedState)) as unknown as {
+        workspaceFingerprint: (workspaceId: string) => string;
+      }
+    ).workspaceFingerprint(workspace.id);
+
+    expect(reversed).toBe(forward);
+  });
+
+  test("bumping one asset's updatedAt changes the fingerprint", () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const connection: ConnectionProfile = {
+      id: "conn-1",
+      name: "Prod",
+      host: "prod.example.com",
+      port: 22,
+      username: "root",
+      authType: "password",
+      credentialRef: "secret://password",
+      strictHostKeyChecking: false,
+      groupPath: "/workspace/prod-team",
+      tags: [],
+      favorite: false,
+      monitorSession: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "conn-1",
+      originKind: "cloud",
+      originScopeKey: "cloud-scope",
+      originWorkspaceId: workspace.id
+    };
+    const state = createMutableState(workspace, { connections: [connection] });
+    const manager = new CloudSyncManager(createMutableDeps(state)) as unknown as {
+      workspaceFingerprint: (workspaceId: string) => string;
+    };
+    const before = manager.workspaceFingerprint(workspace.id);
+
+    state.connections = [{ ...connection, updatedAt: "2026-03-16T00:00:00.000Z" }];
+    const after = manager.workspaceFingerprint(workspace.id);
+
+    expect(after).not.toBe(before);
+  });
 });
 
 describe("CloudSyncManager applyWorkspaceSnapshot", () => {

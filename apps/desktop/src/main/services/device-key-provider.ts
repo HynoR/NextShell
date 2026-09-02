@@ -10,6 +10,8 @@ export type DeviceKeyStatus = "unresolved" | "database";
 export interface DeviceKeyProviderOptions {
   store: DeviceKeyStore;
   db: DeviceKeyDbAccess;
+  /** Fired once when a legacy keychain key could not be read and a fresh key replaced it. */
+  onCredentialsUnrecoverable?: () => void;
 }
 
 /** Resolve the device key lazily and keep the authoritative copy in SQLite. */
@@ -38,6 +40,10 @@ export class DeviceKeyProvider {
       this.resolved = Buffer.from(result.deviceKeyHex, "hex");
       this.status = result.storedIn;
       logger.info("[Security] device key stored in local database");
+      if (result.credentialsUnrecoverable) {
+        logger.warn("[Security] legacy keychain device key unreadable; stored credentials must be re-entered");
+        this.options.onCredentialsUnrecoverable?.();
+      }
       return this.resolved;
     } finally {
       this.inFlight = undefined;

@@ -146,6 +146,12 @@ import { IPCChannel } from "./channels";
 
 export type SessionEventUnsubscribe = () => void;
 
+/** Pending one-time notice: the legacy keychain device key was unreadable, so a
+ *  fresh key replaced it and every previously stored credential is lost. */
+export interface DeviceKeyNotice {
+  credentialsUnrecoverable: boolean;
+}
+
 export type CloudSyncRuntimeState = WorkspaceRepoStatus["state"];
 
 export type CloudSyncRuntimeStatusEvent = WorkspaceRepoStatus;
@@ -355,6 +361,12 @@ export interface NextShellApi {
   about: {
     checkUpdate: () => Promise<UpdateCheckResult>;
   };
+  security: {
+    getDeviceKeyNotice: () => Promise<DeviceKeyNotice>;
+    acknowledgeDeviceKeyNotice: () => Promise<{ ok: true }>;
+    /** Emitted when the device key is resolved lazily mid-session and the notice becomes pending. */
+    onDeviceKeyNotice: (listener: (event: DeviceKeyNotice) => void) => SessionEventUnsubscribe;
+  };
   ping: {
     probe: (payload: PingRequestInput) => Promise<PingResult>;
   };
@@ -479,6 +491,8 @@ export interface IpcInvokeMethods {
   [IPCChannel.ProxyUpsert]: NextShellApi["proxy"]["upsert"];
   [IPCChannel.ProxyRemove]: NextShellApi["proxy"]["remove"];
   [IPCChannel.UpdateCheck]: NextShellApi["about"]["checkUpdate"];
+  [IPCChannel.SecurityDeviceKeyNoticeGet]: NextShellApi["security"]["getDeviceKeyNotice"];
+  [IPCChannel.SecurityDeviceKeyNoticeAcknowledge]: NextShellApi["security"]["acknowledgeDeviceKeyNotice"];
   [IPCChannel.Ping]: NextShellApi["ping"]["probe"];
   [IPCChannel.TracerouteRun]: NextShellApi["traceroute"]["run"];
   [IPCChannel.TracerouteStop]: NextShellApi["traceroute"]["stop"];

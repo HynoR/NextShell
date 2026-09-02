@@ -18,6 +18,7 @@ const expectedEventChannelNames = [
   "TracerouteData",
   "DebugLogEvent",
   "TerminalNotificationAction",
+  "SecurityDeviceKeyNoticeEvent",
   "AgentPromptRequest",
   "AgentActivityEvent",
   "AgentSessionControlEvent",

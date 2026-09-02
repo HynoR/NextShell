@@ -226,6 +226,12 @@ export interface DeviceKeyDbAccess {
 export interface ResolveDeviceKeyResult {
   deviceKeyHex: string;
   storedIn: "database";
+  /**
+   * Set only when a legacy keychain item could not be read (denied / locked /
+   * backend error) and a fresh key was generated instead: every credential
+   * encrypted with the old key is now undecryptable and must be re-entered.
+   */
+  credentialsUnrecoverable?: true;
 }
 
 /**
@@ -257,6 +263,9 @@ export const resolveDeviceKey = async (
       }
     } catch (error) {
       console.warn("[Security] legacy device keychain read failed; generating a new device key", error);
+      const deviceKeyHex = generate();
+      db.saveLegacy(deviceKeyHex);
+      return { deviceKeyHex, storedIn: "database", credentialsUnrecoverable: true };
     }
   }
 

@@ -65,6 +65,8 @@ const cloudSyncWorkspacePasswordRef = (workspaceId: string): string =>
 
 /** SQLite data lives here; the MCP discovery file deliberately does not. */
 const STORAGE_DIRECTORY_NAME = "storage";
+/** app_settings key: set when the keychain device key was unreadable, cleared on acknowledge. */
+const DEVICE_KEY_NOTICE_SETTING_KEY = "device_key_notice_pending";
 
 // Re-export for consumers (index.ts, register.ts)
 export type { ServiceContainer, CreateServiceContainerOptions } from "./container-types";
@@ -97,6 +99,14 @@ export const createServiceContainer = async (
     db: {
       getLegacy: () => connections.getDeviceKey(),
       saveLegacy: (key) => connections.saveDeviceKey(key)
+    },
+    // Persisted so the notice survives restarts until the user acknowledges it;
+    // broadcast because the key resolves lazily, possibly mid-session.
+    onCredentialsUnrecoverable: () => {
+      connections.saveJsonSetting(DEVICE_KEY_NOTICE_SETTING_KEY, true);
+      broadcastToAllWindows(IPCChannel.SecurityDeviceKeyNoticeEvent, {
+        credentialsUnrecoverable: true
+      });
     }
   });
 
@@ -1039,6 +1049,14 @@ export const createServiceContainer = async (
     pauseMonitors: () => monitorSvc.pauseAll(),
     resumeMonitors: () => monitorSvc.resumeAll(),
     getAppPreferences: () => prefsSvc.getAppPreferences(),
+    getDeviceKeyNotice: () => ({
+      credentialsUnrecoverable:
+        connections.getJsonSetting<boolean>(DEVICE_KEY_NOTICE_SETTING_KEY) === true
+    }),
+    acknowledgeDeviceKeyNotice: () => {
+      connections.removeSetting(DEVICE_KEY_NOTICE_SETTING_KEY);
+      return { ok: true as const };
+    },
 
     dispose
   };
