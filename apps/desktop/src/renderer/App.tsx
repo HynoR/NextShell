@@ -9,7 +9,7 @@ import {
 } from "react";
 import { App as AntdApp, Checkbox, Input, Select, Typography } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
-import type { AgentPromptRequest, ConnectionUpsertInput } from "@nextshell/shared";
+import type { AgentPromptRequest } from "@nextshell/shared";
 import type { SettingsSection } from "./components/settings-center/types";
 import { WorkspaceLayout } from "./components/WorkspaceLayout";
 import { AppSkeleton } from "./components/LoadingSkeletons";
@@ -24,11 +24,9 @@ import { useWorkspaceStore } from "./store/useWorkspaceStore";
 import { formatErrorMessage } from "./utils/errorMessage";
 import { resolveFollowTerminalSessionId } from "./utils/followTerminalSession";
 import {
-  buildQuickCreateUpsertInput,
   buildQuickConnectUpsertInput,
   findExistingByAddress,
-  parseQuickConnectInput,
-  type QuickCreateConnectionInput
+  parseQuickConnectInput
 } from "./utils/quickConnectInput";
 
 const isTerminalSession = (session: SessionDescriptor): boolean =>
@@ -83,6 +81,8 @@ export const App = () => {
   const [appReady, setAppReady] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerFocusConnectionId, setManagerFocusConnectionId] = useState<string>();
+  // ⌘K 面板「添加新服务器」打开管理器时直接进新建态(D31);关闭管理器时复位。
+  const [managerInitialAction, setManagerInitialAction] = useState<"create" | undefined>(undefined);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 深链进设置中心的目标节(C4)。undefined = 普通打开,停在用户上次看的那一节。
   const [settingsSection, setSettingsSection] = useState<SettingsSection>();
@@ -593,14 +593,6 @@ export const App = () => {
     }
   }, []);
 
-  const handleTreeQuickSaveConnection = useCallback(
-    async (payload: ConnectionUpsertInput) => {
-      await window.nextshell.connection.upsert(payload);
-      await loadConnections();
-    },
-    [loadConnections]
-  );
-
   const handleTitlebarQuickConnect = useCallback(
     async (raw: string): Promise<boolean> => {
       const parsed = parseQuickConnectInput(raw);
@@ -631,38 +623,22 @@ export const App = () => {
     [connections, setConnections, startSession]
   );
 
-  const handleTitlebarQuickCreateConnection = useCallback(
-    async (input: QuickCreateConnectionInput): Promise<boolean> => {
-      try {
-        const created = await window.nextshell.connection.upsert(
-          buildQuickCreateUpsertInput(input)
-        );
-        const currentConnections = useWorkspaceStore.getState().connections;
-        const existingIndex = currentConnections.findIndex((item) => item.id === created.id);
-        const nextConnections = [...currentConnections];
-        if (existingIndex >= 0) {
-          nextConnections[existingIndex] = created;
-        } else {
-          nextConnections.push(created);
-        }
-        setConnections(nextConnections);
-        void startSession(created.id);
-        return true;
-      } catch (error) {
-        message.error(`快速创建服务器失败：${formatErrorMessage(error, "请稍后重试")}`);
-        return false;
-      }
-    },
-    [setConnections, startSession]
-  );
-
   const handleOpenManager = useCallback(() => {
     setManagerFocusConnectionId(undefined);
+    setManagerInitialAction(undefined);
     setManagerOpen(true);
   }, []);
 
   const handleOpenManagerForConnection = useCallback((connectionId: string) => {
     setManagerFocusConnectionId(connectionId);
+    setManagerInitialAction(undefined);
+    setManagerOpen(true);
+  }, []);
+
+  /** ⌘K 面板「添加新服务器」(D31):打开管理器并直接进入新建态。 */
+  const handleOpenManagerForCreate = useCallback(() => {
+    setManagerFocusConnectionId(undefined);
+    setManagerInitialAction("create");
     setManagerOpen(true);
   }, []);
 
@@ -673,6 +649,7 @@ export const App = () => {
   const handleOpenLocalTerminal = useCallback(() => {
     setManagerOpen(false);
     setManagerFocusConnectionId(undefined);
+    setManagerInitialAction(undefined);
     void startLocalSession();
   }, [startLocalSession]);
 
@@ -689,6 +666,7 @@ export const App = () => {
   const handleOpenSettingsSection = useCallback((section: SettingsSection) => {
     setManagerOpen(false);
     setManagerFocusConnectionId(undefined);
+    setManagerInitialAction(undefined);
     setSettingsSection(section);
     setSettingsOpen(true);
   }, []);
@@ -786,7 +764,6 @@ export const App = () => {
       <div className="app-shell-content">
         <WorkspaceLayout
           connections={connections}
-          sshKeys={sshKeys}
           sessions={sessions}
           activeConnectionId={activeConnectionId}
           activeSessionId={activeSessionId}
@@ -809,7 +786,7 @@ export const App = () => {
           onActivateConnection={activateConnection}
           onTreeConnect={handleTreeConnect}
           onTitlebarQuickConnect={handleTitlebarQuickConnect}
-          onTitlebarQuickCreateConnection={handleTitlebarQuickCreateConnection}
+          onOpenManagerForCreate={handleOpenManagerForCreate}
           onCloseSession={handleCloseSession}
           onReconnectSession={handleReconnectSession}
           onDuplicateSession={handleDuplicateSession}
@@ -840,9 +817,11 @@ export const App = () => {
               sshKeys={sshKeys}
               proxies={proxies}
               focusConnectionId={managerFocusConnectionId}
+              initialAction={managerInitialAction}
               onClose={() => {
                 setManagerOpen(false);
                 setManagerFocusConnectionId(undefined);
+                setManagerInitialAction(undefined);
               }}
               onConnectConnection={async (connectionId: string) => {
                 await startSession(connectionId);

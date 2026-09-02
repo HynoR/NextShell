@@ -56,6 +56,33 @@ export interface ConnectionEditorHandle {
   selectSshKey: (sshKeyId: string) => void;
 }
 
+/**
+ * 新建连接的默认值。⌘K 快速连接静默落库时也从这里取(见 renderer/utils/quickConnectInput.ts),
+ * 改默认值只改这一处。
+ */
+export const CONNECTION_EDITOR_DEFAULT_VALUES: Pick<
+  ConnectionUpsertInput,
+  | "port"
+  | "authType"
+  | "strictHostKeyChecking"
+  | "terminalEncoding"
+  | "backspaceMode"
+  | "deleteMode"
+  | "monitorSession"
+  | "tags"
+  | "favorite"
+> = {
+  port: 22,
+  authType: "password",
+  strictHostKeyChecking: false,
+  terminalEncoding: "utf-8",
+  backspaceMode: "ascii-backspace",
+  deleteMode: "vt220-delete",
+  monitorSession: true,
+  tags: [],
+  favorite: false
+};
+
 interface ConnectionEditorProps {
   connection?: ConnectionProfile;
   folders: ConnectionFolder[];
@@ -104,23 +131,26 @@ export const ConnectionEditor = ({
         id: connection?.id,
         name: connection?.name ?? "",
         host: connection?.host ?? "",
-        port: connection?.port ?? 22,
+        port: connection?.port ?? CONNECTION_EDITOR_DEFAULT_VALUES.port,
         username: connection?.username ?? "",
-        authType: connection?.authType ?? "password",
+        authType: connection?.authType ?? CONNECTION_EDITOR_DEFAULT_VALUES.authType,
         sshKeyId: connection?.sshKeyId,
         folderId: connection?.folderId ?? currentFolderId,
         hostFingerprint: connection?.hostFingerprint,
-        strictHostKeyChecking: connection?.strictHostKeyChecking ?? false,
+        strictHostKeyChecking:
+          connection?.strictHostKeyChecking ??
+          CONNECTION_EDITOR_DEFAULT_VALUES.strictHostKeyChecking,
         proxyId: connection?.proxyId,
         keepAliveEnabled: connection?.keepAliveEnabled,
         keepAliveIntervalSec: connection?.keepAliveIntervalSec,
-        terminalEncoding: connection?.terminalEncoding ?? "utf-8",
-        backspaceMode: connection?.backspaceMode ?? "ascii-backspace",
-        deleteMode: connection?.deleteMode ?? "vt220-delete",
-        monitorSession: connection?.monitorSession ?? true,
-        tags: connection?.tags ?? [],
+        terminalEncoding:
+          connection?.terminalEncoding ?? CONNECTION_EDITOR_DEFAULT_VALUES.terminalEncoding,
+        backspaceMode: connection?.backspaceMode ?? CONNECTION_EDITOR_DEFAULT_VALUES.backspaceMode,
+        deleteMode: connection?.deleteMode ?? CONNECTION_EDITOR_DEFAULT_VALUES.deleteMode,
+        monitorSession: connection?.monitorSession ?? CONNECTION_EDITOR_DEFAULT_VALUES.monitorSession,
+        tags: connection?.tags ?? CONNECTION_EDITOR_DEFAULT_VALUES.tags,
         notes: connection?.notes,
-        favorite: connection?.favorite ?? false,
+        favorite: connection?.favorite ?? CONNECTION_EDITOR_DEFAULT_VALUES.favorite,
         agentAccess: connection?.agentAccess ?? "off",
         password: undefined
       }) as ConnectionEditorValues,

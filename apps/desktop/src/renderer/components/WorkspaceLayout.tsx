@@ -17,12 +17,7 @@ import {
   isOscTitleEligibleStatus,
   resolveSessionBaseTitle
 } from "../utils/sessionTitle";
-import type {
-  ConnectionProfile,
-  SessionDescriptor,
-  SessionType,
-  SshKeyProfile
-} from "@nextshell/core";
+import type { ConnectionProfile, SessionDescriptor, SessionType } from "@nextshell/core";
 import type { SessionAuthOverrideInput } from "@nextshell/shared";
 import { CommandCenterPane } from "./command-center";
 import { QuickConnectBar } from "./QuickConnectBar";
@@ -54,7 +49,6 @@ import { usePreferencesStore } from "../store/usePreferencesStore";
 import { useSessionOscStore } from "../store/useSessionOscStore";
 import { useTransferQueueStore, type TransferTask } from "../store/useTransferQueueStore";
 import { formatErrorMessage } from "../utils/errorMessage";
-import type { QuickCreateConnectionInput } from "../utils/quickConnectInput";
 import { promptModal } from "../utils/promptModal";
 import {
   persistWorkspacePanelState,
@@ -319,7 +313,6 @@ const SessionTabContextMenu = ({
 
 interface WorkspaceLayoutProps {
   connections: ConnectionProfile[];
-  sshKeys: SshKeyProfile[];
   sessions: SessionDescriptor[];
   activeConnectionId?: string;
   activeSessionId?: string;
@@ -346,7 +339,8 @@ interface WorkspaceLayoutProps {
   onActivateConnection: (connectionId: string) => void;
   onTreeConnect: (connectionId: string) => void;
   onTitlebarQuickConnect: (raw: string) => Promise<boolean>;
-  onTitlebarQuickCreateConnection: (input: QuickCreateConnectionInput) => Promise<boolean>;
+  /** ⌘K 面板「添加新服务器」(D31):打开管理器并进入新建态。 */
+  onOpenManagerForCreate: () => void;
   onCloseSession: (sessionId: string) => void;
   onReconnectSession: (sessionId: string) => void;
   onDuplicateSession: (sessionId: string) => void;
@@ -374,7 +368,6 @@ interface WorkspaceLayoutProps {
 
 const WorkspaceLayoutComponent = ({
   connections,
-  sshKeys,
   sessions,
   activeConnectionId,
   activeSessionId,
@@ -397,7 +390,7 @@ const WorkspaceLayoutComponent = ({
   onActivateConnection,
   onTreeConnect,
   onTitlebarQuickConnect,
-  onTitlebarQuickCreateConnection,
+  onOpenManagerForCreate,
   onCloseSession,
   onReconnectSession,
   onDuplicateSession,
@@ -926,11 +919,10 @@ const WorkspaceLayoutComponent = ({
         <div className="titlebar-center">
           <QuickConnectBar
             connections={connections}
-            sshKeys={sshKeys}
             sessions={sessions}
             onConnect={(connectionId) => void onTreeConnect(connectionId)}
             onQuickConnectInput={onTitlebarQuickConnect}
-            onQuickCreateConnection={onTitlebarQuickCreateConnection}
+            onOpenManager={onOpenManagerForCreate}
           />
         </div>
         <div className="header-actions">

@@ -71,6 +71,8 @@ interface ConnectionManagerV2Props {
   proxies: ProxyProfile[];
   /** 从外部(会话树/标签页)定位到某一条连接:切作用域、进目录、选中并展开到它。 */
   focusConnectionId?: string;
+  /** 从外部(⌘K 面板「添加新服务器」)打开时直接进入新建态。 */
+  initialAction?: "create";
   onClose: () => void;
   onConnectConnection: (connectionId: string) => Promise<void>;
   /** 打开一个本机 shell(A1)。调用方负责关掉管理器——它持有管理器的开关状态。 */
@@ -106,6 +108,7 @@ export const ConnectionManagerV2 = ({
   sshKeys,
   proxies,
   focusConnectionId,
+  initialAction,
   onClose,
   onConnectConnection,
   onOpenLocalTerminal,
@@ -972,6 +975,29 @@ export const ConnectionManagerV2 = ({
       pendingRevealRef.current = { id: target.id, ancestorKeys: [] };
     });
   }, [confirmDiscardEdits, connections, focusConnectionId, open, openDetail, scope]);
+
+  // ── 外部动作:打开即新建(⌘K 面板「添加新服务器」)──────────────
+  // 与 focusConnectionId 同款的一次性深链:本次 open 生效一次,关掉后重置。新建会顶掉
+  // 右栏的编辑器,和深链定位一样先过未保存守卫;用户拒绝也算处理完毕,不再弹第二次。
+  const initialActionAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      initialActionAppliedRef.current = false;
+      return;
+    }
+    if (initialAction !== "create" || initialActionAppliedRef.current) {
+      return;
+    }
+    initialActionAppliedRef.current = true;
+    void confirmDiscardEdits().then((ok) => {
+      if (!ok) {
+        return;
+      }
+      // 管理器组件从不卸载:上次停在「密钥」分段时右栏不在,新建会无声落空。
+      setResourceTab("connections");
+      openDetail({ kind: "edit", connection: undefined });
+    });
+  }, [confirmDiscardEdits, initialAction, open, openDetail]);
 
   // 网格挂上之后再把磁贴滚进视野。不给依赖数组：要的是"任意一次渲染之后"，
   // 而触发它的那次 setState 恰好也是让网格出现的那一次。
