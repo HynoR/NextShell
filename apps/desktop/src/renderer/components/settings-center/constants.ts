@@ -49,14 +49,6 @@ export const TERMINAL_THEME_PRESETS = [
   { label: "Nord", value: "nord", backgroundColor: "#2e3440", foregroundColor: "#d8dee9" }
 ] as const;
 
-export const TERMINAL_DEBOUNCE_MS = 3000;
-/**
- * Opacity commits on drag end, so this only backstops the paths that never
- * fire `onChangeComplete` (keyboard arrows on the slider, typing in the number
- * box). Short enough to feel immediate, long enough to skip the intermediate
- * values of a multi-digit entry.
- */
-export const OPACITY_COMMIT_DELAY_MS = 500;
 export const DEBUG_MAX_ENTRIES = 300;
 
 export const appVersion = __APP_VERSION__;

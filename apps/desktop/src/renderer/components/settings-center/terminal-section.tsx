@@ -10,8 +10,6 @@ import {
   CUSTOM_THEME_PRESET,
   CUSTOM_FONT_PRESET,
   TERMINAL_THEME_PRESETS,
-  TERMINAL_DEBOUNCE_MS,
-  OPACITY_COMMIT_DELAY_MS,
   getLocalShellOptions
 } from "./constants";
 import type {
@@ -77,128 +75,28 @@ export const TerminalSection = ({
   save: SaveFn;
   message: ReturnType<typeof AntdApp.useApp>["message"];
 }) => {
-  const pendingRef = useRef<Record<string, Record<string, unknown>>>({});
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  const flushPending = useCallback(() => {
-    clearTimeout(timerRef.current);
-    timerRef.current = undefined;
-    const sections = pendingRef.current;
-    if (Object.keys(sections).length > 0) {
-      pendingRef.current = {};
-      const merged: Record<string, unknown> = {};
-      for (const [section, patch] of Object.entries(sections)) {
-        merged[section] = patch;
-      }
-      save(merged);
+  /** 数字框失焦/回车时读当前输入;空串或非数字返回 null(沿用已存值)。 */
+  const readInputNumber = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return null;
     }
-  }, [save]);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(timerRef.current);
-      const sections = pendingRef.current;
-      if (Object.keys(sections).length > 0) {
-        const merged: Record<string, unknown> = {};
-        for (const [section, patch] of Object.entries(sections)) {
-          merged[section] = patch;
-        }
-        save(merged);
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const debouncedSave = useCallback(
-    (section: string, patch: Record<string, unknown>) => {
-      const prev = pendingRef.current[section] ?? {};
-      pendingRef.current[section] = { ...prev, ...patch };
-      clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(flushPending, TERMINAL_DEBOUNCE_MS);
-    },
-    [flushPending]
-  );
-
-  const debouncedSaveTerminal = useCallback(
-    (patch: Record<string, unknown>) => {
-      debouncedSave("terminal", patch);
-    },
-    [debouncedSave]
-  );
-
-  // The opacity controls echo a local draft instead of the persisted value:
-  // fully controlled widgets on a debounced save snap back to the stale store
-  // value on any re-render, which reads as "the slider won't move / the box
-  // won't accept input". The draft moves with the pointer, and the value is
-  // committed on drag end (or shortly after a keyboard/typed change, which
-  // never fires onChangeComplete).
-  const [appBackgroundOpacityDraft, setAppBackgroundOpacityDraft] = useState(appBackgroundOpacity);
-  const opacityCommitTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  /** Value waiting on the backstop timer, or undefined when nothing is in flight. */
-  const opacityPendingRef = useRef<number | undefined>(undefined);
-
-  useEffect(() => {
-    setAppBackgroundOpacityDraft(appBackgroundOpacity);
-  }, [appBackgroundOpacity]);
+    const value = Number(trimmed);
+    return Number.isFinite(value) ? value : null;
+  };
 
   const persistAppBackgroundOpacity = useCallback(
-    (value: number | null): number => {
+    (value: number | null) => {
       const numeric =
-        typeof value === "number" && Number.isFinite(value) ? value : appBackgroundOpacity;
-      // Clamp before saving: an in-progress number entry can be out of range
-      // (typing "3" on the way to "35") and the Zod patch schema rejects it.
+        value !== null && Number.isFinite(value) ? value : appBackgroundOpacity;
+      // 输入途中可能越界(比如要输 35 时先敲出 "3"),先钳制再保存,Zod patch 只收 30..80。
       const clamped = clampAppBackgroundOpacity(numeric);
       if (clamped !== appBackgroundOpacity) {
         save({ window: { backgroundOpacity: clamped } });
       }
-      return clamped;
     },
     [appBackgroundOpacity, save]
   );
-
-  const commitAppBackgroundOpacity = useCallback(
-    (value: number | null) => {
-      clearTimeout(opacityCommitTimerRef.current);
-      opacityCommitTimerRef.current = undefined;
-      opacityPendingRef.current = undefined;
-      setAppBackgroundOpacityDraft(persistAppBackgroundOpacity(value));
-    },
-    [persistAppBackgroundOpacity]
-  );
-
-  const scheduleAppBackgroundOpacityCommit = useCallback(
-    (value: number | null) => {
-      if (typeof value !== "number" || !Number.isFinite(value)) {
-        return;
-      }
-      setAppBackgroundOpacityDraft(value);
-      opacityPendingRef.current = value;
-      clearTimeout(opacityCommitTimerRef.current);
-      opacityCommitTimerRef.current = setTimeout(() => {
-        commitAppBackgroundOpacity(value);
-      }, OPACITY_COMMIT_DELAY_MS);
-    },
-    [commitAppBackgroundOpacity]
-  );
-
-  // Closing the settings modal (Esc or the close button) destroys this subtree,
-  // so an edit still waiting on the backstop timer has to be flushed here or it
-  // is silently dropped. Mirrors what the debounced-save cleanup below does.
-  const persistAppBackgroundOpacityRef = useRef(persistAppBackgroundOpacity);
-  useEffect(() => {
-    persistAppBackgroundOpacityRef.current = persistAppBackgroundOpacity;
-  }, [persistAppBackgroundOpacity]);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(opacityCommitTimerRef.current);
-      const pending = opacityPendingRef.current;
-      if (pending !== undefined) {
-        opacityPendingRef.current = undefined;
-        persistAppBackgroundOpacityRef.current(pending);
-      }
-    };
-  }, []);
 
   const terminalFontOptions = useMemo(() => getTerminalFontOptions(window.nextshell.platform), []);
   const [terminalFontFamilyInput, setTerminalFontFamilyInput] = useState(terminalFontFamily);
@@ -233,17 +131,17 @@ export const TerminalSection = ({
     }
     lastValidTerminalFontFamilyRef.current = trimmed;
     setTerminalFontFamilyInput(trimmed);
-    debouncedSaveTerminal({ fontFamily: trimmed });
-  }, [debouncedSaveTerminal, msg, terminalFontFamilyInput]);
+    save({ terminal: { fontFamily: trimmed } });
+  }, [msg, save, terminalFontFamilyInput]);
 
   const localShellOptions = useMemo(() => getLocalShellOptions(window.nextshell.platform), []);
 
   const persistLocalShell = useCallback(
     (next: LocalShellPreference) => {
       setLocalShell(next);
-      debouncedSaveTerminal({ localShell: next });
+      save({ terminal: { localShell: next } });
     },
-    [debouncedSaveTerminal, setLocalShell]
+    [save, setLocalShell]
   );
 
   const applyLocalShellCustomPath = useCallback(() => {
@@ -262,6 +160,32 @@ export const TerminalSection = ({
       customPath: trimmed
     });
   }, [localShell, localShellCustomPathInput, msg, persistLocalShell]);
+
+  const commitTerminalFontSize = useCallback(
+    (raw: string) => {
+      const value = readInputNumber(raw);
+      if (
+        value !== null &&
+        Number.isInteger(value) &&
+        value >= 10 &&
+        value <= 24 &&
+        value !== terminalFontSize
+      ) {
+        save({ terminal: { fontSize: value } });
+      }
+    },
+    [save, terminalFontSize]
+  );
+
+  const commitTerminalLineHeight = useCallback(
+    (raw: string) => {
+      const value = readInputNumber(raw);
+      if (value !== null && value >= 1 && value <= 2 && value !== terminalLineHeight) {
+        save({ terminal: { lineHeight: value } });
+      }
+    },
+    [save, terminalLineHeight]
+  );
 
   return (
     <>
@@ -334,9 +258,8 @@ export const TerminalSection = ({
               step={1}
               disabled={loading || !appBackgroundImagePath}
               style={{ flex: 1, margin: 0 }}
-              value={appBackgroundOpacityDraft}
-              onChange={scheduleAppBackgroundOpacityCommit}
-              onChangeComplete={commitAppBackgroundOpacity}
+              value={appBackgroundOpacity}
+              onChangeComplete={persistAppBackgroundOpacity}
             />
             <div className="flex items-center gap-1">
               <InputNumber
@@ -344,10 +267,11 @@ export const TerminalSection = ({
                 max={80}
                 precision={0}
                 disabled={loading || !appBackgroundImagePath}
-                value={appBackgroundOpacityDraft}
-                onChange={scheduleAppBackgroundOpacityCommit}
-                onBlur={() => commitAppBackgroundOpacity(appBackgroundOpacityDraft)}
-                onPressEnter={() => commitAppBackgroundOpacity(appBackgroundOpacityDraft)}
+                value={appBackgroundOpacity}
+                onBlur={(e) => persistAppBackgroundOpacity(readInputNumber(e.target.value))}
+                onPressEnter={(e) =>
+                  persistAppBackgroundOpacity(readInputNumber(e.currentTarget.value))
+                }
               />
               <span>%</span>
             </div>
@@ -370,7 +294,7 @@ export const TerminalSection = ({
         />
       </SettingsCard>
 
-      <SettingsCard title="终端颜色" description="选择终端配色主题或自定义颜色（修改后 3 秒生效）">
+      <SettingsCard title="终端颜色" description="选择终端配色主题或自定义颜色">
         <SettingsRow label="主题预设">
           <Select
             style={{ width: "100%" }}
@@ -386,9 +310,11 @@ export const TerminalSection = ({
               if (preset) {
                 setTerminalBackgroundColor(preset.backgroundColor);
                 setTerminalForegroundColor(preset.foregroundColor);
-                debouncedSaveTerminal({
-                  backgroundColor: preset.backgroundColor,
-                  foregroundColor: preset.foregroundColor
+                save({
+                  terminal: {
+                    backgroundColor: preset.backgroundColor,
+                    foregroundColor: preset.foregroundColor
+                  }
                 });
               }
             }}
@@ -404,7 +330,7 @@ export const TerminalSection = ({
               onChange={(e) => setTerminalBackgroundColor(e.target.value)}
               onBlur={() => {
                 if (HEX_COLOR_PATTERN.test(terminalBackgroundColor.trim())) {
-                  debouncedSaveTerminal({ backgroundColor: terminalBackgroundColor.trim() });
+                  save({ terminal: { backgroundColor: terminalBackgroundColor.trim() } });
                 }
               }}
               placeholder="#000000"
@@ -418,10 +344,8 @@ export const TerminalSection = ({
                   ? terminalBackgroundColor
                   : "#000000"
               }
-              onChange={(e) => {
-                setTerminalBackgroundColor(e.target.value);
-                debouncedSaveTerminal({ backgroundColor: e.target.value });
-              }}
+              onChange={(e) => setTerminalBackgroundColor(e.target.value)}
+              onBlur={(e) => save({ terminal: { backgroundColor: e.target.value } })}
             />
           </div>
         </SettingsRow>
@@ -435,7 +359,7 @@ export const TerminalSection = ({
               onChange={(e) => setTerminalForegroundColor(e.target.value)}
               onBlur={() => {
                 if (HEX_COLOR_PATTERN.test(terminalForegroundColor.trim())) {
-                  debouncedSaveTerminal({ foregroundColor: terminalForegroundColor.trim() });
+                  save({ terminal: { foregroundColor: terminalForegroundColor.trim() } });
                 }
               }}
               placeholder="#d8eaff"
@@ -449,16 +373,14 @@ export const TerminalSection = ({
                   ? terminalForegroundColor
                   : "#d8eaff"
               }
-              onChange={(e) => {
-                setTerminalForegroundColor(e.target.value);
-                debouncedSaveTerminal({ foregroundColor: e.target.value });
-              }}
+              onChange={(e) => setTerminalForegroundColor(e.target.value)}
+              onBlur={(e) => save({ terminal: { foregroundColor: e.target.value } })}
             />
           </div>
         </SettingsRow>
       </SettingsCard>
 
-      <SettingsCard title="终端排版" description="字体、字号和行距设置（修改后 3 秒生效）">
+      <SettingsCard title="终端排版" description="字体、字号和行距设置">
         <SettingsRow label="常用字体">
           <Select
             style={{ width: "100%" }}
@@ -471,7 +393,7 @@ export const TerminalSection = ({
               }
               lastValidTerminalFontFamilyRef.current = value;
               setTerminalFontFamilyInput(value);
-              debouncedSaveTerminal({ fontFamily: value });
+              save({ terminal: { fontFamily: value } });
             }}
           />
         </SettingsRow>
@@ -493,11 +415,8 @@ export const TerminalSection = ({
             precision={0}
             value={terminalFontSize}
             disabled={loading}
-            onChange={(v) => {
-              if (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 24) {
-                debouncedSaveTerminal({ fontSize: v });
-              }
-            }}
+            onBlur={(e) => commitTerminalFontSize(e.target.value)}
+            onPressEnter={(e) => commitTerminalFontSize(e.currentTarget.value)}
           />
         </SettingsRow>
         <SettingsRow label="终端行距">
@@ -509,16 +428,13 @@ export const TerminalSection = ({
             precision={2}
             value={terminalLineHeight}
             disabled={loading}
-            onChange={(v) => {
-              if (typeof v === "number" && v >= 1 && v <= 2) {
-                debouncedSaveTerminal({ lineHeight: v });
-              }
-            }}
+            onBlur={(e) => commitTerminalLineHeight(e.target.value)}
+            onPressEnter={(e) => commitTerminalLineHeight(e.currentTarget.value)}
           />
         </SettingsRow>
       </SettingsCard>
 
-      <SettingsCard title="本地终端" description="选择本地终端默认 shell（修改后 3 秒生效）">
+      <SettingsCard title="本地终端" description="选择本地终端默认 shell">
         <SettingsRow label="默认 shell">
           <div className="flex gap-2 items-center">
             <Select<LocalShellMode>
