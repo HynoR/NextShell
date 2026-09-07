@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ConnectionProfile, SessionDescriptor } from "@nextshell/core";
+import {
+  pickRecentConnections,
+  searchConnections,
+  type ConnectionProfile,
+  type SessionDescriptor
+} from "@nextshell/core";
 import {
   getQuickConnectShortcutLabel,
   isQuickConnectShortcut,
@@ -64,26 +69,18 @@ export const QuickConnectBar = ({
   );
 
   const recentConnections = useMemo<ResultItem[]>(() => {
-    return [...connections]
-      .filter((c) => c.lastConnectedAt)
-      .sort(
-        (a, b) => new Date(b.lastConnectedAt!).getTime() - new Date(a.lastConnectedAt!).getTime()
-      )
-      .slice(0, MAX_RECENT)
-      .map((c) => ({ connection: c, isConnected: connectedIds.has(c.id) }));
+    return pickRecentConnections(connections, MAX_RECENT).map((c) => ({
+      connection: c,
+      isConnected: connectedIds.has(c.id)
+    }));
   }, [connections, connectedIds]);
 
   const filteredResults = useMemo<ResultItem[]>(() => {
-    const lower = keyword.trim().toLowerCase();
-    if (!lower) return recentConnections;
-    return connections
-      .filter((c) => {
-        const searchable =
-          `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`.toLowerCase();
-        return searchable.includes(lower);
-      })
-      .slice(0, 12)
-      .map((c) => ({ connection: c, isConnected: connectedIds.has(c.id) }));
+    if (!keyword.trim()) return recentConnections;
+    return searchConnections(connections, keyword, 12).map((c) => ({
+      connection: c,
+      isConnected: connectedIds.has(c.id)
+    }));
   }, [keyword, connections, connectedIds, recentConnections]);
 
   const sessionResults = useMemo<SessionResultItem[]>(() => {

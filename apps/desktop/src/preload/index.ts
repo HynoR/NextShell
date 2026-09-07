@@ -3,6 +3,7 @@ import type {
   AgentActivityEvent,
   AgentSessionControlEvent,
   AgentSessionFocusEvent,
+  AgentOpenRequestEvent,
   CloudSyncManagerStatusEvent,
   DebugLogEntry,
   DeviceKeyNotice,
@@ -236,6 +237,14 @@ const api: NextShellApi = {
     enable: () => invoke(IPCChannel.AgentEnable, {}),
     disable: () => invoke(IPCChannel.AgentDisable, {}),
     setHalted: (payload) => invoke(IPCChannel.AgentSetHalted, payload),
+    respondOpen: (payload) => invoke(IPCChannel.AgentOpenRespond, payload),
+    onOpenRequest: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: AgentOpenRequestEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IPCChannel.AgentOpenRequestEvent, handler);
+      return () => ipcRenderer.off(IPCChannel.AgentOpenRequestEvent, handler);
+    },
     onActivity: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: AgentActivityEvent) => {
         listener(payload);

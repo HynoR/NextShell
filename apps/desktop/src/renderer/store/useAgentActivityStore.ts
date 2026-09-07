@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import type { AgentActivityEvent, AgentSessionControlEvent } from "@nextshell/shared";
+import type {
+  AgentActivityEvent,
+  AgentOpenRequestEvent,
+  AgentSessionControlEvent
+} from "@nextshell/shared";
 
 const MAX_AGENT_ACTIVITIES = 100;
 
@@ -19,7 +23,11 @@ interface AgentActivityState {
    * by the settings section whenever it receives a fresh endpoint status.
    */
   enabled: boolean;
+  /** `session_open` requests awaiting the user's 授权 / 拒绝 in the dialog. */
+  openRequests: AgentOpenRequestEvent[];
   applyEvent: (event: AgentActivityEvent) => void;
+  addOpenRequest: (request: AgentOpenRequestEvent) => void;
+  removeOpenRequest: (id: string) => void;
   applySessionControl: (event: AgentSessionControlEvent) => void;
   setHalted: (halted: boolean) => void;
   setEnabled: (enabled: boolean) => void;
@@ -31,6 +39,15 @@ export const useAgentActivityStore = create<AgentActivityState>((set) => ({
   controlledSessions: {},
   halted: false,
   enabled: false,
+  openRequests: [],
+  addOpenRequest: (request) =>
+    set((state) =>
+      state.openRequests.some((item) => item.id === request.id)
+        ? state
+        : { openRequests: [...state.openRequests, request] }
+    ),
+  removeOpenRequest: (id) =>
+    set((state) => ({ openRequests: state.openRequests.filter((item) => item.id !== id) })),
   applyEvent: (event) =>
     set((state) => {
       const existing = state.activities.findIndex((item) => item.id === event.id);

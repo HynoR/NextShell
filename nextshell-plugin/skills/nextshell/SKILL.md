@@ -10,8 +10,11 @@ You never see a password or key; you only get session ids and command output.
 
 ## Workflow
 
-1. `session_list` — the only discovery entry. If the host the user means is not listed,
-   ask them to open it in NextShell first. Never try to connect on your own.
+1. `session_list` — the tabs already open. If the host the user means is not there,
+   `host_list` (no query = their 10 most recent hosts; add a keyword to search) and then
+   `session_open` with its id: NextShell raises a dialog and the tab opens only after the
+   user clicks 授权. `pending` → call again with the same `requestId`. `denied` → stop and
+   ask the user to confirm in NextShell; never retry on your own.
 2. **Default: `session_send_keys`** with `submit: true` and `waitForPrompt: true`. The
    command and its output appear in the user's tab in real time, as if they typed it.
    If `waitTimedOut` comes back (no shell integration), `session_read` the screen.
@@ -32,5 +35,6 @@ You never see a password or key; you only get session ids and command output.
 
 ## Not available on purpose
 
-No host enumeration, no opening connections, no file transfer, no local filesystem.
+No unrestricted host enumeration, no connecting without the user's click, no file
+transfer, no local filesystem.
 Do file work on the remote side with `cat`/`sed`/`tar` through the terminal.

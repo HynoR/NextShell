@@ -285,10 +285,9 @@ async (page) => {
         status: async () => agentStatus,
         enable: async () => agentStatus,
         disable: async () => agentStatus,
-        rotateToken: async () => agentStatus,
         setHalted: async () => agentStatus,
-        respondPrompt: () => ok,
-        onPrompt: () => () => {},
+        respondOpen: async () => ok,
+        onOpenRequest: () => () => {},
         onActivity: () => () => {},
         onSessionControl: () => () => {},
         onSessionFocus: () => () => {}

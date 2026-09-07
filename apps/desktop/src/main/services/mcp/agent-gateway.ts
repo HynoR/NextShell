@@ -1,14 +1,21 @@
-import type {
-  AppPreferences,
-  ConnectionProfile,
-  SavedCommand,
-  ScopedCommandItem,
-  SessionStatus,
-  SessionType
+import {
+  pickRecentConnections,
+  searchConnections,
+  type AppPreferences,
+  type ConnectionProfile,
+  type SavedCommand,
+  type ScopedCommandItem,
+  type SessionStatus,
+  type SessionType
 } from "@nextshell/core";
-import type { AgentActivityEvent } from "@nextshell/shared";
+import type {
+  AgentActivityEvent,
+  AgentOpenRequestEvent,
+  AgentOpenRespondInput
+} from "@nextshell/shared";
 import { matchDangerousCommand, matchSensitiveFile } from "@nextshell/terminal";
 
+import { AgentOpenBroker } from "./open-broker";
 import type { ScreenReadOptions, ScreenReadResult } from "./screen-mirror";
 
 // ─── Client identity ────────────────────────────────────────────────────────
@@ -35,6 +42,7 @@ export type AgentErrorCode =
   | "unavailable"
   | "human_intervention"
   | "consent_required"
+  | "denied"
   | "internal";
 
 export interface AgentToolError {
@@ -82,6 +90,32 @@ export interface AgentSessionListEntry extends AgentSessionInfo {
 export interface AgentSessionListPayload {
   sessions: AgentSessionListEntry[];
   truncated: boolean;
+}
+
+export interface AgentHostEntry {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  groupPath: string;
+  tags: string[];
+  lastConnectedAt: string | null;
+  /** Tabs already open on this host; > 0 means session_list has it. */
+  openSessions: number;
+}
+
+export interface AgentHostListPayload {
+  mode: "recent" | "search";
+  hosts: AgentHostEntry[];
+  truncated: boolean;
+}
+
+export interface AgentOpenSessionPayload {
+  status: "opened" | "pending";
+  sessionId?: string;
+  requestId?: string;
+  reused?: boolean;
 }
 
 export interface AgentCommandMatch {
@@ -226,8 +260,13 @@ export interface AgentGatewayDeps {
   retainConnection: (connectionId: string) => () => void;
   closeConnectionIfIdle: (connectionId: string) => Promise<void>;
   emitActivity: (event: AgentActivityEvent) => void;
+  /** Raises the window and shows the `session_open` authorization dialog. */
+  requestOpenSession: (request: AgentOpenRequestEvent) => void;
   getPreferences: () => AppPreferences;
   now?: () => number;
+  /** Test seams: how long one session_open call waits, and the request's total life. */
+  openWaitMs?: number;
+  openRequestTimeoutMs?: number;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -239,6 +278,11 @@ const ANSI_ESCAPE_PATTERN =
 const MAX_LIST_ITEMS = 500;
 /** Ceiling on `session_send_keys` `waitForPrompt`. */
 const MAX_WAIT_FOR_PROMPT_MS = 120_000;
+/** Recent-host list size when host_list gets no query. */
+const RECENT_HOSTS = 10;
+const MAX_HOST_SEARCH = 20;
+/** One session_open call waits this long before reporting `pending` (under the ~60s harness ceiling). */
+const OPEN_WAIT_MS = 50_000;
 /** Slack between a `waitForPrompt` deadline and the enclosing call timeout. */
 const WAIT_FOR_PROMPT_HEADROOM_MS = 5_000;
 
@@ -405,9 +449,15 @@ export class AgentGateway {
    * does not negotiate.
    */
   private halted = false;
+  private readonly openBroker: AgentOpenBroker;
 
   constructor(deps: AgentGatewayDeps) {
     this.deps = deps;
+    this.openBroker = new AgentOpenBroker({
+      send: (request) => deps.requestOpenSession(request),
+      timeoutMs: deps.openRequestTimeoutMs,
+      now: deps.now
+    });
   }
 
   get isHalted(): boolean {
@@ -656,6 +706,150 @@ export class AgentGateway {
       message:
         "Detected manual keyboard input in this tab after the agent's last operation; stop and report to the user instead of continuing"
     };
+  }
+
+  // ─── Host discovery and opening ───────────────────────────────────────────
+
+  /** Renderer answer to an open request; `false` when the request is gone. */
+  respondOpen(response: AgentOpenRespondInput): boolean {
+    return this.openBroker.respond(response);
+  }
+
+  dispose(): void {
+    this.openBroker.dispose();
+  }
+
+  async hostList(
+    client: AgentClientIdentity,
+    input: { query?: string }
+  ): Promise<AgentToolResult<AgentHostListPayload>> {
+    const query = input.query?.trim() ?? "";
+    return this.execute(client, "host_list", { query }, async () => {
+      const connections = this.deps.listConnections();
+      const openByConnection = new Map<string, number>();
+      for (const session of this.deps.listSessions()) {
+        if (session.connectionId && session.status === "connected") {
+          openByConnection.set(
+            session.connectionId,
+            (openByConnection.get(session.connectionId) ?? 0) + 1
+          );
+        }
+      }
+      const toEntry = (c: ConnectionProfile): AgentHostEntry => ({
+        id: c.id,
+        name: c.name,
+        host: c.host,
+        port: c.port,
+        username: c.username,
+        groupPath: c.groupPath,
+        tags: [...c.tags],
+        lastConnectedAt: c.lastConnectedAt ?? null,
+        openSessions: openByConnection.get(c.id) ?? 0
+      });
+      if (!query) {
+        return {
+          mode: "recent",
+          hosts: pickRecentConnections(connections, RECENT_HOSTS).map(toEntry),
+          truncated: false
+        };
+      }
+      const matches = searchConnections(connections, query, MAX_HOST_SEARCH + 1);
+      return {
+        mode: "search",
+        hosts: matches.slice(0, MAX_HOST_SEARCH).map(toEntry),
+        truncated: matches.length > MAX_HOST_SEARCH
+      };
+    });
+  }
+
+  /**
+   * Opening a host is the one action that widens the agent's reach, so it is
+   * the one action that asks the user in NextShell. A host that already has a
+   * connected tab is reused without a dialog.
+   */
+  async openSession(
+    client: AgentClientIdentity,
+    input: { target?: string; reason?: string; requestId?: string }
+  ): Promise<AgentToolResult<AgentOpenSessionPayload>> {
+    const params = { target: input.target, reason: input.reason, requestId: input.requestId };
+    const waitMs = this.deps.openWaitMs ?? OPEN_WAIT_MS;
+
+    const settle = async (requestId: string): Promise<AgentOpenSessionPayload> => {
+      const outcome = await this.openBroker.wait(requestId, waitMs);
+      if (outcome === null) {
+        throw new AgentToolFailure({
+          code: "not_found",
+          message:
+            "No pending open request matches that requestId; it was answered, expired, or never existed"
+        });
+      }
+      if (outcome === "pending") {
+        return { status: "pending", requestId };
+      }
+      if (!outcome.approved) {
+        throw new AgentToolFailure({
+          code: "denied",
+          message:
+            "The user did not authorize opening this host in NextShell (declined or no answer within 5 minutes). Stop and ask the user to confirm there before retrying."
+        });
+      }
+      if (!outcome.sessionId) {
+        throw new AgentToolFailure({
+          code: "unavailable",
+          message: "The user authorized the connection but it failed to open; check with the user"
+        });
+      }
+      return { status: "opened", sessionId: outcome.sessionId };
+    };
+
+    if (input.requestId) {
+      const requestId = input.requestId;
+      return this.execute(client, "session_open", params, () => settle(requestId), {
+        requestedTimeoutMs: waitMs + WAIT_FOR_PROMPT_HEADROOM_MS
+      });
+    }
+
+    if (!input.target) {
+      return this.failed(client, "session_open", params, {
+        code: "invalid_argument",
+        message: "target (a connection id from host_list) or requestId is required"
+      });
+    }
+    const connection = this.deps.listConnections().find((c) => c.id === input.target);
+    if (!connection) {
+      return this.failed(client, "session_open", params, {
+        code: "not_found",
+        message: "No saved connection matches that id; call host_list first"
+      });
+    }
+    const existing = this.deps
+      .listSessions()
+      .find((s) => s.connectionId === connection.id && s.status === "connected");
+    if (existing) {
+      return this.execute(
+        client,
+        "session_open",
+        params,
+        async () => ({ status: "opened" as const, sessionId: existing.id, reused: true }),
+        { connectionId: connection.id }
+      );
+    }
+    return this.execute(
+      client,
+      "session_open",
+      params,
+      async () => {
+        const requestId = this.openBroker.create({
+          clientName: client.name,
+          connectionId: connection.id,
+          connectionName: connection.name,
+          host: connection.host,
+          reason: input.reason?.trim() ? input.reason.trim().slice(0, 300) : null
+        });
+        return settle(requestId);
+      },
+      { connectionId: connection.id, requestedTimeoutMs: waitMs + WAIT_FOR_PROMPT_HEADROOM_MS }
+    );
   }
 
   // ─── Session discovery and reads ──────────────────────────────────────────

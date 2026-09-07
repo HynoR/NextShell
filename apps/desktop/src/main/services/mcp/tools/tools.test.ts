@@ -100,6 +100,7 @@ const deps: AgentGatewayDeps = {
   retainConnection: () => () => undefined,
   closeConnectionIfIdle: async () => undefined,
   emitActivity: () => undefined,
+  requestOpenSession: () => undefined,
   getPreferences: () => DEFAULT_APP_PREFERENCES
 };
 
@@ -127,22 +128,26 @@ const structured = (result: unknown): { ok: boolean; data?: any; error?: any } =
     .structuredContent as { ok: boolean; data?: any; error?: any };
 
 describe("tool registration", () => {
-  test("exposes exactly the nine session-centric tools with honest annotations", async () => {
+  test("exposes exactly the eleven tools with honest annotations", async () => {
     const listed = await client.listTools();
 
     expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
       "command_save",
       "command_search",
       "exec",
+      "host_list",
       "session_focus",
       "session_history",
       "session_list",
+      "session_open",
       "session_read",
       "session_send_keys",
       "session_send_signal"
     ]);
     const readOnly = listed.tools.filter((tool) =>
-      ["command_search", "session_history", "session_list", "session_read"].includes(tool.name)
+      ["command_search", "host_list", "session_history", "session_list", "session_read"].includes(
+        tool.name
+      )
     );
     for (const tool of readOnly) {
       expect(tool.annotations?.readOnlyHint).toBe(true);

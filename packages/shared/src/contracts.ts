@@ -779,6 +779,26 @@ export const agentSessionFocusEventSchema = z.object({
   sessionId: z.string().min(1)
 });
 
+/** 主进程 → 渲染进程：agent 请求打开某个连接，需用户在弹窗里点击授权。 */
+export const agentOpenRequestEventSchema = z.object({
+  id: z.string().uuid(),
+  clientName: z.string().nullable(),
+  connectionId: z.string().min(1),
+  connectionName: z.string(),
+  host: z.string(),
+  /** agent 给出的理由，纯文本展示 */
+  reason: z.string().max(300).nullable(),
+  /** ISO 时间；到点未响应主进程自动拒绝，渲染端据此撤下条目 */
+  expiresAt: z.string()
+});
+
+/** 渲染进程 → 主进程：用户对打开请求的答复。approved 但无 sessionId = 授权了但连接失败。 */
+export const agentOpenRespondSchema = z.object({
+  id: z.string().uuid(),
+  approved: z.boolean(),
+  sessionId: z.string().min(1).optional()
+});
+
 export const agentActivityEventSchema = z.object({
   id: z.string().min(1),
   clientName: z.string().nullable(),
@@ -796,6 +816,8 @@ export type AgentActivityEvent = z.infer<typeof agentActivityEventSchema>;
 export type AgentSetHaltedInput = z.infer<typeof agentSetHaltedSchema>;
 export type AgentSessionControlEvent = z.infer<typeof agentSessionControlEventSchema>;
 export type AgentSessionFocusEvent = z.infer<typeof agentSessionFocusEventSchema>;
+export type AgentOpenRequestEvent = z.infer<typeof agentOpenRequestEventSchema>;
+export type AgentOpenRespondInput = z.infer<typeof agentOpenRespondSchema>;
 
 export interface AgentConnectedClient {
   /** MCP session id */

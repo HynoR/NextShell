@@ -76,6 +76,8 @@ export const IPCChannel = {
   AgentSetHalted: "nextshell:agent:set-halted",
   AgentSessionControlEvent: "nextshell:agent:session:control:event",
   AgentSessionFocusEvent: "nextshell:agent:session:focus:event",
+  AgentOpenRequestEvent: "nextshell:agent:open:request",
+  AgentOpenRespond: "nextshell:agent:open:respond",
 
   ConnectionRevealPassword: "nextshell:connection:reveal-password",
   ConnectionFolderList: "nextshell:connection-folder:list",

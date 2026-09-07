@@ -96,7 +96,8 @@ import {
   agentStatusSchema,
   agentEnableSchema,
   agentDisableSchema,
-  agentSetHaltedSchema
+  agentSetHaltedSchema,
+  agentOpenRespondSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container-types";
 
@@ -914,5 +915,11 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     schema: agentSetHaltedSchema,
     label: "Agent 全局断闸",
     dispatch: (services, input) => services.agentMcp.setHalted(input.halted)
+  }),
+  define({
+    channel: IPCChannel.AgentOpenRespond,
+    schema: agentOpenRespondSchema,
+    label: "答复 Agent 打开连接请求",
+    dispatch: (services, input) => services.agentMcp.respondOpen(input)
   })
 ];

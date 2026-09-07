@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { AgentEndpointStatus } from "@nextshell/shared";
+import type { AgentEndpointStatus, AgentOpenRespondInput } from "@nextshell/shared";
 
 import { AgentGateway, type AgentClientIdentity, type AgentGatewayDeps } from "./agent-gateway";
 import { McpEndpointServer, type AgentLogger } from "./endpoint-server";
@@ -22,6 +22,8 @@ export interface AgentMcpService {
   getStatus: () => AgentEndpointStatus;
   /** Global breaker: rejects every tool call without tearing the endpoint down. */
   setHalted: (halted: boolean) => AgentEndpointStatus;
+  /** The user's answer to a `session_open` dialog. */
+  respondOpen: (response: AgentOpenRespondInput) => { ok: true };
   dispose: () => Promise<void>;
 }
 
@@ -39,7 +41,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       { name: MCP_SERVER_NAME, version: deps.appVersion },
       {
         instructions:
-          "NextShell hands the agent the terminal tabs the user has already opened. session_list is the only discovery entry. Run commands with session_send_keys by default so the user watches them happen in the tab; use exec only when the user explicitly asks for background or do-not-disturb execution. Both pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
+          "NextShell hands the agent the terminal tabs the user has already opened. session_list shows open tabs; host_list finds saved hosts (only the 10 most recent without a query); session_open asks the user to authorize opening one in NextShell — a denied result means stop and ask the user. Run commands with session_send_keys by default so the user watches them happen in the tab; use exec only when the user explicitly asks for background or do-not-disturb execution. Both pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
       }
     );
     registerAgentTools(server, { gateway, client: identity });
@@ -117,7 +119,14 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       deps.logger?.warn?.(halted ? "Agent access halted by the user" : "Agent access resumed");
       return getStatus();
     },
-    dispose: () => enqueue(stopEndpoint).then(() => undefined)
+    respondOpen: (response) => {
+      gateway.respondOpen(response);
+      return { ok: true };
+    },
+    dispose: () =>
+      enqueue(stopEndpoint).then(() => {
+        gateway.dispose();
+      })
   };
 };
 

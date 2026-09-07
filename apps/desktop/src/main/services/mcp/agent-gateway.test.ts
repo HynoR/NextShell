@@ -154,6 +154,7 @@ const createHarness = (overrides: Partial<AgentGatewayDeps> = {}): Harness => {
     retainConnection: () => () => undefined,
     closeConnectionIfIdle: async () => undefined,
     emitActivity: () => undefined,
+    requestOpenSession: () => undefined,
     getPreferences: () => DEFAULT_APP_PREFERENCES,
     ...overrides
   };
@@ -163,6 +164,121 @@ const createHarness = (overrides: Partial<AgentGatewayDeps> = {}): Harness => {
 const withAgentPrefs = (patch: Partial<AppPreferences["agent"]>): AppPreferences => ({
   ...DEFAULT_APP_PREFERENCES,
   agent: { ...DEFAULT_APP_PREFERENCES.agent, ...patch }
+});
+
+describe("host discovery and opening", () => {
+  const recent = (id: string, name: string, lastConnectedAt: string) =>
+    createConnection({ id, name, host: `10.9.0.${id.slice(0, 1)}`, lastConnectedAt });
+
+  test("host_list without a query returns at most the 10 most recent hosts", async () => {
+    const many = Array.from({ length: 14 }, (_, i) =>
+      recent(
+        `${i}0000000-0000-0000-0000-000000000000`,
+        `h${i}`,
+        `2026-01-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`
+      )
+    );
+    const never = createConnection({ id: "never", name: "never-opened", host: "10.9.9.9" });
+    const { gateway } = createHarness({ listConnections: () => [...many, never] });
+
+    const result = await gateway.hostList(CLIENT, {});
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.mode).toBe("recent");
+    expect(result.data.hosts).toHaveLength(10);
+    expect(result.data.hosts[0]?.name).toBe("h13");
+    expect(result.data.hosts.map((h) => h.name)).not.toContain("never-opened");
+    const serialized = JSON.stringify(result);
+    for (const forbidden of ["credentialRef", "secret://", "hunter2", "hostFingerprint"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
+  test("host_list with a query searches and reports open tabs", async () => {
+    const { gateway } = createHarness();
+    const result = await gateway.hostList(CLIENT, { query: "PROD" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.mode).toBe("search");
+    expect(result.data.hosts.map((h) => h.name)).toEqual(["prod-hk"]);
+    expect(result.data.hosts[0]?.openSessions).toBe(1);
+  });
+
+  test("session_open reuses a connected tab without asking", async () => {
+    const requests: unknown[] = [];
+    const { gateway } = createHarness({ requestOpenSession: (r) => requests.push(r) });
+    const result = await gateway.openSession(CLIENT, { target: prodHk.id });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual({ status: "opened", sessionId: "sess-full", reused: true });
+    expect(requests).toHaveLength(0);
+  });
+
+  test("session_open waits for the user: pending → approved with the session id", async () => {
+    const closed = createConnection({
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      name: "cold",
+      host: "10.0.0.9"
+    });
+    const sent: Array<{ id: string; reason: string | null }> = [];
+    const { gateway } = createHarness({
+      listConnections: () => [prodHk, closed],
+      requestOpenSession: (r) => sent.push({ id: r.id, reason: r.reason }),
+      openWaitMs: 20
+    });
+
+    const first = await gateway.openSession(CLIENT, { target: closed.id, reason: "check disk" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.data.status).toBe("pending");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.reason).toBe("check disk");
+    const requestId = first.data.requestId!;
+
+    const again = gateway.openSession(CLIENT, { requestId });
+    gateway.respondOpen({ id: requestId, approved: true, sessionId: "sess-new" });
+    const opened = await again;
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.data).toEqual({ status: "opened", sessionId: "sess-new" });
+    expect(sent).toHaveLength(1);
+
+    const stale = await gateway.openSession(CLIENT, { requestId });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("not_found");
+  });
+
+  test("session_open is denied on refusal and on the request timeout", async () => {
+    const closed = createConnection({
+      id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      name: "cold",
+      host: "10.0.0.9"
+    });
+    const { gateway } = createHarness({
+      listConnections: () => [closed],
+      openWaitMs: 50,
+      openRequestTimeoutMs: 20
+    });
+
+    const timedOut = await gateway.openSession(CLIENT, { target: closed.id });
+    expect(timedOut.ok).toBe(false);
+    if (!timedOut.ok) expect(timedOut.error.code).toBe("denied");
+
+    const { gateway: g2 } = createHarness({
+      listConnections: () => [closed],
+      openWaitMs: 50,
+      requestOpenSession: (r) => {
+        setTimeout(() => g2.respondOpen({ id: r.id, approved: false }), 5);
+      }
+    });
+    const refused = await g2.openSession(CLIENT, { target: closed.id });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.code).toBe("denied");
+
+    const unknown = await g2.openSession(CLIENT, { target: "nope" });
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.error.code).toBe("not_found");
+  });
 });
 
 describe("session discovery", () => {

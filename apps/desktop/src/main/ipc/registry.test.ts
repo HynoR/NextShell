@@ -21,7 +21,8 @@ const expectedEventChannelNames = [
   "SecurityDeviceKeyNoticeEvent",
   "AgentActivityEvent",
   "AgentSessionControlEvent",
-  "AgentSessionFocusEvent"
+  "AgentSessionFocusEvent",
+  "AgentOpenRequestEvent"
 ] as const;
 
 function assert(condition: boolean, message: string): void {

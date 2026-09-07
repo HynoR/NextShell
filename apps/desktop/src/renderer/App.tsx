@@ -11,6 +11,7 @@ import { App as AntdApp } from "antd";
 import type { SessionDescriptor } from "@nextshell/core";
 import type { SettingsSection } from "./components/settings-center/types";
 import { WorkspaceLayout } from "./components/WorkspaceLayout";
+import { AgentOpenRequestModal } from "./components/AgentOpenRequestModal";
 import { AppSkeleton } from "./components/LoadingSkeletons";
 import { useConnectionManager } from "./hooks/useConnectionManager";
 import { useMonitorLifecycle } from "./hooks/useMonitorLifecycle";
@@ -110,12 +111,15 @@ export const App = () => {
   const applyAgentSessionControl = useAgentActivityStore((state) => state.applySessionControl);
   const setAgentHalted = useAgentActivityStore((state) => state.setHalted);
   const setAgentEnabled = useAgentActivityStore((state) => state.setEnabled);
+  const addAgentOpenRequest = useAgentActivityStore((state) => state.addOpenRequest);
 
   useEffect(() => window.nextshell.agent.onActivity(applyAgentActivity), [applyAgentActivity]);
   useEffect(
     () => window.nextshell.agent.onSessionControl(applyAgentSessionControl),
     [applyAgentSessionControl]
   );
+  // `session_open`: the agent wants a new tab; only the user may grant that.
+  useEffect(() => window.nextshell.agent.onOpenRequest(addAgentOpenRequest), [addAgentOpenRequest]);
   // `session_focus`: the agent is handing something back that wants a human.
   useEffect(
     () => window.nextshell.agent.onSessionFocus(({ sessionId }) => setActiveSession(sessionId)),
@@ -731,6 +735,8 @@ export const App = () => {
             />
           </Suspense>
         ) : null}
+
+        <AgentOpenRequestModal startSession={startSession} />
 
         {settingsModalLoaded ? (
           <Suspense fallback={null}>

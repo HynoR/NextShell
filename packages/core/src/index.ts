@@ -795,3 +795,32 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     blacklist: []
   }
 };
+
+// ─── Connection lookup helpers (QuickConnectBar + agent host_list) ──────────
+
+/** Connections the user actually opened, newest first. */
+export const pickRecentConnections = (
+  connections: readonly ConnectionProfile[],
+  limit: number
+): ConnectionProfile[] =>
+  connections
+    .filter((c) => c.lastConnectedAt)
+    .sort((a, b) => new Date(b.lastConnectedAt!).getTime() - new Date(a.lastConnectedAt!).getTime())
+    .slice(0, limit);
+
+/** Case-insensitive substring match over name / host / tags / group / notes. */
+export const searchConnections = (
+  connections: readonly ConnectionProfile[],
+  query: string,
+  limit: number
+): ConnectionProfile[] => {
+  const lower = query.trim().toLowerCase();
+  if (!lower) return [];
+  return connections
+    .filter((c) =>
+      `${c.name} ${c.host} ${c.tags.join(" ")} ${c.groupPath} ${c.notes ?? ""}`
+        .toLowerCase()
+        .includes(lower)
+    )
+    .slice(0, limit);
+};

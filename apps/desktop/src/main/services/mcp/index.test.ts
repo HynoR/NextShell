@@ -52,6 +52,7 @@ const baseDeps = (preferences: () => AppPreferences): AgentMcpServiceDeps => ({
   retainConnection: () => () => undefined,
   closeConnectionIfIdle: async () => undefined,
   emitActivity: () => undefined,
+  requestOpenSession: () => undefined,
   getPreferences: preferences
 });
 

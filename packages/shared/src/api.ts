@@ -58,6 +58,8 @@ import type {
   AgentEndpointStatus,
   AgentSessionControlEvent,
   AgentSessionFocusEvent,
+  AgentOpenRequestEvent,
+  AgentOpenRespondInput,
   AgentSetHaltedInput,
   AgentStatusInput,
   ConnectionRemoveInput,
@@ -300,6 +302,10 @@ export interface NextShellApi {
     disable: (payload?: AgentDisableInput) => Promise<AgentEndpointStatus>;
     /** 全局断闸：拉下后所有 Agent 工具调用立即被拒。 */
     setHalted: (payload: AgentSetHaltedInput) => Promise<AgentEndpointStatus>;
+    /** 用户在弹窗里对 `session_open` 请求的答复。 */
+    respondOpen: (payload: AgentOpenRespondInput) => Promise<{ ok: true }>;
+    /** agent 请求打开某个连接，渲染端弹窗让用户授权。 */
+    onOpenRequest: (listener: (event: AgentOpenRequestEvent) => void) => SessionEventUnsubscribe;
     onActivity: (listener: (event: AgentActivityEvent) => void) => SessionEventUnsubscribe;
     /** 某个会话正被 / 不再被 Agent 驱动，用于标签徽标。 */
     onSessionControl: (
@@ -430,6 +436,7 @@ export interface IpcInvokeMethods {
   [IPCChannel.AgentEnable]: NextShellApi["agent"]["enable"];
   [IPCChannel.AgentDisable]: NextShellApi["agent"]["disable"];
   [IPCChannel.AgentSetHalted]: NextShellApi["agent"]["setHalted"];
+  [IPCChannel.AgentOpenRespond]: NextShellApi["agent"]["respondOpen"];
   [IPCChannel.CloudSyncWorkspaceList]: NextShellApi["cloudSync"]["workspaceList"];
   [IPCChannel.CloudSyncWorkspaceAdd]: NextShellApi["cloudSync"]["workspaceAdd"];
   [IPCChannel.CloudSyncWorkspaceUpdate]: NextShellApi["cloudSync"]["workspaceUpdate"];

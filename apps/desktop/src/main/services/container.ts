@@ -681,6 +681,14 @@ export const createServiceContainer = async (
   });
 
   // ─── Agent (MCP) Endpoint ────────────────────────────────────────────────
+  const raiseMainWindow = (): BrowserWindow | undefined => {
+    const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    if (!target || target.isDestroyed()) return undefined;
+    if (target.isMinimized()) target.restore();
+    target.show();
+    target.focus();
+    return target;
+  };
   // The agent only ever borrows sessions the user already opened: the gateway
   // is handed no vault handle, no connect path and no way to open sessions of
   // its own, so credentials never cross the MCP boundary.
@@ -728,12 +736,12 @@ export const createServiceContainer = async (
       };
     },
     focusSession: (sessionId) => {
-      const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      if (!target || target.isDestroyed()) return;
-      if (target.isMinimized()) target.restore();
-      target.show();
-      target.focus();
-      target.webContents.send(IPCChannel.AgentSessionFocusEvent, { sessionId });
+      raiseMainWindow()?.webContents.send(IPCChannel.AgentSessionFocusEvent, { sessionId });
+    },
+    requestOpenSession: (request) => {
+      // The dialog is useless unseen: raise the window, then show it everywhere.
+      raiseMainWindow();
+      broadcastToAllWindows(IPCChannel.AgentOpenRequestEvent, request);
     },
     setSessionAgentControlled: (sessionId, clientName) =>
       broadcastToAllWindows(IPCChannel.AgentSessionControlEvent, {
