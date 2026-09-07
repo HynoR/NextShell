@@ -1078,7 +1078,7 @@ const WorkspaceLayoutComponent = ({
               <Drawer
                 title="路由追踪"
                 open={tracerouteOpen}
-                width={720}
+                size={720}
                 destroyOnHidden
                 onClose={handleCloseTraceroute}
               >
