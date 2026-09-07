@@ -14,16 +14,15 @@ import type { ScreenReadOptions, ScreenReadResult } from "./screen-mirror";
 // ─── Client identity ────────────────────────────────────────────────────────
 
 /**
- * The endpoint only ever listens on a Unix socket / named pipe (0600), so the
- * OS file permissions are the client authorization — there is no token and no
- * approval handshake to identify beyond what `initialize` reports.
+ * The endpoint listens on 127.0.0.1 with no token: any local process is a
+ * trusted client, and the only identity is what `initialize` reports.
  */
 export interface AgentClientIdentity {
   /** MCP session id. */
   id: string;
   name: string | null;
   version: string | null;
-  transport: "socket";
+  transport: "http";
 }
 
 // ─── Result envelope ────────────────────────────────────────────────────────
@@ -386,9 +385,9 @@ const normalizeRemotePath = (input: string): AgentToolResult<string> => {
  * kill switch, a timeout, output redaction and activity events.
  *
  * There are deliberately no approval dialogs, no rate limits and no per-host
- * concurrency budgets here. The endpoint is a 0600 Unix socket (OS-level
- * authorization), the agent only ever borrows sessions the user already
- * opened, and the preset-plus-user blacklist is the only command filter.
+ * concurrency budgets here. The endpoint is loopback-only, the agent only ever
+ * borrows sessions the user already opened, and the preset-plus-user blacklist
+ * is the only command filter.
  */
 export class AgentGateway {
   private readonly deps: AgentGatewayDeps;
@@ -420,11 +419,11 @@ export class AgentGateway {
   }
 
   /**
-   * Every open remote tab is agent-visible by construction: the user opening
-   * the tab is the grant. Local shells have no connection and stay invisible.
+   * Every open tab is agent-visible by construction: the user opening the tab
+   * is the grant. Local shells are included; they only lack an exec channel.
    */
-  private openRemoteSessions(): AgentSessionInfo[] {
-    return this.deps.listSessions().filter((session) => session.connectionId !== null);
+  private openSessions(): AgentSessionInfo[] {
+    return this.deps.listSessions();
   }
 
   // ─── Call plumbing ────────────────────────────────────────────────────────
@@ -585,16 +584,16 @@ export class AgentGateway {
   }
 
   /**
-   * Resolves a session id for a takeover tool: the session must exist, be a live
-   * remote tab and be connected.
+   * Resolves a session id for a takeover tool: the session must exist and be
+   * connected. `connectionId` is null for a local shell.
    */
   private resolveLiveSession(
     sessionId: string
   ):
-    | { ok: true; session: AgentSessionInfo; connectionId: string }
+    | { ok: true; session: AgentSessionInfo; connectionId: string | undefined }
     | { ok: false; error: AgentToolError } {
-    const session = this.openRemoteSessions().find((candidate) => candidate.id === sessionId);
-    if (!session || !session.connectionId) {
+    const session = this.openSessions().find((candidate) => candidate.id === sessionId);
+    if (!session) {
       this.agentTouchedAt.delete(sessionId);
       return {
         ok: false,
@@ -610,7 +609,7 @@ export class AgentGateway {
         error: { code: "unavailable", message: `Session is ${session.status}, not connected` }
       };
     }
-    return { ok: true, session, connectionId: session.connectionId };
+    return { ok: true, session, connectionId: session.connectionId ?? undefined };
   }
 
   /**
@@ -648,7 +647,7 @@ export class AgentGateway {
       const connectionsById = new Map(
         this.deps.listConnections().map((connection) => [connection.id, connection])
       );
-      const sessions = this.openRemoteSessions().map<AgentSessionListEntry>((session) => {
+      const sessions = this.openSessions().map<AgentSessionListEntry>((session) => {
         const connection = session.connectionId
           ? connectionsById.get(session.connectionId)
           : undefined;
@@ -668,7 +667,7 @@ export class AgentGateway {
     input: { target: string; limit?: number; stripAnsi?: boolean }
   ): Promise<AgentToolResult<AgentSessionHistoryPayload>> {
     const params = { target: input.target, limit: input.limit, stripAnsi: input.stripAnsi };
-    const session = this.openRemoteSessions().find((candidate) => candidate.id === input.target);
+    const session = this.openSessions().find((candidate) => candidate.id === input.target);
     if (!session) {
       return this.failed(client, "session_history", params, {
         code: "not_found",
@@ -721,7 +720,7 @@ export class AgentGateway {
       lines: input.lines,
       stripAnsi: input.stripAnsi
     };
-    const session = this.openRemoteSessions().find((candidate) => candidate.id === input.target);
+    const session = this.openSessions().find((candidate) => candidate.id === input.target);
     if (!session) {
       return this.failed(client, "session_read", params, {
         code: "not_found",
@@ -852,6 +851,13 @@ export class AgentGateway {
     const live = this.resolveLiveSession(input.target);
     if (!live.ok) {
       return this.failed(client, "exec", params, live.error);
+    }
+    if (!live.connectionId) {
+      return this.failed(client, "exec", params, {
+        code: "unavailable",
+        message:
+          "This is a local shell tab with no exec channel; use session_send_keys with waitForPrompt instead"
+      });
     }
     const blocked = this.blacklistHit(command);
     if (blocked) {
@@ -1062,7 +1068,7 @@ export class AgentGateway {
     input: { target: string }
   ): Promise<AgentToolResult<{ sessionId: string }>> {
     const params = { target: input.target };
-    const session = this.openRemoteSessions().find((candidate) => candidate.id === input.target);
+    const session = this.openSessions().find((candidate) => candidate.id === input.target);
     if (!session) {
       return this.failed(client, "session_focus", params, {
         code: "not_found",

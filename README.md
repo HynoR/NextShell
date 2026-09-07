@@ -24,7 +24,6 @@ NextShell 是一个基于 Electron + React + TypeScript 的桌面运维客户端
 
 - `apps/desktop`: Electron 应用入口
 - `apps/desktop/src/main`: 主进程服务、IPC 注册、系统集成、Agent（MCP）端点
-- `apps/mcp-bridge`: MCP stdio 桥接进程，把 MCP 客户端接到运行中的桌面端
 - `apps/desktop/src/preload`: 安全桥接 API（`window.nextshell`）
 - `apps/desktop/src/renderer`: 前端 UI、状态管理、业务逻辑
 - `packages/core`: 核心领域类型与偏好模型
@@ -60,7 +59,6 @@ pnpm run dev
 | `pnpm run build`                                                     | 类型检查并构建 renderer/main     |
 | `pnpm run typecheck`                                                 | 仅执行 TypeScript `--noEmit`     |
 | `pnpm run test`                                                      | 运行 Vitest 单元测试             |
-| `pnpm run test:node`                                                 | 运行 Node.js 集成测试            |
 | `pnpm run rebuild:native`                                            | 仅重建原生模块                   |
 | `pnpm run rebuild:native:node`                                       | 将共享原生模块恢复为 Node.js ABI |
 | `pnpm --filter @nextshell/desktop run dist -- --mac --publish never` | 本地打 macOS 包                  |
@@ -74,9 +72,8 @@ pnpm run dev
 2. 若仍失败，执行 `pnpm run setup`
 3. 在 Node.js / Electron 版本变化后再次执行 `pnpm run setup`
 
-Electron 与独立 Node.js 进程使用不同 ABI。`pnpm run dev` 会先切换到 Electron ABI，
-`pnpm run test:node` 会先恢复 Node.js ABI；在 Node.js 下手动运行主进程相关产物前可执行
-`pnpm run rebuild:native:node`。（`apps/mcp-bridge` 不含原生依赖，不受此影响。）
+Electron 与独立 Node.js 进程使用不同 ABI。`pnpm run dev` 会先切换到 Electron ABI；
+在 Node.js 下手动运行主进程相关产物前可执行 `pnpm run rebuild:native:node`。
 
 若本地终端打开时报错 `posix_spawnp failed`：
 
@@ -111,7 +108,6 @@ Electron 与独立 Node.js 进程使用不同 ABI。`pnpm run dev` 会先切换�
 ```bash
 pnpm run typecheck
 pnpm run test
-pnpm run test:node
 ```
 
 ## 相关文档

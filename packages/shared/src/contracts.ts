@@ -567,6 +567,12 @@ export const appPreferencesSchema = z
     agent: z
       .object({
         enabled: z.boolean().default(DEFAULT_APP_PREFERENCES.agent.enabled),
+        port: z.coerce
+          .number()
+          .int()
+          .min(1024)
+          .max(65535)
+          .default(DEFAULT_APP_PREFERENCES.agent.port),
         execTimeoutSec: z.coerce
           .number()
           .int()
@@ -669,6 +675,7 @@ export const appPreferencesPatchSchema = z.object({
   agent: z
     .object({
       enabled: z.boolean().optional(),
+      port: z.coerce.number().int().min(1024).max(65535).optional(),
       execTimeoutSec: z.coerce.number().int().min(1).max(3600).optional(),
       blacklist: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1))).optional()
     })
@@ -750,17 +757,9 @@ export const sftpTransferCancelSchema = z.object({
 
 // ─── Agent 接入（应用内 MCP 端点）────────────────────────────────────────────
 
-export const agentClientKindSchema = z.enum(["claude-code", "claude-desktop", "cursor", "generic"]);
-
 export const agentStatusSchema = z.object({});
 export const agentEnableSchema = z.object({});
 export const agentDisableSchema = z.object({});
-export const agentCopyClientConfigSchema = z.object({
-  client: agentClientKindSchema.default("claude-code")
-});
-export const agentInstallCursorSchema = z.object({});
-export const agentInstallClaudeDesktopSchema = z.object({});
-export const agentExportMcpbSchema = z.object({});
 
 /** 全局断闸：把 Agent 的所有工具调用立刻掐断，或重新放行。 */
 export const agentSetHaltedSchema = z.object({
@@ -790,14 +789,9 @@ export const agentActivityEventSchema = z.object({
   createdAt: z.string()
 });
 
-export type AgentClientKind = z.infer<typeof agentClientKindSchema>;
 export type AgentStatusInput = z.infer<typeof agentStatusSchema>;
 export type AgentEnableInput = z.infer<typeof agentEnableSchema>;
 export type AgentDisableInput = z.infer<typeof agentDisableSchema>;
-export type AgentCopyClientConfigInput = z.infer<typeof agentCopyClientConfigSchema>;
-export type AgentInstallCursorInput = z.infer<typeof agentInstallCursorSchema>;
-export type AgentInstallClaudeDesktopInput = z.infer<typeof agentInstallClaudeDesktopSchema>;
-export type AgentExportMcpbInput = z.infer<typeof agentExportMcpbSchema>;
 export type AgentActivityEvent = z.infer<typeof agentActivityEventSchema>;
 export type AgentSetHaltedInput = z.infer<typeof agentSetHaltedSchema>;
 export type AgentSessionControlEvent = z.infer<typeof agentSessionControlEventSchema>;
@@ -809,7 +803,7 @@ export interface AgentConnectedClient {
   /** initialize 上报的客户端名称，未知时为 null */
   name: string | null;
   version: string | null;
-  transport: "socket";
+  transport: "http";
   connectedAt: string;
 }
 
@@ -818,42 +812,16 @@ export interface AgentEndpointStatus {
   enabled: boolean;
   /** 端点当前是否真的在监听 */
   listening: boolean;
-  /** Unix socket / 命名管道路径，未监听时为 null */
-  socketPath: string | null;
-  /** 端点发现文件路径（<userData>/mcp/endpoint.json） */
-  endpointFilePath: string;
+  /** 偏好里的回环端口 */
+  port: number;
+  /** MCP 客户端直连用的 URL（`http://127.0.0.1:<port>/mcp`），未监听时为 null */
+  url: string | null;
   clients: AgentConnectedClient[];
   /** 上一次启动 / 监听失败的原因，无错误时为 null */
   lastError: string | null;
   /** 全局断闸是否已拉下：为 true 时端点仍在监听，但所有工具调用立即被拒 */
   halted: boolean;
 }
-
-export interface AgentClientConfigResult {
-  /** 配置由主进程直接写入系统剪贴板 */
-  ok: true;
-  /** 可直接粘贴执行的 `claude mcp add` 命令 */
-  command: string;
-  /** MCP 客户端配置文件里的 mcpServers 片段 */
-  json: string;
-}
-
-/** Cursor 一键安装：主进程已用系统默认处理器打开 deeplink。 */
-export interface AgentInstallCursorResult {
-  ok: true;
-  /** 已打开的 `cursor://` deeplink，供界面展示与手动兜底 */
-  deeplink: string;
-}
-
-/** 写入 Claude Desktop 配置文件的结果。 */
-export interface AgentInstallClaudeDesktopResult {
-  ok: true;
-  /** 实际写入的 claude_desktop_config.json 绝对路径 */
-  configPath: string;
-}
-
-/** 导出 `.mcpb` 一键安装包的结果；用户取消保存对话框时 `canceled: true`。 */
-export type AgentExportMcpbResult = { ok: true; filePath: string } | { ok: false; canceled: true };
 
 // ─── Connection Folders ─────────────────────────────────────────────────────
 

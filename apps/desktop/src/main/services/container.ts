@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, clipboard, dialog, shell } from "electron";
+import { app, BrowserWindow } from "electron";
 import type { WebContents } from "electron";
 import type {
   ConnectionProfile,
@@ -685,7 +685,6 @@ export const createServiceContainer = async (
   // is handed no vault handle, no connect path and no way to open sessions of
   // its own, so credentials never cross the MCP boundary.
   const agentMcpSvc = createAgentMcpService({
-    userDataDir: options.userDataDir,
     appVersion: app.getVersion(),
     listConnections: () => connections.list({}),
     listSessions: () =>
@@ -770,29 +769,6 @@ export const createServiceContainer = async (
     closeConnectionIfIdle,
     emitActivity: (event) => broadcastToAllWindows(IPCChannel.AgentActivityEvent, event),
     getPreferences: () => prefsSvc.getAppPreferences(),
-    // Packaged: build/electron-builder.yml copies apps/mcp-bridge/dist here as
-    // an extraResource. Dev: the workspace build output. The bridge is not on
-    // npm, so `npx @nextshell/mcp-bridge` would simply 404 for the user.
-    resolveBridgeEntry: () => {
-      const candidate = app.isPackaged
-        ? path.join(process.resourcesPath, "mcp-bridge", "index.js")
-        : path.resolve(app.getAppPath(), "..", "mcp-bridge", "dist", "index.js");
-      return fs.existsSync(candidate) ? candidate : null;
-    },
-    writeClipboard: (text) => clipboard.writeText(text),
-    openExternal: (url) => shell.openExternal(url),
-    chooseSavePath: async ({ title, defaultFileName }) => {
-      const focused = BrowserWindow.getFocusedWindow();
-      const options = {
-        title,
-        defaultPath: path.join(app.getPath("downloads"), defaultFileName),
-        filters: [{ name: "MCP Bundle", extensions: ["mcpb"] }]
-      };
-      const result = focused
-        ? await dialog.showSaveDialog(focused, options)
-        : await dialog.showSaveDialog(options);
-      return result.canceled || !result.filePath ? null : result.filePath;
-    },
     logger: {
       info: (message, meta) => logger.info(`[Agent] ${message}`, meta),
       warn: (message, meta) => logger.warn(`[Agent] ${message}`, meta),
@@ -805,8 +781,8 @@ export const createServiceContainer = async (
     connections.flush();
     prefsSvc.dispose();
 
-    // First: stop accepting agent traffic, and unlink the socket plus the
-    // discovery file before the rest of the teardown can stall.
+    // First: stop accepting agent traffic and close the port before the rest
+    // of the teardown can stall.
     await agentMcpSvc.dispose().catch((error) => {
       logger.warn("[Agent] failed to dispose the MCP endpoint", normalizeError(error));
     });

@@ -569,10 +569,12 @@ export interface AppPreferences {
   };
   agent: {
     /**
-     * Agent（MCP）端点总开关。默认关闭：关闭时主进程不监听任何 socket。
-     * 端点是 0600 的 Unix socket / 命名管道，OS 文件权限即授权。
+     * Agent（MCP）端点总开关。默认关闭：关闭时主进程不监听任何端口。
+     * 端点是 127.0.0.1 上的 Streamable HTTP，任何 MCP 客户端用一个 URL 直连。
      */
     enabled: boolean;
+    /** 回环监听端口；改动后端点重启即生效 */
+    port: number;
     /** 单条 exec 的默认超时（秒） */
     execTimeoutSec: number;
     /**
@@ -639,6 +641,7 @@ export interface AppPreferencesPatch {
   };
   agent?: {
     enabled?: boolean;
+    port?: number;
     execTimeoutSec?: number;
     blacklist?: string[];
   };
@@ -787,6 +790,7 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   },
   agent: {
     enabled: false,
+    port: 41777,
     execTimeoutSec: 60,
     blacklist: []
   }

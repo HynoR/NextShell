@@ -39,7 +39,7 @@ const CLIENT: AgentClientIdentity = {
   id: "session-1",
   name: "claude-code",
   version: "1.0.0",
-  transport: "socket"
+  transport: "http"
 };
 
 const prodHk = createConnection({
@@ -172,11 +172,11 @@ describe("session discovery", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    // Local shells have no connection and stay invisible; everything the user
-    // opened over SSH is listed, since opening the tab is the grant.
+    // Every open tab is listed, local shells included: opening it is the grant.
     expect(result.data.sessions.map((session) => session.id)).toEqual([
       "sess-full",
       "sess-stage",
+      "sess-local",
       "sess-connecting"
     ]);
     expect(result.data.sessions[0]).toMatchObject({
@@ -190,17 +190,20 @@ describe("session discovery", () => {
     }
   });
 
-  test("session_read and session_history report unknown or local sessions as not_found", async () => {
+  test("unknown sessions are not_found; local shells are readable but have no exec", async () => {
     const { gateway } = createHarness();
 
     const missing = await gateway.readSessionScreen(CLIENT, { target: "sess-gone" });
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error.code).toBe("not_found");
 
-    // A local shell has no connection and does not exist as far as MCP knows.
+    // Visible: whatever the history source says, it is not "no such session".
     const local = await gateway.sessionHistory(CLIENT, { target: "sess-local" });
-    expect(local.ok).toBe(false);
-    if (!local.ok) expect(local.error.code).toBe("not_found");
+    expect(local.ok ? "ok" : local.error.code).not.toBe("not_found");
+
+    const exec = await gateway.execCommand(CLIENT, { target: "sess-local", command: "uptime" });
+    expect(exec.ok).toBe(false);
+    if (!exec.ok) expect(exec.error.code).toBe("unavailable");
   });
 
   test("session_history redacts credentials from commands and output", async () => {
@@ -288,9 +291,10 @@ describe("exec", () => {
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error.code).toBe("not_found");
 
+    // Local shells are visible but have no exec channel.
     const local = await gateway.execCommand(CLIENT, { target: "sess-local", command: "ls" });
     expect(local.ok).toBe(false);
-    if (!local.ok) expect(local.error.code).toBe("not_found");
+    if (!local.ok) expect(local.error.code).toBe("unavailable");
 
     const connecting = await gateway.execCommand(CLIENT, {
       target: "sess-connecting",

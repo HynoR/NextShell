@@ -61,7 +61,7 @@ const CLIENT_IDENTITY: AgentClientIdentity = {
   id: "session-tools",
   name: "vitest",
   version: "1.0.0",
-  transport: "socket"
+  transport: "http"
 };
 
 const deps: AgentGatewayDeps = {

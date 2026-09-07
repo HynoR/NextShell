@@ -661,6 +661,13 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           typeof parsed.agent?.enabled === "boolean"
             ? parsed.agent.enabled
             : fallback.agent.enabled,
+        port:
+          typeof parsed.agent?.port === "number" &&
+          Number.isInteger(parsed.agent.port) &&
+          parsed.agent.port >= 1024 &&
+          parsed.agent.port <= 65535
+            ? parsed.agent.port
+            : fallback.agent.port,
         execTimeoutSec:
           typeof parsed.agent?.execTimeoutSec === "number" &&
           Number.isInteger(parsed.agent.execTimeoutSec) &&

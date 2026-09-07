@@ -129,10 +129,8 @@ async (page) => {
     const agentStatus = {
       enabled: false,
       listening: false,
-      socketPath: null,
-      tcpPort: null,
-      token: null,
-      endpointFilePath: "/tmp/fake/mcp/endpoint.json",
+      port: 41777,
+      url: null,
       clients: [],
       lastError: null,
       halted: false
@@ -289,10 +287,6 @@ async (page) => {
         disable: async () => agentStatus,
         rotateToken: async () => agentStatus,
         setHalted: async () => agentStatus,
-        copyClientConfig: async () => ({ ok: true, command: "", json: "" }),
-        installCursor: async () => ({ ok: true, deeplink: "cursor://mock" }),
-        installClaudeDesktop: async () => ({ ok: true, configPath: "/tmp/fake/config.json" }),
-        exportMcpb: async () => ({ ok: false, canceled: true }),
         respondPrompt: () => ok,
         onPrompt: () => () => {},
         onActivity: () => () => {},

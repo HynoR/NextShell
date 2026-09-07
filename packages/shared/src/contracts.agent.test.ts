@@ -1,9 +1,5 @@
 import { DEFAULT_APP_PREFERENCES } from "../../core/src/index";
-import {
-  agentCopyClientConfigSchema,
-  appPreferencesPatchSchema,
-  appPreferencesSchema
-} from "./contracts";
+import { appPreferencesPatchSchema, appPreferencesSchema } from "./contracts";
 const assert = (condition: boolean, message: string): void => {
   if (!condition) {
     throw new Error(message);
@@ -21,6 +17,7 @@ const assert = (condition: boolean, message: string): void => {
     parsed.agent.enabled === false,
     "agent endpoint must default to disabled in schema parsing"
   );
+  assert(parsed.agent.port === 41777, "agent endpoint port should default to 41777");
   assert(parsed.agent.execTimeoutSec === 60, "agent exec timeout should default to 60s");
   assert(parsed.agent.blacklist.length === 0, "agent blacklist should default to an empty list");
 })();
@@ -64,13 +61,7 @@ const assert = (condition: boolean, message: string): void => {
 })();
 
 (() => {
-  const parsed = agentCopyClientConfigSchema.parse({});
+  const parsed = appPreferencesPatchSchema.safeParse({ agent: { port: 80 } });
 
-  assert(parsed.client === "claude-code", "copy-client-config should default to claude-code");
-})();
-
-(() => {
-  const parsed = agentCopyClientConfigSchema.safeParse({ client: "vim" });
-
-  assert(parsed.success === false, "copy-client-config should reject an unknown client kind");
+  assert(parsed.success === false, "appPreferencesPatchSchema should reject a privileged port");
 })();

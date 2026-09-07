@@ -52,13 +52,7 @@ export type ActiveSession = ActiveRemoteSession | ActiveLocalSession;
 
 // ─── Factory options ───────────────────────────────────────────────────────
 export interface CreateServiceContainerOptions {
-  /**
-   * Electron `app.getPath("userData")` — the profile root, not a subdirectory.
-   * SQLite lives in `<userDataDir>/storage`, the MCP endpoint discovery file in
-   * `<userDataDir>/mcp` (the path `@nextshell/mcp-bridge` probes). Passing the
-   * storage subdirectory here would move the discovery file out of the bridge's
-   * search path, so the container derives both locations from this one root.
-   */
+  /** Electron `app.getPath("userData")` — the profile root; SQLite lives in `<userDataDir>/storage`. */
   userDataDir: string;
 }
 

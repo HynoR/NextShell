@@ -12,17 +12,14 @@
     "rebuild:native": "pnpm --filter @nextshell/desktop run rebuild:native",
     "rebuild:native:node": "pnpm --recursive rebuild better-sqlite3 keytar cpu-features ssh2",
     "dev": "pnpm run rebuild:native && pnpm --filter @nextshell/desktop run dev",
-    "build": "pnpm --filter @nextshell/desktop run build && pnpm --filter @nextshell/mcp-bridge run build",
-    "build:mcp-bridge": "pnpm --filter @nextshell/mcp-bridge run build",
+    "build": "pnpm --filter @nextshell/desktop run build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm --filter @nextshell/desktop run typecheck && pnpm run typecheck:packages && pnpm --filter @nextshell/mcp-bridge run typecheck",
+    "typecheck": "pnpm --filter @nextshell/desktop run typecheck && pnpm run typecheck:packages",
     "typecheck:packages": "pnpm --filter \"./packages/**\" --recursive --if-present run typecheck",
-    "test": "vitest run",
-    "test:node": "pnpm run test:mcp-bridge",
-    "test:mcp-bridge": "pnpm --filter @nextshell/mcp-bridge run test"
+    "test": "vitest run"
   },
   "engines": {
     "node": "^24.0.0"

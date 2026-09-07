@@ -235,11 +235,6 @@ const api: NextShellApi = {
     status: () => invoke(IPCChannel.AgentStatus, {}),
     enable: () => invoke(IPCChannel.AgentEnable, {}),
     disable: () => invoke(IPCChannel.AgentDisable, {}),
-    copyClientConfig: (payload) =>
-      invoke(IPCChannel.AgentCopyClientConfig, payload ?? { client: "claude-code" }),
-    installCursor: () => invoke(IPCChannel.AgentInstallCursor, {}),
-    installClaudeDesktop: () => invoke(IPCChannel.AgentInstallClaudeDesktop, {}),
-    exportMcpb: () => invoke(IPCChannel.AgentExportMcpb, {}),
     setHalted: (payload) => invoke(IPCChannel.AgentSetHalted, payload),
     onActivity: (listener) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: AgentActivityEvent) => {

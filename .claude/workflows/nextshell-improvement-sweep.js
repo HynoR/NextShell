@@ -15,7 +15,7 @@ const CTX = `
 - preload apps/desktop/src/preload/(contextBridge 暴露 window.nextshell)
 - 渲染层 apps/desktop/src/renderer/(React 19 + Ant Design + Zustand,中文界面,深/浅主题)
 - packages/shared 是三进程契约(channels.ts / contracts.ts / api.ts);packages/core|storage|ssh|security|terminal|ui-kit
-- 类型检查门禁:pnpm run typecheck。单元测试由 Vitest 聚合,Node 集成测试由 pnpm run test:node 聚合。
+- 类型检查门禁:pnpm run typecheck。单元测试由 Vitest 聚合(pnpm run test)。
 
 ## 已完成的既往工作(不要再提这些!)
 

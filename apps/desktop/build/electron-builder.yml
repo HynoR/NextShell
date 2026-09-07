@@ -8,14 +8,6 @@ files:
   - dist-electron/**
   - "!**/*.map"
   - package.json
-# The MCP stdio bridge ships inside the installation instead of npm: the
-# generated client config points MCP clients at resources/mcp-bridge/index.js,
-# run through the app binary with ELECTRON_RUN_AS_NODE=1.
-extraResources:
-  - from: ../mcp-bridge/dist
-    to: mcp-bridge
-    filter:
-      - "**/*"
 mac:
   category: public.app-category.developer-tools
   # A stable code-signing identity is what makes the macOS keychain's "Always

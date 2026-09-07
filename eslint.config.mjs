@@ -15,9 +15,6 @@ export default tseslint.config(
       "**/*.tsbuildinfo",
       ".claude/**",
       "docs/**",
-      // Vendored build outputs of apps/mcp-bridge, committed for distribution.
-      "nextshell-plugin/bin/**",
-      "nextshell-plugin/skills/*/scripts/**",
       "IPC_OPTIMIZATION_PLAN.md"
     ]
   },

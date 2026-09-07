@@ -232,6 +232,7 @@ export const mergePreferences = (
     },
     agent: {
       enabled: patch.agent?.enabled !== undefined ? patch.agent.enabled : current.agent.enabled,
+      port: normalizeBoundedInt(patch.agent?.port, current.agent.port, 1024, 65535),
       execTimeoutSec: normalizeBoundedInt(
         patch.agent?.execTimeoutSec,
         current.agent.execTimeoutSec,

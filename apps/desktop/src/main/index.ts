@@ -309,7 +309,7 @@ app.whenReady().then(async () => {
     .start()
     .then((status) => {
       if (status.listening) {
-        logger.info("[Agent] MCP endpoint listening", { socketPath: status.socketPath });
+        logger.info("[Agent] MCP endpoint listening", { url: status.url });
       }
       if (status.lastError) {
         logger.warn("[Agent] MCP endpoint reported an error", { error: status.lastError });
@@ -388,8 +388,8 @@ app.on("before-quit", (event) => {
   if (agentTeardown) return;
 
   // The quit is deferred once, and only for the MCP endpoint: closing the
-  // listeners and unlinking the socket plus the discovery file has to finish
-  // before the process goes away, or the next launch inherits the leftovers.
+  // listeners and closing the port has to finish before the process goes
+  // away, or the next launch inherits the leftovers.
   // The rest of the teardown stays fire-and-forget, as it always was.
   agentTeardown = Promise.race([
     container.agentMcp.dispose().catch((error) => {

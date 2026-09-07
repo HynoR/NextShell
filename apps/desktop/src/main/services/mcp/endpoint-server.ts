@@ -1,9 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { Socket } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { randomUUID } from "node:crypto";
-import { chmod, mkdir, rm, stat } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -12,11 +9,12 @@ import type { AgentConnectedClient } from "@nextshell/shared";
 
 import type { AgentClientIdentity } from "./agent-gateway";
 
-/** macOS `sun_path` is 104 bytes; a longer path makes `listen()` fail with EINVAL. */
-export const MAX_UNIX_SOCKET_PATH_BYTES = 104;
+/** Loopback only: the endpoint is never reachable from another machine. */
+export const ENDPOINT_HOST = "127.0.0.1";
+export const MCP_PATH = "/mcp";
 
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
-const MCP_PATHS = new Set(["/", "/mcp"]);
+const MCP_PATHS = new Set(["/", MCP_PATH]);
 
 /**
  * A client that is SIGKILLed never sends the DELETE that closes its transport,
@@ -34,8 +32,8 @@ export interface AgentLogger {
 }
 
 export interface McpEndpointServerOptions {
-  /** Unix socket path or Windows named pipe. Defaults to a short tmpdir path. */
-  socketPath?: string;
+  /** Loopback TCP port; 0 lets the OS pick one (tests). */
+  port: number;
   createMcpServer: (identity: AgentClientIdentity) => McpServer;
   onClientsChanged?: (clients: AgentConnectedClient[]) => void;
   /** Extra exact-match Host header values accepted on top of the loopback set. */
@@ -67,27 +65,8 @@ interface SessionEntry {
   openStreams: number;
 }
 
-const isWindows = process.platform === "win32";
-
-/**
- * Socket lives in a short path because of {@link MAX_UNIX_SOCKET_PATH_BYTES};
- * the endpoint discovery file is the thing that goes under userData.
- */
-export const resolveDefaultSocketPath = (pid: number = process.pid): string => {
-  if (isWindows) {
-    return `\\\\.\\pipe\\nextshell-mcp-${pid}`;
-  }
-  const candidates = [os.tmpdir(), "/tmp"];
-  for (const base of candidates) {
-    const candidate = path.join(base, `nextshell-mcp-${pid}`, "mcp.sock");
-    if (Buffer.byteLength(candidate) <= MAX_UNIX_SOCKET_PATH_BYTES) {
-      return candidate;
-    }
-  }
-  throw new AgentEndpointError(
-    `No socket path under ${MAX_UNIX_SOCKET_PATH_BYTES} bytes is available for the MCP endpoint`
-  );
-};
+export const buildEndpointUrl = (port: number): string =>
+  `http://${ENDPOINT_HOST}:${port}${MCP_PATH}`;
 
 const readRequestBody = async (req: IncomingMessage): Promise<unknown> => {
   const chunks: Buffer[] = [];
@@ -122,9 +101,11 @@ const readClientInfo = (body: unknown): { name: string | null; version: string |
 };
 
 /**
- * The MCP endpoint is a single Unix socket / named pipe with 0600 permissions:
- * the OS filesystem is the authorization layer, so there is no token, no TCP
- * listener and no second transport to defend.
+ * The MCP endpoint is a plain Streamable HTTP server bound to 127.0.0.1, so
+ * every MCP client dials it with one URL and no bridge process. There is no
+ * token: any process on this machine may drive the tabs the user opened, the
+ * same trust the user extends to every local program. Host/Origin checks keep
+ * browser pages out.
  */
 export class McpEndpointServer {
   private readonly options: McpEndpointServerOptions;
@@ -132,8 +113,8 @@ export class McpEndpointServer {
   private readonly openSockets = new Set<Socket>();
   private readonly maxSessions: number;
   private readonly idleTimeoutMs: number;
-  private socketServer: Server | null = null;
-  private activeSocketPath: string | null = null;
+  private httpServer: Server | null = null;
+  private activePort: number | null = null;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: McpEndpointServerOptions) {
@@ -150,11 +131,16 @@ export class McpEndpointServer {
   }
 
   get listening(): boolean {
-    return this.socketServer !== null;
+    return this.httpServer !== null;
   }
 
-  get socketPath(): string | null {
-    return this.activeSocketPath;
+  /** Bound port (differs from the option only when it was 0). */
+  get port(): number | null {
+    return this.activePort;
+  }
+
+  get url(): string | null {
+    return this.activePort === null ? null : buildEndpointUrl(this.activePort);
   }
 
   getClients(): AgentConnectedClient[] {
@@ -173,7 +159,7 @@ export class McpEndpointServer {
     }
 
     try {
-      await this.startSocketListener();
+      await this.startListener();
     } catch (error) {
       await this.stop();
       throw error;
@@ -216,48 +202,28 @@ export class McpEndpointServer {
     }
   }
 
-  private async startSocketListener(): Promise<void> {
-    const socketPath = this.options.socketPath ?? resolveDefaultSocketPath();
-    if (!isWindows && Buffer.byteLength(socketPath) > MAX_UNIX_SOCKET_PATH_BYTES) {
-      throw new AgentEndpointError(
-        `Socket path exceeds ${MAX_UNIX_SOCKET_PATH_BYTES} bytes: ${socketPath}`
-      );
-    }
-
-    if (!isWindows) {
-      // 0700 before listen; the socket itself is only chmod-able afterwards and
-      // defaults to 0777 & ~umask, so the parent directory closes that window.
-      await mkdir(path.dirname(socketPath), { recursive: true, mode: 0o700 });
-      await chmod(path.dirname(socketPath), 0o700).catch(() => undefined);
-      await this.removeStaleSocket(socketPath);
-    }
-
+  private async startListener(): Promise<void> {
     const server = createServer(this.createRequestListener());
     this.trackConnections(server);
     await new Promise<void>((resolve, reject) => {
-      const onError = (error: Error): void => reject(error);
+      const onError = (error: NodeJS.ErrnoException): void =>
+        reject(
+          error.code === "EADDRINUSE"
+            ? new AgentEndpointError(
+                `端口 ${this.options.port} 已被占用（另一个 NextShell 实例或其他程序）；请在设置里换一个端口`
+              )
+            : error
+        );
       server.once("error", onError);
-      server.listen(socketPath, () => {
+      server.listen(this.options.port, ENDPOINT_HOST, () => {
         server.off("error", onError);
         resolve();
       });
     });
 
-    if (!isWindows) {
-      await chmod(socketPath, 0o600);
-    }
-    this.socketServer = server;
-    this.activeSocketPath = socketPath;
-    this.options.logger?.info?.("MCP endpoint listening on socket", { socketPath });
-  }
-
-  private async removeStaleSocket(socketPath: string): Promise<void> {
-    try {
-      await stat(socketPath);
-    } catch {
-      return;
-    }
-    await rm(socketPath, { force: true });
+    this.httpServer = server;
+    this.activePort = (server.address() as AddressInfo).port;
+    this.options.logger?.info?.("MCP endpoint listening", { url: this.url });
   }
 
   private trackConnections(server: Server): void {
@@ -291,26 +257,22 @@ export class McpEndpointServer {
     }
     await this.disconnectClients();
 
-    if (this.socketServer) {
+    if (this.httpServer) {
       await new Promise<void>((resolve) => {
-        this.socketServer?.close(() => resolve());
+        this.httpServer?.close(() => resolve());
       });
-      this.socketServer = null;
+      this.httpServer = null;
     }
-
-    const socketPath = this.activeSocketPath;
-    this.activeSocketPath = null;
-
-    if (socketPath && !isWindows) {
-      await rm(socketPath, { force: true }).catch(() => undefined);
-      await rm(path.dirname(socketPath), { force: true, recursive: true }).catch(() => undefined);
-    }
+    this.activePort = null;
   }
 
   // ─── Request handling ─────────────────────────────────────────────────────
 
   private allowedHosts(): Set<string> {
     const hosts = new Set<string>(["localhost", "127.0.0.1", "[::1]"]);
+    if (this.activePort !== null) {
+      for (const bare of [...hosts]) hosts.add(`${bare}:${this.activePort}`);
+    }
     for (const host of this.options.extraAllowedHosts ?? []) {
       hosts.add(host);
     }
@@ -318,8 +280,8 @@ export class McpEndpointServer {
   }
 
   /**
-   * Exact-match Host allowlist plus a loopback-only Origin check. A missing
-   * Host header is rejected: Node clients over UDS still send `Host: localhost`.
+   * Exact-match Host allowlist (DNS-rebinding guard) plus a loopback-only
+   * Origin check. A missing Host header is rejected.
    */
   private isRequestOriginAllowed(req: IncomingMessage): boolean {
     const host = req.headers.host;
@@ -435,7 +397,7 @@ export class McpEndpointServer {
       id: sessionId,
       name: clientInfo.name,
       version: clientInfo.version,
-      transport: "socket"
+      transport: "http"
     };
 
     const httpTransport = new StreamableHTTPServerTransport({

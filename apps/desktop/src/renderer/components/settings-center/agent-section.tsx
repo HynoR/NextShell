@@ -6,25 +6,16 @@ import {
   Button,
   Input,
   InputNumber,
-  Popconfirm,
-  Radio,
   Space,
   Switch,
   Tag,
   Typography
 } from "antd";
-import type { AgentClientKind, AgentEndpointStatus } from "@nextshell/shared";
+import type { AgentEndpointStatus } from "@nextshell/shared";
 import { useAgentActivityStore } from "../../store/useAgentActivityStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
 import { formatErrorMessage } from "../../utils/errorMessage";
 import { SettingsCard, SettingsRow } from "./shared-components";
-
-const CLIENT_OPTIONS: Array<{ label: string; value: AgentClientKind }> = [
-  { label: "Claude Code", value: "claude-code" },
-  { label: "Claude Desktop", value: "claude-desktop" },
-  { label: "Cursor", value: "cursor" },
-  { label: "通用 JSON", value: "generic" }
-];
 
 /** Exported for unit testing — maps a connected-client count to its display copy. */
 export const formatClientCount = (count: number): string =>
@@ -47,6 +38,17 @@ export const formatRunningState = (
     : { status: "success", text: "监听中" };
 };
 
+/** Exported for unit testing — the one line any MCP client needs. */
+export const buildEndpointUrl = (port: number): string => `http://127.0.0.1:${port}/mcp`;
+export const buildClaudeAddCommand = (port: number): string =>
+  `claude mcp add --transport http nextshell ${buildEndpointUrl(port)}`;
+export const buildMcpJson = (port: number): string =>
+  JSON.stringify(
+    { mcpServers: { nextshell: { type: "http", url: buildEndpointUrl(port) } } },
+    null,
+    2
+  );
+
 export const AgentSection = () => {
   const { message } = AntdApp.useApp();
   const preferences = usePreferencesStore((s) => s.preferences);
@@ -57,10 +59,6 @@ export const AgentSection = () => {
   const [status, setStatus] = useState<AgentEndpointStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
-  const [clientKind, setClientKind] = useState<AgentClientKind>("claude-code");
-  const [copyingConfig, setCopyingConfig] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [configResult, setConfigResult] = useState<{ command: string; json: string } | null>(null);
   const [blacklistDraft, setBlacklistDraft] = useState("");
   const setPanelEnabled = useAgentActivityStore((s) => s.setEnabled);
 
@@ -77,8 +75,7 @@ export const AgentSection = () => {
   const refreshStatus = useCallback(async (): Promise<void> => {
     setStatusLoading(true);
     try {
-      const result = await window.nextshell.agent.status();
-      applyStatus(result);
+      applyStatus(await window.nextshell.agent.status());
     } catch (error) {
       message.error(`获取 Agent 状态失败：${formatErrorMessage(error, "请稍后重试")}`);
     } finally {
@@ -94,11 +91,13 @@ export const AgentSection = () => {
 
   const save = useCallback(
     (patch: Parameters<typeof updatePreferences>[0]) => {
-      void updatePreferences(patch).catch((error) => {
-        message.error(`保存设置失败：${formatErrorMessage(error, "请稍后重试")}`);
-      });
+      void updatePreferences(patch)
+        .then(() => refreshStatus())
+        .catch((error) => {
+          message.error(`保存设置失败：${formatErrorMessage(error, "请稍后重试")}`);
+        });
     },
-    [updatePreferences, message]
+    [updatePreferences, message, refreshStatus]
   );
 
   const handleToggleEnabled = async (checked: boolean): Promise<void> => {
@@ -140,73 +139,25 @@ export const AgentSection = () => {
     setBlacklistDraft("");
   };
 
-  const handleCopyClientConfig = async (): Promise<void> => {
-    setCopyingConfig(true);
-    try {
-      const result = await window.nextshell.agent.copyClientConfig({ client: clientKind });
-      setConfigResult({ command: result.command, json: result.json });
-      message.success("接入配置已复制到剪贴板");
-    } catch (error) {
-      message.error(`生成接入配置失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setCopyingConfig(false);
-    }
-  };
-
-  const handleInstallCursor = async (): Promise<void> => {
-    setInstalling(true);
-    try {
-      await window.nextshell.agent.installCursor();
-      message.success("已打开 Cursor 安装链接，请在 Cursor 中确认添加");
-    } catch (error) {
-      message.error(`打开 Cursor 安装链接失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setInstalling(false);
-    }
-  };
-
-  const handleInstallClaudeDesktop = async (): Promise<void> => {
-    setInstalling(true);
-    try {
-      const result = await window.nextshell.agent.installClaudeDesktop();
-      message.success(`已写入 ${result.configPath}，重启 Claude Desktop 后生效`);
-    } catch (error) {
-      message.error(`写入 Claude Desktop 配置失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setInstalling(false);
-    }
-  };
-
-  const handleExportMcpb = async (): Promise<void> => {
-    setInstalling(true);
-    try {
-      const result = await window.nextshell.agent.exportMcpb();
-      if (result.ok) {
-        message.success(`已导出安装包：${result.filePath}，在 Claude Desktop 中打开即可安装`);
-      }
-    } catch (error) {
-      message.error(`导出 .mcpb 失败：${formatErrorMessage(error, "请稍后重试")}`);
-    } finally {
-      setInstalling(false);
-    }
-  };
-
   const enabled = status?.enabled ?? false;
   const listening = status?.listening ?? false;
   const runningState = formatRunningState(enabled, listening, status?.halted ?? false);
+  const port = status?.port ?? agentPrefs.port;
+  const url = buildEndpointUrl(port);
+  const claudeCommand = buildClaudeAddCommand(port);
 
   return (
     <>
       <SettingsCard
         title="Agent 接入（MCP）"
-        description="允许 Claude Code 等 AI Agent 通过 MCP 协议连接本机，接管你已经打开的服务器标签页"
+        description="让 Claude Code、Cursor 等 AI Agent 接管你已经打开的服务器标签页。Agent 只能操作已打开的标签页，凭据永远不会经 MCP 暴露；你在标签页里敲键盘，Agent 的下一次操作会直接报错停手。"
       >
         <div className="stg-switch-row">
           <div className="stg-switch-label">
             <span>启用 Agent 接入</span>
             <span className="stg-row-hint">
-              开启后本机会监听一个仅当前系统用户可访问的 Unix Socket（0600），供 MCP
-              客户端连接。默认关闭，关闭时不会监听任何端点。
+              开启后在本机 127.0.0.1 上监听一个 MCP 端口，任何 MCP 客户端用下面的 URL
+              直连。默认关闭。
             </span>
           </div>
           <Switch
@@ -224,118 +175,52 @@ export const AgentSection = () => {
           ) : (
             <Badge status={runningState.status} text={runningState.text} />
           )}
-        </div>
-
-        {status?.lastError && <Alert type="error" showIcon message={status.lastError} />}
-      </SettingsCard>
-
-      <SettingsCard title="运行详情" description="端点当前的监听信息，仅本机可见">
-        <SettingsRow label="Unix Socket 路径">
-          <Typography.Text
-            style={{ fontSize: 12 }}
-            type={status?.socketPath ? undefined : "secondary"}
-            copyable={status?.socketPath ? { text: status.socketPath } : false}
-          >
-            {status?.socketPath ?? "未监听"}
-          </Typography.Text>
-        </SettingsRow>
-        <SettingsRow label="已连接客户端">
-          <Typography.Text style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {formatClientCount(status?.clients.length ?? 0)}
           </Typography.Text>
-        </SettingsRow>
-        <SettingsRow label="endpoint.json 路径" hint="MCP 客户端可通过该文件自动发现端点">
-          <Typography.Text
-            style={{ fontSize: 12, wordBreak: "break-all" }}
-            copyable={status?.endpointFilePath ? { text: status.endpointFilePath } : false}
-          >
-            {status?.endpointFilePath ?? "-"}
-          </Typography.Text>
-        </SettingsRow>
-      </SettingsCard>
+        </div>
+        {status?.lastError && <Alert type="error" showIcon message={status.lastError} />}
 
-      <SettingsCard
-        title="一键接入客户端"
-        description="按客户端类型生成接入配置，点击后直接复制到剪贴板"
-      >
-        <SettingsRow label="客户端类型">
-          <Radio.Group
-            value={clientKind}
-            onChange={(e) => setClientKind(e.target.value as AgentClientKind)}
-            options={CLIENT_OPTIONS}
-            optionType="button"
-            size="small"
+        <SettingsRow label="端口" hint="改动后端点自动重启；默认 41777">
+          <InputNumber
+            style={{ width: 160 }}
+            min={1024}
+            max={65535}
+            precision={0}
+            value={agentPrefs.port}
+            disabled={prefsLoading}
+            onChange={(v) => {
+              if (typeof v === "number" && Number.isInteger(v) && v !== agentPrefs.port) {
+                save({ agent: { port: v } });
+              }
+            }}
           />
         </SettingsRow>
-        <Space wrap>
+
+        <SettingsRow
+          label="MCP 地址"
+          hint="Cursor / Windsurf / Codex 等直接填这个 URL（类型 http）"
+        >
+          <Typography.Text code copyable={{ text: url }} style={{ fontSize: 12 }}>
+            {url}
+          </Typography.Text>
+        </SettingsRow>
+        <SettingsRow label="Claude Code" hint="在终端执行一次即可">
+          <Typography.Text code copyable={{ text: claudeCommand }} style={{ fontSize: 12 }}>
+            {claudeCommand}
+          </Typography.Text>
+        </SettingsRow>
+        <SettingsRow
+          label="mcp.json 片段"
+          hint="通用配置文件格式；Claude Desktop 请用 npx mcp-remote 转接这个 URL"
+        >
           <Button
-            type="primary"
-            loading={copyingConfig}
-            onClick={() => void handleCopyClientConfig()}
+            size="small"
+            onClick={() => void handleCopyText(buildMcpJson(port), "mcp.json 片段")}
           >
-            生成并复制接入配置
+            复制 JSON
           </Button>
-          {clientKind === "cursor" && (
-            <Button loading={installing} onClick={() => void handleInstallCursor()}>
-              在 Cursor 中一键安装
-            </Button>
-          )}
-          {clientKind === "claude-desktop" && (
-            <>
-              <Popconfirm
-                title="写入 Claude Desktop 配置？"
-                description="将把 NextShell 的接入配置合并进 claude_desktop_config.json，其他配置项保持不变。"
-                okText="写入"
-                cancelText="取消"
-                onConfirm={() => void handleInstallClaudeDesktop()}
-              >
-                <Button loading={installing}>写入 Claude Desktop 配置</Button>
-              </Popconfirm>
-              <Button loading={installing} onClick={() => void handleExportMcpb()}>
-                导出 .mcpb 安装包
-              </Button>
-            </>
-          )}
-        </Space>
-        {configResult && (
-          <>
-            <SettingsRow label="CLI 命令">
-              <div className="flex items-center gap-2">
-                <Typography.Text code style={{ fontSize: 12, wordBreak: "break-all" }}>
-                  {configResult.command}
-                </Typography.Text>
-                <Button
-                  size="small"
-                  onClick={() => void handleCopyText(configResult.command, "命令")}
-                >
-                  复制
-                </Button>
-              </div>
-            </SettingsRow>
-            <SettingsRow label="JSON 片段">
-              <div className="flex items-start gap-2">
-                <Typography.Text
-                  code
-                  style={{ fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-all" }}
-                >
-                  {configResult.json}
-                </Typography.Text>
-                <Button
-                  size="small"
-                  onClick={() => void handleCopyText(configResult.json, "JSON 片段")}
-                >
-                  复制
-                </Button>
-              </div>
-            </SettingsRow>
-          </>
-        )}
-        {clientKind === "claude-desktop" && (
-          <div className="stg-note">
-            .mcpb 安装包适合分发给同机器的其他账户或离线安装：在 Claude Desktop
-            的「扩展」页打开该文件即可完成安装。
-          </div>
-        )}
+        </SettingsRow>
       </SettingsCard>
 
       <SettingsCard
@@ -395,17 +280,6 @@ export const AgentSection = () => {
             }}
           />
         </SettingsRow>
-      </SettingsCard>
-
-      <SettingsCard title="安全说明">
-        <div className="stg-note">
-          Agent 只能接管你已经在 NextShell 里打开的标签页，不能自行连接新服务器；密码、私钥、
-          密钥口令等凭据永远不会通过 MCP 暴露给 Agent。
-        </div>
-        <div className="stg-note">
-          当 Agent 正在操作某个标签页时你在其中敲了键盘，它的下一次注入或命令会直接报错并停手；
-          命中黑名单的命令会被直接拒绝。关闭总开关后端点立即停监听，活动面板里的断闸可以一键掐断所有调用。
-        </div>
       </SettingsCard>
     </>
   );

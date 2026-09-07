@@ -43,6 +43,3 @@ jobs:
 
       - name: Unit tests
         run: pnpm run test
-
-      - name: Integration tests (Node)
-        run: pnpm run test:node

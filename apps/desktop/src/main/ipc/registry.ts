@@ -96,10 +96,6 @@ import {
   agentStatusSchema,
   agentEnableSchema,
   agentDisableSchema,
-  agentCopyClientConfigSchema,
-  agentInstallCursorSchema,
-  agentInstallClaudeDesktopSchema,
-  agentExportMcpbSchema,
   agentSetHaltedSchema
 } from "../../../../../packages/shared/src/index";
 import type { ServiceContainer } from "../services/container-types";
@@ -238,7 +234,7 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
     label: "设置更新",
     dispatch: async (services, input) => {
       const saved = services.preferences.updateAppPreferences(input);
-      // Listener-shape changes (enabled / socket / tcp / port) only take effect
+      // Listener-shape changes (enabled / port) only take effect
       // once the endpoint is reconciled against the freshly persisted values.
       // Awaited so a status() that follows this save reports the new listeners.
       if (input.agent) await services.agentMcp.applyPreferences();
@@ -912,35 +908,6 @@ export const ipcInvokeRegistry: ReadonlyArray<IpcInvokeEntry> = [
       services.preferences.updateAppPreferences({ agent: { enabled: false } });
       return services.agentMcp.applyPreferences();
     }
-  }),
-  define({
-    channel: IPCChannel.AgentCopyClientConfig,
-    schema: agentCopyClientConfigSchema,
-    label: "复制 Agent 接入配置",
-    coerceEmptyPayload: true,
-    // buildClientConfig writes the clipboard itself.
-    dispatch: (services, input) => services.agentMcp.buildClientConfig(input.client)
-  }),
-  define({
-    channel: IPCChannel.AgentInstallCursor,
-    schema: agentInstallCursorSchema,
-    label: "Cursor 一键安装 Agent 配置",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.agentMcp.installCursor()
-  }),
-  define({
-    channel: IPCChannel.AgentInstallClaudeDesktop,
-    schema: agentInstallClaudeDesktopSchema,
-    label: "写入 Claude Desktop 配置",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.agentMcp.installClaudeDesktop()
-  }),
-  define({
-    channel: IPCChannel.AgentExportMcpb,
-    schema: agentExportMcpbSchema,
-    label: "导出 .mcpb 安装包",
-    coerceEmptyPayload: true,
-    dispatch: (services) => services.agentMcp.exportMcpb()
   }),
   define({
     channel: IPCChannel.AgentSetHalted,

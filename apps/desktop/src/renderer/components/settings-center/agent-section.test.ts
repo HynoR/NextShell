@@ -36,3 +36,17 @@ describe("formatRunningState", () => {
     });
   });
 });
+
+describe("client config lines", () => {
+  test("every snippet points at the loopback url for the configured port", async () => {
+    const { buildEndpointUrl, buildClaudeAddCommand, buildMcpJson } =
+      await import("./agent-section");
+    expect(buildEndpointUrl(41777)).toBe("http://127.0.0.1:41777/mcp");
+    expect(buildClaudeAddCommand(5000)).toBe(
+      "claude mcp add --transport http nextshell http://127.0.0.1:5000/mcp"
+    );
+    expect(JSON.parse(buildMcpJson(41777))).toEqual({
+      mcpServers: { nextshell: { type: "http", url: "http://127.0.0.1:41777/mcp" } }
+    });
+  });
+});

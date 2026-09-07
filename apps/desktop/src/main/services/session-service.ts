@@ -52,7 +52,8 @@ export interface SessionServiceOptions {
     connectionId: string,
     authOverride: SessionAuthOverrideInput
   ) => Promise<string | undefined>;
-  tapAgentSessionData: (sessionId: string, connectionId: string, data: string) => void;
+  /** `connectionId` is null for a local shell. */
+  tapAgentSessionData: (sessionId: string, connectionId: string | null, data: string) => void;
   disposeAgentSessionData: (sessionId: string) => void;
   /** Keeps the agent-facing screen mirror the same size as the user's terminal. */
   onSessionResized: (sessionId: string, cols: number, rows: number) => void;
@@ -343,6 +344,7 @@ export class SessionService {
           return;
         }
 
+        this.tapAgentSessionData(descriptor.id, null, chunk);
         this.sessionDataDispatcher.push({
           streamId: descriptor.id,
           sender: active.sender,

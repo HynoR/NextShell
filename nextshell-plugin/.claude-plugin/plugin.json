@@ -1,13 +1,8 @@
 {
   "name": "nextshell",
-  "version": "0.1.0",
-  "description": "Operate your servers through a running NextShell desktop app: exec, SFTP, transfers, monitoring and interactive PTYs — with zero credentials in the agent config.",
+  "version": "0.2.0",
+  "description": "Drive the server tabs you already opened in NextShell: read the screen, run commands, type into TUIs — with zero credentials in the agent config.",
   "author": { "name": "HynoR" },
   "homepage": "https://github.com/HynoR/NextShell",
-  "mcpServers": {
-    "nextshell": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/bridge.mjs"]
-    }
-  }
+  "mcpServers": "./.mcp.json"
 }
