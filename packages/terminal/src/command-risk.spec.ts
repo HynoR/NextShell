@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchDangerousCommand } from "./index";
+import { matchDangerousCommand, matchSensitiveFile } from "./index";
 
 describe("matchDangerousCommand", () => {
   it.each([
@@ -44,5 +44,22 @@ describe("matchDangerousCommand", () => {
     "kill -9 4242"
   ])("lets an unlisted command through: %s", (command) => {
     expect(matchDangerousCommand(command)).toBeNull();
+  });
+});
+
+describe("matchSensitiveFile", () => {
+  it("flags .env and .env.* wherever they appear", () => {
+    expect(matchSensitiveFile("cat .env")).toBe(".env");
+    expect(matchSensitiveFile("cat /srv/app/.env.production")).toBe("/srv/app/.env.production");
+    expect(matchSensitiveFile("echo KEY=1 >> .env")).toBe(".env");
+    expect(matchSensitiveFile("echo x >.env.local")).toBe(".env.local");
+    expect(matchSensitiveFile("sed -i 's/a/b/' ./.env && ls")).toBe("./.env");
+  });
+
+  it("leaves look-alikes alone", () => {
+    expect(matchSensitiveFile("env | grep PATH")).toBeNull();
+    expect(matchSensitiveFile("cat environment.txt")).toBeNull();
+    expect(matchSensitiveFile("ls .envrc")).toBeNull();
+    expect(matchSensitiveFile("cat .env.example.md")).toBe(".env.example.md");
   });
 });

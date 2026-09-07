@@ -284,6 +284,28 @@ describe("exec", () => {
     if (!bad.ok) expect(bad.error.code).toBe("invalid_argument");
   });
 
+  test(".env files need explicit consent on exec and send_keys", async () => {
+    const { gateway } = createHarness();
+
+    const refused = await gateway.execCommand(CLIENT, { target: "sess-full", command: "cat .env" });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) {
+      expect(refused.error.code).toBe("consent_required");
+      expect(refused.error.message).toContain(".env");
+    }
+
+    const typed = await gateway.sendKeys(CLIENT, { target: "sess-full", text: "vim .env.prod" });
+    expect(typed.ok).toBe(false);
+    if (!typed.ok) expect(typed.error.code).toBe("consent_required");
+
+    const agreed = await gateway.execCommand(CLIENT, {
+      target: "sess-full",
+      command: "cat .env",
+      allowSensitive: true
+    });
+    expect(agreed.ok).toBe(true);
+  });
+
   test("an unknown, local or not-yet-connected session is refused", async () => {
     const { gateway } = createHarness();
 

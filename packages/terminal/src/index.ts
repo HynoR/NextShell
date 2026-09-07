@@ -269,3 +269,23 @@ const dangerousReason = (
  */
 export const matchDangerousCommand = (command: string): string | null =>
   dangerousReason(command, parseShellCommand(command));
+
+const SENSITIVE_FILE_RE = /^\.env(\..+)?$/;
+
+/**
+ * Sensitive-file gate for the Agent gateway: any token that names a `.env` /
+ * `.env.*` file (as a path segment, with or without a redirection prefix)
+ * returns the file name so the tool can demand explicit user consent.
+ * Deliberately just `.env` for now — `config.yaml`-style names are too
+ * ambiguous to block by default.
+ */
+export const matchSensitiveFile = (command: string): string | null => {
+  for (const segment of parseShellCommand(command).segments) {
+    for (const token of segment) {
+      const stripped = token.replace(/^[<>&|0-9]+/, "");
+      const name = basenameOf(stripped);
+      if (SENSITIVE_FILE_RE.test(name)) return stripped || token;
+    }
+  }
+  return null;
+};

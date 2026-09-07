@@ -12,10 +12,10 @@ import {
 /**
  * Driving the PTY the user is looking at.
  *
- * `exec` is the default for running anything — it is bounded and never shares
- * the line editor with the person at the keyboard. These tools exist for the
- * cases where the state genuinely lives in that shell: a TUI, an interactive
- * installer, a sudo prompt, an already-entered venv or `docker exec`.
+ * `session_send_keys` is the default way to run anything: the user watches the
+ * command echo and its output scroll in the tab, exactly as if they had typed
+ * it. `exec` is the out-of-band fallback, used only when the user asks for
+ * background / do-not-disturb execution.
  * Injected text passes the command blacklist, and a human keystroke since the
  * agent's last operation fails the call with `human_intervention` — the agent
  * should then stop and report instead of retrying.
@@ -26,7 +26,7 @@ export const registerControlTools = (server: McpServer, ctx: AgentToolContext): 
     {
       title: "向会话注入输入",
       description:
-        "Type into a live session's PTY, as if the user had typed it. Prefer exec unless the state you need lives in that shell (a TUI, an interactive prompt, an entered venv or container). Fails with human_intervention when the user typed into the tab after your last operation — stop and report instead of retrying. With waitForPrompt the call returns once the shell reports the command finished (OSC 133), including its exit code and output; without shell integration no mark ever arrives and waitTimedOut comes back true rather than a guessed result.",
+        "DEFAULT way to run commands: type into the live session's PTY exactly as if the user had typed it, so they watch the command and its output appear in the tab in real time. Use this unless the user explicitly asks for background / quiet execution (then use exec). Set submit: true to press Enter and waitForPrompt: true to get the exit code and output back once the shell reports completion (OSC 133); without shell integration no mark arrives, waitTimedOut comes back true, and you should session_read the screen instead. Fails with human_intervention when the user typed into the tab after your last operation — stop and report instead of retrying.",
       inputSchema: {
         target: z.string().min(1).describe(sessionIdInputDescription),
         text: z.string().max(4096).describe("Characters to type"),
@@ -35,7 +35,13 @@ export const registerControlTools = (server: McpServer, ctx: AgentToolContext): 
           .boolean()
           .optional()
           .describe("Wait for the shell's next OSC 133 completion mark"),
-        timeoutSec: z.number().int().min(1).max(600).optional()
+        timeoutSec: z.number().int().min(1).max(600).optional(),
+        allowSensitive: z
+          .boolean()
+          .optional()
+          .describe(
+            "Set true only after the user explicitly agreed to touch a .env file named in a consent_required error"
+          )
       },
       outputSchema: outputShape(
         z.object({

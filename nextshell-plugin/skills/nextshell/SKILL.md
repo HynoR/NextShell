@@ -12,12 +12,14 @@ You never see a password or key; you only get session ids and command output.
 
 1. `session_list` — the only discovery entry. If the host the user means is not listed,
    ask them to open it in NextShell first. Never try to connect on your own.
-2. Prefer `exec` (target = session id) for anything that is a plain command: it runs on
-   that tab's connection, inherits its cwd, and returns stdout/stderr/exit code.
-3. Use `session_read` to see what is on screen, `session_history` for recent commands with
+2. **Default: `session_send_keys`** with `submit: true` and `waitForPrompt: true`. The
+   command and its output appear in the user's tab in real time, as if they typed it.
+   If `waitTimedOut` comes back (no shell integration), `session_read` the screen.
+3. `session_read` to see what is on screen, `session_history` for recent commands with
    exit codes and output.
-4. `session_send_keys` only when the state lives in that shell (a TUI, a sudo prompt, an
-   entered venv or `docker exec`). Use `waitForPrompt` to get the exit code back.
+4. `exec` **only when the user explicitly asks** for background or quiet execution
+   ("在后台执行 xxx", "不打扰我执行 xxx"). It runs out of band, invisible in the tab, and
+   returns stdout/stderr/exit code. Not available for local shell tabs.
 5. `session_focus` to bring the tab to the front when the user should look at it.
 
 ## Rules
@@ -31,4 +33,4 @@ You never see a password or key; you only get session ids and command output.
 ## Not available on purpose
 
 No host enumeration, no opening connections, no file transfer, no local filesystem.
-Use `exec` with `cat`/`sed`/`tar` for file work on the remote side.
+Do file work on the remote side with `cat`/`sed`/`tar` through the terminal.

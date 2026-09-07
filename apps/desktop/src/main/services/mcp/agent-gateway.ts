@@ -7,7 +7,7 @@ import type {
   SessionType
 } from "@nextshell/core";
 import type { AgentActivityEvent } from "@nextshell/shared";
-import { matchDangerousCommand } from "@nextshell/terminal";
+import { matchDangerousCommand, matchSensitiveFile } from "@nextshell/terminal";
 
 import type { ScreenReadOptions, ScreenReadResult } from "./screen-mirror";
 
@@ -34,6 +34,7 @@ export type AgentErrorCode =
   | "timeout"
   | "unavailable"
   | "human_intervention"
+  | "consent_required"
   | "internal";
 
 export interface AgentToolError {
@@ -584,6 +585,25 @@ export class AgentGateway {
   }
 
   /**
+   * `.env` files need explicit user consent: without `allowSensitive` the call
+   * fails with `consent_required` so the agent has to ask. The flag is
+   * honour-system by design — the harness's own tool approval is where the
+   * user actually says yes, and the flag shows up there as a parameter.
+   */
+  private consentRequired(
+    command: string,
+    allowSensitive: boolean | undefined
+  ): AgentToolError | null {
+    if (allowSensitive) return null;
+    const file = matchSensitiveFile(command);
+    if (!file) return null;
+    return {
+      code: "consent_required",
+      message: `This command touches ${file}, which may hold secrets. Ask the user first; retry with allowSensitive: true only after they explicitly agree.`
+    };
+  }
+
+  /**
    * Resolves a session id for a takeover tool: the session must exist and be
    * connected. `connectionId` is null for a local shell.
    */
@@ -838,10 +858,22 @@ export class AgentGateway {
    */
   async execCommand(
     client: AgentClientIdentity,
-    input: { target: string; command: string; cwd?: string; timeoutSec?: number }
+    input: {
+      target: string;
+      command: string;
+      cwd?: string;
+      timeoutSec?: number;
+      allowSensitive?: boolean;
+    }
   ): Promise<AgentToolResult<AgentExecPayload>> {
     const command = input.command.trim();
-    const params = { target: input.target, command, cwd: input.cwd, timeoutSec: input.timeoutSec };
+    const params = {
+      target: input.target,
+      command,
+      cwd: input.cwd,
+      timeoutSec: input.timeoutSec,
+      allowSensitive: input.allowSensitive ?? false
+    };
     if (!command) {
       return this.failed(client, "exec", params, {
         code: "invalid_argument",
@@ -868,6 +900,10 @@ export class AgentGateway {
         { code: "forbidden", message: `Blocked by the command blacklist: ${blocked}` },
         live.connectionId
       );
+    }
+    const consent = this.consentRequired(command, input.allowSensitive);
+    if (consent) {
+      return this.failed(client, "exec", params, consent, live.connectionId);
     }
     const intervention = this.checkHumanIntervention(live.session.id);
     if (intervention) {
@@ -948,13 +984,15 @@ export class AgentGateway {
       submit?: boolean;
       waitForPrompt?: boolean;
       timeoutSec?: number;
+      allowSensitive?: boolean;
     }
   ): Promise<AgentToolResult<AgentSendKeysPayload>> {
     const params = {
       target: input.target,
       command: input.text,
       submit: input.submit ?? false,
-      waitForPrompt: input.waitForPrompt ?? false
+      waitForPrompt: input.waitForPrompt ?? false,
+      allowSensitive: input.allowSensitive ?? false
     };
     if (input.text.length === 0 && !input.submit) {
       return this.failed(client, "session_send_keys", params, {
@@ -976,6 +1014,10 @@ export class AgentGateway {
           { code: "forbidden", message: `Blocked by the command blacklist: ${blocked}` },
           live.connectionId
         );
+      }
+      const consent = this.consentRequired(input.text, input.allowSensitive);
+      if (consent) {
+        return this.failed(client, "session_send_keys", params, consent, live.connectionId);
       }
     }
     const intervention = this.checkHumanIntervention(live.session.id);

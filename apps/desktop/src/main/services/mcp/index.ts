@@ -39,7 +39,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       { name: MCP_SERVER_NAME, version: deps.appVersion },
       {
         instructions:
-          "NextShell hands the agent the terminal tabs the user has already opened. session_list is the only discovery entry; exec and session_send_keys borrow a live session, pass a dangerous-command blacklist, and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
+          "NextShell hands the agent the terminal tabs the user has already opened. session_list is the only discovery entry. Run commands with session_send_keys by default so the user watches them happen in the tab; use exec only when the user explicitly asks for background or do-not-disturb execution. Both pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
       }
     );
     registerAgentTools(server, { gateway, client: identity });

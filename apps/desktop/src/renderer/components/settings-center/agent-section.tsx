@@ -150,15 +150,12 @@ export const AgentSection = () => {
     <>
       <SettingsCard
         title="Agent 接入（MCP）"
-        description="让 Claude Code、Cursor 等 AI Agent 接管你已经打开的服务器标签页。Agent 只能操作已打开的标签页，凭据永远不会经 MCP 暴露；你在标签页里敲键盘，Agent 的下一次操作会直接报错停手。"
+        description="让已授权的 AI Agent 通过 MCP 操作你打开的终端标签页。凭据不会经 MCP 暴露。"
       >
         <div className="stg-switch-row">
           <div className="stg-switch-label">
             <span>启用 Agent 接入</span>
-            <span className="stg-row-hint">
-              开启后在本机 127.0.0.1 上监听一个 MCP 端口，任何 MCP 客户端用下面的 URL
-              直连。默认关闭。
-            </span>
+            <span className="stg-row-hint">开启后监听本机 127.0.0.1 的 MCP 端口。</span>
           </div>
           <Switch
             size="small"
@@ -181,7 +178,7 @@ export const AgentSection = () => {
         </div>
         {status?.lastError && <Alert type="error" showIcon message={status.lastError} />}
 
-        <SettingsRow label="端口" hint="改动后端点自动重启；默认 41777">
+        <SettingsRow label="端口" hint="修改后自动重启；默认 41777">
           <InputNumber
             style={{ width: 160 }}
             min={1024}
@@ -197,23 +194,17 @@ export const AgentSection = () => {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label="MCP 地址"
-          hint="Cursor / Windsurf / Codex 等直接填这个 URL（类型 http）"
-        >
+        <SettingsRow label="MCP 地址" hint="Cursor / Windsurf / Codex 等直接使用">
           <Typography.Text code copyable={{ text: url }} style={{ fontSize: 12 }}>
             {url}
           </Typography.Text>
         </SettingsRow>
-        <SettingsRow label="Claude Code" hint="在终端执行一次即可">
+        <SettingsRow label="Claude Code" hint="终端执行一次">
           <Typography.Text code copyable={{ text: claudeCommand }} style={{ fontSize: 12 }}>
             {claudeCommand}
           </Typography.Text>
         </SettingsRow>
-        <SettingsRow
-          label="mcp.json 片段"
-          hint="通用配置文件格式；Claude Desktop 请用 npx mcp-remote 转接这个 URL"
-        >
+        <SettingsRow label="mcp.json 片段" hint="Claude Desktop 需用 npx mcp-remote 转接">
           <Button
             size="small"
             onClick={() => void handleCopyText(buildMcpJson(port), "mcp.json 片段")}
@@ -225,9 +216,9 @@ export const AgentSection = () => {
 
       <SettingsCard
         title="命令黑名单"
-        description="命中黑名单的命令会被 Agent 工具直接拒绝并附原因，没有“本次放行”。内置清单已覆盖 rm -rf /、mkfs、dd 写设备、shutdown/reboot、fork 炸弹等显而易见的危险命令，这里用于追加你自己的条目"
+        description="命中黑名单的命令会被 Agent 直接拒绝。内置已覆盖常见危险命令，此处追加自定义条目。"
       >
-        <SettingsRow label="自定义黑名单" hint="每条按子串匹配；若本身是合法正则，则同时按正则匹配">
+        <SettingsRow label="自定义黑名单" hint="子串匹配；合法正则同时按正则匹配">
           <div className="flex flex-col gap-2">
             {agentPrefs.blacklist.length > 0 ? (
               <Space size={[4, 4]} wrap>
@@ -265,7 +256,7 @@ export const AgentSection = () => {
             </Space.Compact>
           </div>
         </SettingsRow>
-        <SettingsRow label="命令超时（秒）" hint="Agent 发起的单条命令最长执行时间">
+        <SettingsRow label="命令超时（秒）" hint="单条命令最长执行时间">
           <InputNumber
             style={{ width: "100%" }}
             min={1}
