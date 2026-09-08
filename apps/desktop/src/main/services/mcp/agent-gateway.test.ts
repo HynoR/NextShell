@@ -145,6 +145,7 @@ const createHarness = (overrides: Partial<AgentGatewayDeps> = {}): Harness => {
     getSessionHistory: () => null,
     readSessionScreen: async () => null,
     writeSession: () => undefined,
+    pendingInput: async () => null,
     lastUserInputAt: () => null,
     waitForCommandCompletion: async () => null,
     focusSession: () => undefined,
@@ -306,7 +307,7 @@ describe("session discovery", () => {
     }
   });
 
-  test("unknown sessions are not_found; local shells are readable but have no exec", async () => {
+  test("unknown sessions are not_found; local shells are visible", async () => {
     const { gateway } = createHarness();
 
     const missing = await gateway.readSessionScreen(CLIENT, { target: "sess-gone" });
@@ -316,10 +317,6 @@ describe("session discovery", () => {
     // Visible: whatever the history source says, it is not "no such session".
     const local = await gateway.sessionHistory(CLIENT, { target: "sess-local" });
     expect(local.ok ? "ok" : local.error.code).not.toBe("not_found");
-
-    const exec = await gateway.execCommand(CLIENT, { target: "sess-local", command: "uptime" });
-    expect(exec.ok).toBe(false);
-    if (!exec.ok) expect(exec.error.code).toBe("unavailable");
   });
 
   test("session_history redacts credentials from commands and output", async () => {
@@ -348,23 +345,187 @@ describe("session discovery", () => {
   });
 });
 
-describe("exec", () => {
-  test("borrows the session's connection and inherits its OSC cwd", async () => {
+const BACKGROUND = () => withAgentPrefs({ execMode: "background" });
+
+describe("exec in the foreground (default)", () => {
+  test("focuses the tab, types the command with the badge held, and returns the OSC 133 result", async () => {
+    const writes: string[] = [];
+    const focused: string[] = [];
+    const badges: Array<{ sessionId: string; controlled: boolean }> = [];
+    const exec = vi.fn();
+    const { gateway } = createHarness({
+      execCommand: exec,
+      writeSession: (_sessionId, data) => writes.push(data),
+      focusSession: (sessionId) => focused.push(sessionId),
+      setSessionAgentControlled: (sessionId) => badges.push({ sessionId, controlled: true }),
+      clearSessionAgentControlled: (sessionId) => badges.push({ sessionId, controlled: false }),
+      waitForCommandCompletion: async () => ({
+        command: "ls -la",
+        exitCode: 0,
+        output: "file-a",
+        truncated: false
+      })
+    });
+
+    const result = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls -la" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual({
+      sessionId: "sess-full",
+      mode: "foreground",
+      command: "ls -la",
+      exitCode: 0,
+      output: "file-a",
+      stderr: null,
+      waitTimedOut: false,
+      actualCwd: null
+    });
+    expect(writes).toEqual(["ls -la\r"]);
+    expect(focused).toEqual(["sess-full"]);
+    expect(badges).toEqual([
+      { sessionId: "sess-full", controlled: true },
+      { sessionId: "sess-full", controlled: false }
+    ]);
+    // The exec channel is never touched in the foreground.
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  test("reports waitTimedOut with an unknown exit code when no completion mark arrives", async () => {
+    const { gateway } = createHarness();
+    const result = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toMatchObject({ exitCode: null, output: "", waitTimedOut: true });
+  });
+
+  test("waits the promised 120s by default; timeoutSec shortens it, execTimeoutSec does not", async () => {
+    const waits: number[] = [];
+    const { gateway } = createHarness({
+      waitForCommandCompletion: async (_sessionId, timeoutMs) => {
+        waits.push(timeoutMs);
+        return null;
+      },
+      getPreferences: () => withAgentPrefs({ execTimeoutSec: 30 })
+    });
+    await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls", timeoutSec: 10 });
+    expect(waits).toEqual([120_000, 10_000]);
+  });
+
+  test("a wait that runs out settles the activity as unsettled, not succeeded", async () => {
+    const events: Array<{ status: string; summary: string }> = [];
+    const { gateway } = createHarness({
+      emitActivity: (event) => events.push({ status: event.status, summary: event.summary })
+    });
+    await gateway.execCommand(CLIENT, { target: "sess-full", command: "sleep 999" });
+    expect(events.at(-1)?.status).toBe("unsettled");
+    expect(events.at(-1)?.summary).toContain("仍在标签页中运行");
+  });
+
+  test("local shells run in the foreground too", async () => {
+    const writes: string[] = [];
+    const { gateway } = createHarness({ writeSession: (_id, data) => writes.push(data) });
+    const result = await gateway.execCommand(CLIENT, { target: "sess-local", command: "ls" });
+    expect(result.ok).toBe(true);
+    expect(writes).toEqual(["ls\r"]);
+  });
+
+  test("an unsubmitted line of the user's fails the call with what they typed", async () => {
+    const write = vi.fn();
+    let pending: string | null = "vim /etc/nginx.conf";
+    const { gateway } = createHarness({
+      writeSession: write,
+      pendingInput: async () => pending
+    });
+
+    const intervened = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(intervened.ok).toBe(false);
+    if (!intervened.ok) {
+      expect(intervened.error.code).toBe("human_intervention");
+      expect(intervened.error.message).toContain("vim /etc/nginx.conf");
+    }
+    expect(write).not.toHaveBeenCalled();
+
+    // The user submits or clears their line: the very next call goes through.
+    pending = "";
+    const clean = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(clean.ok).toBe(true);
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  test("the unsubmitted text is redacted and capped in the error", async () => {
+    const { gateway } = createHarness({
+      pendingInput: async () => `mysql -u root -phunter2 ${"x".repeat(100)}`
+    });
+    const result = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).not.toContain("hunter2");
+      expect(result.error.message.length).toBeLessThan(160);
+    }
+  });
+
+  test("without a prompt mark, keystrokes after the last agent call fail the next one exactly once", async () => {
+    let clock = 1_000;
+    let lastUserInput: number | null = null;
+    const write = vi.fn();
+    const { gateway } = createHarness({
+      writeSession: write,
+      now: () => clock,
+      pendingInput: async () => null,
+      lastUserInputAt: () => lastUserInput
+    });
+
+    // First takeover establishes the baseline and succeeds.
+    const first = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(first.ok).toBe(true);
+
+    // The human types into the tab; the agent's next call reports intervention…
+    lastUserInput = 1_500;
+    clock = 2_000;
+    const intervened = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(intervened.ok).toBe(false);
+    if (!intervened.ok) expect(intervened.error.code).toBe("human_intervention");
+
+    // …and the error is one-shot: the call after it becomes the new baseline.
+    clock = 3_000;
+    const recovered = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
+    expect(recovered.ok).toBe(true);
+    expect(write).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("exec in the background (user's choice)", () => {
+  test("borrows the session's connection, inherits its OSC cwd and never touches the tab", async () => {
     const exec = vi.fn(async () => ({
       stdout: "/var/www\n",
-      stderr: "",
+      stderr: "warn",
       exitCode: 0,
       executedAt: TIMESTAMP
     }));
-    const { gateway } = createHarness({ execCommand: exec });
+    const write = vi.fn();
+    const focus = vi.fn();
+    const pendingInput = vi.fn(async () => "half-typed");
+    const { gateway } = createHarness({
+      execCommand: exec,
+      writeSession: write,
+      focusSession: focus,
+      pendingInput,
+      getPreferences: BACKGROUND
+    });
     const result = await gateway.execCommand(CLIENT, { target: "sess-full", command: "pwd" });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data).toMatchObject({
+    expect(result.data).toEqual({
       sessionId: "sess-full",
-      connectionId: prodHk.id,
+      mode: "background",
+      command: "pwd",
       exitCode: 0,
+      output: "/var/www\n",
+      stderr: "warn",
+      waitTimedOut: false,
       actualCwd: "/var/www"
     });
     expect(exec).toHaveBeenCalledWith(
@@ -372,35 +533,102 @@ describe("exec", () => {
       "pwd",
       expect.objectContaining({ cwd: "/var/www" })
     );
+    expect(write).not.toHaveBeenCalled();
+    expect(focus).not.toHaveBeenCalled();
+    // A background run cannot type over anyone, so the line is not even looked at.
+    expect(pendingInput).not.toHaveBeenCalled();
   });
 
-  test("an explicit cwd wins over the session cwd and must be absolute", async () => {
-    const exec = vi.fn(async () => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-      executedAt: TIMESTAMP
-    }));
-    const { gateway } = createHarness({ execCommand: exec });
-
-    const ok = await gateway.execCommand(CLIENT, {
-      target: "sess-full",
-      command: "ls",
-      cwd: "/etc"
+  test("a local shell has no exec channel and falls back to the foreground", async () => {
+    const exec = vi.fn();
+    const writes: string[] = [];
+    const { gateway } = createHarness({
+      execCommand: exec,
+      writeSession: (_id, data) => writes.push(data),
+      getPreferences: BACKGROUND
     });
-    expect(ok.ok).toBe(true);
-    expect(exec).toHaveBeenCalledWith(prodHk.id, "ls", expect.objectContaining({ cwd: "/etc" }));
+    const result = await gateway.execCommand(CLIENT, { target: "sess-local", command: "ls" });
+    expect(result.ok).toBe(true);
+    if (result.ok && !("status" in result.data)) expect(result.data.mode).toBe("foreground");
+    expect(writes).toEqual(["ls\r"]);
+    expect(exec).not.toHaveBeenCalled();
+  });
+});
 
-    const bad = await gateway.execCommand(CLIENT, {
-      target: "sess-full",
-      command: "ls",
-      cwd: "relative/path"
+describe("exec approval (the Permission mode)", () => {
+  test("every command waits for the user's click: pending → approved → runs", async () => {
+    const sent: Array<{ kind?: string; command?: string; mode?: string }> = [];
+    const writes: string[] = [];
+    const { gateway } = createHarness({
+      getPreferences: () => withAgentPrefs({ execApproval: "permission" }),
+      requestOpenSession: (r) => sent.push({ kind: r.kind, command: r.command, mode: r.mode }),
+      writeSession: (_id, data) => writes.push(data),
+      openWaitMs: 20
     });
-    expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error.code).toBe("invalid_argument");
+
+    const first = await gateway.execCommand(CLIENT, { target: "sess-full", command: "uptime" });
+    expect(first.ok).toBe(true);
+    if (!first.ok || !("status" in first.data)) return;
+    expect(first.data.status).toBe("pending");
+    expect(sent).toEqual([{ kind: "exec", command: "uptime", mode: "foreground" }]);
+    expect(writes).toEqual([]);
+    const requestId = first.data.requestId;
+
+    const again = gateway.execCommand(CLIENT, { requestId });
+    gateway.respondOpen({ id: requestId, approved: true });
+    const ran = await again;
+    expect(ran.ok).toBe(true);
+    if (!ran.ok || "status" in ran.data) return;
+    expect(ran.data.mode).toBe("foreground");
+    expect(writes).toEqual(["uptime\r"]);
+    expect(sent).toHaveLength(1);
+
+    const stale = await gateway.execCommand(CLIENT, { requestId });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("not_found");
   });
 
-  test(".env files need explicit consent on exec and send_keys", async () => {
+  test("a refusal is denied and nothing is written", async () => {
+    const write = vi.fn();
+    const { gateway } = createHarness({
+      getPreferences: () => withAgentPrefs({ execApproval: "permission" }),
+      writeSession: write,
+      openWaitMs: 20
+    });
+    const first = await gateway.execCommand(CLIENT, { target: "sess-full", command: "uptime" });
+    if (!first.ok || !("status" in first.data)) throw new Error("expected pending");
+    const again = gateway.execCommand(CLIENT, { requestId: first.data.requestId });
+    gateway.respondOpen({ id: first.data.requestId, approved: false });
+    const denied = await again;
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.error.code).toBe("denied");
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  test("the blacklist and consent gate run before the user is even asked", async () => {
+    const sent = vi.fn();
+    const { gateway } = createHarness({
+      getPreferences: () => withAgentPrefs({ execApproval: "permission" }),
+      requestOpenSession: sent
+    });
+    const blocked = await gateway.execCommand(CLIENT, { target: "sess-full", command: "rm -rf /" });
+    expect(blocked.ok).toBe(false);
+    const env = await gateway.execCommand(CLIENT, { target: "sess-full", command: "cat .env" });
+    expect(env.ok).toBe(false);
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  test("Auto (the default) runs straight away with no request", async () => {
+    const sent = vi.fn();
+    const { gateway } = createHarness({ requestOpenSession: sent });
+    const result = await gateway.execCommand(CLIENT, { target: "sess-full", command: "uptime" });
+    expect(result.ok).toBe(true);
+    expect(sent).not.toHaveBeenCalled();
+  });
+});
+
+describe("exec policy gates (both modes)", () => {
+  test(".env files need explicit consent", async () => {
     const { gateway } = createHarness();
 
     const refused = await gateway.execCommand(CLIENT, { target: "sess-full", command: "cat .env" });
@@ -410,7 +638,10 @@ describe("exec", () => {
       expect(refused.error.message).toContain(".env");
     }
 
-    const typed = await gateway.sendKeys(CLIENT, { target: "sess-full", text: "vim .env.prod" });
+    const typed = await gateway.execCommand(CLIENT, {
+      target: "sess-full",
+      command: "vim .env.prod"
+    });
     expect(typed.ok).toBe(false);
     if (!typed.ok) expect(typed.error.code).toBe("consent_required");
 
@@ -422,17 +653,12 @@ describe("exec", () => {
     expect(agreed.ok).toBe(true);
   });
 
-  test("an unknown, local or not-yet-connected session is refused", async () => {
+  test("an unknown or not-yet-connected session is refused", async () => {
     const { gateway } = createHarness();
 
     const missing = await gateway.execCommand(CLIENT, { target: "sess-gone", command: "ls" });
     expect(missing.ok).toBe(false);
     if (!missing.ok) expect(missing.error.code).toBe("not_found");
-
-    // Local shells are visible but have no exec channel.
-    const local = await gateway.execCommand(CLIENT, { target: "sess-local", command: "ls" });
-    expect(local.ok).toBe(false);
-    if (!local.ok) expect(local.error.code).toBe("unavailable");
 
     const connecting = await gateway.execCommand(CLIENT, {
       target: "sess-connecting",
@@ -444,7 +670,8 @@ describe("exec", () => {
 
   test("the preset dangerous list blocks without any dialog", async () => {
     const exec = vi.fn();
-    const { gateway } = createHarness({ execCommand: exec });
+    const write = vi.fn();
+    const { gateway } = createHarness({ execCommand: exec, writeSession: write });
     const result = await gateway.execCommand(CLIENT, {
       target: "sess-full",
       command: "rm -rf /"
@@ -456,6 +683,7 @@ describe("exec", () => {
       expect(result.error.message).toContain("blacklist");
     }
     expect(exec).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 
   test("user blacklist entries match as substring and as regex", async () => {
@@ -468,7 +696,10 @@ describe("exec", () => {
     const { gateway } = createHarness({
       execCommand: exec,
       getPreferences: () =>
-        withAgentPrefs({ blacklist: ["kubectl delete", String.raw`^docker\s+system\s+prune`] })
+        withAgentPrefs({
+          execMode: "background",
+          blacklist: ["kubectl delete", String.raw`^docker\s+system\s+prune`]
+        })
     });
 
     const substring = await gateway.execCommand(CLIENT, {
@@ -491,132 +722,6 @@ describe("exec", () => {
     const allowed = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
     expect(allowed.ok).toBe(true);
     expect(exec).toHaveBeenCalledTimes(1);
-  });
-
-  test("human keystrokes after the last agent call fail the next one exactly once", async () => {
-    let clock = 1_000;
-    let lastUserInput: number | null = null;
-    const exec = vi.fn(async () => ({
-      stdout: "",
-      stderr: "",
-      exitCode: 0,
-      executedAt: TIMESTAMP
-    }));
-    const { gateway } = createHarness({
-      execCommand: exec,
-      now: () => clock,
-      lastUserInputAt: () => lastUserInput
-    });
-
-    // First takeover establishes the baseline and succeeds.
-    const first = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
-    expect(first.ok).toBe(true);
-
-    // The human types into the tab; the agent's next call reports intervention…
-    lastUserInput = 1_500;
-    clock = 2_000;
-    const intervened = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
-    expect(intervened.ok).toBe(false);
-    if (!intervened.ok) expect(intervened.error.code).toBe("human_intervention");
-
-    // …and the error is one-shot: the call after it becomes the new baseline.
-    clock = 3_000;
-    const recovered = await gateway.execCommand(CLIENT, { target: "sess-full", command: "ls" });
-    expect(recovered.ok).toBe(true);
-    expect(exec).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("session_send_keys", () => {
-  test("types into the PTY with the badge held only for the write", async () => {
-    const writes: string[] = [];
-    const badges: Array<{ sessionId: string; controlled: boolean }> = [];
-    const { gateway } = createHarness({
-      writeSession: (_sessionId, data) => writes.push(data),
-      setSessionAgentControlled: (sessionId) => badges.push({ sessionId, controlled: true }),
-      clearSessionAgentControlled: (sessionId) => badges.push({ sessionId, controlled: false })
-    });
-
-    const result = await gateway.sendKeys(CLIENT, {
-      target: "sess-full",
-      text: "ls -la",
-      submit: true
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.bytes).toBe(Buffer.byteLength("ls -la\r", "utf8"));
-    expect(result.data.submitted).toBe(true);
-    expect(writes).toEqual(["ls -la\r"]);
-    expect(badges).toEqual([
-      { sessionId: "sess-full", controlled: true },
-      { sessionId: "sess-full", controlled: false }
-    ]);
-  });
-
-  test("blacklisted text is refused before any byte is written", async () => {
-    const write = vi.fn();
-    const { gateway } = createHarness({ writeSession: write });
-    const result = await gateway.sendKeys(CLIENT, {
-      target: "sess-full",
-      text: "reboot",
-      submit: true
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("forbidden");
-    expect(write).not.toHaveBeenCalled();
-  });
-
-  test("human intervention is an error, not a wait", async () => {
-    let clock = 10_000;
-    let lastUserInput: number | null = null;
-    const write = vi.fn();
-    const { gateway } = createHarness({
-      writeSession: write,
-      now: () => clock,
-      lastUserInputAt: () => lastUserInput
-    });
-
-    const first = await gateway.sendKeys(CLIENT, { target: "sess-full", text: "ls", submit: true });
-    expect(first.ok).toBe(true);
-
-    lastUserInput = 10_500;
-    clock = 11_000;
-    const intervened = await gateway.sendKeys(CLIENT, {
-      target: "sess-full",
-      text: "ls",
-      submit: true
-    });
-    expect(intervened.ok).toBe(false);
-    if (!intervened.ok) {
-      expect(intervened.error.code).toBe("human_intervention");
-      expect(intervened.error.message).toContain("manual keyboard input");
-    }
-    expect(write).toHaveBeenCalledTimes(1);
-  });
-
-  test("waitForPrompt returns the OSC 133 completion when integration is live", async () => {
-    const { gateway } = createHarness({
-      waitForCommandCompletion: async () => ({
-        command: "ls",
-        exitCode: 0,
-        output: "file-a",
-        truncated: false
-      })
-    });
-
-    const result = await gateway.sendKeys(CLIENT, {
-      target: "sess-full",
-      text: "ls",
-      submit: true,
-      waitForPrompt: true
-    });
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.data.completed).toMatchObject({ command: "ls", exitCode: 0, output: "file-a" });
-    expect(result.data.waitTimedOut).toBe(false);
   });
 });
 
@@ -766,7 +871,8 @@ describe("activity stream", () => {
       { tool: "session_list", status: "running" },
       { tool: "session_list", status: "succeeded" },
       { tool: "exec", status: "running" },
-      { tool: "exec", status: "succeeded" }
+      // No completion mark in this harness: the call returns, the command does not.
+      { tool: "exec", status: "unsettled" }
     ]);
   });
 });

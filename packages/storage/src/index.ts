@@ -675,6 +675,14 @@ const parseAppPreferences = (value: string | null): AppPreferences => {
           parsed.agent.execTimeoutSec <= 3600
             ? parsed.agent.execTimeoutSec
             : fallback.agent.execTimeoutSec,
+        execMode:
+          parsed.agent?.execMode === "foreground" || parsed.agent?.execMode === "background"
+            ? parsed.agent.execMode
+            : fallback.agent.execMode,
+        execApproval:
+          parsed.agent?.execApproval === "auto" || parsed.agent?.execApproval === "permission"
+            ? parsed.agent.execApproval
+            : fallback.agent.execApproval,
         blacklist: Array.isArray(parsed.agent?.blacklist)
           ? parsed.agent.blacklist.filter(
               (entry): entry is string => typeof entry === "string" && entry.trim().length > 0

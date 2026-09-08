@@ -104,6 +104,42 @@ describe("ScreenMirror read modes", () => {
   });
 });
 
+describe("ScreenMirror pending input", () => {
+  const prompt = `${ESC}]133;A${BEL}user@host $ ${ESC}]133;B${BEL}`;
+
+  test("is null without shell integration and empty right after the prompt", async () => {
+    const term = mirror();
+    term.write("$ ");
+    expect(await term.pendingInput()).toBeNull();
+    term.write(prompt);
+    expect(await term.pendingInput()).toBe("");
+    term.dispose();
+  });
+
+  test("reports what the user typed until the command starts", async () => {
+    const term = mirror();
+    term.write(prompt);
+    term.write("vim foo.txt");
+    expect(await term.pendingInput()).toBe("vim foo.txt");
+    // While the command runs there is no prompt to type over.
+    term.write(`\r\n${ESC}]133;C;vim foo.txt${BEL}`);
+    expect(await term.pendingInput()).toBe("");
+    term.write(`${ESC}]133;D;0${BEL}\r\n${prompt}`);
+    expect(await term.pendingInput()).toBe("");
+    term.dispose();
+  });
+
+  test("ignores a right-side prompt and follows wrapped input", async () => {
+    const term = mirror();
+    // zsh draws RPROMPT to the right of the cursor and moves back.
+    term.write(`${prompt}${ESC}[s${ESC}[1;30H12:00${ESC}[u`);
+    expect(await term.pendingInput()).toBe("");
+    term.write("echo " + "x".repeat(40));
+    expect(await term.pendingInput()).toBe("echo " + "x".repeat(40));
+    term.dispose();
+  });
+});
+
 describe("ScreenMirrorRegistry", () => {
   test("creates mirrors lazily and disposes them per session", async () => {
     const registry = new ScreenMirrorRegistry({ cols: 20, rows: 4, scrollback: 10 });

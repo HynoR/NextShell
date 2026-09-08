@@ -9,6 +9,8 @@ const MAX_AGENT_ACTIVITIES = 100;
 
 interface AgentActivityState {
   activities: AgentActivityEvent[];
+  /** Calls that arrived while the sidebar was collapsed; the strip shows this as a red dot. */
+  unseen: number;
   /**
    * Sessions an agent is driving right now, mapped to the client's name. Tabs
    * read this to show the "Agent 控制中" badge, so a user never finds keys
@@ -32,10 +34,12 @@ interface AgentActivityState {
   setHalted: (halted: boolean) => void;
   setEnabled: (enabled: boolean) => void;
   clearFinished: () => void;
+  markSeen: () => void;
 }
 
 export const useAgentActivityStore = create<AgentActivityState>((set) => ({
   activities: [],
+  unseen: 0,
   controlledSessions: {},
   halted: false,
   enabled: false,
@@ -55,7 +59,10 @@ export const useAgentActivityStore = create<AgentActivityState>((set) => ({
       if (existing >= 0) next[existing] = event;
       else next.unshift(event);
       next.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-      return { activities: next.slice(0, MAX_AGENT_ACTIVITIES) };
+      return {
+        activities: next.slice(0, MAX_AGENT_ACTIVITIES),
+        unseen: existing >= 0 ? state.unseen : state.unseen + 1
+      };
     }),
   applySessionControl: (event) =>
     set((state) => {
@@ -72,6 +79,7 @@ export const useAgentActivityStore = create<AgentActivityState>((set) => ({
   // Halting drops every badge: no agent is driving anything any more.
   setHalted: (halted) => set(() => (halted ? { halted, controlledSessions: {} } : { halted })),
   setEnabled: (enabled) => set({ enabled }),
+  markSeen: () => set({ unseen: 0 }),
   clearFinished: () =>
     set((state) => ({
       activities: state.activities.filter((activity) => activity.status === "running")

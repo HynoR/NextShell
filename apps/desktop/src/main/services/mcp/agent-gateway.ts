@@ -170,36 +170,38 @@ export interface AgentSessionScreenPayload extends ScreenReadResult {
   sessionId: string;
 }
 
-export interface AgentSendKeysPayload {
-  sessionId: string;
-  bytes: number;
-  submitted: boolean;
-  /**
-   * Populated only when `waitForPrompt` was requested *and* the remote reported
-   * an OSC 133 `D` mark. `null` means the wait timed out or the remote has no
-   * shell integration — never a guessed result.
-   */
-  completed: {
-    command: string | null;
-    exitCode: number | null;
-    output: string;
-    truncated: boolean;
-  } | null;
-  /** True when `waitForPrompt` was asked for but no completion mark arrived. */
-  waitTimedOut: boolean;
-}
-
 export type AgentControlSignal = "interrupt" | "eof" | "suspend" | "quit";
 
-export interface AgentExecPayload {
+export type AgentExecMode = AppPreferences["agent"]["execMode"];
+
+export interface AgentExecResult {
   sessionId: string;
-  connectionId: string;
+  /** How the user's NextShell ran it; the agent never chooses. */
+  mode: AgentExecMode;
   command: string;
-  stdout: string;
-  stderr: string;
-  exitCode: number;
+  /** `null` when unknown: foreground without shell integration, or the wait timed out. */
+  exitCode: number | null;
+  /** Foreground: what the tab showed until the prompt returned. Background: stdout. */
+  output: string;
+  /** Background only. */
+  stderr: string | null;
+  /** Foreground only: no OSC 133 `D` arrived in time; the command may still be running in the tab. */
+  waitTimedOut: boolean;
+  /** Background only. */
   actualCwd: string | null;
-  executedAt: string;
+}
+
+/** `pending`: the approval dialog is up in NextShell; call exec again with only `requestId`. */
+export type AgentExecPayload = AgentExecResult | { status: "pending"; requestId: string };
+
+/** Everything an approved exec needs, pinned when the dialog went up. */
+interface PinnedExec {
+  session: AgentSessionInfo;
+  connectionId: string | undefined;
+  command: string;
+  mode: AgentExecMode;
+  timeoutSec: number | undefined;
+  backgroundTimeoutMs: number;
 }
 
 // ─── Dependencies ───────────────────────────────────────────────────────────
@@ -228,7 +230,12 @@ export interface AgentGatewayDeps {
     options: ScreenReadOptions
   ) => Promise<ScreenReadResult | null>;
   writeSession: (sessionId: string, data: string) => void;
-  /** Epoch millis of the last real keystroke in that session, or `null`. */
+  /**
+   * Unsubmitted text on the shell's input line: `""` when clean, `null` when
+   * the session has no prompt mark to judge by (no shell integration).
+   */
+  pendingInput: (sessionId: string) => Promise<string | null>;
+  /** Epoch millis of the last real keystroke in that session, or `null`; the fallback when `pendingInput` is `null`. */
   lastUserInputAt: (sessionId: string) => number | null;
   /** Resolves on the next OSC 133 `D`; `null` on timeout or missing integration. */
   waitForCommandCompletion: (
@@ -276,14 +283,14 @@ const ANSI_ESCAPE_PATTERN =
   /[][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d\x2f#&.:=?%@~_]+)*)?)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
 const MAX_LIST_ITEMS = 500;
-/** Ceiling on `session_send_keys` `waitForPrompt`. */
+/** Ceiling on how long a foreground `exec` waits for the prompt to return. */
 const MAX_WAIT_FOR_PROMPT_MS = 120_000;
 /** Recent-host list size when host_list gets no query. */
 const RECENT_HOSTS = 10;
 const MAX_HOST_SEARCH = 20;
 /** One session_open call waits this long before reporting `pending` (under the ~60s harness ceiling). */
 const OPEN_WAIT_MS = 50_000;
-/** Slack between a `waitForPrompt` deadline and the enclosing call timeout. */
+/** Slack between a foreground wait deadline and the enclosing call timeout. */
 const WAIT_FOR_PROMPT_HEADROOM_MS = 5_000;
 
 /** Keep command text safe before returning it through the agent endpoint. */
@@ -437,9 +444,10 @@ const normalizeRemotePath = (input: string): AgentToolResult<string> => {
 export class AgentGateway {
   private readonly deps: AgentGatewayDeps;
   /**
-   * Per-session baseline for human-intervention detection: the moment of this
-   * agent's own last `send_keys`/`exec` call. Human keystrokes stamped later
-   * than this mean the person took the keyboard back.
+   * Fallback baseline for human-intervention detection on sessions without
+   * shell integration: the moment of this agent's own last foreground `exec`.
+   * Human keystrokes stamped later than this mean the person took the keyboard
+   * back. Sessions with a prompt mark use the screen instead.
    */
   private readonly agentTouchedAt = new Map<string, number>();
   private activitySequence = 0;
@@ -450,6 +458,8 @@ export class AgentGateway {
    */
   private halted = false;
   private readonly openBroker: AgentOpenBroker;
+  /** exec requests awaiting the user's click, keyed by the broker's request id. */
+  private readonly pendingExec = new Map<string, PinnedExec>();
 
   constructor(deps: AgentGatewayDeps) {
     this.deps = deps;
@@ -530,8 +540,10 @@ export class AgentGateway {
   ): Promise<AgentToolResult<T>> {
     const { connectionId, requestedTimeoutMs } = options;
     const activityId = `${client.id}:${++this.activitySequence}`;
+    const modeTag =
+      params.mode === "background" ? "[后台] " : params.mode === "foreground" ? "[前台] " : "";
     const commandSummary =
-      typeof params.command === "string" ? redactText(params.command) : undefined;
+      typeof params.command === "string" ? `${modeTag}${redactText(params.command)}` : undefined;
     this.emitActivity(client, activityId, tool, "running", connectionId, commandSummary);
 
     if (this.halted) {
@@ -555,17 +567,25 @@ export class AgentGateway {
         }, timeoutMs);
       });
       const data = await Promise.race([task(controller.signal), timeout]);
-      const exitCode =
-        typeof data === "object" && data !== null && "exitCode" in data
-          ? String((data as { exitCode: unknown }).exitCode)
-          : null;
+      const settled = data as { exitCode?: unknown; waitTimedOut?: unknown } | null;
+      const exitCode = typeof settled?.exitCode === "number" ? String(settled.exitCode) : null;
+      // A foreground wait that ran out is not a completion: the panel must not
+      // show "完成" for a command that is still running in the tab.
+      const unsettled = settled?.waitTimedOut === true;
+      const awaitingUser = (settled as { status?: unknown } | null)?.status === "pending";
       this.emitActivity(
         client,
         activityId,
         tool,
-        "succeeded",
+        unsettled || awaitingUser ? "unsettled" : "succeeded",
         connectionId,
-        commandSummary && exitCode !== null ? `${commandSummary} → exit ${exitCode}` : "ok"
+        awaitingUser
+          ? `${commandSummary ?? tool} → 等待用户授权`
+          : unsettled
+            ? `${commandSummary ?? tool} → 等待超时，仍在标签页中运行`
+            : commandSummary && exitCode !== null
+              ? `${commandSummary} → exit ${exitCode}`
+              : "ok"
       );
       return { ok: true, data };
     } catch (error) {
@@ -683,13 +703,25 @@ export class AgentGateway {
   }
 
   /**
-   * Human intervention is an error, not a pause: when a real keystroke lands in
-   * the tab after this agent's last operation, the call fails with
-   * `human_intervention` and the agent is expected to stop and report. The
-   * error is one-shot — this call becomes the new baseline, so the next call
-   * proceeds unless the human typed again.
+   * Human intervention is an error, not a pause: the agent is expected to stop
+   * and report. The judge is the screen: text the user typed after the prompt
+   * and has not submitted is theirs, and typing over it is the one thing a
+   * foreground `exec` must never do. A clean line — or a running command the
+   * agent may need to answer — passes. Without a prompt mark the keystroke
+   * timestamp is the fallback: a keystroke since the agent's last call fails
+   * this one, once, and this call becomes the new baseline.
    */
-  private checkHumanIntervention(sessionId: string): AgentToolError | null {
+  private async checkHumanIntervention(sessionId: string): Promise<AgentToolError | null> {
+    const pending = await this.deps.pendingInput(sessionId);
+    if (pending !== null) {
+      if (pending === "") return null;
+      return {
+        code: "human_intervention",
+        message: `The user has unsubmitted text on the command line (${JSON.stringify(
+          redactText(pending).slice(0, 40)
+        )}); stop and report to the user instead of typing over it`
+      };
+    }
     const now = this.now();
     const baseline = this.agentTouchedAt.get(sessionId);
     this.agentTouchedAt.set(sessionId, now);
@@ -717,6 +749,7 @@ export class AgentGateway {
 
   dispose(): void {
     this.openBroker.dispose();
+    this.pendingExec.clear();
   }
 
   async hostList(
@@ -840,6 +873,7 @@ export class AgentGateway {
       params,
       async () => {
         const requestId = this.openBroker.create({
+          kind: "open",
           clientName: client.name,
           connectionId: connection.id,
           connectionName: connection.name,
@@ -1046,25 +1080,76 @@ export class AgentGateway {
   // ─── exec on a borrowed session ───────────────────────────────────────────
 
   /**
-   * Runs a command on a fresh exec channel of the connection backing an open
-   * session — the agent borrows the user's already-authenticated connection;
-   * it can never dial one itself.
+   * The one way to run a command. Two things about it are the user's choice in
+   * NextShell, never the agent's: *how* it runs (`agent.execMode` — foreground
+   * types it into the tab, raises the window and waits for OSC 133 `D`;
+   * background uses a fresh exec channel; a local shell always runs in the
+   * foreground) and *whether it runs at all* (`agent.execApproval` — `permission`
+   * puts every command in front of the user first, `auto`, the default, trusts
+   * the harness's own approval). The blacklist and the `.env` consent gate apply in every
+   * combination; only the foreground path shares a keyboard with a human and
+   * therefore checks for an unsubmitted line of theirs before typing.
    */
   async execCommand(
     client: AgentClientIdentity,
     input: {
-      target: string;
-      command: string;
-      cwd?: string;
+      target?: string;
+      command?: string;
       timeoutSec?: number;
       allowSensitive?: boolean;
+      requestId?: string;
     }
   ): Promise<AgentToolResult<AgentExecPayload>> {
-    const command = input.command.trim();
+    const waitMs = this.deps.openWaitMs ?? OPEN_WAIT_MS;
+
+    // Continuing to wait on a dialog that is already up: the command and its
+    // session were pinned when the request was created, nothing is re-read.
+    if (input.requestId) {
+      const requestId = input.requestId;
+      const pinned = this.pendingExec.get(requestId);
+      const params = { requestId, command: pinned?.command, mode: pinned?.mode };
+      return this.execute(
+        client,
+        "exec",
+        params,
+        async () => {
+          const outcome = await this.openBroker.wait(requestId, waitMs);
+          if (outcome === null || !pinned) {
+            this.pendingExec.delete(requestId);
+            throw new AgentToolFailure({
+              code: "not_found",
+              message:
+                "No pending exec request matches that requestId; it was answered, expired, or never existed"
+            });
+          }
+          if (outcome === "pending") return { status: "pending" as const, requestId };
+          this.pendingExec.delete(requestId);
+          if (!outcome.approved) throw AgentGateway.execDenied();
+          return this.runExec(client, pinned);
+        },
+        {
+          connectionId: pinned?.connectionId,
+          requestedTimeoutMs: waitMs + MAX_WAIT_FOR_PROMPT_MS + WAIT_FOR_PROMPT_HEADROOM_MS
+        }
+      );
+    }
+
+    const command = (input.command ?? "").trim();
+    const preferences = this.deps.getPreferences().agent;
+    const live = input.target
+      ? this.resolveLiveSession(input.target)
+      : ({
+          ok: false,
+          error: { code: "invalid_argument", message: "target and command are required" }
+        } as const);
+    const mode: AgentExecMode =
+      preferences.execMode === "background" && live.ok && live.connectionId
+        ? "background"
+        : "foreground";
     const params = {
       target: input.target,
       command,
-      cwd: input.cwd,
+      mode,
       timeoutSec: input.timeoutSec,
       allowSensitive: input.allowSensitive ?? false
     };
@@ -1074,16 +1159,8 @@ export class AgentGateway {
         message: "command must not be empty"
       });
     }
-    const live = this.resolveLiveSession(input.target);
     if (!live.ok) {
       return this.failed(client, "exec", params, live.error);
-    }
-    if (!live.connectionId) {
-      return this.failed(client, "exec", params, {
-        code: "unavailable",
-        message:
-          "This is a local shell tab with no exec channel; use session_send_keys with waitForPrompt instead"
-      });
     }
     const blocked = this.blacklistHit(command);
     if (blocked) {
@@ -1099,60 +1176,136 @@ export class AgentGateway {
     if (consent) {
       return this.failed(client, "exec", params, consent, live.connectionId);
     }
-    const intervention = this.checkHumanIntervention(live.session.id);
-    if (intervention) {
-      return this.failed(client, "exec", params, intervention, live.connectionId);
-    }
 
-    let requestedCwd: string | undefined;
-    if (input.cwd !== undefined) {
-      const normalized = normalizeRemotePath(input.cwd);
-      if (!normalized.ok) {
-        return this.failed(client, "exec", params, normalized.error, live.connectionId);
-      }
-      requestedCwd = normalized.data;
-    } else {
-      // Inherit the cwd the shell reported via OSC 7.
-      requestedCwd = live.session.cwd ?? undefined;
-    }
-
-    const preferences = this.deps.getPreferences().agent;
-    const requestedTimeoutMs =
-      input.timeoutSec === undefined
-        ? undefined
-        : clampInt(input.timeoutSec, preferences.execTimeoutSec, 1, 3600) * 1000;
     const { session, connectionId } = live;
-    return this.execute(
-      client,
-      "exec",
-      params,
-      async (signal) => {
-        const release = this.deps.retainConnection(connectionId);
-        try {
-          const result = await this.deps.execCommand(connectionId, command, {
-            ...(requestedCwd ? { cwd: requestedCwd } : {}),
-            signal
+    const plan: PinnedExec = {
+      session,
+      connectionId,
+      command,
+      mode,
+      timeoutSec: input.timeoutSec,
+      // Background runs need the seconds; resolved here so a later approval
+      // does not pick up a preference the user changed in the meantime.
+      backgroundTimeoutMs: clampInt(input.timeoutSec, preferences.execTimeoutSec, 1, 3600) * 1000
+    };
+    const runBudgetMs =
+      mode === "background"
+        ? input.timeoutSec === undefined
+          ? this.callTimeoutMs()
+          : plan.backgroundTimeoutMs
+        : Math.min(clampInt(input.timeoutSec, 120, 1, 3600) * 1000, MAX_WAIT_FOR_PROMPT_MS) +
+          WAIT_FOR_PROMPT_HEADROOM_MS;
+
+    if (preferences.execApproval === "permission") {
+      const connection = connectionId
+        ? this.deps.listConnections().find((c) => c.id === connectionId)
+        : undefined;
+      return this.execute(
+        client,
+        "exec",
+        params,
+        async () => {
+          const requestId = this.openBroker.create({
+            kind: "exec",
+            clientName: client.name,
+            connectionId: session.id,
+            connectionName: session.title,
+            host: connection?.host ?? "本地终端",
+            reason: null,
+            command,
+            mode
           });
-          return {
-            sessionId: session.id,
-            connectionId,
-            command: redactText(command),
-            stdout: redactText(result.stdout),
-            stderr: redactText(result.stderr),
-            exitCode: result.exitCode,
-            actualCwd: result.cwd ?? requestedCwd ?? null,
-            executedAt: result.executedAt
-          };
-        } finally {
-          release();
-          await this.deps.closeConnectionIfIdle(connectionId).catch(() => undefined);
-        }
-      },
-      { connectionId, requestedTimeoutMs }
-    );
+          this.pendingExec.set(requestId, plan);
+          const outcome = await this.openBroker.wait(requestId, waitMs);
+          if (outcome === "pending") return { status: "pending" as const, requestId };
+          this.pendingExec.delete(requestId);
+          if (outcome === null || !outcome.approved) throw AgentGateway.execDenied();
+          return this.runExec(client, plan);
+        },
+        { connectionId, requestedTimeoutMs: waitMs + runBudgetMs + WAIT_FOR_PROMPT_HEADROOM_MS }
+      );
+    }
+
+    return this.execute(client, "exec", params, () => this.runExec(client, plan), {
+      connectionId,
+      requestedTimeoutMs: runBudgetMs
+    });
   }
 
-  // ─── PTY takeover ─────────────────────────────────────────────────────────
+  private static execDenied(): AgentToolFailure {
+    return new AgentToolFailure({
+      code: "denied",
+      message:
+        "The user did not approve running this command in NextShell (declined or no answer within 5 minutes). Stop and ask the user before retrying."
+    });
+  }
+
+  /** The command itself, after every gate has passed. */
+  private async runExec(client: AgentClientIdentity, plan: PinnedExec): Promise<AgentExecResult> {
+    const { session, connectionId, command, mode } = plan;
+    if (mode === "background" && connectionId) {
+      // Inherits the cwd the shell reported via OSC 7.
+      const cwd = session.cwd ?? undefined;
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(), plan.backgroundTimeoutMs);
+      const release = this.deps.retainConnection(connectionId);
+      try {
+        const result = await this.deps.execCommand(connectionId, command, {
+          ...(cwd ? { cwd } : {}),
+          signal: controller.signal
+        });
+        return {
+          sessionId: session.id,
+          mode,
+          command: redactText(command),
+          exitCode: result.exitCode,
+          output: redactText(result.stdout),
+          stderr: redactText(result.stderr),
+          waitTimedOut: false,
+          actualCwd: result.cwd ?? cwd ?? null
+        };
+      } finally {
+        clearTimeout(abortTimer);
+        release();
+        await this.deps.closeConnectionIfIdle(connectionId).catch(() => undefined);
+      }
+    }
+
+    const intervention = await this.checkHumanIntervention(session.id);
+    if (intervention) throw new AgentToolFailure(intervention);
+    // The foreground wait is the tool's promised 120s unless the agent asks for
+    // less; `execTimeoutSec` governs only the background channel. Kept under the
+    // call ceiling so a slow command surfaces as `waitTimedOut: true`, not as a
+    // `timeout` error.
+    const waitMs = Math.min(
+      clampInt(plan.timeoutSec, MAX_WAIT_FOR_PROMPT_MS / 1000, 1, 3600) * 1000,
+      MAX_WAIT_FOR_PROMPT_MS
+    );
+    // Subscribed before the write so a fast command cannot complete in the
+    // gap between injecting and starting to listen.
+    const completion = this.deps.waitForCommandCompletion(session.id, waitMs);
+    // Foreground means the user watches: bring the tab forward first.
+    this.deps.focusSession(session.id);
+    this.deps.setSessionAgentControlled(session.id, client.name);
+    try {
+      this.deps.writeSession(session.id, `${command}\r`);
+      const settled = await completion;
+      return {
+        sessionId: session.id,
+        mode,
+        command: redactText(command),
+        exitCode: settled?.exitCode ?? null,
+        output: settled ? redactText(settled.output) : "",
+        stderr: null,
+        waitTimedOut: settled === null,
+        actualCwd: null
+      };
+    } finally {
+      // In a finally: a badge that survives a failed write would tell the
+      // user an agent is still driving a terminal it never reached.
+      this.deps.clearSessionAgentControlled(session.id);
+    }
+  }
 
   /** Control characters, named rather than raw so the agent cannot smuggle bytes. */
   private static readonly CONTROL_BYTES: Record<
@@ -1164,109 +1317,6 @@ export class AgentGateway {
     suspend: { byte: "", label: "Ctrl-Z（挂起当前前台进程）" },
     quit: { byte: "", label: "Ctrl-\\（退出并转储核心）" }
   };
-
-  /**
-   * Types into the PTY the user is looking at. The blacklist runs on the
-   * injected text, and a human keystroke since the agent's last operation
-   * fails the call with `human_intervention` instead of waiting the person out.
-   */
-  async sendKeys(
-    client: AgentClientIdentity,
-    input: {
-      target: string;
-      text: string;
-      submit?: boolean;
-      waitForPrompt?: boolean;
-      timeoutSec?: number;
-      allowSensitive?: boolean;
-    }
-  ): Promise<AgentToolResult<AgentSendKeysPayload>> {
-    const params = {
-      target: input.target,
-      command: input.text,
-      submit: input.submit ?? false,
-      waitForPrompt: input.waitForPrompt ?? false,
-      allowSensitive: input.allowSensitive ?? false
-    };
-    if (input.text.length === 0 && !input.submit) {
-      return this.failed(client, "session_send_keys", params, {
-        code: "invalid_argument",
-        message: "text must not be empty unless submit is true"
-      });
-    }
-    const live = this.resolveLiveSession(input.target);
-    if (!live.ok) {
-      return this.failed(client, "session_send_keys", params, live.error);
-    }
-    if (input.text.length > 0) {
-      const blocked = this.blacklistHit(input.text);
-      if (blocked) {
-        return this.failed(
-          client,
-          "session_send_keys",
-          params,
-          { code: "forbidden", message: `Blocked by the command blacklist: ${blocked}` },
-          live.connectionId
-        );
-      }
-      const consent = this.consentRequired(input.text, input.allowSensitive);
-      if (consent) {
-        return this.failed(client, "session_send_keys", params, consent, live.connectionId);
-      }
-    }
-    const intervention = this.checkHumanIntervention(live.session.id);
-    if (intervention) {
-      return this.failed(client, "session_send_keys", params, intervention, live.connectionId);
-    }
-
-    const { session, connectionId } = live;
-    const payload = input.submit ? `${input.text}\r` : input.text;
-    // Kept strictly under the call ceiling: if the wait could outlive the call,
-    // a slow command would surface as a `timeout` error instead of the honest
-    // `waitTimedOut: true` the tool promises.
-    const waitMs = Math.min(clampInt(input.timeoutSec, 30, 1, 3600) * 1000, MAX_WAIT_FOR_PROMPT_MS);
-
-    return this.execute(
-      client,
-      "session_send_keys",
-      params,
-      async () => {
-        // Subscribed before the write so a fast command cannot complete in the
-        // gap between injecting and starting to listen.
-        const completion = input.waitForPrompt
-          ? this.deps.waitForCommandCompletion(session.id, waitMs)
-          : null;
-        this.deps.setSessionAgentControlled(session.id, client.name);
-        try {
-          this.deps.writeSession(session.id, payload);
-          const settled = completion ? await completion : null;
-          return {
-            sessionId: session.id,
-            bytes: Buffer.byteLength(payload, "utf8"),
-            submitted: input.submit ?? false,
-            completed: settled
-              ? {
-                  command: settled.command === null ? null : redactText(settled.command),
-                  exitCode: settled.exitCode,
-                  output: redactText(settled.output),
-                  truncated: settled.truncated
-                }
-              : null,
-            waitTimedOut: Boolean(input.waitForPrompt) && settled === null
-          };
-        } finally {
-          // In a finally: a badge that survives a failed write would tell the
-          // user an agent is still driving a terminal it never reached.
-          this.deps.clearSessionAgentControlled(session.id);
-        }
-      },
-      {
-        connectionId,
-        // The wait is the point of the call, so it gets the whole budget.
-        requestedTimeoutMs: input.waitForPrompt ? waitMs + WAIT_FOR_PROMPT_HEADROOM_MS : undefined
-      }
-    );
-  }
 
   async sendSignal(
     client: AgentClientIdentity,

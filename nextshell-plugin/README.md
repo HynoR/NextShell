@@ -40,21 +40,28 @@ action shows up live in the NextShell GUI.
    }
    ```
 
-3. Open the server tab in NextShell, then tell your agent what to do.
+3. Any harness that installs skills from a folder: 设置 → Agent 接入 shows the path of a
+   ready-made `nextshell/SKILL.md`; copy that folder into your skills directory
+   (`~/.claude/skills/`, `~/.codex/skills/`, `.agents/skills/`, …).
+4. Open the server tab in NextShell, then tell your agent what to do. The 前台 / 后台 switch
+   in the Agent panel decides whether the agent's commands are typed into your tab or run
+   silently on a separate channel; the 权限模式 switch next to it decides whether each command
+   runs at once (Auto, the default — you trust the agent and your harness's own approval) or
+   first needs your click (Permission).
 
 ## What's inside
 
-| Path                        | What it is                                                        |
-| --------------------------- | ----------------------------------------------------------------- |
-| `.mcp.json`                 | The one-line MCP server entry (loopback HTTP, no bridge process)  |
-| `skills/nextshell/SKILL.md` | Workflow: `session_list` → `exec` / `session_send_keys` → history |
+| Path                        | What it is                                                       |
+| --------------------------- | ---------------------------------------------------------------- |
+| `.mcp.json`                 | The one-line MCP server entry (loopback HTTP, no bridge process) |
+| `skills/nextshell/SKILL.md` | Workflow: `session_list` → `exec` → `session_read` / history     |
 
 ## Trust model
 
 - Tools only reach tabs you opened; there is no host list and no connect tool.
 - Credentials never cross the MCP boundary — the agent gets session ids and output.
-- If you type into a tab the agent is driving, its next call fails with
-  `human_intervention` and it must stop and report.
+- If you have an unsubmitted command on the line of a tab the agent is driving, its next
+  foreground call fails with `human_intervention` and it must stop and report.
 - Obvious destructive commands (`rm -rf /`, `mkfs`, `dd` to a device, fork bombs, …) are
   refused outright; add your own patterns in 设置 → Agent 接入 → 命令黑名单.
 - The endpoint is loopback-only with no token: any local process is trusted, like any other

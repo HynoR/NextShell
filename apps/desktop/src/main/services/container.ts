@@ -54,7 +54,7 @@ import { MonitorService } from "./monitor-service";
 import { SftpService } from "./sftp-service";
 import { SessionService } from "./session-service";
 import { forgetShellIntegrationInstalls } from "./terminal-shell-integration";
-import { createAgentMcpService, type AgentSessionInfo } from "./mcp";
+import { createAgentMcpService, writeAgentSkillFile, type AgentSessionInfo } from "./mcp";
 import { OscTapRegistry } from "./mcp/osc-tap";
 import { ScreenMirrorRegistry } from "./mcp/screen-mirror";
 
@@ -694,6 +694,7 @@ export const createServiceContainer = async (
   // its own, so credentials never cross the MCP boundary.
   const agentMcpSvc = createAgentMcpService({
     appVersion: app.getVersion(),
+    skillPath: writeAgentSkillFile(options.userDataDir),
     listConnections: () => connections.list({}),
     listSessions: () =>
       Array.from(activeSessions.values()).map<AgentSessionInfo>((session) => {
@@ -724,6 +725,7 @@ export const createServiceContainer = async (
     writeSession: (sessionId, data) => {
       sessionSvc.writeSession(sessionId, data, "agent");
     },
+    pendingInput: async (sessionId) => (await screenMirrors.get(sessionId)?.pendingInput()) ?? null,
     lastUserInputAt: (sessionId) => sessionSvc.lastUserInputAt(sessionId),
     waitForCommandCompletion: async (sessionId, timeoutMs) => {
       const entry = await oscTaps.waitForCommandCompletion(sessionId, timeoutMs);

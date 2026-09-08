@@ -350,6 +350,16 @@ export class McpEndpointServer {
       return;
     }
 
+    if (sessionId !== undefined) {
+      jsonRpcError(
+        res,
+        404,
+        -32000,
+        "MCP session expired or unknown; send a new initialize request without Mcp-Session-Id"
+      );
+      return;
+    }
+
     if (req.method !== "POST" || !isInitializeRequest(body)) {
       jsonRpcError(res, 400, -32000, "No valid MCP session; send an initialize request first");
       return;

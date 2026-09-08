@@ -1,4 +1,4 @@
-import { Terminal } from "@xterm/headless";
+import { Terminal, type IMarker } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
 
 /** Matches the PTY size sessions are opened with (`session-service.ts`). */
@@ -63,6 +63,14 @@ export class ScreenMirror {
   private flushed: Promise<void> = Promise.resolve();
   private disposed = false;
   lastWriteAt: number;
+  /**
+   * Where the shell's input line starts: the cursor at the last OSC 133 `B`
+   * (prompt end). `null` while a command runs or when the shell has no
+   * integration. The marker follows the line through scrollback trimming.
+   */
+  private promptEnd: { x: number; marker: IMarker } | null = null;
+  /** Whether any OSC 133 mark ever arrived — i.e. the shell has integration. */
+  private sawPromptMark = false;
 
   constructor(sessionId: string, options: ScreenMirrorOptions = {}, now: () => number = Date.now) {
     this.sessionId = sessionId;
@@ -79,6 +87,16 @@ export class ScreenMirror {
     });
     this.serializer = new SerializeAddon();
     this.term.loadAddon(this.serializer);
+    this.term.parser.registerOscHandler(133, (data) => {
+      this.sawPromptMark = true;
+      this.promptEnd?.marker.dispose();
+      this.promptEnd = null;
+      if (data === "B" || data.startsWith("B;")) {
+        const marker = this.term.registerMarker(0);
+        if (marker) this.promptEnd = { x: this.term.buffer.active.cursorX, marker };
+      }
+      return false;
+    });
   }
 
   get cols(): number {
@@ -136,6 +154,33 @@ export class ScreenMirror {
       scrollbackLines,
       truncated: start > top
     };
+  }
+
+  /**
+   * Text the user has typed at the prompt but not submitted: everything between
+   * the last OSC 133 `B` mark and the cursor. `""` means nothing is pending —
+   * a clean line, or a command running with no prompt to type over; `null`
+   * means the shell never sent a prompt mark, so there is nothing to judge by.
+   * Measured to the cursor, not the end of the line, so a right-side prompt
+   * (zsh RPROMPT) does not count as input.
+   */
+  async pendingInput(): Promise<string | null> {
+    await this.flushed;
+    if (!this.sawPromptMark) return null;
+    const mark = this.promptEnd;
+    if (!mark || mark.marker.isDisposed || mark.marker.line < 0) return "";
+    const buffer = this.term.buffer.active;
+    const cursorRow = buffer.baseY + buffer.cursorY;
+    if (cursorRow < mark.marker.line) return "";
+    const parts: string[] = [];
+    for (let row = mark.marker.line; row <= cursorRow; row += 1) {
+      const line = buffer.getLine(row)?.translateToString(true) ?? "";
+      const from = row === mark.marker.line ? mark.x : 0;
+      const to = row === cursorRow ? buffer.cursorX : line.length;
+      parts.push(line.slice(from, to));
+    }
+    // ponytail: text left of a cursor moved back to the prompt (Home key) is missed; accept.
+    return parts.join("").trim();
   }
 
   /**

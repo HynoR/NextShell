@@ -24,6 +24,15 @@ import { resolveLocalShellLaunch } from "./local-shell";
 import type { createOrderedBytesDispatcher } from "./ipc-stream-dispatcher";
 import { logger } from "../logger";
 
+/**
+ * xterm's `onData` carries the terminal's own protocol replies (cursor-position
+ * reports, device attributes, DECSET 1004 focus in/out) as well as keystrokes,
+ * and the renderer cannot tell them apart. A chunk made only of CSI / OSC / DCS
+ * / SS3 sequences is therefore not treated as a human taking the keyboard back.
+ */
+export const isControlOnlyInput = (data: string): boolean =>
+  /^(?:\x1b\[[0-9;?>]*[A-Za-z~]|\x1b[\]P][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bO[A-Za-z])+$/.test(data);
+
 export interface SessionServiceOptions {
   connections: CachedConnectionRepository;
   activeSessions: Map<string, ActiveSession>;
@@ -393,7 +402,7 @@ export class SessionService {
   /**
    * `origin` is what makes agent injection accountable: a real keystroke stamps
    * the session, and {@link lastUserInputAt} lets the agent gateway fail its next
-   * `send_keys`/`exec` with `human_intervention` when the person has taken the
+   * foreground `exec` with `human_intervention` when the person has taken the
    * keyboard back. Anything the renderer sends is a human or a protocol reply on
    * their behalf; "agent" only ever originates inside the main process.
    */
@@ -407,7 +416,7 @@ export class SessionService {
       throw new Error("Session not found");
     }
 
-    if (origin === "user") {
+    if (origin === "user" && !isControlOnlyInput(data)) {
       this.userInputAt.set(sessionId, Date.now());
     }
 

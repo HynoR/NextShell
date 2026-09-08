@@ -239,6 +239,8 @@ export const mergePreferences = (
         1,
         3600
       ),
+      execMode: patch.agent?.execMode ?? current.agent.execMode,
+      execApproval: patch.agent?.execApproval ?? current.agent.execApproval,
       blacklist: normalizeStringList(patch.agent?.blacklist, current.agent.blacklist)
     }
   };

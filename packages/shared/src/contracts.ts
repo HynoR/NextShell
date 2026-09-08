@@ -579,6 +579,12 @@ export const appPreferencesSchema = z
           .min(1)
           .max(3600)
           .default(DEFAULT_APP_PREFERENCES.agent.execTimeoutSec),
+        execMode: z
+          .enum(["foreground", "background"])
+          .default(DEFAULT_APP_PREFERENCES.agent.execMode),
+        execApproval: z
+          .enum(["auto", "permission"])
+          .default(DEFAULT_APP_PREFERENCES.agent.execApproval),
         blacklist: z.preprocess(
           trimAndFilterStringArray,
           z.array(z.string().min(1)).default(DEFAULT_APP_PREFERENCES.agent.blacklist)
@@ -677,6 +683,8 @@ export const appPreferencesPatchSchema = z.object({
       enabled: z.boolean().optional(),
       port: z.coerce.number().int().min(1024).max(65535).optional(),
       execTimeoutSec: z.coerce.number().int().min(1).max(3600).optional(),
+      execMode: z.enum(["foreground", "background"]).optional(),
+      execApproval: z.enum(["auto", "permission"]).optional(),
       blacklist: z.preprocess(trimAndFilterStringArray, z.array(z.string().min(1))).optional()
     })
     .optional()
@@ -780,14 +788,24 @@ export const agentSessionFocusEventSchema = z.object({
 });
 
 /** 主进程 → 渲染进程：agent 请求打开某个连接，需用户在弹窗里点击授权。 */
+/**
+ * 主进程 → 渲染进程：agent 需要用户点击授权的请求。`open` = 打开一台主机（授权后渲染端负责连接，
+ * 回传 sessionId）；`exec` = 在已开标签页里执行一条命令（`execApproval` 为 permission 时每条都问）。
+ */
 export const agentOpenRequestEventSchema = z.object({
   id: z.string().uuid(),
+  kind: z.enum(["open", "exec"]).default("open"),
   clientName: z.string().nullable(),
+  /** open：连接 id；exec：会话 id */
   connectionId: z.string().min(1),
+  /** open：连接名；exec：标签页标题 */
   connectionName: z.string(),
   host: z.string(),
   /** agent 给出的理由，纯文本展示 */
   reason: z.string().max(300).nullable(),
+  /** exec：将要执行的命令原文与执行方式 */
+  command: z.string().max(4096).optional(),
+  mode: z.enum(["foreground", "background"]).optional(),
   /** ISO 时间；到点未响应主进程自动拒绝，渲染端据此撤下条目 */
   expiresAt: z.string()
 });
@@ -803,7 +821,8 @@ export const agentActivityEventSchema = z.object({
   id: z.string().min(1),
   clientName: z.string().nullable(),
   tool: z.string().min(1),
-  status: z.enum(["running", "succeeded", "failed"]),
+  /** `unsettled`: the call returned but the command is still running in the tab (foreground wait timed out). */
+  status: z.enum(["running", "succeeded", "failed", "unsettled"]),
   connectionId: z.string().uuid().optional(),
   summary: z.string().max(1000),
   createdAt: z.string()
@@ -841,6 +860,8 @@ export interface AgentEndpointStatus {
   clients: AgentConnectedClient[];
   /** 上一次启动 / 监听失败的原因，无错误时为 null */
   lastError: string | null;
+  /** 主进程写出的 SKILL.md 路径，harness 从这里拷进自己的 skills 目录；写入失败时为 null */
+  skillPath: string | null;
   /** 全局断闸是否已拉下：为 true 时端点仍在监听，但所有工具调用立即被拒 */
   halted: boolean;
 }

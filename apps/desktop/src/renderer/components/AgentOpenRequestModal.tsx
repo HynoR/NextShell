@@ -15,9 +15,10 @@ const formatRemaining = (expiresAt: string, now: number): string => {
 };
 
 /**
- * The one dialog in the agent surface: an agent asked to open a host. Every
- * pending request is listed; nothing connects until the user clicks 授权, and
- * the main process denies anything unanswered after five minutes.
+ * The one dialog in the agent surface: an agent asked to open a host, or (with
+ * `execApproval` on permission) to run a command. Every pending request is listed;
+ * nothing happens until the user clicks 授权, and the main process denies
+ * anything unanswered after five minutes.
  */
 export const AgentOpenRequestModal = ({ startSession }: Props) => {
   const requests = useAgentActivityStore((s) => s.openRequests);
@@ -44,6 +45,11 @@ export const AgentOpenRequestModal = ({ startSession }: Props) => {
   };
 
   const approve = async (request: AgentOpenRequestEvent): Promise<void> => {
+    if (request.kind === "exec") {
+      remove(request.id);
+      void window.nextshell.agent.respondOpen({ id: request.id, approved: true });
+      return;
+    }
     setBusy(request.id);
     try {
       const session = await startSession(request.connectionId);
@@ -61,24 +67,35 @@ export const AgentOpenRequestModal = ({ startSession }: Props) => {
   return (
     <Modal
       open={requests.length > 0}
-      title="Agent 请求打开服务器"
+      title="Agent 请求授权"
       footer={null}
       closable={false}
       maskClosable={false}
       width={520}
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-        只有你点击「授权」才会连接；不处理的请求会在倒计时结束后自动拒绝。
+        只有你点击「授权」才会执行；不处理的请求会在倒计时结束后自动拒绝。
       </Typography.Paragraph>
       <Space direction="vertical" style={{ width: "100%" }} size={12}>
         {requests.map((request) => (
           <div key={request.id} className="agent-open-request">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <Typography.Text strong>{request.connectionName}</Typography.Text>
-                <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-                  {request.host}
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  {request.kind === "exec"
+                    ? `在「${request.connectionName}」执行（${request.mode === "background" ? "后台" : "前台"}）`
+                    : "打开服务器"}
                 </Typography.Text>
+                {request.kind === "exec" ? (
+                  <pre className="agent-open-request-command">{request.command}</pre>
+                ) : (
+                  <div>
+                    <Typography.Text strong>{request.connectionName}</Typography.Text>
+                    <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                      {request.host}
+                    </Typography.Text>
+                  </div>
+                )}
                 <div style={{ fontSize: 12 }}>
                   <Typography.Text type="secondary">
                     {request.clientName ?? "未知客户端"} · 剩余{" "}

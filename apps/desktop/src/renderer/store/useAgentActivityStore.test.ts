@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { useAgentActivityStore } from "./useAgentActivityStore";
 
-const event = (id: string, status: "running" | "succeeded" | "failed" = "running") => ({
+const event = (
+  id: string,
+  status: "running" | "succeeded" | "failed" | "unsettled" = "running"
+) => ({
   id,
   clientName: "codex",
   tool: "exec",
@@ -12,8 +15,23 @@ const event = (id: string, status: "running" | "succeeded" | "failed" = "running
 
 describe("useAgentActivityStore", () => {
   beforeEach(() =>
-    useAgentActivityStore.setState({ activities: [], controlledSessions: {}, halted: false })
+    useAgentActivityStore.setState({
+      activities: [],
+      unseen: 0,
+      controlledSessions: {},
+      halted: false
+    })
   );
+
+  test("counts new calls as unseen until marked, not their status updates", () => {
+    const store = useAgentActivityStore.getState();
+    store.applyEvent(event("1"));
+    store.applyEvent(event("1", "succeeded"));
+    store.applyEvent(event("2"));
+    expect(useAgentActivityStore.getState().unseen).toBe(2);
+    store.markSeen();
+    expect(useAgentActivityStore.getState().unseen).toBe(0);
+  });
 
   test("updates an in-flight activity in place", () => {
     useAgentActivityStore.getState().applyEvent(event("1"));

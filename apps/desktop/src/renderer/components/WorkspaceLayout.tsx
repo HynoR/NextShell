@@ -24,7 +24,6 @@ import { QuickConnectBar } from "./QuickConnectBar";
 import { CommandInputBar } from "./CommandInputBar";
 import { ConnectionPrompt } from "./ConnectionPrompt";
 import { FileExplorerPane } from "./FileExplorerPane";
-import { LiveEditPane } from "./LiveEditPane";
 import { NetworkMonitorPane } from "./NetworkMonitorPane";
 import { ProcessManagerPane } from "./ProcessManagerPane";
 import { PingCard } from "./PingCard";
@@ -32,8 +31,7 @@ import { SystemInfoPanel } from "./SystemInfoPanel";
 import { SystemStaticInfoPane } from "./SystemStaticInfoPane";
 import { TerminalPane, type TerminalPaneHandle } from "./TerminalPane";
 import { SessionPreviewGrid } from "./SessionPreviewGrid";
-import { TransferQueuePanel } from "./TransferQueuePanel";
-import { AgentActivityPanel } from "./AgentActivityPanel";
+import { RightSidebar } from "./RightSidebar";
 import { TraceroutePane } from "./TraceroutePane";
 import { useCommandHistory } from "../hooks/useCommandHistory";
 import { useDeviceKeyNotice } from "../hooks/useDeviceKeyNotice";
@@ -47,7 +45,7 @@ import { useAgentActivityStore } from "../store/useAgentActivityStore";
 import { useEditorTabStore } from "../store/useEditorTabStore";
 import { usePreferencesStore } from "../store/usePreferencesStore";
 import { useSessionOscStore } from "../store/useSessionOscStore";
-import { useTransferQueueStore, type TransferTask } from "../store/useTransferQueueStore";
+import type { TransferTask } from "../store/useTransferQueueStore";
 import { formatErrorMessage } from "../utils/errorMessage";
 import { promptModal } from "../utils/promptModal";
 import {
@@ -76,20 +74,6 @@ const BOTTOM_WORKBENCH_STORAGE_KEY = "nextshell.workspace.bottomWorkbenchCollaps
 const BOTTOM_WORKBENCH_RESIZE_TARGET_MIN_SIZE = {
   coarse: 12,
   fine: 4
-};
-
-const TransferTaskBadge = () => {
-  const taskCount = useTransferQueueStore((state) => state.tasks.length);
-
-  if (taskCount === 0) {
-    return null;
-  }
-
-  return (
-    <div className="sidebar-collapsed-badge" title={`传输任务 ${taskCount}`}>
-      {taskCount > 99 ? "99+" : taskCount}
-    </div>
-  );
 };
 
 const getWorkspaceLayoutStorage = (): Storage | undefined => {
@@ -1014,7 +998,6 @@ const WorkspaceLayoutComponent = ({
               >
                 <span className="sidebar-session-dot" />
               </div>
-              <TransferTaskBadge />
             </div>
           ) : (
             <div className="w-full h-full flex flex-col overflow-hidden">
@@ -1087,24 +1070,6 @@ const WorkspaceLayoutComponent = ({
                   connected={isActiveConnectionTerminalConnected}
                 />
               </Drawer>
-              <TransferQueuePanel
-                collapsed={transferPanelCollapsed}
-                onToggle={onTransferPanelToggle}
-                onRetry={(taskId) => void onRetryTransfer(taskId)}
-                onCancel={(taskId) => void window.nextshell.sftp.cancelTransfer({ taskId })}
-                onClearFinished={onClearFinishedTransfers}
-                onOpenLocalFile={(task) => {
-                  if (task.direction === "download" && task.status === "success") {
-                    onOpenLocalFile(task);
-                  }
-                }}
-              />
-              <AgentActivityPanel />
-              <LiveEditPane
-                connections={connections}
-                collapsed={liveEditPanelCollapsed}
-                onToggle={onLiveEditPanelToggle}
-              />
             </div>
           )}
         </aside>
@@ -1359,6 +1324,16 @@ const WorkspaceLayoutComponent = ({
             </Panel>
           </Group>
         </section>
+        <RightSidebar
+          connections={connections}
+          transferPanelCollapsed={transferPanelCollapsed}
+          liveEditPanelCollapsed={liveEditPanelCollapsed}
+          onTransferPanelToggle={onTransferPanelToggle}
+          onLiveEditPanelToggle={onLiveEditPanelToggle}
+          onRetryTransfer={onRetryTransfer}
+          onClearFinishedTransfers={onClearFinishedTransfers}
+          onOpenLocalFile={onOpenLocalFile}
+        />
       </main>
     </div>
   );

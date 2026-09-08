@@ -91,6 +91,7 @@ const deps: AgentGatewayDeps = {
   getSessionHistory: () => null,
   readSessionScreen: async () => null,
   writeSession: () => undefined,
+  pendingInput: async () => null,
   lastUserInputAt: () => null,
   waitForCommandCompletion: async () => null,
   focusSession: () => undefined,
@@ -128,7 +129,7 @@ const structured = (result: unknown): { ok: boolean; data?: any; error?: any } =
     .structuredContent as { ok: boolean; data?: any; error?: any };
 
 describe("tool registration", () => {
-  test("exposes exactly the eleven tools with honest annotations", async () => {
+  test("exposes exactly the ten tools with honest annotations", async () => {
     const listed = await client.listTools();
 
     expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
@@ -141,7 +142,6 @@ describe("tool registration", () => {
       "session_list",
       "session_open",
       "session_read",
-      "session_send_keys",
       "session_send_signal"
     ]);
     const readOnly = listed.tools.filter((tool) =>
@@ -160,7 +160,7 @@ describe("tool registration", () => {
         .filter((tool) => tool.annotations?.destructiveHint === true)
         .map((tool) => tool.name)
         .sort()
-    ).toEqual(["exec", "session_send_keys", "session_send_signal"]);
+    ).toEqual(["exec", "session_send_signal"]);
   });
 });
 
@@ -188,7 +188,7 @@ describe("tool responses", () => {
     }
   });
 
-  test("exec borrows the live session's connection and returns structured output", async () => {
+  test("exec runs in the foreground by default and reports the mode", async () => {
     const result = await client.callTool({
       name: "exec",
       arguments: { target: "sess-1", command: "pwd" }
@@ -197,11 +197,41 @@ describe("tool responses", () => {
     expect(payload.ok).toBe(true);
     expect(payload.data).toMatchObject({
       sessionId: "sess-1",
-      connectionId: granted.id,
-      exitCode: 0,
+      mode: "foreground",
       command: "pwd",
-      actualCwd: "/var/log"
+      exitCode: null,
+      waitTimedOut: true
     });
+  });
+
+  test("exec under the Permission mode reports pending with a requestId", async () => {
+    const gateway = new AgentGateway({
+      ...deps,
+      getPreferences: () => ({
+        ...DEFAULT_APP_PREFERENCES,
+        agent: { ...DEFAULT_APP_PREFERENCES.agent, execApproval: "permission" as const }
+      }),
+      openWaitMs: 10
+    });
+    const own = new McpServer({ name: "nextshell", version: "0.0.0" });
+    registerAgentTools(own, { gateway, client: CLIENT_IDENTITY });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await own.connect(serverTransport);
+    const ownClient = new Client({ name: "vitest", version: "1.0.0" });
+    await ownClient.connect(clientTransport);
+    try {
+      const result = await ownClient.callTool({
+        name: "exec",
+        arguments: { target: "sess-1", command: "uptime" }
+      });
+      const payload = structured(result);
+      expect(payload.ok).toBe(true);
+      expect(payload.data.status).toBe("pending");
+      expect(typeof payload.data.requestId).toBe("string");
+    } finally {
+      await ownClient.close();
+      await own.close();
+    }
   });
 
   test("exec on an unknown session id is not_found", async () => {
@@ -229,10 +259,10 @@ describe("tool responses", () => {
     expect(payload.error.message).toContain("blacklist");
   });
 
-  test("session_send_keys on a preset-blacklisted text is refused", async () => {
+  test("exec on another preset-blacklisted command is refused", async () => {
     const result = await client.callTool({
-      name: "session_send_keys",
-      arguments: { target: "sess-1", text: "shutdown -h now", submit: true }
+      name: "exec",
+      arguments: { target: "sess-1", command: "shutdown -h now" }
     });
 
     const payload = structured(result);

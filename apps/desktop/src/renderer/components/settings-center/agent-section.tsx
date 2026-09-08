@@ -212,6 +212,20 @@ export const AgentSection = () => {
             复制 JSON
           </Button>
         </SettingsRow>
+        <SettingsRow
+          label="SKILL.md"
+          hint="把该目录拷进 harness 的 skills 目录（如 ~/.claude/skills/、~/.codex/skills/、.agents/skills/）"
+        >
+          {status?.skillPath ? (
+            <Typography.Text code copyable={{ text: status.skillPath }} style={{ fontSize: 12 }}>
+              {status.skillPath}
+            </Typography.Text>
+          ) : (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {status ? "写入失败，重启 NextShell 后重试" : "加载中…"}
+            </Typography.Text>
+          )}
+        </SettingsRow>
       </SettingsCard>
 
       <SettingsCard

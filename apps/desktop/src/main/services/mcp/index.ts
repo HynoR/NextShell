@@ -1,4 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import skillMarkdown from "../../../../../../nextshell-plugin/skills/nextshell/SKILL.md?raw";
 import type { AgentEndpointStatus, AgentOpenRespondInput } from "@nextshell/shared";
 
 import { AgentGateway, type AgentClientIdentity, type AgentGatewayDeps } from "./agent-gateway";
@@ -7,8 +10,28 @@ import { registerAgentTools } from "./tools";
 
 export const MCP_SERVER_NAME = "nextshell";
 
+/**
+ * Harnesses install skills by copying a directory, so the bundled skill is
+ * materialised on disk (rewritten on every start so it tracks the app version)
+ * and its path is what the settings page hands out. The plugin directory is
+ * the single source of the text.
+ */
+export const writeAgentSkillFile = (baseDir: string): string | null => {
+  const dir = path.join(baseDir, "skills", "nextshell");
+  try {
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "SKILL.md");
+    writeFileSync(file, skillMarkdown, "utf8");
+    return file;
+  } catch {
+    return null;
+  }
+};
+
 export interface AgentMcpServiceDeps extends AgentGatewayDeps {
   appVersion: string;
+  /** Where the bundled SKILL.md was written for harnesses to copy; `null` when the write failed. */
+  skillPath?: string | null;
   logger?: AgentLogger;
 }
 
@@ -41,7 +64,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       { name: MCP_SERVER_NAME, version: deps.appVersion },
       {
         instructions:
-          "NextShell hands the agent the terminal tabs the user has already opened. session_list shows open tabs; host_list finds saved hosts (only the 10 most recent without a query); session_open asks the user to authorize opening one in NextShell — a denied result means stop and ask the user. Run commands with session_send_keys by default so the user watches them happen in the tab; use exec only when the user explicitly asks for background or do-not-disturb execution. Both pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and fail with human_intervention when the user typed into the tab after the agent's last operation — stop and report when that happens."
+          "NextShell hands the agent the terminal tabs the user has already opened. session_list shows open tabs; host_list finds saved hosts (only the 10 most recent without a query); session_open asks the user to authorize opening one in NextShell — a denied result means stop and ask the user. exec is the only way to run commands; whether it runs in the foreground (typed into the tab, visible) or the background (separate channel, invisible), and whether each command first needs the user's click in NextShell, are the user's settings, not parameters — read `mode` in the response, and on `{ status: \"pending\", requestId }` call exec again with only that requestId; `denied` means stop and ask the user. Commands pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and a foreground exec fails with human_intervention when the user has unsubmitted text on their command line — stop and report when that happens."
       }
     );
     registerAgentTools(server, { gateway, client: identity });
@@ -57,6 +80,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
       url: endpoint?.url ?? null,
       clients: endpoint?.getClients() ?? [],
       lastError,
+      skillPath: deps.skillPath ?? null,
       halted: gateway.isHalted
     };
   };

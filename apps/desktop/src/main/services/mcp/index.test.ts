@@ -37,6 +37,7 @@ const baseDeps = (preferences: () => AppPreferences): AgentMcpServiceDeps => ({
   }),
   readSessionScreen: async () => null,
   writeSession: () => undefined,
+  pendingInput: async () => null,
   lastUserInputAt: () => null,
   waitForCommandCompletion: async () => null,
   focusSession: () => undefined,

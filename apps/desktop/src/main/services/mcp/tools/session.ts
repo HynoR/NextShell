@@ -22,7 +22,7 @@ export const registerSessionTools = (server: McpServer, ctx: AgentToolContext): 
     {
       title: "列出会话",
       description:
-        "List the terminal tabs the user currently has open in NextShell — the only sessions an agent may touch. Each entry carries the session id, connection name, host and status. cwd is the directory the shell last reported via OSC 7 and is trustworthy even for background tabs; it is null only when the session never reported one (no shell integration). Pass a session id as exec's target to inherit that cwd.",
+        "List the terminal tabs the user currently has open in NextShell — the only sessions an agent may touch. Each entry carries the session id, connection name, host and status. cwd is the directory the shell last reported via OSC 7 and is trustworthy even for background tabs; it is null only when the session never reported one (no shell integration). Pass a session id as exec's target; a background exec inherits that cwd.",
       inputSchema: {},
       outputSchema: outputShape(
         z.object({

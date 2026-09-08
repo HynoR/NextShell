@@ -1,0 +1,69 @@
+/* Right sidebar — .right-sidebar-* (agent activity / transfers / live edits), mirrors the left sidebar */
+
+.right-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  transition: width 0.2s ease-out;
+}
+
+.right-sidebar.collapsed {
+  width: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.right-sidebar-dot {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--err);
+  color: #fff;
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.right-sidebar-halted-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--err);
+}
+
+.right-sidebar-top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.right-sidebar-sections {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-sidebar-sections::-webkit-scrollbar {
+  width: 4px;
+}
+.right-sidebar-sections::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 4px;
+}
+.right-sidebar-sections::-webkit-scrollbar-track {
+  background: transparent;
+}

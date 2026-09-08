@@ -575,8 +575,18 @@ export interface AppPreferences {
     enabled: boolean;
     /** 回环监听端口；改动后端点重启即生效 */
     port: number;
-    /** 单条 exec 的默认超时（秒） */
+    /** 后台 exec 的默认超时（秒）；前台 exec 固定最多等 120s，与此无关 */
     execTimeoutSec: number;
+    /**
+     * agent `exec` 的执行方式，由用户在「Agent 活动」面板切换，agent 不能选：
+     * `foreground` 敲进用户正看着的标签页；`background` 走同一连接的新 exec 通道，标签页不可见。
+     */
+    execMode: "foreground" | "background";
+    /**
+     * `auto`（默认）：信任 agent 与 harness 自己的审批，直接执行；`permission`：每条 `exec` 先在
+     * NextShell 弹窗、用户点授权才执行。黑名单与 `.env` 同意门两种模式都在。
+     */
+    execApproval: "auto" | "permission";
     /**
      * 用户追加的命令黑名单条目（子串或正则），叠加在内置的显而易见危险命令
      * 清单之上；命中即工具报错，无“本次放行”。
@@ -643,6 +653,8 @@ export interface AppPreferencesPatch {
     enabled?: boolean;
     port?: number;
     execTimeoutSec?: number;
+    execMode?: "foreground" | "background";
+    execApproval?: "auto" | "permission";
     blacklist?: string[];
   };
 }
@@ -792,6 +804,8 @@ export const DEFAULT_APP_PREFERENCES: AppPreferences = {
     enabled: false,
     port: 41777,
     execTimeoutSec: 60,
+    execMode: "foreground",
+    execApproval: "auto",
     blacklist: []
   }
 };

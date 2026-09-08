@@ -10,60 +10,11 @@ import {
 } from "./shared";
 
 /**
- * Driving the PTY the user is looking at.
- *
- * `session_send_keys` is the default way to run anything: the user watches the
- * command echo and its output scroll in the tab, exactly as if they had typed
- * it. `exec` is the out-of-band fallback, used only when the user asks for
- * background / do-not-disturb execution.
- * Injected text passes the command blacklist, and a human keystroke since the
- * agent's last operation fails the call with `human_intervention` — the agent
- * should then stop and report instead of retrying.
+ * Out-of-band control of the PTY: signals and focus. Running commands is
+ * `exec`'s job (see ./exec.ts); typing arbitrary keystrokes is deliberately
+ * not offered.
  */
 export const registerControlTools = (server: McpServer, ctx: AgentToolContext): void => {
-  server.registerTool(
-    "session_send_keys",
-    {
-      title: "向会话注入输入",
-      description:
-        "DEFAULT way to run commands: type into the live session's PTY exactly as if the user had typed it, so they watch the command and its output appear in the tab in real time. Use this unless the user explicitly asks for background / quiet execution (then use exec). Set submit: true to press Enter and waitForPrompt: true to get the exit code and output back once the shell reports completion (OSC 133); without shell integration no mark arrives, waitTimedOut comes back true, and you should session_read the screen instead. Fails with human_intervention when the user typed into the tab after your last operation — stop and report instead of retrying.",
-      inputSchema: {
-        target: z.string().min(1).describe(sessionIdInputDescription),
-        text: z.string().max(4096).describe("Characters to type"),
-        submit: z.boolean().optional().describe("Append a carriage return to run it"),
-        waitForPrompt: z
-          .boolean()
-          .optional()
-          .describe("Wait for the shell's next OSC 133 completion mark"),
-        timeoutSec: z.number().int().min(1).max(600).optional(),
-        allowSensitive: z
-          .boolean()
-          .optional()
-          .describe(
-            "Set true only after the user explicitly agreed to touch a .env file named in a consent_required error"
-          )
-      },
-      outputSchema: outputShape(
-        z.object({
-          sessionId: z.string(),
-          bytes: z.number(),
-          submitted: z.boolean(),
-          completed: z
-            .object({
-              command: z.string().nullable(),
-              exitCode: z.number().nullable(),
-              output: z.string(),
-              truncated: z.boolean()
-            })
-            .nullable(),
-          waitTimedOut: z.boolean()
-        })
-      ),
-      annotations: DESTRUCTIVE_ANNOTATIONS
-    },
-    async (args) => toCallToolResult(await ctx.gateway.sendKeys(ctx.client, args))
-  );
-
   server.registerTool(
     "session_send_signal",
     {
