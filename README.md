@@ -38,7 +38,7 @@ NextShell 是一个基于 Electron + React + TypeScript 的桌面运维客户端
 
 - Node.js `24.x`
 - pnpm `11.15.1`（由根目录 `packageManager` 固定）
-- macOS 或 Windows（CI 默认构建这两个平台）
+- macOS、Windows 或 Linux 图形桌面（X11 / Wayland）
 - 建议安装可用的本地构建工具链，用于编译/重建原生模块
 
 ## 快速开始
@@ -52,17 +52,93 @@ pnpm run dev
 
 ## 常用命令
 
-| 命令                                                                 | 说明                             |
-| -------------------------------------------------------------------- | -------------------------------- |
-| `pnpm run setup`                                                     | 安装依赖并执行原生模块重建       |
-| `pnpm run dev`                                                       | 启动桌面应用开发模式             |
-| `pnpm run build`                                                     | 类型检查并构建 renderer/main     |
-| `pnpm run typecheck`                                                 | 仅执行 TypeScript `--noEmit`     |
-| `pnpm run test`                                                      | 运行 Vitest 单元测试             |
-| `pnpm run rebuild:native`                                            | 仅重建原生模块                   |
-| `pnpm run rebuild:native:node`                                       | 将共享原生模块恢复为 Node.js ABI |
-| `pnpm --filter @nextshell/desktop run dist -- --mac --publish never` | 本地打 macOS 包                  |
-| `pnpm --filter @nextshell/desktop run dist -- --win --publish never` | 本地打 Windows 包                |
+| 命令                                                              | 说明                             |
+| ----------------------------------------------------------------- | -------------------------------- |
+| `pnpm run setup`                                                  | 安装依赖并执行原生模块重建       |
+| `pnpm run dev`                                                    | 启动桌面应用开发模式             |
+| `pnpm run build`                                                  | 类型检查并构建 renderer/main     |
+| `pnpm run typecheck`                                              | 仅执行 TypeScript `--noEmit`     |
+| `pnpm run test`                                                   | 运行 Vitest 单元测试             |
+| `pnpm run rebuild:native`                                         | 仅重建原生模块                   |
+| `pnpm run rebuild:native:node`                                    | 将共享原生模块恢复为 Node.js ABI |
+| `pnpm --filter @nextshell/desktop run dist --mac --publish never` | 本地打 macOS 包                  |
+| `pnpm --filter @nextshell/desktop run dist --win --publish never` | 本地打 Windows 包                |
+| `pnpm --filter @nextshell/desktop run dist:linux`                 | 本地打 Linux 包（当前 CPU 架构） |
+
+## Linux 安装与打包
+
+Linux 发布仅构建 x64 的 `.AppImage`、`.deb`、`.tar.gz`，输出在
+`apps/desktop/release/`，使用 Ubuntu 22.04 原生构建；旧版发行版仍需单独验证。
+适用于 `uname -m` 输出为 `x86_64` 的机器，不提供 Linux ARM 安装包。
+
+### Ubuntu / Debian
+
+在下载目录安装对应版本的 deb（将 VERSION 替换为实际版本）：
+
+```bash
+sudo apt install ./NextShell-VERSION-linux-x64.deb
+nextshell
+```
+
+deb 会声明 GTK、NSS、ALSA、libsecret 等运行依赖。也可以使用 AppImage。
+
+### Arch Linux / 其他常用 Linux 桌面
+
+Arch 可以直接使用 AppImage，无需转换 deb 或自行编译：
+
+```bash
+sudo pacman -S --needed gtk3 nss alsa-lib libsecret libnotify libxss libxtst xdg-utils
+chmod +x ./NextShell-VERSION-linux-x64.AppImage
+./NextShell-VERSION-linux-x64.AppImage
+```
+
+若 AppImage 报缺少 `libfuse.so.2`，Arch 安装 `fuse2`；Ubuntu 22.04 安装
+`libfuse2`，24.04 安装 `libfuse2t64`。不便使用 FUSE 时，可用
+`./NextShell-VERSION-linux-x64.AppImage --appimage-extract-and-run`，或解压
+`tar.gz` 后运行目录中的 `./nextshell`（系统仍需安装运行依赖）。
+
+### NixOS
+
+使用 AppImage 兼容环境，不直接运行 tar.gz 内的动态链接二进制。
+在 `/etc/nixos/configuration.nix` 中启用：
+
+```nix
+{
+  programs.appimage.enable = true;
+  programs.appimage.binfmt = true;
+}
+```
+
+应用配置后，在图形会话的终端运行：
+
+```bash
+appimage-run ./NextShell-VERSION-linux-x64.AppImage
+```
+
+这是 [NixOS 官方的预编译程序运行方式](https://nixos.org/manual/nixos/stable/#sec-custom-packages-prebuilt)。
+只在其他发行版安装 Nix 包管理器时，按宿主发行版的安装方式即可。
+本地终端如需使用 Nix 提供的 bash/fish/zsh，可在 NextShell 本地 Shell 设置中选择
+自定义路径，例如 `/run/current-system/sw/bin/bash`。
+
+### 运行条件与源码构建
+
+NextShell 是桌面应用，可以从桌面终端启动，但纯 SSH/TTY、无显示服务的服务器
+不提供 Electron 图形界面；连接这类服务器时，在本机运行 NextShell 再通过 SSH 连接。
+钥匙串迁移需要会话 D-Bus 及已解锁的 Secret Service（例如 GNOME Keyring）。
+以普通用户启动，保留 Chromium sandbox；遇到发行版的用户命名空间/AppArmor
+限制时应配置系统策略，不将 `--no-sandbox` 作为默认启动参数。
+
+源码打包需在目标架构的 Linux 上执行，原生模块不能复用 macOS/Windows 的产物。
+Ubuntu 构建依赖：
+
+```bash
+sudo apt install build-essential python3 pkg-config libsecret-1-dev libgtk-3-0 libnss3 libasound2-dev
+pnpm run setup
+pnpm --filter @nextshell/desktop run dist:linux
+```
+
+发布 CI 会用打包后的 Electron 加载 SQLite、keytar、SSH，并实际启动 PTY；这不替代
+Ubuntu / Arch / NixOS 桌面上的窗口、连接、SFTP 和钥匙串人工验收。
 
 ## 原生模块与 ABI 排错
 

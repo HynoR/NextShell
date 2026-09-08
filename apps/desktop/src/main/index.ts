@@ -147,7 +147,7 @@ const createMainWindow = (): BrowserWindow => {
     minHeight: 780,
     backgroundColor: resolveWindowBackgroundColor(appearance),
     title: "NextShell",
-    titleBarStyle: "hidden",
+    titleBarStyle: isMac || isWin ? "hidden" : "default",
     ...(isMac && { windowButtonPosition: { x: 14, y: 14 } }),
     ...(isWin && { titleBarOverlay: resolveWindowsTitleBarOverlay(appearance) }),
     webPreferences: {

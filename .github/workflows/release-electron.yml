@@ -55,7 +55,7 @@ jobs:
           fi
 
   build:
-    name: Build (${{ matrix.platform }})
+    name: Build (${{ matrix.platform }} ${{ matrix.arch }})
     needs: verify-main-tag
     if: needs.verify-main-tag.outputs.on_main == 'true'
     runs-on: ${{ matrix.os }}
@@ -65,8 +65,13 @@ jobs:
         include:
           - os: windows-latest
             platform: win
+            arch: x64
           - os: macos-latest
             platform: mac
+            arch: arm64
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
     env:
       ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
@@ -95,9 +100,15 @@ jobs:
           path: |
             .cache/electron
             .cache/electron-builder
-          key: ${{ runner.os }}-electron-${{ hashFiles('apps/desktop/package.json', 'apps/desktop/build/electron-builder.yml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-electron-${{ hashFiles('apps/desktop/package.json', 'apps/desktop/build/electron-builder.yml') }}
           restore-keys: |
-            ${{ runner.os }}-electron-
+            ${{ runner.os }}-${{ runner.arch }}-electron-
+
+      - name: Install Linux native build dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 pkg-config libsecret-1-dev libgtk-3-0 libnss3 libasound2-dev
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -176,8 +187,17 @@ jobs:
           pnpm exec electron-builder \
             --config build/electron-builder.yml \
             --${{ matrix.platform }} \
+            --${{ matrix.arch }} \
             --publish never \
             -c.extraMetadata.version="${RELEASE_VERSION}"
+
+      - name: Check packaged Linux native modules
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          app_dir="apps/desktop/release/linux-unpacked"
+          ELECTRON_RUN_AS_NODE=1 "${app_dir}/nextshell" \
+            apps/desktop/scripts/check-linux-package.mjs "${app_dir}/resources/app.asar"
 
       - name: Verify macOS signature is certificate-pinned
         if: matrix.platform == 'mac' && steps.macos-cert.outputs.signed == 'true'
@@ -202,7 +222,7 @@ jobs:
       - name: Upload source maps
         uses: actions/upload-artifact@v4
         with:
-          name: sourcemaps-${{ env.RELEASE_VERSION }}-${{ matrix.platform }}
+          name: sourcemaps-${{ env.RELEASE_VERSION }}-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
             apps/desktop/dist/**/*.map
             apps/desktop/dist-electron/**/*.map
@@ -223,6 +243,17 @@ jobs:
         with:
           name: mac-artifact
           path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-artifact
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.tar.gz
           if-no-files-found: error
 
   release:
@@ -246,7 +277,14 @@ jobs:
           name: mac-artifact
           path: artifacts/
 
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x64-artifact
+          path: artifacts/
+
       - name: Create GitHub Release
+        # All platform builds (including the packaged native-module checks) must pass.
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
