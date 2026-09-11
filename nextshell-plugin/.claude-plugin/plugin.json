@@ -1,8 +1,10 @@
 {
   "name": "nextshell",
-  "version": "0.2.0",
-  "description": "Drive the server tabs you already opened in NextShell: read the screen, run commands, type into TUIs — with zero credentials in the agent config.",
-  "author": { "name": "HynoR" },
+  "version": "0.3.0",
+  "description": "Drive the server tabs you already opened in NextShell: read the screen, run commands, type into TUIs \u2014 with zero credentials in the agent config.",
+  "author": {
+    "name": "HynoR"
+  },
   "homepage": "https://github.com/HynoR/NextShell",
   "mcpServers": "./.mcp.json"
 }

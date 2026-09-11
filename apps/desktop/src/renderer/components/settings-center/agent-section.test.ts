@@ -42,11 +42,26 @@ describe("client config lines", () => {
     const { buildEndpointUrl, buildClaudeAddCommand, buildMcpJson } =
       await import("./agent-section");
     expect(buildEndpointUrl(41777)).toBe("http://127.0.0.1:41777/mcp");
-    expect(buildClaudeAddCommand(5000)).toBe(
+    expect(buildClaudeAddCommand(5000, "http")).toBe(
       "claude mcp add --transport http nextshell http://127.0.0.1:5000/mcp"
     );
-    expect(JSON.parse(buildMcpJson(41777))).toEqual({
+    expect(JSON.parse(buildMcpJson(41777, "http"))).toEqual({
       mcpServers: { nextshell: { type: "http", url: "http://127.0.0.1:41777/mcp" } }
     });
   });
+});
+
+test("stdio config is versioned and includes the configured port", async () => {
+  const { buildClaudeAddCommand, buildMcpJson } = await import("./agent-section");
+  expect(JSON.parse(buildMcpJson(5000))).toEqual({
+    mcpServers: {
+      nextshell: {
+        command: "npx",
+        args: ["-y", "@nextshell/mcp@0.1.0", "--port", "5000"]
+      }
+    }
+  });
+  expect(buildClaudeAddCommand(5000)).toBe(
+    "claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.1.0 --port 5000"
+  );
 });

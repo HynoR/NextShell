@@ -1,0 +1,40 @@
+{
+  "name": "@nextshell/mcp",
+  "version": "0.1.0",
+  "description": "NextShell MCP stdio entry point with offline tool discovery",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HynoR/NextShell.git",
+    "directory": "packages/mcp"
+  },
+  "bin": {
+    "nextshell-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepack": "pnpm run build",
+    "smoke:pack": "pnpm run build && node scripts/smoke-pack.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "esbuild": "0.28.1",
+    "typescript": "^5.9.3"
+  }
+}

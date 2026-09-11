@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "nextshell": {
-      "type": "http",
-      "url": "http://127.0.0.1:41777/mcp"
+      "command": "npx",
+      "args": ["-y", "@nextshell/mcp@0.1.0", "--port", "41777"]
     }
   }
 }

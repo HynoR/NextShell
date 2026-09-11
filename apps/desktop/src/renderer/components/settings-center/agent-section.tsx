@@ -7,10 +7,12 @@ import {
   Input,
   InputNumber,
   Space,
+  Segmented,
   Switch,
   Tag,
   Typography
 } from "antd";
+import { MCP_PACKAGE_SPEC, buildStdioConfig } from "@nextshell/shared";
 import type { AgentEndpointStatus } from "@nextshell/shared";
 import { useAgentActivityStore } from "../../store/useAgentActivityStore";
 import { usePreferencesStore } from "../../store/usePreferencesStore";
@@ -40,11 +42,22 @@ export const formatRunningState = (
 
 /** Exported for unit testing — the one line any MCP client needs. */
 export const buildEndpointUrl = (port: number): string => `http://127.0.0.1:${port}/mcp`;
-export const buildClaudeAddCommand = (port: number): string =>
-  `claude mcp add --transport http nextshell ${buildEndpointUrl(port)}`;
-export const buildMcpJson = (port: number): string =>
+export type McpConnectionMethod = "stdio" | "http";
+export const buildClaudeAddCommand = (
+  port: number,
+  method: McpConnectionMethod = "stdio"
+): string =>
+  method === "http"
+    ? `claude mcp add --transport http nextshell ${buildEndpointUrl(port)}`
+    : `claude mcp add --transport stdio nextshell -- npx -y ${MCP_PACKAGE_SPEC} --port ${port}`;
+export const buildMcpJson = (port: number, method: McpConnectionMethod = "stdio"): string =>
   JSON.stringify(
-    { mcpServers: { nextshell: { type: "http", url: buildEndpointUrl(port) } } },
+    {
+      mcpServers: {
+        nextshell:
+          method === "http" ? { type: "http", url: buildEndpointUrl(port) } : buildStdioConfig(port)
+      }
+    },
     null,
     2
   );
@@ -56,6 +69,7 @@ export const AgentSection = () => {
   const updatePreferences = usePreferencesStore((s) => s.updatePreferences);
   const agentPrefs = preferences.agent;
 
+  const [connectionMethod, setConnectionMethod] = useState<McpConnectionMethod>("stdio");
   const [status, setStatus] = useState<AgentEndpointStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [togglingEnabled, setTogglingEnabled] = useState(false);
@@ -144,7 +158,7 @@ export const AgentSection = () => {
   const runningState = formatRunningState(enabled, listening, status?.halted ?? false);
   const port = status?.port ?? agentPrefs.port;
   const url = buildEndpointUrl(port);
-  const claudeCommand = buildClaudeAddCommand(port);
+  const claudeCommand = buildClaudeAddCommand(port, connectionMethod);
 
   return (
     <>
@@ -194,20 +208,50 @@ export const AgentSection = () => {
           />
         </SettingsRow>
 
-        <SettingsRow label="MCP 地址" hint="Cursor / Windsurf / Codex 等直接使用">
-          <Typography.Text code copyable={{ text: url }} style={{ fontSize: 12 }}>
-            {url}
-          </Typography.Text>
+        <SettingsRow
+          label="接入方式"
+          hint="两种方式的工具执行均受上方开关控制；同一客户端选择一种即可"
+        >
+          <Segmented
+            aria-label="MCP 接入方式"
+            value={connectionMethod}
+            options={[
+              { label: "stdio（无打扰）", value: "stdio" },
+              { label: "HTTP（直连）", value: "http" }
+            ]}
+            onChange={(value) => setConnectionMethod(value as McpConnectionMethod)}
+          />
         </SettingsRow>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+          {connectionMethod === "stdio"
+            ? "需要 Node.js 24+，首次下载需要网络。应用未启动时仍可发现工具，实际调用需要启动 NextShell 并启用 Agent 接入。"
+            : "直接连接应用，无需 Node.js。连接前需启动 NextShell 并启用 Agent 接入。"}
+        </Typography.Paragraph>
+        {connectionMethod === "http" && (
+          <SettingsRow label="MCP 地址" hint="支持 HTTP MCP 的客户端可直接使用">
+            <Typography.Text code copyable={{ text: url }} style={{ fontSize: 12 }}>
+              {url}
+            </Typography.Text>
+          </SettingsRow>
+        )}
         <SettingsRow label="Claude Code" hint="终端执行一次">
           <Typography.Text code copyable={{ text: claudeCommand }} style={{ fontSize: 12 }}>
             {claudeCommand}
           </Typography.Text>
         </SettingsRow>
-        <SettingsRow label="mcp.json 片段" hint="Claude Desktop 需用 npx mcp-remote 转接">
+        <SettingsRow
+          label="mcp.json 片段"
+          hint={
+            connectionMethod === "stdio"
+              ? "通用 stdio 配置"
+              : "用于支持 HTTP MCP 的客户端；仅支持 stdio 的客户端请选择 stdio"
+          }
+        >
           <Button
             size="small"
-            onClick={() => void handleCopyText(buildMcpJson(port), "mcp.json 片段")}
+            onClick={() =>
+              void handleCopyText(buildMcpJson(port, connectionMethod), "mcp.json 片段")
+            }
           >
             复制 JSON
           </Button>

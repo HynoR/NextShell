@@ -102,7 +102,7 @@ const readClientInfo = (body: unknown): { name: string | null; version: string |
 
 /**
  * The MCP endpoint is a plain Streamable HTTP server bound to 127.0.0.1, so
- * every MCP client dials it with one URL and no bridge process. There is no
+ * HTTP clients dial it directly; the optional stdio entry point connects lazily. There is no
  * token: any process on this machine may drive the tabs the user opened, the
  * same trust the user extends to every local program. Host/Origin checks keep
  * browser pages out.

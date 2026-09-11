@@ -195,3 +195,12 @@ pnpm run test
 ## License
 
 本项目使用 GNU GPLv3，详见 [LICENSE](./LICENSE)。
+
+## Agent MCP 接入
+
+支持 **stdio 无打扰接入**和 **HTTP 直连**。stdio 通过独立 npm 进程提供工具发现，
+NextShell 未启动时不影响 Harness 初始化；HTTP 无需 Node.js，但连接时应用必须运行。
+两种方式共用应用内权限与执行策略，设置 → Agent 接入可分别复制配置。
+
+配置、依赖与发布前置条件见 [MCP 包说明](packages/mcp/README.md) 和
+[插件接入说明](nextshell-plugin/README.md)。

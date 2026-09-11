@@ -43,8 +43,13 @@ You never see a password or key; you only get session ids and command output.
   Do not resend it; ask what they want instead.
 - `consent_required` means the command touches a `.env` file: ask the user, and only after
   they agree retry with `allowSensitive: true`.
-- If tools fail with a connection error, NextShell is not running or Agent access is off:
-  设置 → Agent 接入 → 启用.
+- Both stdio and HTTP are supported. Stdio discovers tools even when the app is closed;
+  HTTP requires the app to be running before connecting. Neither starts NextShell automatically.
+- `app_unavailable`: ask the user to start NextShell, enable 设置 → Agent 接入, and check
+  the configured port. After that, the next tool call reconnects; do not retry in a loop.
+- `connection_lost`: execution may already have happened. Inspect the terminal state before
+  deciding what to do; never automatically replay a command or an old approval request.
+- `incompatible_version`: update the application and MCP package, then restart the MCP process.
 
 ## Not available on purpose
 

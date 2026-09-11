@@ -1,3 +1,4 @@
+import { AGENT_INSTRUCTIONS } from "@nextshell/shared";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -63,8 +64,7 @@ export const createAgentMcpService = (deps: AgentMcpServiceDeps): AgentMcpServic
     const server = new McpServer(
       { name: MCP_SERVER_NAME, version: deps.appVersion },
       {
-        instructions:
-          "NextShell hands the agent the terminal tabs the user has already opened. session_list shows open tabs; host_list finds saved hosts (only the 10 most recent without a query); session_open asks the user to authorize opening one in NextShell — a denied result means stop and ask the user. exec is the only way to run commands; whether it runs in the foreground (typed into the tab, visible) or the background (separate channel, invisible), and whether each command first needs the user's click in NextShell, are the user's settings, not parameters — read `mode` in the response, and on `{ status: \"pending\", requestId }` call exec again with only that requestId; `denied` means stop and ask the user. Commands pass a dangerous-command blacklist, refuse to touch .env files with consent_required until the user agrees (then pass allowSensitive: true), and a foreground exec fails with human_intervention when the user has unsubmitted text on their command line — stop and report when that happens."
+        instructions: AGENT_INSTRUCTIONS
       }
     );
     registerAgentTools(server, { gateway, client: identity });
