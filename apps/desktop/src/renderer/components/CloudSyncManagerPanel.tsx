@@ -14,10 +14,16 @@ import {
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import type { CloudSyncWorkspaceProfile, WorkspaceRepoStatus } from "@nextshell/core";
+import { CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH } from "@nextshell/shared";
 import { SettingsCard } from "./SettingsCard";
 
 const api = () =>
   (window as unknown as { nextshell: import("@nextshell/shared").NextShellApi }).nextshell;
+
+const PASSWORD_MIN = CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH;
+const PASSWORD_TOO_SHORT = `工作区密码至少 ${PASSWORD_MIN} 位（与服务端要求一致，过短会被服务端拒绝）`;
+const isPasswordTooShort = (password: string) =>
+  password.length > 0 && password.length < PASSWORD_MIN;
 
 interface WorkspaceFormState {
   id?: string;
@@ -142,6 +148,10 @@ export const CloudSyncManagerPanel = () => {
       message.warning("新建工作区时需设置密码");
       return;
     }
+    if (isPasswordTooShort(editForm.workspacePassword)) {
+      message.warning(PASSWORD_TOO_SHORT);
+      return;
+    }
     setSaving(true);
     try {
       if (isEditing && editForm.id) {
@@ -240,6 +250,10 @@ export const CloudSyncManagerPanel = () => {
       message.warning("请输入工作区密码后再测试");
       return;
     }
+    if (isPasswordTooShort(editForm.workspacePassword)) {
+      message.warning(PASSWORD_TOO_SHORT);
+      return;
+    }
     setTesting(true);
     try {
       const result = await api().cloudSync.testConnection({
@@ -331,6 +345,11 @@ export const CloudSyncManagerPanel = () => {
                         <Tag>已停用</Tag>
                       )}
                       {(ws.lastError || st?.lastError) && <Tag color="red">错误</Tag>}
+                      {ws.ignoreTlsErrors && (
+                        <Tag color="orange" title="该工作区已关闭 TLS 证书校验，仅限调试环境使用">
+                          忽略 TLS
+                        </Tag>
+                      )}
                     </Space>
                   }
                   description={
@@ -421,7 +440,7 @@ export const CloudSyncManagerPanel = () => {
             <Input
               value={editForm.apiBaseUrl}
               onChange={(e) => setEditForm((f) => ({ ...f, apiBaseUrl: e.target.value }))}
-              placeholder="https://api.example.com"
+              placeholder="https://sync.example.com"
             />
           </div>
           <div>
@@ -445,8 +464,17 @@ export const CloudSyncManagerPanel = () => {
             <Input.Password
               value={editForm.workspacePassword}
               onChange={(e) => setEditForm((f) => ({ ...f, workspacePassword: e.target.value }))}
-              placeholder={isEditing ? "留空则不更新" : "输入密码"}
+              placeholder={isEditing ? "留空则不更新" : `输入密码（至少 ${PASSWORD_MIN} 位）`}
+              status={isPasswordTooShort(editForm.workspacePassword) ? "error" : undefined}
             />
+            <Typography.Text
+              type={isPasswordTooShort(editForm.workspacePassword) ? "danger" : "secondary"}
+              style={{ fontSize: 12 }}
+            >
+              {isPasswordTooShort(editForm.workspacePassword)
+                ? PASSWORD_TOO_SHORT
+                : `至少 ${PASSWORD_MIN} 位；首次创建工作区时该密码即为团队共享凭据`}
+            </Typography.Text>
           </div>
           <div>
             <Typography.Text>拉取间隔（秒）</Typography.Text>
@@ -465,6 +493,14 @@ export const CloudSyncManagerPanel = () => {
               onChange={(v) => setEditForm((f) => ({ ...f, ignoreTlsErrors: v }))}
             />
           </div>
+          {editForm.ignoreTlsErrors && (
+            <Alert
+              type="warning"
+              showIcon
+              message="已关闭 TLS 证书校验，连接可被中间人窃听或篡改"
+              description="仅用于本机 / 内网自签名证书调试（例如 https://127.0.0.1:8443 --dev）。生产环境请使用受信任证书并关闭此开关。"
+            />
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Typography.Text>启用</Typography.Text>
             <Switch

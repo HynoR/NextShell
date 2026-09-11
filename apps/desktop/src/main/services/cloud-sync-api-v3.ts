@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { z } from "zod";
+import { CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH } from "@nextshell/shared";
 
 const workspaceSecretEnvelopeSchema = z.object({
   v: z.literal(1),
@@ -319,6 +320,15 @@ export class CloudSyncApiV3Client {
 
       if (statusCode === 409 && bodyText.trim()) {
         return JSON.parse(bodyText) as Record<string, unknown>;
+      }
+
+      if (statusCode === 401) {
+        // 服务端对密码错误 / 密码不满足长度要求统一返回 401，这里给出可操作的提示而不是裸 HTTP 状态码
+        throw new Error(
+          `认证失败（HTTP 401）：工作区密码错误，或不满足服务端最小长度 ${CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH} 位${
+            message ? `：${message}` : ""
+          }`
+        );
       }
 
       throw new Error(message ?? `HTTP ${statusCode}`);

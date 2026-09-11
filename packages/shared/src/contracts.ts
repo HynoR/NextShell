@@ -1261,11 +1261,22 @@ export type TracerouteEvent =
 
 export const cloudSyncWorkspaceListSchema = z.object({});
 
+/** 与服务端（NShellServer）的工作区密码最小长度保持一致，短于此长度服务端会直接返回 401。 */
+export const CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH = 8;
+export const CLOUD_SYNC_WORKSPACE_PASSWORD_MAX_LENGTH = 200;
+
+const cloudSyncWorkspacePasswordSchema = z
+  .string()
+  .min(CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH, {
+    message: `工作区密码至少 ${CLOUD_SYNC_WORKSPACE_PASSWORD_MIN_LENGTH} 位`
+  })
+  .max(CLOUD_SYNC_WORKSPACE_PASSWORD_MAX_LENGTH);
+
 export const cloudSyncWorkspaceAddSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().max(200).optional(),
-  workspacePassword: z.string().min(1).max(200),
+  workspacePassword: cloudSyncWorkspacePasswordSchema,
   pullIntervalSec: z.number().int().min(10).max(86400).optional(),
   ignoreTlsErrors: z.boolean().optional(),
   enabled: z.boolean().optional()
@@ -1276,7 +1287,7 @@ export const cloudSyncWorkspaceUpdateSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().max(200).optional(),
-  workspacePassword: z.string().min(1).max(200).optional(),
+  workspacePassword: cloudSyncWorkspacePasswordSchema.optional(),
   pullIntervalSec: z.number().int().min(10).max(86400).optional(),
   ignoreTlsErrors: z.boolean().optional(),
   enabled: z.boolean().optional()
@@ -1295,7 +1306,8 @@ export const cloudSyncWorkspaceTokenDraftSchema = z.object({
     .transform((value) => value.replace(/\/+$/, "")),
   workspaceName: z.string().trim().min(1).max(200),
   displayName: z.string().trim().max(200),
-  workspacePassword: z.string().min(1).max(200),
+  // Token 只负责解析回填，长度校验交给 workspaceAdd / testConnection，避免旧 Token 直接解析失败
+  workspacePassword: z.string().min(1).max(CLOUD_SYNC_WORKSPACE_PASSWORD_MAX_LENGTH),
   pullIntervalSec: z.number().int().min(10).max(86400),
   ignoreTlsErrors: z.boolean(),
   enabled: z.boolean()
@@ -1319,7 +1331,7 @@ export const cloudSyncSyncNowSchema = z.object({
 export const cloudSyncTestConnectionSchema = z.object({
   apiBaseUrl: z.string().trim().min(1).max(500),
   workspaceName: z.string().trim().min(1).max(200),
-  workspacePassword: z.string().min(1).max(200),
+  workspacePassword: cloudSyncWorkspacePasswordSchema,
   ignoreTlsErrors: z.boolean().optional()
 });
 

@@ -655,7 +655,9 @@ export const createServiceContainer = async (
     saveJsonSetting: (key, value) => connections.saveJsonSetting(key, value),
     broadcastStatus: (status) => broadcastToAllWindows(IPCChannel.CloudSyncStatusEvent, status),
     broadcastApplied: (wId) =>
-      broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId })
+      broadcastToAllWindows(IPCChannel.CloudSyncAppliedEvent, { workspaceId: wId }),
+    // vite.config.ts 在构建期把 NEXTSHELL_BUILD_VERSION / package.json 版本 define 进 VITE_APP_VERSION
+    clientVersion: process.env["VITE_APP_VERSION"] ?? app.getVersion()
   });
   cloudSyncManager.initialize();
 

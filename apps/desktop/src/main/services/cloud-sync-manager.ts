@@ -89,6 +89,9 @@ export interface CloudSyncManagerDeps {
 
   broadcastStatus: (status: CloudSyncManagerStatus) => void;
   broadcastApplied: (workspaceId: string) => void;
+
+  /** 随请求头 X-NextShell-Client-Version 上报的客户端版本；由容器注入构建期版本。 */
+  clientVersion?: string;
 }
 
 const CLIENT_ID_SETTING_KEY = "cloud_sync_client_id";
@@ -181,7 +184,9 @@ export class CloudSyncManager {
       this.deps.getJsonSetting<string>(CLIENT_ID_SETTING_KEY) ?? randomUUID();
     this.clientId = persistedClientId;
     this.deps.saveJsonSetting(CLIENT_ID_SETTING_KEY, persistedClientId);
-    this.clientVersion = process.env.npm_package_version ?? "dev";
+    // 打包后 npm_package_version 不存在，必须由容器注入构建期版本，否则服务端只会看到 "dev"
+    this.clientVersion =
+      this.deps.clientVersion?.trim() || process.env.npm_package_version?.trim() || "dev";
   }
 
   initialize(): void {
