@@ -252,6 +252,8 @@ export class CloudSyncApiV3Client {
               Authorization: `Bearer ${bearerPayload}`,
               "Content-Length": Buffer.byteLength(body),
               "Content-Type": "application/json",
+              // Node 的 http 默认不带 UA，空 UA 会被不少 WAF / 防火墙直接拦掉
+              "User-Agent": `NextShell/${creds.clientVersion}`,
               "X-NextShell-Client-Id": creds.clientId,
               "X-NextShell-Client-Version": creds.clientVersion
             },

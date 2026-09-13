@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { buildScopeKey } from "@nextshell/core";
 import type {
   CloudSyncWorkspaceProfile,
@@ -1075,5 +1075,80 @@ describe("CloudSyncManager workspace command sync", () => {
         manager as unknown as { workspaceCommandsFingerprint: (workspaceId: string) => string }
       ).workspaceCommandsFingerprint(workspace.id)
     );
+  });
+});
+
+describe("CloudSyncManager removal and mutation timing", () => {
+  test("removing a workspace mid-sync neither resurrects it nor pushes the emptied snapshot", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const state = createMutableState(workspace);
+    let removed = false;
+    const savesAfterRemoval: CloudSyncWorkspaceProfile[] = [];
+    const deps = createMutableDeps(state);
+    deps.listWorkspaces = () => (removed ? [] : [state.workspace]);
+    deps.removeWorkspace = () => {
+      removed = true;
+    };
+    deps.saveWorkspace = (ws) => {
+      if (removed) savesAfterRemoval.push(ws);
+      state.workspace = ws;
+    };
+    const manager = new CloudSyncManager(deps);
+
+    let releaseResolve: (value: unknown) => void = () => undefined;
+    let pushed = false;
+    (manager as unknown as { api: unknown }).api = {
+      resolve: () => new Promise((resolve) => (releaseResolve = resolve)),
+      pull: async () => ({ unchanged: true, headCommitId: null }),
+      push: async () => {
+        pushed = true;
+        return { status: "accepted" as const, headCommitId: "x" };
+      },
+      pullCommands: async () => ({ status: "unchanged" as const, version: "v0" })
+    };
+
+    const inFlight = manager.syncNow(workspace.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await manager.removeWorkspace(workspace.id);
+    releaseResolve({ headCommitId: null, commandsVersion: null });
+    await inFlight;
+
+    expect(removed).toBe(true);
+    expect(pushed).toBe(false);
+    expect(savesAfterRemoval).toEqual([]);
+    expect(state.localState?.lastSyncAt).toBeUndefined();
+  });
+
+  test("a local mutation inside the 5s window is deferred, not dropped", async () => {
+    vi.useFakeTimers();
+    try {
+      const workspace = { ...createWorkspace(), enabled: true };
+      const state = createMutableState(workspace);
+      const manager = new CloudSyncManager(createMutableDeps(state));
+      let resolves = 0;
+      (manager as unknown as { api: unknown }).api = {
+        resolve: async () => {
+          resolves += 1;
+          return { headCommitId: null, commandsVersion: null };
+        },
+        pull: async () => ({ unchanged: true, headCommitId: null }),
+        pullCommands: async () => ({ status: "unchanged" as const, version: "v0" })
+      };
+
+      await manager.syncNow(workspace.id);
+      expect(resolves).toBe(1);
+
+      manager.pushConnectionUpsert({
+        originKind: "cloud",
+        originWorkspaceId: workspace.id
+      } as ConnectionProfile);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(resolves).toBe(1);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(resolves).toBe(2);
+      manager.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

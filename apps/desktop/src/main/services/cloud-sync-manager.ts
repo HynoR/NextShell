@@ -96,6 +96,8 @@ export interface CloudSyncManagerDeps {
 
 const CLIENT_ID_SETTING_KEY = "cloud_sync_client_id";
 const SYNC_NOW_MIN_INTERVAL_MS = 5_000;
+/** 同步进行中工作区被删除时，用它中断后续的落库 / 推送。 */
+const WORKSPACE_REMOVED = new Error("workspace removed during sync");
 
 const stableSerialize = (value: unknown): string => {
   if (value === null || typeof value !== "object") {
@@ -175,6 +177,12 @@ const toStatusState = (
 export class CloudSyncManager {
   private readonly api = new CloudSyncApiV3Client();
   private readonly runtimes = new Map<string, WorkspaceRuntime>();
+  /**
+   * 删除是即时的，但当时可能正有一轮同步卡在网络请求上（防火墙丢包时一次请求 30s）。
+   * 那轮同步醒来后会把工作区行重新 upsert 回去（密码已删 → 之后永远报错），
+   * 甚至把刚清空的本地资产当作空快照推到云端。所以删除后的一切落库都要先看这里。
+   */
+  private readonly removedWorkspaceIds = new Set<string>();
   private readonly clientId: string;
   private readonly clientVersion: string;
   private disposed = false;
@@ -263,12 +271,15 @@ export class CloudSyncManager {
       throw new Error("工作区密码不能为空");
     }
 
+    this.removedWorkspaceIds.delete(id);
     await this.deps.storeWorkspacePassword(id, input.workspacePassword);
     this.deps.saveWorkspace(workspace);
     this.deps.saveWorkspaceRepoLocalState(makeDefaultLocalState(id));
     if (workspace.enabled) {
       this.startRuntime(workspace);
-      await this.syncNow(id);
+      // 首轮同步不阻塞“添加”：服务端不可达时一次请求要等满 30s，弹窗会像卡死一样转圈。
+      // 结果通过 status 事件回到面板（syncing → synced / error）。
+      void this.syncNow(id).catch(() => undefined);
     }
 
     this.broadcastManagerStatus();
@@ -319,6 +330,7 @@ export class CloudSyncManager {
       return;
     }
 
+    this.removedWorkspaceIds.add(workspaceId);
     this.stopRuntime(workspaceId);
     await this.clearWorkspaceMaterializedData(workspaceId);
     await this.deps.deleteWorkspacePassword(workspaceId);
@@ -428,7 +440,10 @@ export class CloudSyncManager {
     this.runtimes.delete(workspaceId);
   }
 
-  private scheduleWorkspaceSync(workspace: CloudSyncWorkspaceProfile): void {
+  private scheduleWorkspaceSync(
+    workspace: CloudSyncWorkspaceProfile,
+    delayMs = Math.max(10, workspace.pullIntervalSec) * 1000
+  ): void {
     const runtime = this.runtimes.get(workspace.id);
     if (!runtime || this.disposed || !workspace.enabled) {
       return;
@@ -437,17 +452,20 @@ export class CloudSyncManager {
       clearTimeout(runtime.timer);
     }
 
-    runtime.timer = setTimeout(
-      () => {
-        void this.syncNow(workspace.id).finally(() => {
-          const refreshed = this.deps.listWorkspaces().find((item) => item.id === workspace.id);
-          if (refreshed) {
-            this.scheduleWorkspaceSync(refreshed);
-          }
-        });
-      },
-      Math.max(10, workspace.pullIntervalSec) * 1000
-    );
+    runtime.timer = setTimeout(() => {
+      void this.syncNow(workspace.id).finally(() => {
+        const refreshed = this.deps.listWorkspaces().find((item) => item.id === workspace.id);
+        if (refreshed) {
+          this.scheduleWorkspaceSync(refreshed);
+        }
+      });
+    }, delayMs);
+  }
+
+  private throwIfRemoved(workspaceId: string): void {
+    if (this.removedWorkspaceIds.has(workspaceId)) {
+      throw WORKSPACE_REMOVED;
+    }
   }
 
   private getWorkspaceStatus(workspace: CloudSyncWorkspaceProfile): WorkspaceRepoStatus {
@@ -482,7 +500,7 @@ export class CloudSyncManager {
     workspace: CloudSyncWorkspaceProfile,
     mode?: CloudSyncSyncMode
   ): Promise<void> {
-    if (!workspace.enabled) {
+    if (!workspace.enabled || this.removedWorkspaceIds.has(workspace.id)) {
       return;
     }
 
@@ -492,10 +510,15 @@ export class CloudSyncManager {
       diverged: false
     };
     this.runtimes.set(workspace.id, runtime);
-    if (runtime.syncing) {
-      return;
-    }
-    if (!mode && Date.now() - runtime.lastManualSyncAt < SYNC_NOW_MIN_INTERVAL_MS) {
+    if (
+      runtime.syncing ||
+      (!mode && Date.now() - runtime.lastManualSyncAt < SYNC_NOW_MIN_INTERVAL_MS)
+    ) {
+      // 不能直接丢弃：本地改动触发的同步若落在这 5s 里被丢掉，要等到下一个拉取周期
+      // （最长 24h）才会推上去。改成推后到窗口结束再跑一次。
+      if (!mode) {
+        this.scheduleWorkspaceSync(workspace, SYNC_NOW_MIN_INTERVAL_MS);
+      }
       return;
     }
 
@@ -509,6 +532,7 @@ export class CloudSyncManager {
       const localState =
         this.deps.getWorkspaceRepoLocalState(workspace.id) ?? makeDefaultLocalState(workspace.id);
       const resolve = await this.api.resolve(credentials);
+      this.throwIfRemoved(workspace.id);
       const remoteVersion = resolve.headCommitId ?? undefined;
       const commandsVersion = resolve.commandsVersion ?? undefined;
       if (
@@ -572,6 +596,9 @@ export class CloudSyncManager {
       });
       this.deps.broadcastApplied(workspace.id);
     } catch (error) {
+      if (this.removedWorkspaceIds.has(workspace.id)) {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       const localState =
         this.deps.getWorkspaceRepoLocalState(workspace.id) ?? makeDefaultLocalState(workspace.id);
@@ -671,6 +698,7 @@ export class CloudSyncManager {
     remoteVersion?: string
   ): Promise<WorkspaceSyncResult> {
     const response = await this.api.pull(credentials, localState.remoteVersion);
+    this.throwIfRemoved(workspace.id);
     const nextRemoteVersion = response.headCommitId ?? remoteVersion;
     if (response.unchanged || !response.snapshot) {
       return {
@@ -707,6 +735,7 @@ export class CloudSyncManager {
         baseHeadCommitId,
         snapshot: localSnapshot
       });
+      this.throwIfRemoved(workspace.id);
       if (response.status === "accepted") {
         return {
           ...localState,
@@ -766,6 +795,7 @@ export class CloudSyncManager {
         credentials,
         localState.remoteCommandsVersion ?? null
       );
+      this.throwIfRemoved(workspace.id);
       if (response.status === "changed") {
         this.deps.replaceWorkspaceCommands(
           workspace.id,
@@ -822,6 +852,8 @@ export class CloudSyncManager {
     workspacePassword: string
   ): Promise<WorkspaceRepoSnapshot> {
     const workspaceId = workspace.id;
+    // 删除流程已把本地资产清空，这里再往下走就是把一份空快照推上云端。
+    this.throwIfRemoved(workspaceId);
     const scopeKey = buildScopeKey({
       kind: "cloud",
       apiBaseUrl: workspace.apiBaseUrl,
