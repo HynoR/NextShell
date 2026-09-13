@@ -501,6 +501,16 @@ describe("toolbars", () => {
     expect(html).toContain('aria-label="更多"');
   });
 
+  // 站在空工作区里要能一眼看到“把本地服务器搬进来”的入口；本地作用域下它没有意义，不该出现。
+  test("ManagerToolbar shows the copy-from-local entry only when given", () => {
+    const cloud = renderToStaticMarkup(
+      <ManagerToolbar {...toolbarProps} importDisabled onCopyFromLocal={() => undefined} />
+    );
+    expect(cloud).toContain("从本地复制");
+    const local = renderToStaticMarkup(<ManagerToolbar {...toolbarProps} />);
+    expect(local).not.toContain("从本地复制");
+  });
+
   // 云作用域下导入执行链路只写本地，入口必须整体禁用而不是静默落本地。
   test("ManagerToolbar disables the import entry when the scope cannot be imported into", () => {
     const html = renderToStaticMarkup(
@@ -530,7 +540,7 @@ describe("toolbars", () => {
     );
     expect(html).toContain("已选 3");
     expect(html).toContain("绑定认证");
-    expect(html).toContain("复制到作用域");
+    expect(html).toContain("复制到工作区");
   });
 
   test("ScopeBar lists local plus every workspace", () => {

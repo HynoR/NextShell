@@ -1,5 +1,15 @@
 /* Reset — body, #root, .app-shell, wallpaper layer */
 /* ── Reset ───────────────────────────────────────────────── */
+/* 桌面壳层：文档本身永远不该出现滚动条。Windows 的经典滚动条占 17px，一旦 body 因为
+   某个挂在 body 上的浮层（antd 弹层在对齐前后都可能短暂越界）出现纵向滚动条，
+   `100vw` 的 #root 就比视口宽 17px → 再冒出横向滚动条 → 视口高度又变 → 布局来回抖。
+   macOS 的覆盖式滚动条不占位，所以在 mac 上永远看不到这个现象。 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   font-family: var(--sans);
@@ -10,8 +20,8 @@ body {
 }
 
 #root {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
 }
 
 .app-shell {

@@ -1,5 +1,6 @@
 import type { ConnectionProfile } from "@nextshell/core";
 import type { ConnectionUpsertInput } from "@nextshell/shared";
+import type { ManagerScope } from "./scopes";
 
 /**
  * 移动连接没有轻量通道,只能走 `connection.upsert` 的全量 payload。全量的意思是:
@@ -75,6 +76,35 @@ export const describeMoveOutcome = ({ moved, failed, targetLabel }: MoveOutcome)
     { done: moved, failed, targetLabel },
     { verb: "移动", strandedNote: "失败的仍在原位" }
   );
+
+/**
+ * 逐条复制到目标作用域。首错就整个 catch 掉的话，用户既不知道已经进去了几个，也不知道
+ * 要不要重来——只能自己去目标作用域里数。所以逐条 try/catch 计数，最后如实报数。
+ * 「复制到…」与「从本地复制…」两个弹窗共用这一条循环。
+ */
+export const copyConnectionsToScope = async (
+  connectionIds: readonly string[],
+  target: ManagerScope,
+  targetFolderId: string | undefined
+): Promise<{ copied: number; failed: number; failure: unknown }> => {
+  let copied = 0;
+  let failure: unknown;
+  for (const sourceId of connectionIds) {
+    try {
+      await window.nextshell.resourceOps.copyConnection({
+        sourceId,
+        targetOriginKind: target.kind,
+        targetWorkspaceId: target.workspaceId,
+        // 传 id 而不是名字：嵌套目录 a/b 只传 "b" 会落到目标域的另一个位置（或根）。
+        targetFolderId
+      });
+      copied += 1;
+    } catch (error) {
+      failure = error;
+    }
+  }
+  return { copied, failed: connectionIds.length - copied, failure };
+};
 
 /** 跨作用域复制走的是另一条 IPC(要重建密钥),但"成功一半"的报数口径和移动一致。 */
 export const describeCopyOutcome = ({ copied, failed, targetLabel }: CopyOutcome): string =>

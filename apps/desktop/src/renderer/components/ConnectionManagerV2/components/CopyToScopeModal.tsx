@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App as AntdApp, Modal, Select } from "antd";
 import type { ConnectionFolder } from "@nextshell/core";
 import { formatErrorMessage } from "../../../utils/errorMessage";
-import { describeCopyOutcome } from "../utils/connectionMove";
+import { copyConnectionsToScope, describeCopyOutcome } from "../utils/connectionMove";
 import { buildFolderPathLabels } from "../utils/folderTree";
 import type { ManagerScope } from "../utils/scopes";
 
@@ -74,58 +74,30 @@ export const CopyToScopeModal = ({
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [folders]);
 
-  /**
-   * 逐条复制。和拖拽移动一样会出现"成功一半":首错就整个 catch 掉的话，用户既不知道
-   * 已经进去了几个，也不知道要不要重来——只能自己去目标作用域里数。所以逐条 try/catch
-   * 计数，最后如实报数。
-   */
   const handleCopy = async () => {
     if (!target) {
       return;
     }
     setCopying(true);
-    let copied = 0;
-    let failure: unknown;
-    try {
-      for (const sourceId of connectionIds) {
-        try {
-          await window.nextshell.resourceOps.copyConnection({
-            sourceId,
-            targetOriginKind: target.kind,
-            targetWorkspaceId: target.workspaceId,
-            // 传 id 而不是名字：嵌套目录 a/b 只传 "b" 会落到目标域的另一个位置（或根）。
-            targetFolderId: folderId
-          });
-          copied += 1;
-        } catch (error) {
-          failure = error;
-        }
-      }
-    } finally {
-      setCopying(false);
-    }
-
-    const failed = connectionIds.length - copied;
+    const outcome = await copyConnectionsToScope(connectionIds, target, folderId).finally(() =>
+      setCopying(false)
+    );
     // 哪怕只成功了一条，目标域的列表也已经变了，必须刷新。
     await onCopied();
-    if (failed === 0) {
-      message.success(describeCopyOutcome({ copied, failed, targetLabel: target.label }));
+    const summary = describeCopyOutcome({ ...outcome, targetLabel: target.label });
+    if (outcome.failed === 0) {
+      message.success(summary);
       onClose();
       return;
     }
     // 有失败就不关弹窗：目标作用域/目录还留在原处，用户可以直接重试。
-    message.error(
-      `${describeCopyOutcome({ copied, failed, targetLabel: target.label })}：${formatErrorMessage(
-        failure,
-        "请稍后重试"
-      )}`
-    );
+    message.error(`${summary}：${formatErrorMessage(outcome.failure, "请稍后重试")}`);
   };
 
   return (
     <Modal
       open={open}
-      title="复制到作用域"
+      title="复制到工作区 / 本地"
       okText="复制"
       cancelText="取消"
       confirmLoading={copying}
@@ -145,7 +117,7 @@ export const CopyToScopeModal = ({
           description="作用域之间不共享密钥与代理：目标域里会建立副本，私钥认证的连接可能需要在目标域重新绑定密钥。原连接保持不变。"
         />
         <label className="cm2-modal-field">
-          <span>目标作用域</span>
+          <span>复制到</span>
           <Select
             value={targetKey}
             onChange={(value) => {

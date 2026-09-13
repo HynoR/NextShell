@@ -25,6 +25,7 @@ import { ManagerToolbar } from "./components/ManagerToolbar";
 import { BulkBar } from "./components/BulkBar";
 import { PointerMenu, type PointerMenuItem } from "./components/PointerMenu";
 import { CopyToScopeModal } from "./components/CopyToScopeModal";
+import { CopyFromLocalModal } from "./components/CopyFromLocalModal";
 import { SshKeyPane } from "./components/SshKeyPane";
 import { InlineSshKeyModal } from "./components/InlineSshKeyModal";
 import { ProxyPane } from "./components/ProxyPane";
@@ -38,6 +39,7 @@ import { ConnectionImportModal } from "../ConnectionImportModal";
 import type { SettingsSection } from "../settings-center/types";
 
 import { useManagerScope } from "./hooks/useManagerScope";
+import { LOCAL_SCOPE } from "./utils/scopes";
 import { buildBreadcrumb, collectDescendantIds } from "./utils/folderNavigation";
 import { buildConnectionRow, filterConnectionRows } from "./utils/connectionRows";
 import { buildGridSections, collectGridConnectionIds, type GridViewMode } from "./utils/gridItems";
@@ -139,6 +141,7 @@ export const ConnectionManagerV2 = ({
     items: PointerMenuItem[];
   } | null>(null);
   const [copyTarget, setCopyTarget] = useState<string[] | null>(null);
+  const [copyFromLocalOpen, setCopyFromLocalOpen] = useState(false);
   const [batchAuthTarget, setBatchAuthTarget] = useState<BatchAuthTarget | null>(null);
   const [inlineKeyOpen, setInlineKeyOpen] = useState(false);
   const editorRef = useRef<ConnectionEditorHandle | null>(null);
@@ -280,6 +283,11 @@ export const ConnectionManagerV2 = ({
   const scopedConnections = useMemo(
     () => connections.filter((item) => resourceMatchesOriginScope(item, scope.activeScope.key)),
     [connections, scope.activeScope.key]
+  );
+  // 「从本地复制…」的候选源，只在云作用域用到。
+  const localConnections = useMemo(
+    () => connections.filter((item) => resourceMatchesOriginScope(item, LOCAL_SCOPE.key)),
+    [connections]
   );
   const scopedSshKeys = useMemo(
     () => sshKeys.filter((item) => resourceMatchesOriginScope(item, scope.activeScope.key)),
@@ -574,7 +582,7 @@ export const ConnectionManagerV2 = ({
         },
         copyToScope: {
           key: "copyToScope",
-          label: "复制到作用域…",
+          label: "复制到工作区 / 本地…",
           icon: "ri-file-copy-line",
           onSelect: () => setCopyTarget(plan.affectedIds)
         },
@@ -1390,7 +1398,8 @@ export const ConnectionManagerV2 = ({
                   void importFlow.handleImportFinalShellDirectory()
                 }
                 importDisabled={importLocked}
-                importDisabledReason="导入目前仅支持本地作用域，请先切换"
+                importDisabledReason="文件导入只写本地作用域；要把本地服务器搬进工作区，用「从本地复制…」"
+                onCopyFromLocal={importLocked ? () => setCopyFromLocalOpen(true) : undefined}
                 onExportAllToFile={() => void handleExportAll()}
                 onExportAllToDirectory={() =>
                   handleExport(scopedConnections.map((item) => item.id))
@@ -1428,7 +1437,9 @@ export const ConnectionManagerV2 = ({
                   searching
                     ? "没有匹配的连接"
                     : gridView === "recent"
-                      ? "还没有可显示的连接"
+                      ? importLocked
+                        ? "工作区还是空的：点工具栏「从本地复制…」把本地服务器搬进来"
+                        : "还没有可显示的连接"
                       : "此目录为空"
                 }
                 selectedIds={selectedIds}
@@ -1581,6 +1592,15 @@ export const ConnectionManagerV2 = ({
         scopes={scope.scopes}
         currentScopeKey={scope.activeScope.key}
         onClose={() => setCopyTarget(null)}
+        onCopied={onReloadConnections}
+      />
+      <CopyFromLocalModal
+        open={copyFromLocalOpen}
+        sources={localConnections}
+        target={scope.activeScope}
+        folders={scope.folders}
+        defaultFolderId={scope.currentFolderId}
+        onClose={() => setCopyFromLocalOpen(false)}
         onCopied={onReloadConnections}
       />
     </Modal>

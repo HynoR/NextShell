@@ -36,7 +36,7 @@ export const BulkBar = ({
         icon={<i className="ri-file-copy-line" aria-hidden="true" />}
         onClick={onCopyToScope}
       >
-        复制到作用域…
+        复制到工作区 / 本地…
       </Button>
       <Button
         size="small"

@@ -17,6 +17,8 @@ interface ManagerToolbarProps {
   /** 云作用域下为 true：导入执行链路只写本地。 */
   importDisabled?: boolean;
   importDisabledReason?: string;
+  /** 只在云作用域出现：把本地服务器复制进当前工作区。 */
+  onCopyFromLocal?: () => void;
   /** 单个 JSON 文件——"发一份给同事"的形态。 */
   onExportAllToFile: () => void;
   /** 一个目录、每连接一个文件——批量归档的形态。 */
@@ -45,6 +47,7 @@ export const ManagerToolbar = ({
   onImportFinalShellDirectory,
   importDisabled = false,
   importDisabledReason,
+  onCopyFromLocal,
   onExportAllToFile,
   onExportAllToDirectory,
   onOpenCloudSync,
@@ -107,6 +110,14 @@ export const ManagerToolbar = ({
       >
         新建连接
       </Button>
+      {onCopyFromLocal ? (
+        <Button
+          icon={<i className="ri-file-copy-line" aria-hidden="true" />}
+          onClick={onCopyFromLocal}
+        >
+          从本地复制…
+        </Button>
+      ) : null}
       <Tooltip title="本地终端：打开一个本机 shell 标签">
         <Button
           icon={<i className="ri-terminal-box-line" aria-hidden="true" />}
