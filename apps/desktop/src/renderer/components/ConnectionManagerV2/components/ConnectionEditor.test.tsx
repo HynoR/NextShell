@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { EDITOR_SECTION_BY_FIELD, resolveEditorErrorSection } from "./ConnectionEditor";
+import {
+  EDITOR_SECTION_BY_FIELD,
+  resolveEditorErrorSection,
+  withConnectionId
+} from "./ConnectionEditor";
 
 describe("resolveEditorErrorSection", () => {
   test("把折叠区内的出错字段映射到它所在的区块", () => {
@@ -32,5 +36,23 @@ describe("resolveEditorErrorSection", () => {
     expect(new Set(Object.values(EDITOR_SECTION_BY_FIELD))).toEqual(
       new Set(["security", "network", "terminal", "meta"])
     );
+  });
+});
+
+describe("withConnectionId", () => {
+  test("编辑态补回未注册的当前连接 id", () => {
+    const values = { name: "renamed" } as Parameters<typeof withConnectionId>[0];
+
+    expect(withConnectionId(values, "11111111-1111-4111-8111-111111111111").id).toBe(
+      "11111111-1111-4111-8111-111111111111"
+    );
+  });
+
+  test("新建或已有 id 时不覆盖表单中的 id", () => {
+    const id = "22222222-2222-4222-8222-222222222222";
+    const values = { id } as Parameters<typeof withConnectionId>[0];
+
+    expect(withConnectionId(values, "11111111-1111-4111-8111-111111111111").id).toBe(id);
+    expect(withConnectionId(values).id).toBe(id);
   });
 });

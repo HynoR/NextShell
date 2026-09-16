@@ -14,6 +14,15 @@ export interface ConnectionEditorValues extends ConnectionUpsertInput {
   folderId?: string;
 }
 
+/** Antd 只提交已注册字段；编辑态的 id 来自当前连接快照，需要在提交前补回。 */
+export const withConnectionId = (
+  values: ConnectionEditorValues,
+  connectionId?: string
+): ConnectionEditorValues => ({
+  ...values,
+  id: values.id ?? connectionId
+});
+
 /** 保存后是否顺带开会话。「保存并连接」与双击行同语义：成功即关闭整个管理器。 */
 export type ConnectionEditorSubmitIntent = "save" | "saveAndConnect";
 
@@ -127,6 +136,7 @@ export const ConnectionEditor = ({
   editorRef
 }: ConnectionEditorProps) => {
   const [form] = Form.useForm<ConnectionEditorValues>();
+  const connectionId = connection?.id;
   // 首帧就用 `initialValues` 给全值，而不是等 effect 里 setFieldsValue：后者会先渲染一遍空表单，
   // 也让 authType 的分支在首帧走错。调用方按连接 id 重挂载本组件来切换目标。
   const initialValues = useMemo<ConnectionEditorValues>(
@@ -216,11 +226,11 @@ export const ConnectionEditor = ({
     setPressedIntent("saveAndConnect");
     form
       .validateFields()
-      .then((values) => onSubmit(values, "saveAndConnect"))
+      .then((values) => onSubmit(withConnectionId(values, connectionId), "saveAndConnect"))
       .catch((info: { errorFields?: EditorErrorField[] }) =>
         focusFirstError(info?.errorFields ?? [])
       );
-  }, [focusFirstError, form, onSubmit]);
+  }, [connectionId, focusFirstError, form, onSubmit]);
 
   return (
     <Form
@@ -232,7 +242,7 @@ export const ConnectionEditor = ({
       onValuesChange={() => onDirtyChange?.(true)}
       onFinish={(values) => {
         setPressedIntent("save");
-        onSubmit(values, "save");
+        onSubmit(withConnectionId(values, connectionId), "save");
       }}
       onFinishFailed={(info) => {
         setPressedIntent("save");
