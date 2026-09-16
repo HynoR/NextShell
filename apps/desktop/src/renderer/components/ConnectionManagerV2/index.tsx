@@ -821,6 +821,7 @@ export const ConnectionManagerV2 = ({
 
   const handleFolderContextMenu = useCallback(
     (event: MouseEvent, folder: ConnectionFolder) => {
+      event.preventDefault();
       setContextMenu({
         x: event.clientX,
         y: event.clientY,
