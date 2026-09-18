@@ -35,6 +35,7 @@ const canRunZsh = (() => {
 // silently corrupts the installed file rather than failing loudly. So run the
 // generated command for real against a throwaway HOME and diff the result.
 const canRunPosixShell = process.platform !== "win32" && existsSync("/bin/sh");
+const normalizeLineEndings = (text: string): string => text.replace(/\r\n?/g, "\n");
 
 describe.skipIf(!canRunPosixShell)("generated install command", () => {
   const home = mkdtempSync(path.join(tmpdir(), "nextshell-shell-integration-"));
@@ -48,7 +49,7 @@ describe.skipIf(!canRunPosixShell)("generated install command", () => {
       env: { ...process.env, HOME: home }
     }).toString();
 
-  test("installs every script byte-identically", () => {
+  test("installs every script with normalized line endings", () => {
     runInHome(buildInstallCommand(SHELL_INTEGRATION_FAMILIES));
 
     for (const family of SHELL_INTEGRATION_FAMILIES) {
@@ -56,7 +57,8 @@ describe.skipIf(!canRunPosixShell)("generated install command", () => {
         path.join(home, ".cache/nextshell", `nextshell-shell-integration.${family}`),
         "utf-8"
       );
-      expect(installed).toBe(shellIntegrationScriptText(family));
+      expect(installed).toBe(normalizeLineEndings(shellIntegrationScriptText(family)));
+      expect(installed).not.toContain("\r");
     }
   });
 
@@ -68,7 +70,7 @@ describe.skipIf(!canRunPosixShell)("generated install command", () => {
       path.join(home, ".cache/nextshell", "nextshell-shell-integration.sh"),
       "utf-8"
     );
-    expect(installed).toBe(shellIntegrationScriptText("sh"));
+    expect(installed).toBe(normalizeLineEndings(shellIntegrationScriptText("sh")));
   });
 
   test("leaves no staging files behind in the cache dir", () => {
@@ -119,7 +121,9 @@ describe.skipIf(!canRunPosixShell)("generated install command", () => {
       chmodSync(path.dirname(scriptPath), 0o700);
     }
 
-    expect(readFileSync(scriptPath, "utf-8")).toBe(shellIntegrationScriptText("sh"));
+    expect(readFileSync(scriptPath, "utf-8")).toBe(
+      normalizeLineEndings(shellIntegrationScriptText("sh"))
+    );
     expect(readdirSync(path.dirname(scriptPath)).filter((e) => e.includes(".tmp"))).toEqual([]);
   });
 

@@ -27,6 +27,8 @@ const SCRIPT_TEXT_BY_FAMILY: Record<ShellIntegrationFamily, string> = {
   fish: integrationFish
 };
 
+const normalizeLineEndings = (text: string): string => text.replace(/\r\n?/g, "\n");
+
 export const resolveShellFamily = (
   shellPath?: string | null
 ): ShellIntegrationFamily | undefined => {
@@ -246,7 +248,8 @@ export const buildFileInstallScript = (
   const blocks = files.map(({ path, body: text }) => {
     // The heredoc delimiter must sit alone on its line, so guarantee a
     // trailing newline after the script body.
-    const body = text.endsWith("\n") ? text : `${text}\n`;
+    const normalizedText = normalizeLineEndings(text);
+    const body = normalizedText.endsWith("\n") ? normalizedText : `${normalizedText}\n`;
     const tempPath = `${path}.$$.tmp`;
     // The heredoc body starts after the *whole* command line, so the `&&`/`||`
     // tail is allowed to sit next to the `<<` redirection. A failed write must

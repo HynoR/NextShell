@@ -175,6 +175,13 @@ describe("buildInstallScript", () => {
     expect(script).toContain("# fish script\n__NEXTSHELL_INTEGRATION_EOF__");
   });
 
+  test("normalizes Windows line endings before uploading shell scripts", () => {
+    const script = buildInstallScript(["bash"], () => "first\r\nsecond\r\n");
+
+    expect(script).toContain("first\nsecond\n__NEXTSHELL_INTEGRATION_EOF__");
+    expect(script).not.toContain("\r");
+  });
+
   test("writes one block per requested family", () => {
     const script = buildInstallScript(["bash", "fish"], (family) => `# ${family}\n`);
     expect(script).toContain("nextshell-shell-integration.bash");
