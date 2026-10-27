@@ -10,6 +10,7 @@ import type {
   WorkspaceRepoLocalState,
   WorkspaceRepoSnapshot
 } from "@nextshell/core";
+import { encryptWorkspaceSecret } from "@nextshell/security";
 import { CloudSyncManager, type CloudSyncManagerDeps } from "./cloud-sync-manager";
 
 type WorkspaceSyncResult = WorkspaceRepoLocalState & {
@@ -813,6 +814,147 @@ describe("CloudSyncManager applyWorkspaceSnapshot", () => {
     workspacePassword: string,
     snapshot: WorkspaceRepoSnapshot
   ) => Promise<void>;
+
+  test("round-trips monitoring and SSH key metadata", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName
+    });
+    const key: SshKeyProfile = {
+      id: "key-1",
+      name: "Deploy key",
+      keyContentRef: "secret://key-1",
+      keyType: "ssh-ed25519",
+      keyBits: 256,
+      keyComment: "deploy@example.com",
+      fingerprint: "SHA256:fingerprint",
+      publicKeyLine: "ssh-ed25519 AAAA deploy@example.com",
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "key-1",
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: workspace.id
+    };
+    const connection: ConnectionProfile = {
+      id: "connection-1",
+      name: "Prod",
+      host: "prod.example.com",
+      port: 22,
+      username: "root",
+      authType: "privateKey",
+      sshKeyId: key.id,
+      strictHostKeyChecking: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      groupPath: "/workspace/prod-team",
+      tags: [],
+      favorite: false,
+      monitorSession: true,
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "connection-1",
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: workspace.id
+    };
+    const sourceState = createMutableState(workspace, {
+      connections: [connection],
+      sshKeys: [key]
+    });
+    sourceState.credentials.set(key.keyContentRef, "PRIVATE KEY");
+    const source = new CloudSyncManager(createMutableDeps(sourceState));
+    const snapshot = await (
+      source as unknown as {
+        buildWorkspaceSnapshot: (
+          workspace: CloudSyncWorkspaceProfile,
+          workspacePassword: string
+        ) => Promise<WorkspaceRepoSnapshot>;
+      }
+    ).buildWorkspaceSnapshot(workspace, "workspace-password");
+
+    expect(snapshot.connections[0]?.monitorSession).toBe(true);
+    expect(snapshot.sshKeys[0]).toMatchObject({
+      keyType: key.keyType,
+      keyBits: key.keyBits,
+      keyComment: key.keyComment,
+      fingerprint: key.fingerprint,
+      publicKeyLine: key.publicKeyLine
+    });
+
+    const targetState = createMutableState(workspace);
+    const target = new CloudSyncManager(createMutableDeps(targetState));
+    await (target as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      snapshot
+    );
+
+    expect(targetState.connections[0]?.monitorSession).toBe(true);
+    expect(targetState.sshKeys[0]).toMatchObject({
+      keyType: key.keyType,
+      keyBits: key.keyBits,
+      keyComment: key.keyComment,
+      fingerprint: key.fingerprint,
+      publicKeyLine: key.publicKeyLine
+    });
+  });
+
+  test("preserves existing key metadata when pulling a legacy snapshot", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const existingKey: SshKeyProfile = {
+      id: "local-key-1",
+      name: "Deploy key",
+      keyContentRef: "secret://existing-key",
+      keyType: "ssh-ed25519",
+      keyBits: 256,
+      keyComment: "deploy@example.com",
+      fingerprint: "SHA256:fingerprint",
+      publicKeyLine: "ssh-ed25519 AAAA deploy@example.com",
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "key-1",
+      originKind: "cloud",
+      originScopeKey: "cloud-scope",
+      originWorkspaceId: workspace.id
+    };
+    const state = createMutableState(workspace, { sshKeys: [existingKey] });
+    state.credentials.set(existingKey.keyContentRef, "PRIVATE KEY");
+    const manager = new CloudSyncManager(createMutableDeps(state));
+    const privateKey = await encryptWorkspaceSecret("PRIVATE KEY", "workspace-password");
+
+    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      {
+        workspaceId: workspace.id,
+        snapshotId: "legacy-snapshot",
+        createdAt: now,
+        connections: [],
+        sshKeys: [
+          {
+            uuid: "key-1",
+            name: "Deploy key",
+            privateKey,
+            createdAt: now,
+            updatedAt: now
+          }
+        ],
+        proxies: []
+      }
+    );
+
+    expect(state.sshKeys[0]).toMatchObject({
+      keyType: existingKey.keyType,
+      keyBits: existingKey.keyBits,
+      keyComment: existingKey.keyComment,
+      fingerprint: existingKey.fingerprint,
+      publicKeyLine: existingKey.publicKeyLine
+    });
+  });
 
   // folderId 不在线协议里,是本地的目录归属;saveConnection 是全行 upsert,重建 profile 时
   // 漏掉这个键就等于每次 pull 都把云连接的目录清空。

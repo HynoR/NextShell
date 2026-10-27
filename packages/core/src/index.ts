@@ -53,6 +53,7 @@ export interface WorkspaceRepoConnectionSnapshotItem {
   authType: AuthType;
   password?: WorkspaceSecretEnvelopeShape;
   sshKeyUuid?: string;
+  monitorSession?: boolean;
   hostFingerprint?: string;
   strictHostKeyChecking: boolean;
   proxyUuid?: string;
@@ -72,6 +73,11 @@ export interface WorkspaceRepoConnectionSnapshotItem {
 export interface WorkspaceRepoSshKeySnapshotItem {
   uuid: string;
   name: string;
+  keyType?: string;
+  keyBits?: number;
+  keyComment?: string;
+  fingerprint?: string;
+  publicKeyLine?: string;
   privateKey: WorkspaceSecretEnvelopeShape;
   passphrase?: WorkspaceSecretEnvelopeShape;
   createdAt: string;
