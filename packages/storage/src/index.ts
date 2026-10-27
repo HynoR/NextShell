@@ -2729,6 +2729,8 @@ export interface ConnectionFolderRepository {
   /** 省略 scopeKey 时返回全部隔离域的目录。 */
   list: (scopeKey?: string) => ConnectionFolder[];
   getById: (id: string) => ConnectionFolder | undefined;
+  /** Upsert a folder with a stable id received from a workspace snapshot. */
+  save?: (folder: ConnectionFolder) => void;
   create: (input: ConnectionFolderCreateInput) => ConnectionFolder;
   rename: (id: string, name: string) => ConnectionFolder;
   /** parentId 为 undefined 表示移到顶层。跨 scope 与成环都会抛错。 */
@@ -2829,6 +2831,44 @@ export class SQLiteConnectionFolderRepository implements ConnectionFolderReposit
       .prepare(`SELECT ${FOLDER_COLUMNS} FROM connection_folders WHERE id = ?`)
       .get(id) as ConnectionFolderRow | undefined;
     return row ? rowToConnectionFolder(row) : undefined;
+  }
+
+  save(folder: ConnectionFolder): void {
+    const name = normalizeFolderName(folder.name);
+    const existing = this.getById(folder.id);
+    if (existing && existing.scopeKey !== folder.scopeKey) {
+      throw new Error("目录不能跨来源范围覆盖");
+    }
+    if (folder.parentId) {
+      const parent = this.getById(folder.parentId);
+      if (!parent || parent.scopeKey !== folder.scopeKey) {
+        throw new Error("目标目录不存在或不属于同一来源范围");
+      }
+      assertFolderMoveAllowed({ ...folder, name }, folder.parentId, (candidate) =>
+        this.getById(candidate)
+      );
+    }
+    this.db
+      .prepare(
+        `INSERT INTO connection_folders (${FOLDER_COLUMNS})
+         VALUES (@id, @scope_key, @parent_id, @name, @sort_index, @created_at, @updated_at)
+         ON CONFLICT(id) DO UPDATE SET
+           scope_key = excluded.scope_key,
+           parent_id = excluded.parent_id,
+           name = excluded.name,
+           sort_index = excluded.sort_index,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`
+      )
+      .run({
+        id: folder.id,
+        scope_key: folder.scopeKey,
+        parent_id: folder.parentId ?? null,
+        name: name,
+        sort_index: folder.sortIndex,
+        created_at: folder.createdAt,
+        updated_at: folder.updatedAt
+      });
   }
 
   private getOrThrow(id: string): ConnectionFolder {

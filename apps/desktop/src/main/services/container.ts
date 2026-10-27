@@ -614,6 +614,9 @@ export const createServiceContainer = async (
     listConnections: () => connections.list({}),
     saveConnection: (conn) => connections.save(conn),
     removeConnection: (id) => connections.remove(id),
+    listWorkspaceFolders: (scopeKey) => folderRepo.list(scopeKey),
+    saveWorkspaceFolder: (folder) => folderRepo.save?.(folder),
+    removeWorkspaceFolder: (id) => folderRepo.remove(id),
     listSshKeys: () => sshKeyRepo.list(),
     saveSshKey: (key) => sshKeyRepo.save(key),
     removeSshKey: (id) => sshKeyRepo.remove(id),
@@ -666,7 +669,8 @@ export const createServiceContainer = async (
   const folderSvc = new ConnectionFolderService({
     folders: folderRepo,
     connections,
-    listCloudWorkspaces: () => cloudSyncManager?.listWorkspaces() ?? []
+    listCloudWorkspaces: () => cloudSyncManager?.listWorkspaces() ?? [],
+    markWorkspaceDirty: (scopeKey) => cloudSyncManager?.pushFolderMutation(scopeKey)
   });
 
   // Resource Operations Service

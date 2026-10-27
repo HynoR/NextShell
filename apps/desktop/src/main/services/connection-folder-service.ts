@@ -28,6 +28,8 @@ export interface ConnectionFolderServiceOptions {
    * 惰性取:CloudSyncManager 在容器里晚于目录仓储构造。
    */
   listCloudWorkspaces: () => CloudSyncWorkspaceProfile[];
+  /** Trigger a cloud workspace sync after a directory mutation. */
+  markWorkspaceDirty?: (scopeKey: string) => void;
 }
 
 /**
@@ -52,26 +54,39 @@ export class ConnectionFolderService implements ConnectionFolderRepository {
     return this.options.folders.getById(id);
   }
 
+  save(folder: ConnectionFolder): void {
+    if (!this.options.folders.save) {
+      throw new Error("当前目录仓储不支持同步写入");
+    }
+    this.options.folders.save(folder);
+  }
+
   /** 新目录里一条连接都没有,投影不变。 */
   create(input: ConnectionFolderCreateInput): ConnectionFolder {
-    return this.options.folders.create(input);
+    const folder = this.options.folders.create(input);
+    this.options.markWorkspaceDirty?.(folder.scopeKey);
+    return folder;
   }
 
   rename(id: string, name: string): ConnectionFolder {
     const folder = this.options.folders.rename(id, name);
     this.reprojectScope(folder.scopeKey);
+    this.options.markWorkspaceDirty?.(folder.scopeKey);
     return folder;
   }
 
   move(id: string, parentId: string | undefined): ConnectionFolder {
     const folder = this.options.folders.move(id, parentId);
     this.reprojectScope(folder.scopeKey);
+    this.options.markWorkspaceDirty?.(folder.scopeKey);
     return folder;
   }
 
   /** 排序不进 groupPath(投影只由目录名链决定),不重投影。 */
   reorder(id: string, sortIndex: number): ConnectionFolder {
-    return this.options.folders.reorder(id, sortIndex);
+    const folder = this.options.folders.reorder(id, sortIndex);
+    this.options.markWorkspaceDirty?.(folder.scopeKey);
+    return folder;
   }
 
   remove(id: string): void {
@@ -83,6 +98,7 @@ export class ConnectionFolderService implements ConnectionFolderRepository {
     }
     this.options.connections.invalidateConnections();
     this.reprojectScope(folder.scopeKey);
+    this.options.markWorkspaceDirty?.(folder.scopeKey);
   }
 
   countConnections(id: string): number {

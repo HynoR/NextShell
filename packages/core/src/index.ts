@@ -53,6 +53,7 @@ export interface WorkspaceRepoConnectionSnapshotItem {
   authType: AuthType;
   password?: WorkspaceSecretEnvelopeShape;
   sshKeyUuid?: string;
+  folderUuid?: string;
   hostFingerprint?: string;
   strictHostKeyChecking: boolean;
   proxyUuid?: string;
@@ -65,6 +66,15 @@ export interface WorkspaceRepoConnectionSnapshotItem {
   tags: string[];
   notes?: string;
   favorite: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceRepoFolderSnapshotItem {
+  uuid: string;
+  parentUuid?: string;
+  name: string;
+  sortIndex: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -95,6 +105,8 @@ export interface WorkspaceRepoSnapshot {
   snapshotId: string;
   createdAt: string;
   connections: WorkspaceRepoConnectionSnapshotItem[];
+  /** Optional for compatibility with snapshots written before directory sync existed. */
+  folders?: WorkspaceRepoFolderSnapshotItem[];
   sshKeys: WorkspaceRepoSshKeySnapshotItem[];
   proxies: WorkspaceRepoProxySnapshotItem[];
 }

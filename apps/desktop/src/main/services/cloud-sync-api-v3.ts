@@ -24,6 +24,7 @@ const repoConnectionSchema = z.object({
   authType: z.enum(["password", "privateKey", "agent", "interactive"]),
   password: workspaceSecretEnvelopeSchema.optional(),
   sshKeyUuid: z.string().optional(),
+  folderUuid: z.string().optional(),
   hostFingerprint: z.string().optional(),
   strictHostKeyChecking: z.boolean(),
   proxyUuid: z.string().optional(),
@@ -36,6 +37,15 @@ const repoConnectionSchema = z.object({
   tags: z.array(z.string()).default([]),
   notes: z.string().optional(),
   favorite: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+const repoFolderSchema = z.object({
+  uuid: z.string(),
+  parentUuid: z.string().optional(),
+  name: z.string(),
+  sortIndex: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -66,6 +76,7 @@ const repoSnapshotSchema = z.object({
   snapshotId: z.string(),
   createdAt: z.string(),
   connections: z.array(repoConnectionSchema).default([]),
+  folders: z.array(repoFolderSchema).optional(),
   sshKeys: z.array(repoSshKeySchema).default([]),
   proxies: z.array(repoProxySchema).default([])
 });

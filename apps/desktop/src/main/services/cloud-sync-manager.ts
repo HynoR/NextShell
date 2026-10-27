@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { CloudSyncWorkspaceTokenDraft } from "@nextshell/shared";
 import type {
   CloudSyncWorkspaceProfile,
+  ConnectionFolder,
   ConnectionProfile,
   ProxyProfile,
   RecycleBinEntry,
@@ -12,6 +13,7 @@ import type {
   WorkspaceRepoStatus
 } from "@nextshell/core";
 import { buildResourceId, buildScopeKey, LOCAL_DEFAULT_SCOPE_KEY } from "@nextshell/core";
+import { parseGroupPathSegments } from "@nextshell/shared";
 import { decryptWorkspaceSecret, encryptWorkspaceSecret } from "@nextshell/security";
 import { CloudSyncApiV3Client, type CloudSyncApiV3Credentials } from "./cloud-sync-api-v3";
 import {
@@ -55,6 +57,10 @@ export interface CloudSyncManagerDeps {
   listConnections: () => ConnectionProfile[];
   saveConnection: (conn: ConnectionProfile) => void;
   removeConnection: (id: string) => void;
+
+  listWorkspaceFolders?: (scopeKey: string) => ConnectionFolder[];
+  saveWorkspaceFolder?: (folder: ConnectionFolder) => void;
+  removeWorkspaceFolder?: (id: string) => void;
 
   listSshKeys: () => SshKeyProfile[];
   saveSshKey: (key: SshKeyProfile) => void;
@@ -412,6 +418,20 @@ export class CloudSyncManager {
       return;
     }
     this.recordWorkspaceMutation(profile.originWorkspaceId);
+  }
+
+  pushFolderMutation(scopeKey: string): void {
+    const workspace = this.deps.listWorkspaces().find(
+      (item) =>
+        buildScopeKey({
+          kind: "cloud",
+          apiBaseUrl: item.apiBaseUrl,
+          workspaceName: item.workspaceName
+        }) === scopeKey
+    );
+    if (workspace) {
+      this.recordWorkspaceMutation(workspace.id);
+    }
   }
 
   markWorkspaceCommandsDirty(workspaceId: string): void {
@@ -826,6 +846,14 @@ export class CloudSyncManager {
   }
 
   private workspaceFingerprint(workspaceId: string): string {
+    const workspace = this.deps.listWorkspaces().find((item) => item.id === workspaceId);
+    const scopeKey = workspace
+      ? buildScopeKey({
+          kind: "cloud",
+          apiBaseUrl: workspace.apiBaseUrl,
+          workspaceName: workspace.workspaceName
+        })
+      : undefined;
     const items: Array<[string, string, string]> = [
       ...this.listWorkspaceConnections(workspaceId).map((item) =>
         fingerprintItem("connection", item.uuidInScope ?? item.id, item.updatedAt)
@@ -835,7 +863,12 @@ export class CloudSyncManager {
       ),
       ...this.listWorkspaceProxies(workspaceId).map((item) =>
         fingerprintItem("proxy", item.uuidInScope ?? item.id, item.updatedAt)
-      )
+      ),
+      ...(scopeKey && this.deps.listWorkspaceFolders
+        ? this.deps
+            .listWorkspaceFolders(scopeKey)
+            .map((item) => fingerprintItem("folder", item.id, item.updatedAt))
+        : [])
     ];
     return hashValue(items.sort(compareFingerprintItems));
   }
@@ -862,6 +895,7 @@ export class CloudSyncManager {
     const sshKeys = this.listWorkspaceSshKeys(workspaceId);
     const proxies = this.listWorkspaceProxies(workspaceId);
     const connections = this.listWorkspaceConnections(workspaceId);
+    const folders = this.deps.listWorkspaceFolders?.(scopeKey);
     const sshKeyById = new Map(sshKeys.map((key) => [key.id, key]));
     const proxyById = new Map(proxies.map((proxy) => [proxy.id, proxy]));
 
@@ -869,6 +903,19 @@ export class CloudSyncManager {
       workspaceId,
       snapshotId: "",
       createdAt: new Date().toISOString(),
+      folders: folders
+        ?.map((folder) => ({
+          uuid: folder.id,
+          parentUuid: folder.parentId,
+          name: folder.name,
+          sortIndex: folder.sortIndex,
+          createdAt: folder.createdAt,
+          updatedAt: folder.updatedAt
+        }))
+        .sort(
+          (left, right) =>
+            left.uuid.localeCompare(right.uuid) || left.name.localeCompare(right.name)
+        ),
       sshKeys: (
         await Promise.all(
           sshKeys.map(async (key) => {
@@ -956,6 +1003,7 @@ export class CloudSyncManager {
               authType: connection.authType,
               password,
               sshKeyUuid: sshKey?.uuidInScope ?? sshKey?.id,
+              folderUuid: connection.folderId,
               hostFingerprint: connection.hostFingerprint,
               strictHostKeyChecking: connection.strictHostKeyChecking,
               proxyUuid: proxy?.uuidInScope ?? proxy?.id,
@@ -978,6 +1026,7 @@ export class CloudSyncManager {
 
     snapshot.snapshotId = hashValue({
       connections: snapshot.connections,
+      folders: snapshot.folders,
       sshKeys: snapshot.sshKeys,
       proxies: snapshot.proxies
     });
@@ -997,6 +1046,7 @@ export class CloudSyncManager {
     const existingKeys = this.listWorkspaceSshKeys(workspace.id);
     const existingProxies = this.listWorkspaceProxies(workspace.id);
     const existingConnections = this.listWorkspaceConnections(workspace.id);
+    const existingFolders = this.deps.listWorkspaceFolders?.(scopeKey) ?? [];
     const keyByUuid = new Map(existingKeys.map((key) => [key.uuidInScope ?? key.id, key]));
     const proxyByUuid = new Map(
       existingProxies.map((proxy) => [proxy.uuidInScope ?? proxy.id, proxy])
@@ -1004,6 +1054,73 @@ export class CloudSyncManager {
     const connectionByUuid = new Map(
       existingConnections.map((connection) => [connection.uuidInScope ?? connection.id, connection])
     );
+    const retainedFolderIds = new Set<string>();
+    const legacyFolderIdsByConnectionUuid = new Map<string, string>();
+
+    if (snapshot.folders !== undefined) {
+      if (!this.deps.saveWorkspaceFolder || !this.deps.removeWorkspaceFolder) {
+        throw new Error("当前目录仓储不支持云同步");
+      }
+      const pending = new Map(snapshot.folders.map((folder) => [folder.uuid, folder]));
+      while (pending.size > 0) {
+        let progressed = false;
+        for (const [uuid, folder] of pending) {
+          if (folder.parentUuid && pending.has(folder.parentUuid)) {
+            continue;
+          }
+          if (folder.parentUuid && !retainedFolderIds.has(folder.parentUuid)) {
+            throw new Error(`目录 ${folder.name} 引用了不存在的父目录`);
+          }
+          this.deps.saveWorkspaceFolder({
+            id: uuid,
+            scopeKey,
+            parentId: folder.parentUuid,
+            name: folder.name,
+            sortIndex: folder.sortIndex,
+            createdAt: folder.createdAt,
+            updatedAt: folder.updatedAt
+          });
+          retainedFolderIds.add(uuid);
+          pending.delete(uuid);
+          progressed = true;
+        }
+        if (!progressed) {
+          throw new Error("云端目录树包含循环引用");
+        }
+      }
+    } else if (this.deps.saveWorkspaceFolder) {
+      // Older snapshots only carried groupPath. Materialize that projection once so
+      // an upgraded device can still see the legacy directory structure.
+      const foldersByParentAndName = new Map(
+        existingFolders.map((folder) => [`${folder.parentId ?? ""}\u0000${folder.name}`, folder])
+      );
+      for (const connection of snapshot.connections) {
+        let parentId: string | undefined;
+        for (const name of parseGroupPathSegments(connection.groupPath, {
+          stripWirePrefix: true
+        })) {
+          const key = `${parentId ?? ""}\u0000${name}`;
+          let folder = foldersByParentAndName.get(key);
+          if (!folder) {
+            folder = {
+              id: randomUUID(),
+              scopeKey,
+              parentId,
+              name,
+              sortIndex: 0,
+              createdAt: connection.createdAt,
+              updatedAt: connection.updatedAt
+            };
+            this.deps.saveWorkspaceFolder(folder);
+            foldersByParentAndName.set(key, folder);
+          }
+          parentId = folder.id;
+        }
+        if (parentId) {
+          legacyFolderIdsByConnectionUuid.set(connection.uuid, parentId);
+        }
+      }
+    }
     const keyIdByUuid = new Map<string, string>();
     const proxyIdByUuid = new Map<string, string>();
     const retainedKeyIds = new Set<string>();
@@ -1091,6 +1208,13 @@ export class CloudSyncManager {
     for (const connection of snapshot.connections) {
       const existing = connectionByUuid.get(connection.uuid);
       const localId = existing?.id ?? randomUUID();
+      if (
+        snapshot.folders !== undefined &&
+        connection.folderUuid &&
+        !retainedFolderIds.has(connection.folderUuid)
+      ) {
+        throw new Error(`连接 ${connection.name} 引用了不存在的目录`);
+      }
       const password = connection.password
         ? await decryptWorkspaceSecret(
             connection.password as Parameters<typeof decryptWorkspaceSecret>[0],
@@ -1122,7 +1246,10 @@ export class CloudSyncManager {
         // folderId 不在线协议里,是本地的目录归属。`saveConnection` 是全行 upsert
         // (`folder_id = connection.folderId ?? null`),这里不兜底的话每次 pull 都会把云连接
         // 的目录清空,连接在树上掉回根,而 groupPath 还写着目录名——两边直接分叉。
-        folderId: existing?.folderId,
+        folderId:
+          snapshot.folders !== undefined
+            ? connection.folderUuid
+            : (legacyFolderIdsByConnectionUuid.get(connection.uuid) ?? existing?.folderId),
         tags: [...connection.tags],
         notes: connection.notes,
         favorite: connection.favorite,
@@ -1167,6 +1294,13 @@ export class CloudSyncManager {
       await this.clearCredential(key.keyContentRef);
       await this.clearCredential(key.passphraseRef);
       this.deps.removeSshKey(key.id);
+    }
+    if (snapshot.folders !== undefined) {
+      for (const folder of existingFolders) {
+        if (!retainedFolderIds.has(folder.id)) {
+          this.deps.removeWorkspaceFolder?.(folder.id);
+        }
+      }
     }
   }
 
@@ -1282,6 +1416,17 @@ export class CloudSyncManager {
       await this.clearCredential(key.keyContentRef);
       await this.clearCredential(key.passphraseRef);
       this.deps.removeSshKey(key.id);
+    }
+    const workspace = this.deps.listWorkspaces().find((item) => item.id === workspaceId);
+    if (workspace && this.deps.listWorkspaceFolders && this.deps.removeWorkspaceFolder) {
+      const scopeKey = buildScopeKey({
+        kind: "cloud",
+        apiBaseUrl: workspace.apiBaseUrl,
+        workspaceName: workspace.workspaceName
+      });
+      for (const folder of this.deps.listWorkspaceFolders(scopeKey)) {
+        this.deps.removeWorkspaceFolder(folder.id);
+      }
     }
     this.deps.replaceWorkspaceCommands(workspaceId, []);
   }

@@ -83,6 +83,7 @@ const createWorld = (folders: ConnectionFolder[], connections: ConnectionProfile
   const folderRows = [...folders];
   const connectionRows = connections.map((row) => ({ ...row }));
   const updates: Array<{ id: string; groupPath: string }> = [];
+  const dirtyScopes: string[] = [];
   let cache: ConnectionProfile[] | undefined;
 
   const subtreeIds = (rootId: string): string[] => {
@@ -160,7 +161,8 @@ const createWorld = (folders: ConnectionFolder[], connections: ConnectionProfile
   const service = new ConnectionFolderService({
     folders: folderRepo,
     connections: connectionStore,
-    listCloudWorkspaces: () => [WORKSPACE]
+    listCloudWorkspaces: () => [WORKSPACE],
+    markWorkspaceDirty: (scopeKey) => dirtyScopes.push(scopeKey)
   });
 
   const groupPathOf = (id: string) => connectionRows.find((row) => row.id === id)?.groupPath;
@@ -168,7 +170,16 @@ const createWorld = (folders: ConnectionFolder[], connections: ConnectionProfile
   /** 服务的读口径(带缓存那一层),用来验证级联清空后缓存确实重读过。 */
   const visible = (id: string) => connectionStore.list({}).find((row) => row.id === id);
 
-  return { service, updates, groupPathOf, folderIdOf, visible, folderRows, connectionRows };
+  return {
+    service,
+    updates,
+    dirtyScopes,
+    groupPathOf,
+    folderIdOf,
+    visible,
+    folderRows,
+    connectionRows
+  };
 };
 
 describe("ConnectionFolderService.rename", () => {
@@ -282,5 +293,16 @@ describe("ConnectionFolderService.reorder", () => {
 
     expect(world.updates).toEqual([]);
     expect(world.folderRows[0]?.sortIndex).toBe(3);
+  });
+
+  test("marks a cloud scope dirty after a directory reorder", () => {
+    const world = createWorld(
+      [folder("c-prod", "prod", undefined, CLOUD_SCOPE_KEY)],
+      [connection("cloud-1", "/workspace/team-a/prod", "c-prod", CLOUD_SCOPE_KEY)]
+    );
+
+    world.service.reorder("c-prod", 3);
+
+    expect(world.dirtyScopes).toEqual([CLOUD_SCOPE_KEY]);
   });
 });

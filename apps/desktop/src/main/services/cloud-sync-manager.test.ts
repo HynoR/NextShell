@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { buildScopeKey } from "@nextshell/core";
 import type {
   CloudSyncWorkspaceProfile,
+  ConnectionFolder,
   ConnectionProfile,
   ProxyProfile,
   RecycleBinEntry,
@@ -104,6 +105,7 @@ const repoSnapshot = (
 
 interface MutableCloudSyncState {
   workspace: CloudSyncWorkspaceProfile;
+  folders: ConnectionFolder[];
   password?: string;
   connections: ConnectionProfile[];
   sshKeys: SshKeyProfile[];
@@ -119,6 +121,7 @@ const createMutableState = (
   overrides: Partial<MutableCloudSyncState> = {}
 ): MutableCloudSyncState => ({
   workspace,
+  folders: [],
   password: "workspace-password",
   connections: [],
   sshKeys: [],
@@ -136,6 +139,14 @@ const createMutableDeps = (state: MutableCloudSyncState): CloudSyncManagerDeps =
   },
   removeConnection: (id): void => {
     state.connections = state.connections.filter((item) => item.id !== id);
+  },
+  listWorkspaceFolders: (scopeKey): ConnectionFolder[] =>
+    state.folders.filter((folder) => folder.scopeKey === scopeKey),
+  saveWorkspaceFolder: (folder): void => {
+    state.folders = [...state.folders.filter((item) => item.id !== folder.id), folder];
+  },
+  removeWorkspaceFolder: (id): void => {
+    state.folders = state.folders.filter((folder) => folder.id !== id);
   },
   listSshKeys: (): SshKeyProfile[] => state.sshKeys,
   saveSshKey: (key): void => {
@@ -805,6 +816,36 @@ describe("CloudSyncManager workspace repo sync", () => {
 
     expect(after).not.toBe(before);
   });
+
+  test("bumping a folder's updatedAt changes the fingerprint", () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName
+    });
+    const state = createMutableState(workspace, {
+      folders: [
+        {
+          id: "folder-1",
+          scopeKey,
+          name: "prod",
+          sortIndex: 0,
+          createdAt: now,
+          updatedAt: now
+        }
+      ]
+    });
+    const manager = new CloudSyncManager(createMutableDeps(state)) as unknown as {
+      workspaceFingerprint: (workspaceId: string) => string;
+    };
+    const before = manager.workspaceFingerprint(workspace.id);
+
+    state.folders = [{ ...state.folders[0]!, updatedAt: "2026-03-16T00:00:00.000Z" }];
+    const after = manager.workspaceFingerprint(workspace.id);
+
+    expect(after).not.toBe(before);
+  });
 });
 
 describe("CloudSyncManager applyWorkspaceSnapshot", () => {
@@ -813,6 +854,104 @@ describe("CloudSyncManager applyWorkspaceSnapshot", () => {
     workspacePassword: string,
     snapshot: WorkspaceRepoSnapshot
   ) => Promise<void>;
+
+  test("round-trips workspace folders and connection folder assignments", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const scopeKey = buildScopeKey({
+      kind: "cloud",
+      apiBaseUrl: workspace.apiBaseUrl,
+      workspaceName: workspace.workspaceName
+    });
+    const folders: ConnectionFolder[] = [
+      {
+        id: "folder-prod",
+        scopeKey,
+        name: "prod",
+        sortIndex: 2,
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "folder-asia",
+        scopeKey,
+        parentId: "folder-prod",
+        name: "asia",
+        sortIndex: 1,
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+    const connection: ConnectionProfile = {
+      id: "connection-1",
+      name: "Prod",
+      host: "prod.example.com",
+      port: 22,
+      username: "root",
+      authType: "agent",
+      strictHostKeyChecking: false,
+      terminalEncoding: "utf-8",
+      backspaceMode: "ascii-backspace",
+      deleteMode: "vt220-delete",
+      groupPath: "/workspace/prod-team/prod/asia",
+      folderId: "folder-asia",
+      tags: [],
+      favorite: false,
+      monitorSession: false,
+      createdAt: now,
+      updatedAt: now,
+      uuidInScope: "connection-1",
+      originKind: "cloud",
+      originScopeKey: scopeKey,
+      originWorkspaceId: workspace.id
+    };
+    const sourceState = createMutableState(workspace, { folders, connections: [connection] });
+    const source = new CloudSyncManager(createMutableDeps(sourceState));
+    const snapshot = await (
+      source as unknown as {
+        buildWorkspaceSnapshot: (
+          workspace: CloudSyncWorkspaceProfile,
+          workspacePassword: string
+        ) => Promise<WorkspaceRepoSnapshot>;
+      }
+    ).buildWorkspaceSnapshot(workspace, "workspace-password");
+
+    expect(snapshot.folders).toEqual([
+      expect.objectContaining({ uuid: "folder-asia", parentUuid: "folder-prod" }),
+      expect.objectContaining({ uuid: "folder-prod", parentUuid: undefined })
+    ]);
+    expect(snapshot.connections[0]?.folderUuid).toBe("folder-asia");
+
+    const targetState = createMutableState(workspace);
+    const target = new CloudSyncManager(createMutableDeps(targetState));
+    await (target as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      snapshot
+    );
+
+    expect(targetState.folders).toEqual(folders);
+    expect(targetState.connections[0]?.folderId).toBe("folder-asia");
+  });
+
+  test("materializes directories from legacy groupPath snapshots", async () => {
+    const workspace = { ...createWorkspace(), enabled: true };
+    const state = createMutableState(workspace);
+    const manager = new CloudSyncManager(createMutableDeps(state));
+
+    await (manager as unknown as { applyWorkspaceSnapshot: ApplySnapshot }).applyWorkspaceSnapshot(
+      workspace,
+      "workspace-password",
+      repoSnapshot(workspace.id, "legacy-snapshot", [
+        {
+          ...snapshotConnection("conn-1", "Prod", "prod.example.com"),
+          groupPath: "/workspace/prod-team/prod"
+        }
+      ])
+    );
+
+    expect(state.folders.map((folder) => folder.name)).toEqual(["prod"]);
+    expect(state.connections[0]?.folderId).toBe(state.folders[0]?.id);
+  });
 
   // folderId 不在线协议里,是本地的目录归属;saveConnection 是全行 upsert,重建 profile 时
   // 漏掉这个键就等于每次 pull 都把云连接的目录清空。
