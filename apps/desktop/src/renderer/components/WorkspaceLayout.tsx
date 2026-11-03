@@ -439,6 +439,7 @@ const WorkspaceLayoutComponent = ({
         .write({ sessionId: activeTerminalSessionId, data: appendCr ? `${command}\r` : command })
         .catch(() => message.error("发送命令失败"));
       recordSentCommand(activeTerminalSessionId, command);
+      requestAnimationFrame(() => terminalPaneRef.current?.focus());
     },
     [activeTerminalSessionId, activeTerminalSessionStatus, message]
   );

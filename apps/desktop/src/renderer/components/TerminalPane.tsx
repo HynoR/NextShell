@@ -75,6 +75,7 @@ export interface TerminalPaneHandle {
   findNext: () => void;
   findPrevious: () => void;
   fit: () => void;
+  focus: () => void;
 }
 
 interface FrozenTerminalOptions {
@@ -905,6 +906,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
         })
       );
       setCtxMenu(null);
+      terminalRef.current?.focus();
     }, [handleLocalAuthInput]);
 
     const handleCtxPasteSelection = useCallback(() => {
@@ -919,11 +921,13 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
         if (authStateBySessionRef.current.has(sessionId)) {
           handleLocalAuthInput(sessionId, selection);
           setCtxMenu(null);
+          terminal.focus();
           return;
         }
         runSessionAction(window.nextshell.session.write({ sessionId, data: selection }));
       }
       setCtxMenu(null);
+      terminal.focus();
     }, [handleLocalAuthInput]);
 
     const handleCtxClear = useCallback(() => {
@@ -962,6 +966,9 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
         findPrevious,
         fit: () => {
           fitRef.current?.fit();
+        },
+        focus: () => {
+          terminalRef.current?.focus();
         }
       }),
       [findNext, findPrevious]
