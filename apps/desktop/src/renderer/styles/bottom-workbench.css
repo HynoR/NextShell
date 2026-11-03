@@ -23,12 +23,18 @@
   overflow: hidden;
 }
 
-.bottom-workbench .ant-tabs-content {
+/* Ant Design 6 puts the tab panes inside .ant-tabs-body. Give that wrapper
+   the finite panel height so a long SFTP listing cannot grow the pane past its
+   viewport and get clipped by .bottom-workbench. */
+.bottom-workbench .ant-tabs-body {
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.bottom-workbench .ant-tabs-tabpane {
+.bottom-workbench .ant-tabs-content {
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
