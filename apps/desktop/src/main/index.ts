@@ -35,7 +35,24 @@ protocol.registerSchemesAsPrivileged([
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let services: ServiceContainer | undefined;
 let tray: Tray | undefined;
+let mainWindow: BrowserWindow | undefined;
 let isQuitting = false;
+
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore();
+    }
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
 
 // ─── Renderer auto-reload & monitor pause/resume ────────────────────────────
 const RENDERER_RELOAD_WINDOW_MS = 5 * 60_000;
@@ -260,6 +277,10 @@ const loadMainWindowRenderer = async (mainWindow: BrowserWindow): Promise<void> 
 };
 
 app.whenReady().then(async () => {
+  if (!gotTheLock) {
+    return;
+  }
+
   process.on("uncaughtException", (error) => {
     logger.error("[App] uncaughtException", error);
   });
@@ -277,7 +298,8 @@ app.whenReady().then(async () => {
   // registered before the renderer loads.
   applySessionPermissionBaseline(session.defaultSession);
 
-  const mainWindow = createMainWindow();
+  const createdMainWindow = createMainWindow();
+  mainWindow = createdMainWindow;
 
   // Serve local image files under nextshell-asset:// for app background images
   protocol.handle("nextshell-asset", async (request) => {
@@ -294,7 +316,7 @@ app.whenReady().then(async () => {
   });
 
   registerIpcHandlers(serviceContainerPromise);
-  const rendererLoadPromise = loadMainWindowRenderer(mainWindow);
+  const rendererLoadPromise = loadMainWindowRenderer(createdMainWindow);
   void rendererLoadPromise.catch((error) => {
     logger.error("[App] failed to load main window renderer", error);
   });
@@ -356,11 +378,13 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     const existingWindow = BrowserWindow.getAllWindows()[0];
     if (existingWindow) {
+      mainWindow = existingWindow;
       existingWindow.show();
       existingWindow.focus();
     } else {
-      const mainWindow = createMainWindow();
-      void loadMainWindowRenderer(mainWindow).catch((error) => {
+      const createdMainWindow = createMainWindow();
+      mainWindow = createdMainWindow;
+      void loadMainWindowRenderer(createdMainWindow).catch((error) => {
         logger.error("[App] failed to recreate main window", error);
       });
     }
