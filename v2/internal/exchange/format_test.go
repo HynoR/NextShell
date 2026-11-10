@@ -2,10 +2,13 @@ package exchange
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"nextshell.dev/v2/internal/model"
 	"os"
 	"testing"
@@ -163,5 +166,21 @@ func TestFolderAndKeyMatchSpecs(t *testing.T) {
 	c := FromEntry(Entry{Name: "x", Host: "h", Port: 22, Username: "u", AuthType: "privateKey", KeyRef: &KeyRef{Name: "missing"}}, keys)
 	if c.Auth != "keyboard" || !c.NeedsKeyRebind {
 		t.Fatal(c)
+	}
+}
+
+func TestKeyFingerprintPrecedesUniqueNameSpec(t *testing.T) {
+	_, private, e := ed25519.GenerateKey(rand.Reader)
+	if e != nil {
+		t.Fatal(e)
+	}
+	signer, e := ssh.NewSignerFromKey(private)
+	if e != nil {
+		t.Fatal(e)
+	}
+	keys := []model.Key{{ID: "correct", Name: "renamed", Public: string(ssh.MarshalAuthorizedKey(signer.PublicKey()))}, {ID: "wrong", Name: "old-name"}}
+	ref := &KeyRef{Name: "old-name", Fingerprint: ssh.FingerprintSHA256(signer.PublicKey())}
+	if MatchKey(ref, keys) != "correct" {
+		t.Fatal("fingerprint should have precedence over unique name")
 	}
 }

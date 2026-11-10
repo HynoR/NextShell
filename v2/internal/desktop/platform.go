@@ -8,9 +8,12 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"io"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/exchange"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/sshclient"
 	"nextshell.dev/v2/internal/storage"
+	"nextshell.dev/v2/internal/transfer"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,17 +21,23 @@ import (
 )
 
 type Platform struct {
-	quit        func()
-	credentials map[string]model.Connection
-	store       *storage.Store
-	ctx         context.Context
-	cancel      context.CancelFunc
-	mu          sync.Mutex
-	events      []appui.Event
-	sessions    map[string]*terminal.Terminal
-	wake        func()
-	closed      bool
-	wg          sync.WaitGroup
+	sshSessions     map[string]*sshclient.Session
+	queue           *transfer.Queue
+	imports         map[string][]exchange.Entry
+	monitorPrevious map[string]monitor.Snapshot
+	monitorBusy     map[string]bool
+	monitorWatches  map[string]context.CancelFunc
+	quit            func()
+	credentials     map[string]model.Connection
+	store           *storage.Store
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	events          []appui.Event
+	sessions        map[string]*terminal.Terminal
+	wake            func()
+	closed          bool
+	wg              sync.WaitGroup
 }
 
 func Open(path string) (*Platform, error) {
@@ -37,7 +46,14 @@ func Open(path string) (*Platform, error) {
 		return nil, e
 	}
 	ctx, c := context.WithCancel(context.Background())
-	return &Platform{store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}, nil
+	p := &Platform{store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
+	p.sshSessions = map[string]*sshclient.Session{}
+	p.imports = map[string][]exchange.Entry{}
+	p.monitorPrevious = map[string]monitor.Snapshot{}
+	p.monitorBusy = map[string]bool{}
+	p.monitorWatches = map[string]context.CancelFunc{}
+	p.queue = transfer.New(2, p.Invalidate)
+	return p, nil
 }
 func DefaultPath() (string, error) {
 	d, e := os.UserConfigDir()
@@ -84,6 +100,10 @@ func (p *Platform) Snapshot() (appui.Snapshot, error) {
 		return s, e
 	}
 	s.History, e = p.store.History()
+	if e != nil {
+		return s, e
+	}
+	s.Commands, e = p.store.Commands()
 	return s, e
 }
 func (p *Platform) SaveConnection(c model.Connection, secret *string) error {
@@ -223,10 +243,10 @@ func (p *Platform) connect(c model.Connection, replace string) error {
 		s.Close()
 		return e
 	}
-	p.register(t, c, false, replace)
+	p.register(t, c, false, replace, s)
 	return nil
 }
-func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool, replace string) {
+func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool, replace string, sshConn ...*sshclient.Session) {
 	id := p.NewID()
 	p.mu.Lock()
 	if p.closed {
@@ -235,6 +255,9 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 		return
 	}
 	p.sessions[id] = t
+	if len(sshConn) > 0 {
+		p.sshSessions[id] = sshConn[0]
+	}
 	p.credentials[id] = c
 	c.Secret = ""
 	p.mu.Unlock()
@@ -258,6 +281,12 @@ func (p *Platform) CloseSession(id string) {
 	p.mu.Lock()
 	t := p.sessions[id]
 	delete(p.sessions, id)
+	delete(p.sshSessions, id)
+	if cancel := p.monitorWatches[id]; cancel != nil {
+		cancel()
+		delete(p.monitorWatches, id)
+	}
+	delete(p.monitorPrevious, id)
 	delete(p.credentials, id)
 	p.mu.Unlock()
 	if t != nil {
@@ -285,6 +314,7 @@ func (p *Platform) Shutdown() {
 	for _, t := range ts {
 		t.Close()
 	}
+	p.queue.Close()
 	p.wg.Wait()
 	p.store.Close()
 }

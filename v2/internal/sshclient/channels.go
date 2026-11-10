@@ -64,6 +64,9 @@ func (s *Session) Output(ctx context.Context, command string, limit int) ([]byte
 // newChannel bounds caller latency even if a peer never acknowledges a channel-open.
 // A late channel is closed immediately; the parent SSH connection owns the protocol goroutine.
 func (s *Session) newChannel(ctx context.Context) (*ssh.Session, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
 	type result struct {
 		s *ssh.Session
 		e error

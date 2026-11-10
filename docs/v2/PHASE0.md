@@ -8,7 +8,7 @@
 - pure-Go **modernc.org/sqlite v1.44.3**，全新 schema；独立 OS 配置目录 `NextShell-v2/nextshell.db`。
 - 设备密钥保存于同库 `app_settings.device_key`，凭据 AES-256-GCM 加密、资源标识作为 AAD。数据库与密钥同处只降低意外明文暴露，不防整个设备/数据库被窃。
 - 以 SQLite application_id=0x4e534832 和 user_version=2 识别 v2；拒绝写入旧版或不认识的数据库。损坏设备密钥报错，不生成新密钥覆盖。
-- 老 keytar `service=NextShell` / `account=device-key` 仅有 Platform 显式 stub；不会在新 profile 启动时读取钥匙串。阶段 2 才处理迁移及旧库设备密钥；无旧 keychain 回读能力时明确报错，不能冒充凭据已恢复。
+- 老 keytar `service=NextShell` / `account=device-key` 仅有 Platform 显式 stub；不会在新 profile 启动时读取钥匙串。阶段 2 的只读迁移器现已优先读取旧库 `app_settings.value_json` 中的设备密钥；无旧 keychain 回读能力时明确报错，不能冒充凭据已恢复。
 
 ## 验证状态
 
@@ -43,3 +43,5 @@ alex 后续只放宽 OSC 133 这一项参考权限。依其许可将仓库克隆
 只针对 `OSC 133` / `133;` / `OnPrompt` / `OnOSC` / shell integration prompt marks 做定向检索，**没有找到可用的 OSC 133 公开 API 或简单 hook**。未继续阅读无关实现、未借用任何代码或其他设计，也没有把参考仓库放入 NextShell。检索结果不是对整个项目“不可能有相关能力”的断言。按 alex 已批准的等待方案保持延期；本实现没有采用来自该项目的方案。
 
 无外部 issue、评论、推送或 PR。
+
+阶段 2 更新：未新增路线否决阻塞；未改动 mygo 固定版本、OSC 133 延期结论或上表 UNVERIFIED 项。本阶段未再次访问 finallyshell 或其他第三方 SSH 客户端代码。

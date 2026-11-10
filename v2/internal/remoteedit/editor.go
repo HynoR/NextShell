@@ -74,7 +74,7 @@ func Save(ctx context.Context, c *sftpfs.Client, d Document, text string) (Docum
 	return d, nil
 }
 
-// External keeps a private plaintext staging file only for the editor's lifetime.
+// External cleans private plaintext staging after success; failures retain a recovery file and return its path.
 // A save conflicts instead of overwriting a remotely changed file. program is an executable path, not a shell command.
 func External(ctx context.Context, c *sftpfs.Client, d Document, program string, onSave func(Document), args ...string) (result error) {
 	if strings.TrimSpace(program) == "" {

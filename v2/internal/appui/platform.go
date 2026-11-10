@@ -4,6 +4,10 @@ package appui
 import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/monitor"
+	"nextshell.dev/v2/internal/remoteedit"
+	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/transfer"
 )
 
 type Session struct {
@@ -21,6 +25,10 @@ type Prompt struct {
 	Done      <-chan struct{}
 }
 type Event struct {
+	Files     *FileListing
+	Editor    *EditorResult
+	Monitor   *MonitorResult
+	Import    *ImportPreview
 	ShellMark *PromptEvent // reserved: no producer while OSC 133 waits on upstream
 	Session   *Session
 	Message   string
@@ -35,6 +43,7 @@ type PromptEvent struct {
 	ExitCode        *int
 }
 type Snapshot struct {
+	Commands    []model.Command
 	Connections []model.Connection
 	Folders     []model.Folder
 	Keys        []model.Key
@@ -62,10 +71,52 @@ type Platform interface {
 	CloseSession(id string)
 	Send(id, text string) error
 	ScreenText(id string) string
+	SessionDir(id string) string
 	Exited(id string) bool
 	Poll() []Event
 	SetWake(func())
 	Quit()
 	ReadLegacyDeviceKey() (string, error)
+	ListFiles(session, path string)
+	FileAction(session, action, from, to string)
+	QueueTransfer(TransferRequest) (string, error)
+	Transfers() []transfer.Job
+	CancelTransfer(id string)
+	RetryTransfer(id string) error
+	OpenRemote(session, path string)
+	SaveRemote(session string, doc remoteedit.Document, text string)
+	ExternalEdit(session, path, executable string, args []string)
+	RefreshMonitor(session string)
+	WatchMonitor(session string, on bool)
+	SignalProcess(session string, pid int, signal string)
+	SaveCommand(model.Command) error
+	ExecuteCommand(session, text string, all bool) error
+	PreviewImport(path, password, format string)
+	CommitImport(token, folder, policy string)
+	ExportConnections(path string, password *string, ids []string)
+	MigrateLegacy(path string)
 	Shutdown()
+}
+
+type FileListing struct {
+	Session, Path string
+	Entries       []sftpfs.Entry
+}
+type EditorResult struct {
+	Session  string
+	Document remoteedit.Document
+}
+type MonitorResult struct {
+	Session  string
+	Snapshot monitor.Snapshot
+}
+type ImportPreview struct {
+	Warnings                                    []string
+	Token                                       string
+	Count, PasswordsUnavailable, KeysNeedRebind int
+	Names                                       []string
+}
+type TransferRequest struct {
+	Session, TargetSession, Kind, Local, Remote, Destination string
+	Overwrite                                                bool
 }

@@ -126,13 +126,16 @@ func DecodeFinalShell(raw []byte, group string) ([]Entry, error) {
 		if e := json.Unmarshal(row, &v); e != nil {
 			return nil, e
 		}
-		if v.Auth == nil || v.User == "" || v.Host == "" {
+		if v.Auth == nil || strings.TrimSpace(v.User) == "" || strings.TrimSpace(v.Host) == "" {
 			return nil, errors.New("invalid FinalShell connection")
 		}
 		if v.Port == 0 {
 			v.Port = 22
 		}
-		if v.Name == "" {
+		if v.Port < 1 || v.Port > 65535 {
+			return nil, errors.New("invalid FinalShell port")
+		}
+		if strings.TrimSpace(v.Name) == "" {
 			v.Name = fmt.Sprintf("%s:%d", v.Host, v.Port)
 		}
 		e := Entry{Name: v.Name, Host: v.Host, Port: v.Port, Username: v.User, AuthType: "password", GroupPath: group, Encoding: "utf-8", Tags: []string{}, Backspace: "ascii-backspace", Delete: "vt220-delete"}
