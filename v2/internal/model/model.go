@@ -10,20 +10,28 @@ import (
 )
 
 type Connection struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	FolderID    string `json:"folderId,omitempty"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	User        string `json:"user"`
-	Auth        string `json:"auth"` // password, key, agent, keyboard
-	Secret      string `json:"-"`
-	KeyID       string `json:"keyId,omitempty"`
-	ProxyID     string `json:"proxyId,omitempty"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	Encoding    string `json:"encoding"`
-	Keepalive   int    `json:"keepalive"`
-	Deleted     bool   `json:"deleted,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	Notes          string   `json:"notes,omitempty"`
+	Favorite       bool     `json:"favorite,omitempty"`
+	Backspace      string   `json:"backspaceMode,omitempty"`
+	DeleteMode     string   `json:"deleteMode,omitempty"`
+	Monitor        bool     `json:"monitorSession,omitempty"`
+	NeedsKeyRebind bool     `json:"needsKeyRebind,omitempty"`
+	OriginalAuth   string   `json:"originalAuth,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	FolderID       string   `json:"folderId,omitempty"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	User           string   `json:"user"`
+	Auth           string   `json:"auth"` // password, key, agent, keyboard
+	Secret         string   `json:"-"`
+	KeyID          string   `json:"keyId,omitempty"`
+	ProxyID        string   `json:"proxyId,omitempty"`
+	Fingerprint    string   `json:"fingerprint,omitempty"`
+	Encoding       string   `json:"encoding"`
+	Keepalive      int      `json:"keepalive"`
+	Deleted        bool     `json:"deleted,omitempty"`
 }
 
 func (c Connection) Address() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
@@ -106,4 +114,22 @@ func QuickConnect(s string) (Connection, error) {
 		c.Host = strings.Trim(a, "[]")
 	}
 	return c, c.Validate()
+}
+
+type Command struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Group       string `json:"group"`
+	Text        string `json:"command"`
+	Template    bool   `json:"isTemplate,omitempty"`
+}
+
+// NormalizeFolderName keeps folder names representable in v1's slash-delimited export protocol.
+func NormalizeFolderName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, "/\\\x00") {
+		return "", errors.New("目录名称不能为空或包含路径分隔符/NUL")
+	}
+	return name, nil
 }

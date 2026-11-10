@@ -14,7 +14,6 @@ import (
 	"nextshell.dev/v2/internal/security"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -224,7 +223,12 @@ func (s *Store) Folders() ([]model.Folder, error) { return list[model.Folder](s,
 func (s *Store) SaveFolder(f model.Folder) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if f.ID == "" || strings.TrimSpace(f.Name) == "" {
+	name, err := model.NormalizeFolderName(f.Name)
+	if err != nil {
+		return err
+	}
+	f.Name = name
+	if f.ID == "" {
 		return errors.New("invalid folder")
 	}
 	folders, e := s.Folders()
@@ -309,7 +313,7 @@ func (s *Store) SaveProxy(p model.Proxy, secret *string) error {
 func (s *Store) Delete(kind, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if kind != "connection" && kind != "folder" && kind != "key" && kind != "proxy" {
+	if kind != "connection" && kind != "folder" && kind != "key" && kind != "proxy" && kind != "command" {
 		return errors.New("invalid resource kind")
 	}
 	cs, e := s.Connections()

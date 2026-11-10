@@ -1,0 +1,25 @@
+{
+  "exportVector": {
+    "password": "导出口令",
+    "plain": "{\n  \"format\": \"nextshell-connections\",\n  \"version\": 1,\n  \"exportedAt\": \"2026-06-15T00:00:00.000Z\",\n  \"connections\": [\n    {\n      \"name\": \"prod-a\",\n      \"host\": \"10.0.0.1\",\n      \"port\": 22,\n      \"username\": \"root\",\n      \"authType\": \"password\",\n      \"password\": \"中文-secret\",\n      \"groupPath\": \"/server/prod\",\n      \"tags\": [],\n      \"favorite\": false,\n      \"terminalEncoding\": \"utf-8\",\n      \"backspaceMode\": \"ascii-backspace\",\n      \"deleteMode\": \"vt220-delete\",\n      \"monitorSession\": false\n    }\n  ]\n}",
+    "salt": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "iv": "ZGVmZ2hpamtsbW5v",
+    "encrypted": "b64##AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh9kZWZnaGlqa2xtbm/n4+8SyQqUPVej9VQ9ipCdqVEaZL97muNH/TnKkUB27Aiy8uZZJytr5CdR8Bj6L9rQWZC+4zLxAYdwfXLmoiMmklZNJQFAcz+JmT8n/2OIhaNKwY1ikH3Ia6YzolS0FgKGSuF74hOFQYPJsPUHQO9gyoYFYn5hx6FtIkyUbq9QMCG5aKN3BDykgWfFyEsWGmamkReIO09J098EzTsTXoDBN2+ZG2IGedEkii3HCQCZaUg980NZGOJ2ydILeLt0WARzCyj3JyP7nzWXOJrS+zygbDF++pHIS/4v1cJIhVY3d4cHuKbGXwgmTVnYGHRp9EioflUPnkttOR56zf8jv8cYYze4uBj3T3Porgu5impbVOD4T5W1ZmqsyOjqVZ9bfrIj44bbpZE1n5rN5GDvIvn6HBRatFIkMZSi9W8s0KTfcx6AKF+aWBwxwlg515F0Oo7dbnDSe7ZsPTCY+Zr1eZKIX1HGCv4Px0KcWcNanUMCpyCVCIEDyU8hqn1YK92piDnMihY1Rg77bhdrY3iYM+AiKcMWVnaeLLnfZ1PwXY3vrthmXtu8QYCxDB90oEZ71Zvv3NlTFv1fT0zpPUORfqYe+RaOGMfRDEqJa5HbGmhpEf/P1rH9tASBTiXC6zLwbYphEjkWP3t5aJ5Erlrmv0AkM5YEjwHL8HuqI1n6nKXngjCKpHiYb4p3ORGx+/hp/xAIt4g="
+  },
+  "finals": [
+    {
+      "signed": false,
+      "keyHex": "b3ee8efc9e44c906",
+      "head": "gvAD+hPIWtI=",
+      "plaintext": "FinalShell 中文 密码",
+      "encoded": "gvAD+hPIWtLOp1OdVT2sqdH1vAtmQzIOcCrnz0XLPjwz6dFUpMeg9w=="
+    },
+    {
+      "signed": true,
+      "keyHex": "f8345d4cff51f46b",
+      "head": "gvAD+hPIWtI=",
+      "plaintext": "FinalShell 中文 密码",
+      "encoded": "gvAD+hPIWtItDmS2WoOH6lrxLowOrKS6kJHvg4PYFACfkf/+491sRw=="
+    }
+  ]
+}
