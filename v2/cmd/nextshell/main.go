@@ -28,12 +28,20 @@ func main() {
 	}
 	defer p.Shutdown()
 	a := appui.New(p)
+	p.SetQuit(func() { mygo.App.Quit() })
 	mygo.App.WhenReady(func() {
-		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell 2 · Native", Width: 1280, Height: 850, Content: ui.View(a.View)})
+		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell 2 · Native", Width: 1280, Height: 850, MinWidth: 1000, MinHeight: 650, TitleBarStyle: mygo.TitleBarHidden, Content: ui.View(a.View)})
+		w.OnClose(func(e *mygo.CloseEvent) {
+			if len(a.Tabs) > 0 && !a.ExitConfirmed {
+				e.PreventDefault()
+				a.ConfirmExit = true
+				p.Invalidate()
+			}
+		})
 		w.OnClosed(func() { mygo.App.Quit() })
 		if *smoke {
 			p.Local()
-			time.AfterFunc(4*time.Second, func() { mygo.App.Quit() })
+			time.AfterFunc(4*time.Second, func() { mygo.RunOnMain(func() { a.ExitConfirmed = true; mygo.App.Quit() }) })
 		}
 	})
 	if e = mygo.App.Run(); e != nil {

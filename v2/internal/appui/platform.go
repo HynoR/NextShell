@@ -7,6 +7,7 @@ import (
 )
 
 type Session struct {
+	Replaces   string
 	ID, Title  string
 	Terminal   *terminal.Terminal
 	Connection model.Connection
@@ -17,17 +18,27 @@ type Prompt struct {
 	Questions []string
 	Echo      []bool
 	Answers   chan []string
+	Done      <-chan struct{}
 }
 type Event struct {
 	Session *Session
 	Message string
 	Prompt  *Prompt
 }
+type TerminalCapabilities struct{ OSC7, ScreenText, OSC133 bool }
+
+// PromptEvent is a reserved seam: no producer until mygo exposes upstream OSC 133 events.
+// TODO(upstream-mygo): connect plugin events without a custom stream observer.
+type PromptEvent struct {
+	SessionID, Mark string
+	ExitCode        *int
+}
 type Snapshot struct {
 	Connections []model.Connection
 	Folders     []model.Folder
 	Keys        []model.Key
 	Proxies     []model.Proxy
+	History     []string
 }
 type Platform interface {
 	Snapshot() (Snapshot, error)
@@ -37,13 +48,20 @@ type Platform interface {
 	SaveProxy(model.Proxy, *string) error
 	Delete(kind, id string) error
 	NewID() string
-	GenerateKey(name string) (model.Key, error)
+	DuplicateConnection(id string) (model.Connection, error)
+	RenameKey(id, name string) error
+	SaveHistory([]string) error
+	Capabilities() TerminalCapabilities
+	GenerateKey(name, algorithm string) (model.Key, error)
 	ImportKey(path, passphrase string) (model.Key, error)
 	Connect(model.Connection)
 	Local()
+	Reconnect(*Session)
+	CloneSession(*Session)
 	CloseSession(id string)
 	Poll() []Event
 	SetWake(func())
+	Quit()
 	ReadLegacyDeviceKey() (string, error)
 	Shutdown()
 }
