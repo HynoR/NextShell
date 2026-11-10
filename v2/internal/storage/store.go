@@ -14,6 +14,7 @@ import (
 	"nextshell.dev/v2/internal/security"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -118,8 +119,6 @@ func (s *Store) put(kind, id string, v any, secret *string) error {
 	if e != nil {
 		return e
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
@@ -186,6 +185,8 @@ func (s *Store) Connections() ([]model.Connection, error) {
 	return list[model.Connection](s, "connection")
 }
 func (s *Store) Connection(id string) (model.Connection, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	c, e := get[model.Connection](s, "connection", id)
 	if e != nil {
 		return c, e
@@ -194,6 +195,8 @@ func (s *Store) Connection(id string) (model.Connection, error) {
 	return c, e
 }
 func (s *Store) SaveConnection(c model.Connection, secret *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if c.ID == "" {
 		return errors.New("missing id")
 	}
@@ -219,8 +222,19 @@ func (s *Store) SaveConnection(c model.Connection, secret *string) error {
 }
 func (s *Store) Folders() ([]model.Folder, error) { return list[model.Folder](s, "folder") }
 func (s *Store) SaveFolder(f model.Folder) error {
-	if f.ID == "" || f.Name == "" {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if f.ID == "" || strings.TrimSpace(f.Name) == "" {
 		return errors.New("invalid folder")
+	}
+	folders, e := s.Folders()
+	if e != nil {
+		return e
+	}
+	for _, other := range folders {
+		if other.ID != f.ID && other.Name == f.Name && other.ParentID == f.ParentID {
+			return errors.New("duplicate folder name in the same parent")
+		}
 	}
 	seen := map[string]bool{f.ID: true}
 	for p := f.ParentID; p != ""; {
@@ -228,6 +242,9 @@ func (s *Store) SaveFolder(f model.Folder) error {
 			return errors.New("folder cycle")
 		}
 		seen[p] = true
+		if len(seen) > 31 {
+			return errors.New("folder nesting exceeds 30 levels")
+		}
 		a, e := get[model.Folder](s, "folder", p)
 		if e != nil {
 			return e
@@ -238,6 +255,8 @@ func (s *Store) SaveFolder(f model.Folder) error {
 }
 func (s *Store) Keys() ([]model.Key, error) { return list[model.Key](s, "key") }
 func (s *Store) Key(id string) (model.Key, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	k, e := get[model.Key](s, "key", id)
 	if e != nil {
 		return k, e
@@ -253,6 +272,8 @@ func (s *Store) Key(id string) (model.Key, error) {
 	return k, e
 }
 func (s *Store) SaveKey(k model.Key) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if k.ID == "" || k.Name == "" || k.Private == "" {
 		return errors.New("invalid key")
 	}
@@ -265,6 +286,8 @@ func (s *Store) SaveKey(k model.Key) error {
 }
 func (s *Store) Proxies() ([]model.Proxy, error) { return list[model.Proxy](s, "proxy") }
 func (s *Store) Proxy(id string) (model.Proxy, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, e := get[model.Proxy](s, "proxy", id)
 	if e != nil {
 		return p, e
@@ -273,6 +296,8 @@ func (s *Store) Proxy(id string) (model.Proxy, error) {
 	return p, e
 }
 func (s *Store) SaveProxy(p model.Proxy, secret *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if p.ID == "" {
 		return errors.New("missing id")
 	}
@@ -282,6 +307,8 @@ func (s *Store) SaveProxy(p model.Proxy, secret *string) error {
 	return s.put("proxy", p.ID, p, secret)
 }
 func (s *Store) Delete(kind, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if kind != "connection" && kind != "folder" && kind != "key" && kind != "proxy" {
 		return errors.New("invalid resource kind")
 	}

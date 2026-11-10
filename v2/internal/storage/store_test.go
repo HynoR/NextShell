@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -325,5 +326,47 @@ func TestStorageRejectInvalid(t *testing.T) {
 	}
 	if e := s.Delete("bad", "x"); e == nil {
 		t.Fatal("bad kind")
+	}
+}
+
+func TestConcurrentFolderMovesCannotCycle(t *testing.T) {
+	s := testStore(t)
+	for i := 0; i < 30; i++ {
+		s.SaveFolder(model.Folder{ID: "a", Name: "A"})
+		s.SaveFolder(model.Folder{ID: "b", Name: "B"})
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		var wg sync.WaitGroup
+		for _, f := range []model.Folder{{ID: "a", Name: "A", ParentID: "b"}, {ID: "b", Name: "B", ParentID: "a"}} {
+			wg.Add(1)
+			go func(f model.Folder) { defer wg.Done(); <-start; results <- s.SaveFolder(f) }(f)
+		}
+		close(start)
+		wg.Wait()
+		a, b := <-results, <-results
+		if a == nil && b == nil {
+			t.Fatal("concurrent cycle accepted")
+		}
+	}
+}
+func TestFolderNamesAndDepth(t *testing.T) {
+	s := testStore(t)
+	if e := s.SaveFolder(model.Folder{ID: "blank", Name: " "}); e == nil {
+		t.Fatal("blank accepted")
+	}
+	s.SaveFolder(model.Folder{ID: "a", Name: "A"})
+	if e := s.SaveFolder(model.Folder{ID: "b", Name: "A"}); e == nil {
+		t.Fatal("sibling name collision accepted")
+	}
+	parent := "a"
+	for i := 0; i < 30; i++ {
+		id := strings.Repeat("x", i+1)
+		if e := s.SaveFolder(model.Folder{ID: id, Name: id, ParentID: parent}); e != nil {
+			t.Fatal(i, e)
+		}
+		parent = id
+	}
+	if e := s.SaveFolder(model.Folder{ID: "deep", Name: "deep", ParentID: parent}); e == nil {
+		t.Fatal("invisible depth accepted")
 	}
 }
