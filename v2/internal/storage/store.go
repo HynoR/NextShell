@@ -36,9 +36,6 @@ func Open(path string) (*Store, error) {
 			return nil, e
 		}
 		f.Close()
-		if e = os.Chmod(path, 0600); e != nil {
-			return nil, e
-		}
 	}
 	db, e := sql.Open("sqlite", path)
 	if e != nil {
@@ -46,11 +43,38 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
+	// Reject an unrelated/legacy SQLite database before any schema writes.
+	var appID, tables, version int
+	if e = db.QueryRow("PRAGMA application_id").Scan(&appID); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = db.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = db.QueryRow("PRAGMA user_version").Scan(&version); e != nil {
+		db.Close()
+		return nil, e
+	}
+	if (tables > 0 && appID != 0x4e534832) || (appID != 0 && appID != 0x4e534832) || version > 2 {
+		db.Close()
+		return nil, errors.New("not a supported NextShell v2 profile; refusing to modify legacy/foreign database")
+	}
+	if path != ":memory:" {
+		if e = os.Chmod(path, 0600); e != nil {
+			db.Close()
+			return nil, e
+		}
+	}
 	_, e = db.Exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+ BEGIN IMMEDIATE;
  CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS resources(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));
  CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,envelope BLOB NOT NULL);
- PRAGMA user_version=2;`)
+ PRAGMA application_id=1314080818;
+ PRAGMA user_version=2;
+ COMMIT;`)
 	if e != nil {
 		db.Close()
 		return nil, e
@@ -70,11 +94,14 @@ func (s *Store) resolveKey() error {
 			return e
 		}
 		h = hex.EncodeToString(k)
-		_, e = s.db.Exec("INSERT INTO app_settings(key,value) VALUES('device_key',?)", h)
+		_, e = s.db.Exec("INSERT INTO app_settings(key,value) VALUES('device_key',?) ON CONFLICT(key) DO NOTHING", h)
 		if e != nil {
 			return e
 		}
 	} else if e != nil {
+		return e
+	}
+	if e = s.db.QueryRow("SELECT value FROM app_settings WHERE key='device_key'").Scan(&h); e != nil {
 		return e
 	}
 	k, e := hex.DecodeString(h)
@@ -317,4 +344,53 @@ func (s *Store) HostPin(address string) (string, error) {
 		return "", nil
 	}
 	return fp, e
+}
+
+// DuplicateConnection copies encrypted credentials via the vault, never via UI plaintext.
+func (s *Store) DuplicateConnection(id string) (model.Connection, error) {
+	c, e := s.Connection(id)
+	if e != nil {
+		return c, e
+	}
+	c.ID = ID()
+	c.Name += " 副本"
+	c.Deleted = false
+	sec := c.Secret
+	if e = s.SaveConnection(c, &sec); e != nil {
+		return c, e
+	}
+	c.Secret = ""
+	return c, nil
+}
+func (s *Store) RenameKey(id, name string) error {
+	k, e := s.Key(id)
+	if e != nil {
+		return e
+	}
+	k.Name = name
+	return s.SaveKey(k)
+}
+func (s *Store) History() ([]string, error) {
+	var b string
+	e := s.db.QueryRow("SELECT value FROM app_settings WHERE key='command_history'").Scan(&b)
+	if errors.Is(e, sql.ErrNoRows) {
+		return []string{}, nil
+	}
+	if e != nil {
+		return nil, e
+	}
+	var out []string
+	e = json.Unmarshal([]byte(b), &out)
+	return out, e
+}
+func (s *Store) SaveHistory(history []string) error {
+	if len(history) > 100 {
+		history = history[len(history)-100:]
+	}
+	b, e := json.Marshal(history)
+	if e != nil {
+		return e
+	}
+	_, e = s.db.Exec("INSERT INTO app_settings(key,value) VALUES('command_history',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", string(b))
+	return e
 }

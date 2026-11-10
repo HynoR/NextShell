@@ -1,0 +1,15 @@
+{
+  "password": "密码-correct-horse",
+  "plaintext": "NextShell 中文 🔐",
+  "keyHex": "6bf677c5be69aebb9465f81aa9060aba81699bb09aa6f60e69d0709cd791d9c8",
+  "envelope": {
+    "v": 1,
+    "alg": "aes-256-gcm",
+    "kdf": "scrypt",
+    "salt": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+    "iv": "ICEiIyQlJicoKSor",
+    "aad": "nextshell-secret:test",
+    "ciphertext": "Em+Z87Jkscuezw6mL9f7s+ohW9Zw",
+    "tag": "p1KAAHg6NfJCmp6ITuUdqw=="
+  }
+}

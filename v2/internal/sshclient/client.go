@@ -6,8 +6,8 @@ import (
 	"crypto/ed25519"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -67,13 +67,14 @@ func MatchFingerprint(want string, key []byte) bool {
 }
 
 type Options struct {
-	Connection  model.Connection
-	Key         model.Key
-	Proxy       *model.Proxy
-	HostKey     func(address, fp string) error
-	Keyboard    ssh.KeyboardInteractiveChallenge
-	Timeout     time.Duration
-	AgentSocket string
+	KeepaliveTimeout time.Duration
+	Connection       model.Connection
+	Key              model.Key
+	Proxy            *model.Proxy
+	HostKey          func(address, fp string) error
+	Keyboard         ssh.KeyboardInteractiveChallenge
+	Timeout          time.Duration
+	AgentSocket      string
 }
 type Session struct {
 	client  *ssh.Client
@@ -97,7 +98,15 @@ func (s *Session) Write(b []byte) (int, error) {
 func (s *Session) Resize(cols, rows int) error { return s.session.WindowChange(rows, cols) }
 func (s *Session) Close() error {
 	var e error
-	s.once.Do(func() { close(s.done); s.in.Close(); s.session.Close(); e = s.client.Close(); s.pipe.Close() })
+	s.once.Do(func() {
+		close(s.done)
+		e = s.client.Close()
+		s.session.Close()
+		s.pipe.Close()
+		s.writeMu.Lock()
+		s.in.Close()
+		s.writeMu.Unlock()
+	})
 	return e
 }
 func (s *Session) Done() <-chan struct{} { return s.done }
@@ -109,6 +118,9 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 	}
 	if o.Timeout <= 0 {
 		o.Timeout = 15 * time.Second
+	}
+	if o.KeepaliveTimeout <= 0 {
+		o.KeepaliveTimeout = o.Timeout
 	}
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
@@ -171,12 +183,11 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 	conn.SetDeadline(deadline)
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	cc, chans, reqs, e := ssh.NewClientConn(conn, c.Address(), cfg)
-	stop()
+	defer stop()
 	if e != nil {
 		conn.Close()
 		return nil, e
 	}
-	conn.SetDeadline(time.Time{})
 	client := ssh.NewClient(cc, chans, reqs)
 	ss, e := client.NewSession()
 	if e != nil {
@@ -206,6 +217,7 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 		client.Close()
 		return nil, e
 	}
+	conn.SetDeadline(time.Time{})
 	s := &Session{client: client, session: ss, in: in, out: r, pipe: r, done: make(chan struct{})}
 	if enc := Encoding(c.Encoding); enc != nil {
 		s.out = transform.NewReader(r, enc.NewDecoder())
@@ -228,12 +240,22 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 				case <-s.done:
 					return
 				case <-t.C:
-					conn.SetWriteDeadline(time.Now().Add(o.Timeout))
-					_, _, e := client.SendRequest("keepalive@openssh.com", true, nil)
-					conn.SetWriteDeadline(time.Time{})
-					if e != nil {
+					reply := make(chan error, 1)
+					go func() { _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); reply <- err }()
+					timer := time.NewTimer(o.KeepaliveTimeout)
+					select {
+					case <-s.done:
+						timer.Stop()
+						return
+					case <-timer.C:
 						s.Close()
 						return
+					case err := <-reply:
+						timer.Stop()
+						if err != nil {
+							s.Close()
+							return
+						}
 					}
 				}
 			}
@@ -341,21 +363,44 @@ func dialTransport(ctx context.Context, address string, p *model.Proxy) (net.Con
 	ok = true
 	return conn, nil
 }
-func GenerateKey() (private, public string, err error) {
-	pub, priv, e := ed25519.GenerateKey(rand.Reader)
+func GenerateKey() (private, public string, err error) { return GenerateKeyWithType("ed25519", "") }
+func GenerateKeyWithType(algorithm, comment string) (private, public string, err error) {
+	var key any
+	switch algorithm {
+	case "ed25519":
+		_, k, e := ed25519.GenerateKey(rand.Reader)
+		if e != nil {
+			return "", "", e
+		}
+		key = k
+	case "rsa-2048", "rsa-4096":
+		bits := 2048
+		if algorithm == "rsa-4096" {
+			bits = 4096
+		}
+		k, e := rsa.GenerateKey(rand.Reader, bits)
+		if e != nil {
+			return "", "", e
+		}
+		key = k
+	default:
+		return "", "", errors.New("unsupported key algorithm")
+	}
+	signer, e := ssh.NewSignerFromKey(key)
 	if e != nil {
 		return "", "", e
 	}
-	der, e := x509.MarshalPKCS8PrivateKey(priv)
+	block, e := ssh.MarshalPrivateKey(key, comment)
 	if e != nil {
 		return "", "", e
 	}
-	p, e := ssh.NewPublicKey(pub)
-	if e != nil {
-		return "", "", e
+	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	if comment != "" {
+		line += " " + comment
 	}
-	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})), string(ssh.MarshalAuthorizedKey(p)), nil
+	return string(pem.EncodeToMemory(block)), line + "\n", nil
 }
+
 func InspectKey(private, pass string) (string, error) {
 	var s ssh.Signer
 	var e error
