@@ -37,3 +37,7 @@ AGENTS.md
 
 # Playwright MCP output (renderer repro screenshots/logs)
 .playwright-mcp/
+
+# v2 local build outputs
+/v2/probe
+/v2/nextshell
