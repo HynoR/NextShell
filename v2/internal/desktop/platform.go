@@ -354,3 +354,42 @@ func (p *Platform) Invalidate() {
 		fn()
 	}
 }
+
+func (p *Platform) Send(id, text string) error {
+	p.mu.Lock()
+	t := p.sessions[id]
+	p.mu.Unlock()
+	if t == nil {
+		return errors.New("session closed")
+	}
+	select {
+	case <-t.Done():
+		return errors.New("session exited")
+	default:
+	}
+	t.Send([]byte(text))
+	return nil
+}
+func (p *Platform) ScreenText(id string) string {
+	p.mu.Lock()
+	t := p.sessions[id]
+	p.mu.Unlock()
+	if t == nil {
+		return ""
+	}
+	return t.Text()
+}
+func (p *Platform) Exited(id string) bool {
+	p.mu.Lock()
+	t := p.sessions[id]
+	p.mu.Unlock()
+	if t == nil {
+		return true
+	}
+	select {
+	case <-t.Done():
+		return true
+	default:
+		return false
+	}
+}

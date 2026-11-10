@@ -15,6 +15,7 @@ import (
 )
 
 type fakePlatform struct {
+	terminals map[string]*terminal.Terminal
 	*desktop.Platform
 	events                     []appui.Event
 	connects                   []model.Connection
@@ -24,6 +25,14 @@ type fakePlatform struct {
 
 func (p *fakePlatform) Poll() []appui.Event {
 	e := p.events
+	if p.terminals == nil {
+		p.terminals = map[string]*terminal.Terminal{}
+	}
+	for _, ev := range e {
+		if ev.Session != nil {
+			p.terminals[ev.Session.ID] = ev.Session.Terminal
+		}
+	}
 	p.events = nil
 	return append(e, p.Platform.Poll()...)
 }
@@ -403,5 +412,65 @@ func TestExitConfirmation(t *testing.T) {
 	click(t, tt, "退出应用")
 	if !a.ExitConfirmed || !quit {
 		t.Fatal("quit not delegated")
+	}
+}
+
+func (p *fakePlatform) ScreenText(id string) string {
+	if t := p.terminals[id]; t != nil {
+		return t.Text()
+	}
+	return ""
+}
+func (p *fakePlatform) Exited(id string) bool {
+	if t := p.terminals[id]; t != nil {
+		select {
+		case <-t.Done():
+			return true
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func TestKeyAndProxyManagementForms(t *testing.T) {
+	a, p, tt := fixture(t)
+	a.Page = "keys"
+	a.Key.Name = "ui-key"
+	tt.Frame()
+	click(t, tt, "生成密钥")
+	snapshot, e := p.Snapshot()
+	if e != nil || len(snapshot.Keys) != 1 || snapshot.Keys[0].Private != "" {
+		t.Fatal(snapshot, e)
+	}
+	a.KeyRename = "renamed-ui-key"
+	tt.Frame()
+	click(t, tt, "重命名密钥")
+	snapshot, _ = p.Snapshot()
+	if snapshot.Keys[0].Name != a.KeyRename {
+		t.Fatal("rename failed")
+	}
+	click(t, tt, "删除密钥")
+	click(t, tt, "确认删除")
+	snapshot, _ = p.Snapshot()
+	if len(snapshot.Keys) != 0 {
+		t.Fatal("key not removed")
+	}
+	a.Page = "proxies"
+	a.Proxy.Name = "proxy"
+	a.Proxy.Host = "127.0.0.1"
+	a.ProxyPort = "1080"
+	a.ProxyPassword = "secret"
+	tt.Frame()
+	click(t, tt, "保存代理")
+	snapshot, e = p.Snapshot()
+	if e != nil || len(snapshot.Proxies) != 1 || snapshot.Proxies[0].Password != "" || a.ProxyPassword != "" {
+		t.Fatal(snapshot, e)
+	}
+	click(t, tt, "删除")
+	click(t, tt, "确认删除")
+	snapshot, _ = p.Snapshot()
+	if len(snapshot.Proxies) != 0 {
+		t.Fatal("proxy not removed")
 	}
 }

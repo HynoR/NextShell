@@ -21,9 +21,10 @@ type Prompt struct {
 	Done      <-chan struct{}
 }
 type Event struct {
-	Session *Session
-	Message string
-	Prompt  *Prompt
+	ShellMark *PromptEvent // reserved: no producer while OSC 133 waits on upstream
+	Session   *Session
+	Message   string
+	Prompt    *Prompt
 }
 type TerminalCapabilities struct{ OSC7, ScreenText, OSC133 bool }
 
@@ -59,6 +60,9 @@ type Platform interface {
 	Reconnect(*Session)
 	CloneSession(*Session)
 	CloseSession(id string)
+	Send(id, text string) error
+	ScreenText(id string) string
+	Exited(id string) bool
 	Poll() []Event
 	SetWake(func())
 	Quit()

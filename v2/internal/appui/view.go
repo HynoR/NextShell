@@ -379,7 +379,10 @@ func (a *App) workbench(c *ui.Context) {
 }
 func (a *App) sendCommand() {
 	if s := a.current(); s != nil && a.Command != "" {
-		s.Terminal.Send([]byte(a.Command + "\r"))
+		if e := a.P.Send(s.ID, a.Command+"\r"); e != nil {
+			a.status(e)
+			return
+		}
 		a.History = append(a.History, a.Command)
 		if len(a.History) > 100 {
 			a.History = a.History[len(a.History)-100:]
@@ -769,7 +772,7 @@ func (a *App) activityView(c *ui.Context) {
 					a.Active = i
 					a.Page = "terminal"
 				}
-				preview := s.Terminal.Text()
+				preview := a.P.ScreenText(s.ID)
 				r := []rune(preview)
 				if len(r) > 1200 {
 					preview = string(r[len(r)-1200:])
@@ -789,7 +792,7 @@ func (a *App) promptView(c *ui.Context) {
 			ui.Text(c, p.Title).Bold()
 			for i, q := range p.Questions {
 				ui.Text(c, q)
-				e := ui.TextInput(c.Key(fmt.Sprint("answer", i)), &a.Answers[i])
+				e := ui.TextInput(c.Key(fmt.Sprint("answer", i)), &a.Answers[i]).Label(q)
 				if i >= len(p.Echo) || !p.Echo[i] {
 					e.Password()
 				}

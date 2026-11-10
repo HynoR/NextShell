@@ -255,3 +255,13 @@ func TestDesktopSSHTrustCloneAndReconnect(t *testing.T) {
 	p.CloseSession(clone.ID)
 	p.CloseSession(replacement.ID)
 }
+
+func TestTerminalCapabilityRejectsClosedSession(t *testing.T) {
+	p := desktopFixture(t)
+	if e := p.Send("missing", "uptime\r"); e == nil {
+		t.Fatal("closed send accepted")
+	}
+	if p.ScreenText("missing") != "" || !p.Exited("missing") {
+		t.Fatal("closed capability incorrect")
+	}
+}
