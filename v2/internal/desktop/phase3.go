@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/ui"
 	"golang.org/x/crypto/ssh"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
@@ -14,6 +15,7 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/shellintegration"
 	"nextshell.dev/v2/internal/storage"
+	"runtime"
 	"strings"
 	"time"
 	"unicode"
@@ -276,6 +278,14 @@ func (p *Platform) TerminalTitle(id string) string {
 }
 func (p *Platform) ShellCommand(shell string) (string, error) { return shellintegration.Command(shell) }
 func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
+	if runtime.GOOS == "linux" && o.Font.Family == "" && o.Font.Size == 0 {
+		for _, f := range ui.FontFamilies() {
+			if f.Name == "Noto Sans Mono CJK SC" {
+				o.Font = terminal.Font{Family: f.Name, Size: 14}
+				break
+			}
+		}
+	}
 	o.OnTitle = func(string) { p.Invalidate() }
 	o.OnBell = func() { p.emit(appui.Event{Message: "终端响铃（BEL）"}) }
 	o.OnNotify = func(title, body string) {
