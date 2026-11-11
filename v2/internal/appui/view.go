@@ -132,6 +132,7 @@ func (a *App) closeTab(i int) {
 	if i < 0 || i >= len(a.Tabs) {
 		return
 	}
+	delete(a.Phase2.MonitorHistories, a.Tabs[i].ID)
 	a.P.CloseSession(a.Tabs[i].ID)
 	a.Tabs = append(a.Tabs[:i], a.Tabs[i+1:]...)
 	if len(a.Tabs) == 0 {

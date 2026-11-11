@@ -44,7 +44,14 @@ type Network struct {
 	Listener                                    bool
 	Connections, UniqueIPs                      int
 }
+type InterfaceRate struct {
+	RX, TX                   uint64
+	RXPerSecond, TXPerSecond float64
+	HasDelta                 bool
+}
 type Snapshot struct {
+	Interfaces                                        map[string]InterfaceRate
+	HasNetworkDelta                                   bool
 	At                                                time.Time
 	Info, Load                                        string
 	CPUTotal, CPUIdle                                 uint64
@@ -144,6 +151,11 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 			}
 			f := strings.Fields(parts[1])
 			if len(f) >= 9 {
+				if s.Interfaces == nil {
+					s.Interfaces = map[string]InterfaceRate{}
+				}
+				name := strings.TrimSpace(parts[0])
+				s.Interfaces[name] = InterfaceRate{RX: uintn(f[0]), TX: uintn(f[8])}
 				s.RX += uintn(f[0])
 				s.TX += uintn(f[8])
 			}
@@ -188,8 +200,23 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 			s.HasDelta = true
 		}
 		if elapsed > 0 && s.RX >= previous.RX && s.TX >= previous.TX {
+			s.HasNetworkDelta = true
 			s.RXPerSecond = float64(s.RX-previous.RX) / elapsed
 			s.TXPerSecond = float64(s.TX-previous.TX) / elapsed
+		}
+		if len(s.Interfaces) != len(previous.Interfaces) {
+			s.HasNetworkDelta = false
+		}
+		for name, n := range s.Interfaces {
+			old, ok := previous.Interfaces[name]
+			if ok && elapsed > 0 && n.RX >= old.RX && n.TX >= old.TX {
+				n.HasDelta = true
+				n.RXPerSecond = float64(n.RX-old.RX) / elapsed
+				n.TXPerSecond = float64(n.TX-old.TX) / elapsed
+			} else {
+				s.HasNetworkDelta = false
+			}
+			s.Interfaces[name] = n
 		}
 	}
 	return s, nil

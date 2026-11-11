@@ -19,6 +19,8 @@ import (
 )
 
 type phase2State struct {
+	MonitorHistories                                                               map[string]*monitor.History
+	HistoryDisk, HistoryInterface                                                  string
 	Documents                                                                      []*remoteDocument
 	ActiveDocument                                                                 int
 	CloseDocumentKey                                                               string
@@ -103,6 +105,7 @@ func (a *App) handlePhase2(e Event) {
 		a.receiveDocument(e.Editor)
 	}
 	if e.Monitor != nil {
+		a.recordMonitorHistory(e.Monitor.Session, e.Monitor.Snapshot)
 		s.MonitorSession = e.Monitor.Session
 		s.Monitor = e.Monitor.Snapshot
 	}
@@ -444,7 +447,7 @@ func (a *App) monitorView(c *ui.Context) {
 				a.P.WatchMonitor(id, s.AutoMonitor)
 				s.MonitorWatch = id
 			}
-			for _, v := range []struct{ id, label string }{{"system", "系统"}, {"process", "进程"}, {"network", "网络连接"}} {
+			for _, v := range []struct{ id, label string }{{"system", "系统"}, {"history", "历史曲线"}, {"process", "进程"}, {"network", "网络连接"}} {
 				if ui.Button(c, v.label).Clicked() {
 					s.MonitorPage = v.id
 				}
@@ -454,6 +457,10 @@ func (a *App) monitorView(c *ui.Context) {
 			a.P.WatchMonitor(s.MonitorWatch, false)
 			a.P.WatchMonitor(id, true)
 			s.MonitorWatch = id
+		}
+		if s.MonitorPage == "history" {
+			a.monitorHistoryView(c, id)
+			return
 		}
 		if s.MonitorSession != id || s.Monitor.At.IsZero() {
 			ui.Text(c, "请选择远程 SSH 会话并刷新。仅支持 Linux；无数据时不显示假数值。")
