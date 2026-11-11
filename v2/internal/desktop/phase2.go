@@ -140,7 +140,7 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 		src, srcOK := p.credentials[req.Session]
 		dst, dstOK := p.credentials[req.TargetSession]
 		p.mu.Unlock()
-		sameServer = sameServer || (srcOK && dstOK && src.Address() == dst.Address() && src.User == dst.User)
+		sameServer = sameServer || (srcOK && dstOK && src.Address() == dst.Address() && src.User == dst.User && src.ProxyID == dst.ProxyID && src.Fingerprint != "" && src.Fingerprint == dst.Fingerprint)
 		if req.Kind == "move" && !sameServer {
 			return "", errors.New("cut/paste is only available on the same server/account")
 		}
