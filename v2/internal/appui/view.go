@@ -143,6 +143,7 @@ func (a *App) View(c *ui.Context) {
 				if e.Session.Replaces == old.ID {
 					a.P.CloseSession(old.ID)
 					e.Session.Title = old.Title
+					e.Session.ManualTitle = old.ManualTitle
 					a.Tabs[i] = e.Session
 					a.Active = i
 					replaced = true
@@ -163,6 +164,7 @@ func (a *App) View(c *ui.Context) {
 			a.Prompts = append(a.Prompts, e.Prompt)
 		}
 	}
+	a.refreshTitles()
 	ui.Column(c).Fill().Gap(0).Children(func() {
 		bar := c.TitleBar()
 		ui.Row(c).FillWidth().Height(max(bar.Height, 48)).Padding(8, bar.Right+8, 8, bar.Left+8).Gap(8).DragWindow().Children(func() {
@@ -309,6 +311,7 @@ func (a *App) View(c *ui.Context) {
 		}
 		ui.Text(c, a.Message).FillWidth().Padding(5).FontSize(12)
 	})
+	a.deleteView(c)
 }
 func (a *App) tree(c *ui.Context, parent string, depth int) {
 	if depth > 30 {
@@ -354,9 +357,11 @@ func (a *App) terminalView(c *ui.Context) {
 		return
 	}
 	ui.Row(c).FillWidth().Gap(4).Children(func() {
-		ui.TextInput(c, &a.TabName).Placeholder("标签名称").Width(160)
-		if ui.Button(c, "重命名").Clicked() && a.TabName != "" {
-			s.Title = a.TabName
+		ui.TextInput(c.Key(s.ID+"-tab-name"), &a.TabName).Label("标签名称").Width(160)
+		if ui.Button(c.Key(s.ID+"-rename"), "重命名").Clicked() && strings.TrimSpace(a.TabName) != "" {
+			s.Title = strings.TrimSpace(a.TabName)
+			s.ManualTitle = true
+			c.Invalidate()
 		}
 		if ui.Button(c, "复制会话").Clicked() {
 			a.P.CloneSession(s)
@@ -508,6 +513,7 @@ func (a *App) connectionsView(c *ui.Context) {
 			a.keyChoice(c, &a.Edit.KeyID)
 			a.proxyChoice(c, &a.Edit.ProxyID)
 			a.folderChoice(c, "目录", &a.Edit.FolderID)
+			ui.Checkbox(c.Key("use-known-hosts"), &a.Edit.UseKnownHosts, "只读 ~/.ssh/known_hosts（数据库指纹优先）")
 			field(c, "固定主机指纹", &a.Edit.Fingerprint)
 			choice(c, "编码", &a.Edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
 			ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认（启用）")
@@ -551,7 +557,6 @@ func (a *App) connectionsView(c *ui.Context) {
 			if ui.Button(c, "批量绑定认证").Clicked() {
 				a.batchBind()
 			}
-			a.deleteView(c)
 		})
 	})
 }
@@ -672,7 +677,6 @@ func (a *App) foldersView(c *ui.Context) {
 					}
 				})
 			}
-			a.deleteView(c)
 		})
 	})
 }
@@ -726,7 +730,6 @@ func (a *App) keysView(c *ui.Context) {
 					})
 				})
 			}
-			a.deleteView(c)
 		})
 	})
 }
@@ -786,7 +789,6 @@ func (a *App) proxiesView(c *ui.Context) {
 					}
 				})
 			}
-			a.deleteView(c)
 		})
 	})
 }
@@ -794,18 +796,22 @@ func (a *App) deleteView(c *ui.Context) {
 	if a.DeleteID == "" {
 		return
 	}
-	ui.Row(c).Gap(8).Children(func() {
-		ui.Text(c, "确认删除 "+a.DeleteKind+"？（不可恢复）")
-		if ui.Button(c, "确认删除").Clicked() {
-			a.status(a.P.Delete(a.DeleteKind, a.DeleteID))
+	open := true
+	choice := ui.AlertDialog(c, &open, "永久删除", "确认删除 "+a.DeleteKind+"？这会永久删除记录和凭据，不能从回收站恢复。", "取消删除", "确认删除")
+	if choice == 1 {
+		if e := a.P.Delete(a.DeleteKind, a.DeleteID); e != nil {
+			a.status(e)
+		} else {
 			a.DeleteID = ""
 			a.reload()
+			a.Message = "已永久删除"
 		}
-		if ui.Button(c, "取消删除").Clicked() {
-			a.DeleteID = ""
-		}
-	})
+	}
+	if !open && choice != 1 {
+		a.DeleteID = ""
+	}
 }
+
 func (a *App) activityView(c *ui.Context) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Children(func() {
@@ -895,6 +901,22 @@ func (a *App) moveTab(id string, to int) {
 	for i, s := range a.Tabs {
 		if s.ID == active {
 			a.Active = i
+		}
+	}
+}
+
+func (a *App) refreshTitles() {
+	for _, s := range a.Tabs {
+		if s.ManualTitle {
+			continue
+		}
+		next := a.P.TerminalTitle(s.ID)
+		if next != "" && next != s.Title {
+			old := s.Title
+			s.Title = next
+			if a.current() == s && a.TabName == old {
+				a.TabName = next
+			}
 		}
 	}
 }

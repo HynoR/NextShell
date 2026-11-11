@@ -169,6 +169,7 @@ func (a *App) agentView(c *ui.Context) {
 				a.status(e)
 				if e == nil {
 					s.Token = token
+					a.Message = "MCP token 已轮换；旧会话失效，Agent 已暂停"
 				}
 				s.ConfirmRotate = false
 			} else {

@@ -423,7 +423,12 @@ func (a *App) commandsView(c *ui.Context) {
 				a.reload()
 			}
 			if ui.Button(c, "在当前会话执行").Clicked() {
-				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, false, appendCR))
+				if e := a.P.ExecuteCommand(a.activeID(), s.Command.Text, false, appendCR); e != nil {
+					a.status(e)
+				} else {
+					a.Page = "terminal"
+					a.Message = "命令已发送到当前会话"
+				}
 			}
 		})
 		ui.Checkbox(c, &s.CommandAll, "确认将当前命令发往全部打开会话")

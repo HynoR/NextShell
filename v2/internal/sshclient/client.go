@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/net/proxy"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/japanese"
@@ -67,6 +68,7 @@ func MatchFingerprint(want string, key []byte) bool {
 }
 
 type Options struct {
+	KnownHostsFile   string // optional existing read-only OpenSSH host-key file
 	KeepaliveTimeout time.Duration
 	Connection       model.Connection
 	Key              model.Key
@@ -162,6 +164,14 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 		}
 		auth = append(auth, ssh.KeyboardInteractive(o.Keyboard))
 	}
+	var known ssh.HostKeyCallback
+	if o.KnownHostsFile != "" && c.Fingerprint == "" {
+		var err error
+		known, err = knownhosts.New(o.KnownHostsFile)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read known_hosts: %w", err)
+		}
+	}
 	cfg := &ssh.ClientConfig{User: c.User, Auth: auth, Timeout: o.Timeout, HostKeyCallback: func(host string, remote net.Addr, k ssh.PublicKey) error {
 		fp := Fingerprint(k.Marshal())
 		if c.Fingerprint != "" {
@@ -169,6 +179,16 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 				return &HostKeyError{c.Address(), fp, true}
 			}
 			return nil
+		}
+		if known != nil {
+			err := known(host, remote, k)
+			if err == nil {
+				return nil
+			}
+			var keyErr *knownhosts.KeyError
+			if !errors.As(err, &keyErr) || len(keyErr.Want) > 0 {
+				return err
+			}
 		}
 		if o.HostKey == nil {
 			return &HostKeyError{c.Address(), fp, false}

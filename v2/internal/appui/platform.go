@@ -14,11 +14,12 @@ import (
 )
 
 type Session struct {
-	Replaces   string
-	ID, Title  string
-	Terminal   *terminal.Terminal
-	Connection model.Connection
-	Local      bool
+	ManualTitle bool
+	Replaces    string
+	ID, Title   string
+	Terminal    *terminal.Terminal
+	Connection  model.Connection
+	Local       bool
 }
 type Prompt struct {
 	Title     string

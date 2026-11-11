@@ -228,6 +228,13 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		pr = &a
 	}
 	c.Keepalive = c.EffectiveKeepalive()
+	if c.Fingerprint == "" {
+		pin, err := p.store.HostPin(c.Address())
+		if err != nil {
+			return err
+		}
+		c.Fingerprint = pin
+	}
 	o := sshclient.Options{Connection: c, Key: k, Proxy: pr, Timeout: 2 * time.Minute, KeepaliveTimeout: 15 * time.Second, HostKey: func(addr, fp string) error {
 		pin, e := p.store.HostPin(addr)
 		if e != nil {
@@ -250,6 +257,13 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 	}, Keyboard: func(user, instruction string, questions []string, echo []bool) ([]string, error) {
 		return p.askContext(ctx, "SSH "+user+" "+instruction, questions, echo)
 	}}
+	if c.UseKnownHosts {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		o.KnownHostsFile = filepath.Join(home, ".ssh", "known_hosts")
+	}
 	s, e := sshclient.Dial(ctx, o)
 	if e != nil {
 		return e

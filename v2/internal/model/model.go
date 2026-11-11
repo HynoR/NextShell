@@ -31,7 +31,8 @@ type KeyReference struct {
 	Fingerprint string `json:"fingerprint,omitempty"`
 }
 type Connection struct {
-	SourceKeyRef *KeyReference `json:"sourceKeyRef,omitempty"`
+	UseKnownHosts bool          `json:"useKnownHosts,omitempty"`
+	SourceKeyRef  *KeyReference `json:"sourceKeyRef,omitempty"`
 	Meta
 	StrictHostKeyChecking bool     `json:"strictHostKeyChecking"`
 	KeepaliveEnabled      *bool    `json:"keepAliveEnabled,omitempty"`
