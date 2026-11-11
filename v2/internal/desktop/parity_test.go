@@ -63,3 +63,27 @@ func TestSFTPCreateDoesNotOverwrite(t *testing.T) {
 		t.Fatal("overwritten", e, string(b))
 	}
 }
+
+func TestDiagnosticPlatformCancellationAndResultIdentity(t *testing.T) {
+	p := desktopFixture(t)
+	file := filepath.Join(t.TempDir(), "nexttrace")
+	if e := os.WriteFile(file, []byte("#!/bin/sh\nexec sleep 30\n"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	prefs := p.Preferences()
+	prefs.NexttracePath = file
+	if e := p.SavePreferences(prefs); e != nil {
+		t.Fatal(e)
+	}
+	id := p.Diagnose("traceroute", "127.0.0.1")
+	p.CancelDiagnostic()
+	ev := awaitEvent(t, p, func(e appui.Event) bool { return e.Diagnostic != nil })
+	if ev.Diagnostic.ID != id || !strings.Contains(ev.Diagnostic.Text, "canceled") {
+		t.Fatal(ev.Diagnostic)
+	}
+	id = p.Diagnose("unknown", "127.0.0.1")
+	ev = awaitEvent(t, p, func(e appui.Event) bool { return e.Diagnostic != nil })
+	if ev.Diagnostic.ID != id || !strings.Contains(ev.Diagnostic.Text, "未知诊断类型") {
+		t.Fatal(ev.Diagnostic)
+	}
+}

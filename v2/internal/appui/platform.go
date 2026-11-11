@@ -28,7 +28,9 @@ type Prompt struct {
 	Answers   chan []string
 	Done      <-chan struct{}
 }
+type DiagnosticResult struct{ ID, Kind, Text string }
 type Event struct {
+	Diagnostic           *DiagnosticResult
 	FocusID, WorkspaceID string
 	Files                *FileListing
 	Editor               *EditorResult
@@ -96,6 +98,8 @@ type Platform interface {
 	OpenRemote(session, path string)
 	SaveRemote(session string, doc remoteedit.Document, text string)
 	ExternalEdit(session, path, executable string, args []string)
+	Diagnose(kind, target string) string
+	CancelDiagnostic()
 	RefreshMonitor(session string)
 	WatchMonitor(session string, on bool)
 	SignalProcess(session string, pid int, signal string)

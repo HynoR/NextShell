@@ -19,6 +19,8 @@ import (
 )
 
 type phase2State struct {
+	DiagnosticID, DiagnosticTarget, DiagnosticText                                 string
+	DiagnosticBusy                                                                 bool
 	TemplateSource, TemplateID                                                     string
 	Parameters                                                                     []commandParameter
 	TransferFilter, CommandSearch, CommandGroup, MonitorFilter                     string
@@ -55,6 +57,7 @@ type phase2State struct {
 
 func (s *phase2State) init() {
 	s.ExternalArgs = "[]"
+	s.DiagnosticTarget = "127.0.0.1"
 	s.TransferFilter = "全部"
 	s.CommandGroup = "全部"
 	s.ProcessRow = -1
@@ -78,6 +81,10 @@ func (a *App) activeID() string {
 func (a *App) handlePhase2(e Event) {
 	s := &a.Phase2
 	s.syncEditorText()
+	if e.Diagnostic != nil && e.Diagnostic.ID == s.DiagnosticID {
+		s.DiagnosticBusy = false
+		s.DiagnosticText = e.Diagnostic.Kind + "\n" + e.Diagnostic.Text
+	}
 	if e.Files != nil && e.Files.Session == a.activeID() {
 		s.FilesSession = e.Files.Session
 		s.RemotePath = e.Files.Path

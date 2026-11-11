@@ -8,7 +8,7 @@ import (
 
 type navigationItem struct{ ID, Label string }
 
-var navigation = []navigationItem{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}, {"settings", "设置"}}
+var navigation = []navigationItem{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}, {"settings", "设置"}, {"diagnostics", "网络诊断"}}
 
 func ghost(c *ui.Context, label, icon string) ui.Element {
 	t := c.Theme()
@@ -235,6 +235,8 @@ func (a *App) pageView(c *ui.Context) {
 		a.agentView(c)
 	case "shell":
 		a.shellView(c)
+	case "diagnostics":
+		a.diagnosticsView(c)
 	case "settings":
 		a.settingsView(c)
 	case "activity":

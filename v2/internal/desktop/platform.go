@@ -22,30 +22,31 @@ import (
 )
 
 type Platform struct {
-	clipboard       func(string)
-	preferences     model.Preferences
-	featureMu       sync.Mutex
-	clouds          map[string]*cloudsync.Service
-	gateway         *agent.Gateway
-	endpoint        *mcpendpoint.Endpoint
-	endpointURL     string
-	sshSessions     map[string]*sshclient.Session
-	queue           *transfer.Queue
-	imports         map[string]importPlan
-	monitorPrevious map[string]monitor.Snapshot
-	monitorBusy     map[string]bool
-	monitorWatches  map[string]context.CancelFunc
-	quit            func()
-	credentials     map[string]model.Connection
-	store           *storage.Store
-	ctx             context.Context
-	cancel          context.CancelFunc
-	mu              sync.Mutex
-	events          []appui.Event
-	sessions        map[string]*terminal.Terminal
-	wake            func()
-	closed          bool
-	wg              sync.WaitGroup
+	diagnosticCancel context.CancelFunc
+	clipboard        func(string)
+	preferences      model.Preferences
+	featureMu        sync.Mutex
+	clouds           map[string]*cloudsync.Service
+	gateway          *agent.Gateway
+	endpoint         *mcpendpoint.Endpoint
+	endpointURL      string
+	sshSessions      map[string]*sshclient.Session
+	queue            *transfer.Queue
+	imports          map[string]importPlan
+	monitorPrevious  map[string]monitor.Snapshot
+	monitorBusy      map[string]bool
+	monitorWatches   map[string]context.CancelFunc
+	quit             func()
+	credentials      map[string]model.Connection
+	store            *storage.Store
+	ctx              context.Context
+	cancel           context.CancelFunc
+	mu               sync.Mutex
+	events           []appui.Event
+	sessions         map[string]*terminal.Terminal
+	wake             func()
+	closed           bool
+	wg               sync.WaitGroup
 }
 
 func Open(path string) (*Platform, error) {

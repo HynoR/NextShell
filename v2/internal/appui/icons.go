@@ -10,6 +10,8 @@ func iconSVG(body string) *ui.SVG {
 }
 
 var appIcons = map[string]*ui.SVG{
+	"settings":    iconSVG(`<path d="m9 3 1-2h4l1 2 3 2 3 1v4l-2 2-1 3 1 3-3 3-3-1-3-1-3 1-3-3 1-3V9l-1-3 3-3z"/><circle cx="12" cy="12" r="3"/>`),
+	"diagnostics": iconSVG(`<circle cx="12" cy="12" r="8"/><path d="M12 1v5m0 12v5M1 12h5m12 0h5m-9-11-4 11h5l-4 9"/>`),
 	"terminal":    iconSVG(`<rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/>`),
 	"connections": iconSVG(`<rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6.5h.1M8 17.5h.1m4-11h5m-5 11h5"/>`),
 	"folder":      iconSVG(`<path d="M3 8V6a2 2 0 0 1 2-2h5l3 3h6a2 2 0 0 1 2 2v10H3z"/>`),
