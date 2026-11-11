@@ -43,3 +43,17 @@ func (p *Platform) SavePreferences(v model.Preferences) error {
 	p.Invalidate()
 	return nil
 }
+
+// Resolve at dial time only: preserve inheritance in session credentials for reconnect.
+func effectiveKeepalive(c model.Connection, p model.Preferences) int {
+	if c.KeepaliveEnabled != nil || c.Keepalive != 0 {
+		return c.EffectiveKeepalive()
+	}
+	if !p.KeepaliveEnabled {
+		return 0
+	}
+	if c.KeepaliveIntervalSec != nil {
+		return *c.KeepaliveIntervalSec
+	}
+	return p.KeepaliveSeconds
+}

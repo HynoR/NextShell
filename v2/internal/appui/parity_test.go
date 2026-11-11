@@ -147,3 +147,35 @@ func TestParityFileMenuTargetsClickedRow(t *testing.T) {
 		t.Fatal(a.Phase2.ActionFrom)
 	}
 }
+
+func TestFolderContextAndConnectionMetadataEntry(t *testing.T) {
+	a, p, tt := fixture(t)
+	root := model.Folder{ID: p.NewID(), Name: "parent"}
+	child := model.Folder{ID: p.NewID(), Name: "child", ParentID: root.ID}
+	for _, v := range []model.Folder{root, child} {
+		if e := p.SaveFolder(v); e != nil {
+			t.Fatal(e)
+		}
+	}
+	c := model.Connection{ID: p.NewID(), Name: "node", Host: "localhost", Port: 22, User: "tester", Auth: "agent", FolderID: child.ID}
+	if e := p.SaveConnection(c, nil); e != nil {
+		t.Fatal(e)
+	}
+	a.Data, _ = p.Snapshot()
+	tt.Frame()
+	chooseMenu(t, tt, "parent", "批量绑定目录认证（含子目录）")
+	if !a.Selected[c.ID] || a.Page != "connections" {
+		t.Fatal(a.Selected)
+	}
+	a.Edit = c
+	a.Port = "22"
+	a.Keepalive = "15"
+	a.ConnectionTags = "prod, prod, linux"
+	a.Edit.Notes = "my note"
+	tt.Frame()
+	click(t, tt, "保存连接")
+	snapshot, _ := p.Snapshot()
+	if len(snapshot.Connections[0].Tags) != 2 || snapshot.Connections[0].Notes != "my note" {
+		t.Fatal(snapshot.Connections)
+	}
+}

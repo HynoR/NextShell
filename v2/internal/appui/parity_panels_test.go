@@ -66,3 +66,22 @@ func TestCommandSearchAndMeterBounds(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderBatchSelectionAndSafeQuotedPaths(t *testing.T) {
+	a := App{Data: Snapshot{Folders: []model.Folder{{ID: "child", ParentID: "root"}, {ID: "root"}}, Connections: []model.Connection{{ID: "a", FolderID: "root"}, {ID: "b", FolderID: "child"}, {ID: "deleted", FolderID: "root", Deleted: true}, {ID: "c", FolderID: "other"}}}}
+	a.selectFolderConnections("root")
+	if len(a.Selected) != 2 || !a.Selected["a"] || !a.Selected["b"] {
+		t.Fatal(a.Selected)
+	}
+	if got := shellQuote("/a'b; echo nope"); got != "'/a'\\''b; echo nope'" {
+		t.Fatal(got)
+	}
+	for _, p := range []string{"/a\rcommand", "/a\ncommand", "/a\x03command", "/a\x1bcommand"} {
+		if safeTerminalPath(p) == nil {
+			t.Fatal("unsafe path accepted")
+		}
+	}
+	if safeTerminalPath("/中文/a'b") != nil {
+		t.Fatal("normal path rejected")
+	}
+}

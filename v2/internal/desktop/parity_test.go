@@ -3,6 +3,7 @@ package desktop
 import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/model"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,5 +86,31 @@ func TestDiagnosticPlatformCancellationAndResultIdentity(t *testing.T) {
 	ev = awaitEvent(t, p, func(e appui.Event) bool { return e.Diagnostic != nil })
 	if ev.Diagnostic.ID != id || !strings.Contains(ev.Diagnostic.Text, "未知诊断类型") {
 		t.Fatal(ev.Diagnostic)
+	}
+}
+
+func TestKeepalivePreferenceInheritance(t *testing.T) {
+	v := model.DefaultPreferences()
+	off, on := false, true
+	interval := 45
+	for _, tc := range []struct {
+		name   string
+		c      model.Connection
+		global bool
+		want   int
+	}{{"global", model.Connection{}, true, 15}, {"globalOff", model.Connection{}, false, 0}, {"explicitOff", model.Connection{KeepaliveEnabled: &off}, true, 0}, {"explicitOn", model.Connection{KeepaliveEnabled: &on, KeepaliveIntervalSec: &interval}, false, 45}, {"intervalOverride", model.Connection{KeepaliveIntervalSec: &interval}, true, 45}, {"legacy", model.Connection{Keepalive: 30}, false, 30}} {
+		t.Run(tc.name, func(t *testing.T) {
+			v.KeepaliveEnabled = tc.global
+			if got := effectiveKeepalive(tc.c, v); got != tc.want {
+				t.Fatal(got)
+			}
+			if tc.name == "global" {
+				v.KeepaliveSeconds = 20
+				if got := effectiveKeepalive(tc.c, v); got != 20 {
+					t.Fatal("reconnect froze policy", got)
+				}
+				v.KeepaliveSeconds = 15
+			}
+		})
 	}
 }

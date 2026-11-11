@@ -268,8 +268,12 @@ func (a *App) filesBlankMenu(item ui.Element, id string) {
 			a.P.ListFiles(id, s.RemotePath)
 		}
 		if m.Item("在终端打开此目录").Chosen() {
-			a.status(a.P.Send(id, "cd -- "+shellQuote(s.RemotePath)+"\r"))
-			a.Page = "terminal"
+			if e := safeTerminalPath(s.RemotePath); e != nil {
+				a.status(e)
+			} else {
+				a.status(a.P.Send(id, "cd -- "+shellQuote(s.RemotePath)+"\r"))
+				a.Page = "terminal"
+			}
 		}
 		if m.Item("上传文件（填写路径）").Chosen() {
 			a.Message = "填写本地文件和远端文件路径后点上传文件"
@@ -283,4 +287,55 @@ func (a *App) filesBlankMenu(item ui.Element, id string) {
 			s.ActionFrom = path.Join(s.RemotePath, "新建文件.txt")
 		}
 	})
+}
+
+func safeTerminalPath(s string) error {
+	for _, r := range s {
+		if r < 32 || r == 127 {
+			return fmt.Errorf("路径包含控制字符，不能发送到交互终端")
+		}
+	}
+	return nil
+}
+func (a *App) folderMenu(e ui.Element, f model.Folder) {
+	e.ContextMenu(func(m *ui.Menu) {
+		if m.Item("新建子目录").Chosen() {
+			a.later(func() { a.Folder = model.Folder{ParentID: f.ID}; a.Page = "folders" })
+		}
+		if m.Item("重命名/编辑目录").Chosen() {
+			a.later(func() { a.Folder = f; a.Page = "folders" })
+		}
+		if m.Item("批量绑定目录认证（含子目录）").Chosen() {
+			a.later(func() {
+				a.selectFolderConnections(f.ID)
+				a.Page = "connections"
+				a.Message = "已选择目录及子目录中的连接；修改认证后点批量绑定认证"
+			})
+		}
+		if m.Item("删除空目录").Chosen() {
+			a.DeleteKind = "folder"
+			a.DeleteID = f.ID
+		}
+	})
+}
+func (a *App) selectFolderConnections(root string) {
+	folders := map[string]bool{root: true}
+	for i := 0; i < len(a.Data.Folders); i++ {
+		changed := false
+		for _, f := range a.Data.Folders {
+			if folders[f.ParentID] && !folders[f.ID] {
+				folders[f.ID] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	a.Selected = map[string]bool{}
+	for _, cc := range a.Data.Connections {
+		if folders[cc.FolderID] && !cc.Deleted {
+			a.Selected[cc.ID] = true
+		}
+	}
 }

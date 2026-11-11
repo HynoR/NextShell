@@ -235,18 +235,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		}
 		pr = &a
 	}
-	prefs := p.Preferences()
-	if c.KeepaliveEnabled == nil && c.Keepalive == 0 {
-		c.Keepalive = 0
-		if prefs.KeepaliveEnabled {
-			c.Keepalive = prefs.KeepaliveSeconds
-			if c.KeepaliveIntervalSec != nil {
-				c.Keepalive = *c.KeepaliveIntervalSec
-			}
-		}
-	} else {
-		c.Keepalive = c.EffectiveKeepalive()
-	}
+	keepalive := effectiveKeepalive(c, p.Preferences())
 	if c.Fingerprint == "" {
 		pin, err := p.store.HostPin(c.Address())
 		if err != nil {
@@ -254,7 +243,9 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		}
 		c.Fingerprint = pin
 	}
-	o := sshclient.Options{Connection: c, Key: k, Proxy: pr, Timeout: 2 * time.Minute, KeepaliveTimeout: 15 * time.Second, HostKey: func(addr, fp string) error {
+	dialConnection := c
+	dialConnection.Keepalive = keepalive
+	o := sshclient.Options{Connection: dialConnection, Key: k, Proxy: pr, Timeout: 2 * time.Minute, KeepaliveTimeout: 15 * time.Second, HostKey: func(addr, fp string) error {
 		pin, e := p.store.HostPin(addr)
 		if e != nil {
 			return e

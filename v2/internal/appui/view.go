@@ -11,6 +11,7 @@ import (
 
 type tabDrag string
 type App struct {
+	ConnectionTags             string
 	Actions                    []func()
 	RenameConnection           model.Connection
 	RenameText                 string
@@ -99,10 +100,12 @@ func (a *App) newConnection() {
 	a.Keepalive = strconv.Itoa(a.Prefs.KeepaliveSeconds)
 	a.InheritKeepalive = true
 	a.Password = ""
+	a.ConnectionTags = ""
 	a.ReplaceSecret = false
 }
 func (a *App) edit(c model.Connection) {
 	a.Edit = c
+	a.ConnectionTags = strings.Join(c.Tags, ", ")
 	a.Port = strconv.Itoa(c.Port)
 	a.InheritKeepalive = c.KeepaliveEnabled == nil && c.Keepalive == 0
 	interval := c.Keepalive
@@ -201,7 +204,8 @@ func (a *App) tree(c *ui.Context, parent string, depth int) {
 			continue
 		}
 		open := !a.Collapsed[f.ID]
-		ui.SidebarSection(c.Key(f.ID+"folder"), f.Name, &open, func() { a.tree(c, f.ID, depth+1) })
+		section := ui.SidebarSection(c.Key(f.ID+"folder"), f.Name, &open, func() { a.tree(c, f.ID, depth+1) })
+		a.folderMenu(section, f)
 		a.Collapsed[f.ID] = !open
 	}
 	for _, cc := range a.Data.Connections {
@@ -395,6 +399,8 @@ func (a *App) connectionsView(c *ui.Context) {
 				}
 			})
 			field(c, "名称", &a.Edit.Name)
+			field(c, "标签（逗号分隔）", &a.ConnectionTags)
+			field(c, "连接备注", &a.Edit.Notes)
 			field(c, "主机", &a.Edit.Host)
 			field(c, "端口", &a.Port)
 			field(c, "用户", &a.Edit.User)
@@ -454,6 +460,15 @@ func (a *App) connectionsView(c *ui.Context) {
 }
 func (a *App) draft() (model.Connection, error) {
 	cc := a.Edit
+	cc.Tags = nil
+	seenTags := map[string]bool{}
+	for _, tag := range strings.Split(a.ConnectionTags, ",") {
+		tag = strings.TrimSpace(tag)
+		if tag != "" && !seenTags[tag] {
+			cc.Tags = append(cc.Tags, tag)
+			seenTags[tag] = true
+		}
+	}
 	var e error
 	cc.Port, e = strconv.Atoi(a.Port)
 	if e != nil {
