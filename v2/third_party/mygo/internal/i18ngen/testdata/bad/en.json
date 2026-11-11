@@ -1,0 +1,24 @@
+{
+  "@@locale": "en",
+  "ok": "Fine",
+  "files": "{n, plural, one {# file} other {# files}}",
+  "broken": "{n, plural, one {# file}}",
+  "bad-key": "A key with a dash",
+  "In": "Collides with In",
+  "dup_name": "One",
+  "dupName": "Two",
+  "typed": "{n, plural, one {#} other {#}}",
+  "@typed": {
+    "placeholders": {
+      "n": { "type": "String" },
+      "unused": { "type": "int" },
+      "weird": { "type": "float" }
+    }
+  },
+  "@ghost": { "description": "Describes nothing." },
+  "notString": 3,
+  "few": "{n, plural, one {#} few {#} other {#}}",
+  "unknown.key": "No such library",
+  "mygo.nope": "No such message",
+  "mygo.quitApp": "Quit {application}"
+}

@@ -7,6 +7,7 @@ import (
 	"log"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
+	"os"
 	"time"
 )
 
@@ -30,7 +31,7 @@ func main() {
 	a := appui.New(p)
 	p.SetQuit(func() { mygo.App.Quit() })
 	mygo.App.WhenReady(func() {
-		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell 2 · Native", Width: 1280, Height: 850, MinWidth: 1000, MinHeight: 650, TitleBarStyle: mygo.TitleBarHidden, Content: ui.View(a.View)})
+		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell 2 · Native", Width: 1280, Height: 850, MinWidth: 1000, MinHeight: 650, TitleBarStyle: mygo.TitleBarHidden, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		w.OnClose(func(e *mygo.CloseEvent) {
 			if len(a.Tabs) > 0 && !a.ExitConfirmed {
 				e.PreventDefault()
@@ -47,4 +48,11 @@ func main() {
 	if e = mygo.App.Run(); e != nil {
 		log.Fatal(e)
 	}
+}
+
+func devToolsMode() mygo.DevTools {
+	if developmentInspector && os.Getenv("NEXTSHELL_DEVTOOLS") == "1" {
+		return mygo.DevToolsEnabled
+	}
+	return mygo.DevToolsDisabled
 }

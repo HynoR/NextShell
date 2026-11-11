@@ -1,0 +1,12 @@
+{
+  "@@locale": "de",
+  "title": "Notizen",
+  "filesSelected": "{count, plural, =0 {Keine Dateien ausgewählt} one {# Datei ausgewählt} other {# Dateien ausgewählt}}",
+  "greeting": "Hallo, {name}!",
+  "replied": "{gender, select, female {Sie} male {Er} other {Sie}} hat am {when, date, short} geantwortet.",
+  "place": "Du bist {n}. geworden",
+  "guests": "{n, plural, offset:1 =0 {Niemand} =1 {{host}} one {{host} und # weitere Person} other {{host} und # weitere Personen}}",
+  "mygo.cancel": "Abbrechen",
+  "mygo.quitApp": "{app} beenden",
+  "mygo.appName": "Notizen"
+}

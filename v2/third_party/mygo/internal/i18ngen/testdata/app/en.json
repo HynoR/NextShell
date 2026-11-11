@@ -1,0 +1,51 @@
+{
+  "@@locale": "en",
+  "title": "Notes",
+  "@title": {
+    "description": "The name of the app, in its windows' titles."
+  },
+  "filesSelected": "{count, plural, =0 {No files selected} one {# file selected} other {# files selected}}",
+  "@filesSelected": {
+    "description": "The status bar, while files are selected.",
+    "placeholders": {
+      "count": { "type": "int", "example": "3" }
+    }
+  },
+  "greeting": "Hello, {name}!",
+  "@greeting": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "replied": "{gender, select, female {She} male {He} other {They}} replied {when, date, short}.",
+  "progress": "{done, number, percent} done",
+  "@progress": {
+    "placeholders": {
+      "done": { "type": "double" }
+    }
+  },
+  "place": "You came {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
+  "guests": "{n, plural, offset:1 =0 {Nobody} =1 {{host}} one {{host} and # other} other {{host} and # others}}",
+  "@guests": {
+    "placeholders": {
+      "host": { "type": "String" },
+      "n": { "type": "num" }
+    }
+  },
+  "positional": "{0} of {1}",
+  "keyword": "{type} {default} {string} {any}",
+  "untyped": "Value: {value}",
+  "@untyped": {
+    "placeholders": {
+      "value": {}
+    }
+  },
+  "object": "Item {item}",
+  "@object": {
+    "placeholders": {
+      "item": { "type": "Object" }
+    }
+  },
+  "save_as": "Save As…",
+  "mygo.cancel": "Dismiss"
+}

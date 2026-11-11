@@ -1,0 +1,25 @@
+locales/de.json:1: "ok" comes twice
+locales/de.json: warning: 5 of 6 messages missing, which say the language they fall back to: files, broken, dup_name, typed, few
+locales/en-XA.json: en-XA is a pseudo locale, made from the source language: remove the file
+locales/en.json:5: "broken" does not parse: the plural argument "n" has no other case
+locales/en.json:6: "bad-key" is not a key: a letter, then letters, digits and _, as filesSelected
+locales/en.json:7: "In" would name its Go function In, which the generated code declares
+locales/en.json:9: "dup_name" and "dupName" would both name their Go function DupName
+locales/en.json:10: "typed" uses n as a plural argument, which its type String cannot be
+locales/en.json:11: @typed.placeholders.weird: type "float" is not String, int, double, num, DateTime or Object
+locales/en.json:11: warning: @typed declares the placeholder unused, which the message does not use
+locales/en.json:11: warning: @typed declares the placeholder weird, which the message does not use
+locales/en.json:18: warning: @ghost describes no message
+locales/en.json:19: "notString" is not a string
+locales/en.json:20: warning: "few": en has no plural category of few (its plural categories are one, other)
+locales/en.json:21: "unknown.key": no library has the namespace unknown
+locales/en.json:22: "mygo.nope": mygo has no message nope
+locales/en.json:23: "mygo.quitApp" uses the argument application, but the source message has the arguments app
+locales/en.json:23: warning: "mygo.quitApp" does not use the argument app
+locales/fr.json: not a JSON object of messages
+locales/ru.json:2: @@locale "uk" is not ru, the language the file is named after
+locales/ru.json:3: "ok" uses the argument extra, but the source message has no arguments
+locales/ru.json:4: warning: "files": the plural argument n lacks few, many, a plural category of ru, which says other in its place
+locales/ru.json:5: "stray" is not a key of locales/en.json
+locales/ru.json: warning: 4 of 6 messages missing, which say the language they fall back to: broken, dup_name, typed, few
+locales/zh_CN.json: the name of a catalog is a BCP 47 tag in its canonical form, as en.json or zh-Hant.json: rename it zh-CN.json

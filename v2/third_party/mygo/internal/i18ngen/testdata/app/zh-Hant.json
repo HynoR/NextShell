@@ -1,0 +1,5 @@
+{
+  "title": "筆記",
+  "filesSelected": "{count, plural, other {已選取 # 個檔案}}",
+  "greeting": "你好，{name}！"
+}

@@ -1,0 +1,6 @@
+{
+  "@@locale": "uk",
+  "ok": "Хорошо {extra}",
+  "files": "{n, plural, one {# файл} other {# файлов}}",
+  "stray": "Not in the source"
+}
