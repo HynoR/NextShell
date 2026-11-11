@@ -170,21 +170,21 @@ func TestFolderUIAndSearch(t *testing.T) {
 	} // reconstruct to obtain refreshed directory snapshot
 	a2 := appui.New(p)
 	tt2 := ui.NewTester(a2.View, 1400, 1000)
-	if !tt2.HasText("  production") {
+	if !tt2.HasText("production") {
 		t.Fatal(tt2.Texts())
 	}
 	a2.Search = "nomatch"
 	tt2.Frame()
-	if tt2.HasText("  production") {
+	if tt2.HasText("production") {
 		t.Fatal("filter ignored")
 	}
 	a2.Search = "host.example"
 	tt2.Frame()
-	if !tt2.HasText("  production") {
+	if !tt2.HasText("production") {
 		t.Fatal("host search failed")
 	}
-	click(t, tt2, "▾ 生产")
-	if tt2.HasText("  production") {
+	click(t, tt2, "生产")
+	if tt2.HasText("production") {
 		t.Fatal("collapse failed")
 	}
 }

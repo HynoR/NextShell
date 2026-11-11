@@ -11,6 +11,8 @@ import (
 
 type tabDrag string
 type App struct {
+	Appearance, TreeSelection  string
+	SidebarWidth               float32
 	Phase2                     phase2State
 	Phase3                     phase3State
 	ConfirmExit, ExitConfirmed bool
@@ -50,7 +52,7 @@ type App struct {
 }
 
 func New(p Platform) *App {
-	a := &App{KeyAlgorithm: "ed25519", P: p, Active: -1, Page: "terminal", Selected: map[string]bool{}, Collapsed: map[string]bool{}, ShowWorkbench: true, ConnectionLayout: "table"}
+	a := &App{Appearance: "跟随系统", SidebarWidth: 260, KeyAlgorithm: "ed25519", P: p, Active: -1, Page: "terminal", Selected: map[string]bool{}, Collapsed: map[string]bool{}, ShowWorkbench: true, ConnectionLayout: "table"}
 	a.Phase2.init()
 	a.Phase3.init()
 	a.newConnection()
@@ -124,6 +126,7 @@ func (a *App) closeTab(i int) {
 	}
 }
 func (a *App) View(c *ui.Context) {
+	c.SetTheme(designTheme(c.Theme(), a.Appearance, c.Preferences().HighContrast))
 	a.P.SetWake(c.Services().Invalidate)
 	alive := a.Prompts[:0]
 	for _, p := range a.Prompts {
@@ -138,6 +141,7 @@ func (a *App) View(c *ui.Context) {
 		a.handlePhase2(e)
 		a.handlePhase3(e)
 		if e.Session != nil {
+			e.Session.Terminal.SetTheme(terminalLight, terminalDark)
 			replaced := false
 			for i, old := range a.Tabs {
 				if e.Session.Replaces == old.ID {
@@ -165,152 +169,7 @@ func (a *App) View(c *ui.Context) {
 		}
 	}
 	a.refreshTitles()
-	ui.Column(c).Fill().Gap(0).Children(func() {
-		bar := c.TitleBar()
-		ui.Row(c).FillWidth().Height(max(bar.Height, 48)).Padding(8, bar.Right+8, 8, bar.Left+8).Gap(8).DragWindow().Children(func() {
-			ui.Text(c, "NextShell 2").Bold()
-			ui.Checkbox(c, &a.ShowWorkbench, "工作台")
-			ui.TextInput(c, &a.Quick).Placeholder("user@host:22").Grow(1)
-			ui.TextInput(c, &a.QuickPassword).Placeholder("快连密码").Password().Width(160)
-			if ui.Button(c, "快速连接").Clicked() {
-				cc, e := model.QuickConnect(a.Quick)
-				if e != nil {
-					a.status(e)
-				} else {
-					cc.Secret = a.QuickPassword
-					a.P.Connect(cc)
-					a.QuickPassword = ""
-					a.Message = "正在连接…"
-				}
-			}
-			if ui.Button(c, "本地终端").Clicked() {
-				a.P.Local()
-			}
-		})
-		ui.Row(c).FillWidth().Grow(1).Children(func() {
-			ui.Scroll(c).Width(230).FillHeight().Padding(8).Children(func() {
-				ui.Column(c).FillWidth().Gap(5).Children(func() {
-					if ui.Button(c, "连接管理").FillWidth().Clicked() {
-						a.Page = "connections"
-					}
-					if ui.Button(c, "目录管理").FillWidth().Clicked() {
-						a.Page = "folders"
-					}
-					ui.Text(c, "连接目录").Bold()
-					ui.TextInput(c, &a.Search).Placeholder("搜索名称 / 主机")
-					a.tree(c, "", 0)
-					ui.Checkbox(c, &a.ShowTrash, "显示回收站")
-					if a.ShowTrash {
-						for _, cc := range a.Data.Connections {
-							if cc.Deleted {
-								ui.Row(c).Children(func() {
-									ui.Text(c, cc.Name)
-									if ui.Button(c, "永久删除").Key(cc.ID + "purge").Clicked() {
-										a.DeleteKind = "connection"
-										a.DeleteID = cc.ID
-										a.Page = "connections"
-									}
-									if ui.Button(c, "恢复").Key(cc.ID + "restore").Clicked() {
-										cc.Deleted = false
-										a.status(a.P.SaveConnection(cc, nil))
-										a.reload()
-									}
-								})
-							}
-						}
-					}
-				})
-			})
-			ui.Column(c).Grow(1).FillHeight().Children(func() {
-				ui.ScrollHorizontal(c).FillWidth().Height(44).Children(func() {
-					ui.Row(c).Gap(4).Children(func() {
-						for i, t := range a.Tabs {
-							row := ui.Row(c).Key(t.ID + "tab").Drag(tabDrag(t.ID)).Gap(1)
-							if dragged, ok := ui.Drop[tabDrag](row); ok {
-								a.moveTab(string(dragged), i)
-							}
-							row.Children(func() {
-								label := t.Title
-								if i == a.Active {
-									label = "● " + label
-								}
-								select {
-								case <-t.Terminal.Done():
-									label += " [已退出]"
-								default:
-								}
-								if ui.Button(c, label).Clicked() {
-									a.Active = i
-									a.TabName = t.Title
-									a.Page = "terminal"
-								}
-								if ui.Button(c, "×").Clicked() {
-									a.closeTab(i)
-								}
-							})
-						}
-					})
-				})
-				if len(a.Prompts) > 0 {
-					a.promptView(c)
-				} else {
-					switch a.Page {
-					case "connections":
-						a.connectionsView(c)
-					case "folders":
-						a.foldersView(c)
-					case "keys":
-						a.keysView(c)
-					case "proxies":
-						a.proxiesView(c)
-					case "files":
-						a.filesView(c)
-					case "transfers":
-						a.transfersView(c)
-					case "editor":
-						a.editorView(c)
-					case "monitor":
-						a.monitorView(c)
-					case "commands":
-						a.commandsView(c)
-					case "data":
-						a.dataView(c)
-					case "cloud":
-						a.cloudView(c)
-					case "agent":
-						a.agentView(c)
-					case "shell":
-						a.shellView(c)
-					case "activity":
-						a.activityView(c)
-					default:
-						a.terminalView(c)
-					}
-				}
-				a.workbench(c)
-			})
-			ui.Column(c).Width(126).FillHeight().Gap(8).Padding(8).Children(func() {
-				for _, v := range []struct{ ID, Label string }{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}} {
-					if ui.Button(c, v.Label).FillWidth().Clicked() {
-						a.Page = v.ID
-					}
-				}
-			})
-		})
-		if a.ConfirmExit {
-			ui.Row(c).FillWidth().Padding(8).Gap(8).Children(func() {
-				ui.Text(c, fmt.Sprintf("仍有 %d 个会话，退出将断开连接", len(a.Tabs)))
-				if ui.Button(c, "退出应用").Clicked() {
-					a.ExitConfirmed = true
-					a.P.Quit()
-				}
-				if ui.Button(c, "继续使用").Clicked() {
-					a.ConfirmExit = false
-				}
-			})
-		}
-		ui.Text(c, a.Message).FillWidth().Padding(5).FontSize(12)
-	})
+	a.chrome(c)
 	a.deleteView(c)
 }
 func (a *App) tree(c *ui.Context, parent string, depth int) {
@@ -318,58 +177,65 @@ func (a *App) tree(c *ui.Context, parent string, depth int) {
 		return
 	}
 	for _, f := range a.Data.Folders {
-		if f.ParentID == parent {
-			label := "▾ "
-			if a.Collapsed[f.ID] {
-				label = "▸ "
-			}
-			if ui.Button(c, strings.Repeat("  ", depth)+label+f.Name).Key(f.ID + "folder").Clicked() {
-				a.Collapsed[f.ID] = !a.Collapsed[f.ID]
-			}
-			if !a.Collapsed[f.ID] {
-				a.tree(c, f.ID, depth+1)
-			}
+		if f.ParentID != parent {
+			continue
 		}
+		open := !a.Collapsed[f.ID]
+		ui.SidebarSection(c.Key(f.ID+"folder"), f.Name, &open, func() { a.tree(c, f.ID, depth+1) })
+		a.Collapsed[f.ID] = !open
 	}
 	for _, cc := range a.Data.Connections {
 		if cc.FolderID != parent || cc.Deleted || !a.matches(cc) {
 			continue
 		}
-		ui.Row(c).Key(cc.ID + "row").Gap(4).Children(func() {
-			if ui.Button(c, strings.Repeat("  ", depth)+cc.Name).Grow(1).Clicked() {
-				a.P.Connect(cc)
-				a.Message = "正在连接…"
-			}
-			if ui.Button(c, "编辑").Clicked() {
+		item := ui.SidebarItem(c, cc.ID, appIcons["connections"], cc.Name).Padding(8, 8, 8, 8+float32(depth)*12).Tooltip(cc.User + "@" + cc.Host)
+		item.Children(func() {
+			b := ui.ButtonBase(c).Label("编辑").Tooltip("编辑 "+cc.Name).Size(24, 24).Center().Children(func() { ui.Icon(c, appIcons["edit"]).FontSize(14).TextColor(c.Theme().TextMuted) })
+			if b.Clicked() {
 				a.edit(cc)
 			}
 		})
+		if item.Clicked() {
+			a.P.Connect(cc)
+			a.Message = "正在连接…"
+		}
 	}
 }
 func (a *App) terminalView(c *ui.Context) {
 	s := a.current()
 	if s == nil {
 		ui.Column(c).Grow(1).FillWidth().Center().Children(func() {
-			ui.Text(c, "NextShell 原生终端").FontSize(28)
-			ui.Text(c, "从左侧选择连接，或打开本地终端")
-			ui.Text(c, "首次 SSH 连接必须核对主机指纹")
+			t := c.Theme()
+			ui.Box(c).Size(76, 76).Radius(22).Background(t.Accent.Alpha(.12)).Center().Children(func() { ui.Icon(c, appIcons["terminal"]).FontSize(40).TextColor(t.Accent) })
+			ui.Text(c, "NextShell 原生终端").FontSize(30).Bold().Margin(24, 0, 8, 0)
+			ui.Text(c, "从左侧选择连接，或打开本地终端").TextColor(t.TextMuted)
+			ui.Row(c).Gap(12).Margin(24, 0).Children(func() {
+				if ui.PrimaryButton(c, "新建 SSH 连接").Clicked() {
+					a.newConnection()
+					a.Page = "connections"
+				}
+				if ui.Button(c, "打开本地终端").Clicked() {
+					a.P.Local()
+				}
+			})
+			ui.Text(c, "首次 SSH 连接必须核对主机指纹").FontSize(12).TextColor(t.TextMuted)
 		})
 		return
 	}
-	ui.Row(c).FillWidth().Gap(4).Children(func() {
+	ui.Row(c).FillWidth().Padding(10, 16).Gap(8).AlignItems(ui.Center).Background(c.Theme().Surface).Children(func() {
 		ui.TextInput(c.Key(s.ID+"-tab-name"), &a.TabName).Label("标签名称").Width(160)
-		if ui.Button(c.Key(s.ID+"-rename"), "重命名").Clicked() && strings.TrimSpace(a.TabName) != "" {
+		if ghost(c.Key(s.ID+"-rename"), "重命名", "edit").Clicked() && strings.TrimSpace(a.TabName) != "" {
 			s.Title = strings.TrimSpace(a.TabName)
 			s.ManualTitle = true
 			c.Invalidate()
 		}
-		if ui.Button(c, "复制会话").Clicked() {
+		if ghost(c, "复制会话", "activity").Clicked() {
 			a.P.CloneSession(s)
 		}
-		if ui.Button(c, "重连").Clicked() {
+		if ghost(c, "重连", "proxies").Clicked() {
 			a.P.Reconnect(s)
 		}
-		if ui.Button(c, "断开并关闭").Clicked() {
+		if ghost(c, "断开并关闭", "terminal").TextColor(c.Theme().Danger).Clicked() {
 			a.closeTab(a.Active)
 		}
 		if ui.Button(c, "←").Clicked() && a.Active > 0 {
@@ -389,10 +255,11 @@ func (a *App) terminalView(c *ui.Context) {
 }
 func (a *App) workbench(c *ui.Context) {
 	if !a.ShowWorkbench {
+		ui.Checkbox(c, &a.ShowWorkbench, "工作台").Margin(8, 20)
 		return
 	}
-	ui.Column(c).FillWidth().Padding(6).Gap(4).Children(func() {
-		ui.Text(c, "工作台 · 命令输入 / 历史（本地明文保存，勿输入密码）").FontSize(12)
+	ui.Column(c).FillWidth().Padding(12, 20).Gap(8).Background(c.Theme().Surface).BorderColor(c.Theme().Border).BorderWidth(1, 0, 0, 0).Children(func() {
+		ui.Checkbox(c, &a.ShowWorkbench, "工作台 · 命令输入 / 历史（本地明文保存，勿输入密码）").FontSize(12).TextColor(c.Theme().TextMuted)
 		ui.Row(c).FillWidth().Gap(6).Children(func() {
 			ui.TextInput(c, &a.Command).Label("命令输入").Placeholder("向当前会话发送命令").Grow(1).OnTextKey(func(k ui.TextKey) bool {
 				if k.Key == ui.KeyEnter {
@@ -431,13 +298,22 @@ func (a *App) sendCommand() {
 	}
 }
 func field(c *ui.Context, label string, value *string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() { ui.Text(c, label).Width(120); ui.TextInput(c, value).Label(label).Grow(1) })
+	ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
+		ui.TextInput(c, value).Label(label).Grow(1)
+	})
 }
 func password(c *ui.Context, label string, value *string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() { ui.Text(c, label).Width(120); ui.TextInput(c, value).Label(label).Password().Grow(1) })
+	ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
+		ui.TextInput(c, value).Label(label).Password().Grow(1)
+	})
 }
 func choice(c *ui.Context, label string, value *string, options []string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() { ui.Text(c, label).Width(120); ui.Select(c, value, options).Label(label).Grow(1) })
+	ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
+		ui.Select(c, value, options).Label(label).Grow(1)
+	})
 }
 func chooseID(c *ui.Context, label string, id *string, ids, names []string) {
 	name := "（无）"
@@ -482,15 +358,15 @@ func (a *App) proxyChoice(c *ui.Context, id *string) {
 	chooseID(c, "代理", id, ids, names)
 }
 func (a *App) connectionsView(c *ui.Context) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "连接管理").FontSize(22)
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
+			ui.Text(c, "连接管理").FontSize(26).Bold()
 			choice(c, "资源视图", &a.ConnectionLayout, []string{"table", "grid"})
 			ui.Row(c).Gap(5).Children(func() {
 				if ui.Button(c, "新建连接").Clicked() {
 					a.newConnection()
 				}
-				if ui.Button(c, "保存连接").Clicked() {
+				if ui.PrimaryButton(c, "保存连接").Clicked() {
 					a.saveConnection()
 				}
 				if ui.Button(c, "连接当前配置").Clicked() {
@@ -643,16 +519,16 @@ func (a *App) batchBind() {
 	a.status(nil)
 }
 func (a *App) foldersView(c *ui.Context) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "目录管理").FontSize(22)
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
+			ui.Text(c, "目录管理").FontSize(26).Bold()
 			field(c, "目录名称", &a.Folder.Name)
 			a.folderChoice(c, "父目录", &a.Folder.ParentID)
 			ui.Row(c).Gap(5).Children(func() {
 				if ui.Button(c, "新目录").Clicked() {
 					a.Folder = model.Folder{}
 				}
-				if ui.Button(c, "保存目录").Clicked() {
+				if ui.PrimaryButton(c, "保存目录").Clicked() {
 					f := a.Folder
 					if f.ID == "" {
 						f.ID = a.P.NewID()
@@ -681,9 +557,9 @@ func (a *App) foldersView(c *ui.Context) {
 	})
 }
 func (a *App) keysView(c *ui.Context) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "SSH 密钥").FontSize(22)
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
+			ui.Text(c, "SSH 密钥").FontSize(26).Bold()
 			field(c, "名称", &a.Key.Name)
 			choice(c, "算法", &a.KeyAlgorithm, []string{"ed25519", "rsa-2048", "rsa-4096"})
 			field(c, "导入文件路径", &a.KeyPath)
@@ -734,9 +610,9 @@ func (a *App) keysView(c *ui.Context) {
 	})
 }
 func (a *App) proxiesView(c *ui.Context) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, "SOCKS 代理").FontSize(22)
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
+			ui.Text(c, "SOCKS 代理").FontSize(26).Bold()
 			field(c, "名称", &a.Proxy.Name)
 			choice(c, "类型", &a.Proxy.Kind, []string{"socks4", "socks5"})
 			field(c, "主机", &a.Proxy.Host)
@@ -750,7 +626,7 @@ func (a *App) proxiesView(c *ui.Context) {
 					a.ProxyPort = "1080"
 					a.ProxyPassword = ""
 				}
-				if ui.Button(c, "保存代理").Clicked() {
+				if ui.PrimaryButton(c, "保存代理").Clicked() {
 					p := a.Proxy
 					port, e := strconv.Atoi(a.ProxyPort)
 					if e != nil {
@@ -813,8 +689,8 @@ func (a *App) deleteView(c *ui.Context) {
 }
 
 func (a *App) activityView(c *ui.Context) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() {
-		ui.Column(c).FillWidth().Gap(8).Children(func() {
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
 			ui.Text(c, "活动记录（不记录密码或终端内容）").Bold()
 			for _, l := range a.Logs {
 				ui.Text(c, l)

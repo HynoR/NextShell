@@ -18,6 +18,8 @@ import (
 )
 
 type phase2State struct {
+	FileList                                                                       ui.ListState
+	FileRow                                                                        int
 	Code                                                                           editor.State
 	CodeSource, CodePath                                                           string
 	CodeVersion                                                                    uint64
@@ -46,6 +48,7 @@ type phase2State struct {
 func (s *phase2State) init() {
 	s.ExternalArgs = "[]"
 	s.RemotePath = "."
+	s.FileRow = -1
 	s.Signal = "TERM"
 	s.MonitorPage = "system"
 	s.ImportFormat = "nextshell"
@@ -97,7 +100,9 @@ func (a *App) handlePhase2(e Event) {
 	}
 }
 func (a *App) phasePage(c *ui.Context, title string, body func()) {
-	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(12).Children(func() { ui.Column(c).FillWidth().Gap(8).Children(func() { ui.Text(c, title).FontSize(22); body() }) })
+	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Gap(FormGap).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Children(func() { ui.Text(c, title).FontSize(26).Bold(); body() })
+	})
 }
 func (a *App) queue(req TransferRequest) {
 	id, e := a.P.QueueTransfer(req)
@@ -159,28 +164,57 @@ func (a *App) filesView(c *ui.Context) {
 			}
 			zone.Children(func() {
 				ui.Text(c, "可将本地文件拖入列表上传（文件夹请用打包上传）")
-				for _, f := range s.Files {
-					ui.Row(c).Key(f.Path).Gap(6).Children(func() {
+				s.FileList.Selected = &s.FileRow
+				s.FileList.RoundRows = true
+				s.FileList.Key = func(i int) any { return s.Files[i].Path }
+				s.FileList.Label = func(i int) string { return s.Files[i].Name }
+				cols := []ui.TableColumn{{Title: "名称"}, {Title: "大小", Width: 90, Align: ui.End}, {Title: "权限", Width: 145}, {Title: "操作", Width: 120}}
+				table := ui.Table(c.Key("sftp-file-list-"+id), &s.FileList, cols, len(s.Files), func(row, col int) {
+					f := s.Files[row]
+					switch col {
+					case 0:
 						label := f.Name
-						if f.Directory {
-							label = "▸ " + label
-						}
 						if f.Symlink {
 							label += " [链接]"
 						}
-						if ui.Button(c, label).Grow(1).Clicked() {
+						ic := "files"
+						if f.Directory {
+							ic = "folder"
+						}
+						actionLabel := "选择 " + f.Name
+						if f.Directory {
+							actionLabel = "打开 " + f.Name
+						}
+						if ghost(c, label, ic).Label(actionLabel).Clicked() {
 							s.SelectedRemote = f.Path
 							if f.Directory {
 								s.RemotePath = f.Path
 								a.P.ListFiles(id, f.Path)
 							}
 						}
-						ui.Text(c, fmt.Sprintf("%s · %d B", f.Mode, f.Size)).FontSize(11)
-						if !f.Directory && !f.Symlink && ui.Button(c, "编辑文件").Clicked() {
+					case 1:
+						ui.Text(c, fmt.Sprintf("%d B", f.Size)).TextColor(c.Theme().TextMuted).FontSize(12)
+					case 2:
+						ui.Text(c, f.Mode).TextColor(c.Theme().TextMuted).FontSize(12)
+					case 3:
+						if !f.Directory && !f.Symlink && ghost(c, "编辑文件", "edit").Clicked() {
 							a.openEditor(id, f.Path)
 						}
-					})
+					}
+				}).Height(260).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius)
+				if table.Changed() && s.FileRow >= 0 && s.FileRow < len(s.Files) {
+					s.SelectedRemote = s.Files[s.FileRow].Path
 				}
+				if table.Submitted() && s.FileRow >= 0 && s.FileRow < len(s.Files) {
+					f := s.Files[s.FileRow]
+					if f.Directory {
+						s.RemotePath = f.Path
+						a.P.ListFiles(id, f.Path)
+					} else if !f.Symlink {
+						a.openEditor(id, f.Path)
+					}
+				}
+
 			})
 		}
 		field(c, "选定/远端文件", &s.SelectedRemote)
@@ -271,8 +305,8 @@ func (a *App) transfersView(c *ui.Context) {
 }
 func (a *App) editorView(c *ui.Context) {
 	s := &a.Phase2
-	ui.Column(c).Key("editor-page").Grow(1).FillWidth().Padding(12).Gap(8).Children(func() {
-		ui.Text(c, "远程文本编辑（UTF-8，最大 8 MiB）").FontSize(22)
+	ui.Column(c).Key("editor-page").Grow(1).FillWidth().Padding(PageInset).Gap(FormGap).Children(func() {
+		ui.Text(c, "远程文本编辑（UTF-8，最大 8 MiB）").FontSize(26).Bold()
 		if s.OpenPath != "" {
 			ui.Text(c, "打开另一文件将丢弃当前未保存文本："+s.OpenPath)
 			ui.Row(c).Gap(6).Children(func() {
