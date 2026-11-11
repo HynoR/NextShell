@@ -11,10 +11,10 @@ func TestHeldControlFreezesOrderAndCommits(t *testing.T) {
 	if v := m.Step(ids, "d", false); v != "c" {
 		t.Fatal(v)
 	}
-	if v := m.Step(ids, "c", false); v != "b" {
+	if v := m.Step(ids, "d", false); v != "b" {
 		t.Fatal(v)
 	}
-	if v := m.Step(ids, "b", true); v != "c" {
+	if v := m.Step(ids, "d", true); v != "c" {
 		t.Fatal(v)
 	}
 	if v := m.Commit(); v != "c" {
@@ -36,7 +36,7 @@ func TestClosedAddedAndExternalActivation(t *testing.T) {
 	if v := m.Step(ids, "c", true); v != "a" {
 		t.Fatal(v)
 	}
-	if v := m.Step([]string{"a", "c", "new"}, "a", false); v != "c" {
+	if v := m.Step([]string{"a", "c", "new"}, "c", false); v != "c" {
 		t.Fatal(v)
 	}
 	if v := m.Step([]string{"a", "c", "new"}, "c", false); v != "a" {

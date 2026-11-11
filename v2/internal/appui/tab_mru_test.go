@@ -13,15 +13,15 @@ func TestMRUOfficialKeysHeldReverseReleaseAndEscape(t *testing.T) {
 	}
 	tt.Frame()
 	tt.Key(ui.Ctrl, ui.KeyTab)
-	if a.Tabs[a.Active].ID != "b" || !a.TabMRU.Active() {
+	if a.Tabs[a.Active].ID != "c" || a.TabMRU.Preview() != "b" || !a.TabMRU.Active() {
 		t.Fatal(a.Active, a.TabMRU)
 	}
 	tt.Key(ui.Ctrl, ui.KeyTab)
-	if a.Tabs[a.Active].ID != "a" {
+	if a.Tabs[a.Active].ID != "c" || a.TabMRU.Preview() != "a" {
 		t.Fatal(a.Active, a.TabMRU)
 	}
 	tt.Key(ui.Ctrl|ui.Shift, ui.KeyTab)
-	if a.Tabs[a.Active].ID != "b" {
+	if a.Tabs[a.Active].ID != "c" || a.TabMRU.Preview() != "b" {
 		t.Fatal(a.Active, a.TabMRU)
 	}
 	tt.CodeUp(0, ui.CodeControlLeft)
@@ -30,7 +30,7 @@ func TestMRUOfficialKeysHeldReverseReleaseAndEscape(t *testing.T) {
 		t.Fatal(a.TabMRU)
 	}
 	tt.Key(ui.Ctrl, ui.KeyTab)
-	if a.Tabs[a.Active].ID != "c" {
+	if a.Tabs[a.Active].ID != "b" || a.TabMRU.Preview() != "c" {
 		t.Fatal(a.Active, a.TabMRU)
 	}
 	tt.Key(0, ui.KeyEscape)
@@ -38,4 +38,15 @@ func TestMRUOfficialKeysHeldReverseReleaseAndEscape(t *testing.T) {
 	if a.Tabs[a.Active].ID != "b" || a.TabMRU.Active() {
 		t.Fatal(a.Active, a.TabMRU)
 	}
+	tt.Key(ui.Ctrl, ui.KeyTab)
+	tt.Key(ui.Ctrl, ui.KeyDown)
+	if a.Tabs[a.Active].ID != "b" || a.TabMRU.Preview() != "a" {
+		t.Fatal("arrow preview", a.Active, a.TabMRU)
+	}
+	tt.SetWindowActive(false)
+	tt.Frame()
+	if a.TabMRU.Active() || a.Tabs[a.Active].ID != "b" {
+		t.Fatal("blur committed", a.TabMRU)
+	}
+
 }

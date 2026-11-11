@@ -24,14 +24,22 @@ func (a *App) mruShortcuts(c *ui.Context) {
 		current = s.ID
 	}
 	a.TabMRU.Sync(ids, current)
+	if a.TabMRU.Active() && !c.WindowActive() {
+		a.TabMRU.Cancel(ids)
+		return
+	}
 	if a.TabMRU.Active() && (c.Shortcut(0, ui.KeyEscape) || c.Shortcut(ui.Ctrl, ui.KeyEscape)) {
-		a.selectTabID(a.TabMRU.Cancel(ids))
+		a.TabMRU.Cancel(ids)
 		return
 	}
 	forward := c.Shortcut(ui.Ctrl, ui.KeyTab)
 	reverse := c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab)
+	if a.TabMRU.Active() {
+		forward = forward || c.Shortcut(ui.Ctrl, ui.KeyDown)
+		reverse = reverse || c.Shortcut(ui.Ctrl, ui.KeyUp)
+	}
 	if forward || reverse {
-		a.selectTabID(a.TabMRU.Step(ids, current, reverse))
+		a.TabMRU.Step(ids, current, reverse)
 	}
 	if a.TabMRU.Active() && c.Modifiers()&ui.Ctrl == 0 {
 		a.selectTabID(a.TabMRU.Commit())

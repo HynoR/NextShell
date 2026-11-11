@@ -46,7 +46,7 @@ func (m *MRU) Sync(live []string, current string) {
 		}
 	}
 	m.Order = out
-	if m.Active() && current != m.Preview() {
+	if m.Active() && current != m.Origin {
 		m.Cycle = nil
 	}
 	if !m.Active() {
