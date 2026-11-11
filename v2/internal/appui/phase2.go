@@ -1,9 +1,11 @@
 package appui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
@@ -16,6 +18,9 @@ import (
 )
 
 type phase2State struct {
+	Code                                                                           editor.State
+	CodeSource, CodePath                                                           string
+	CodeVersion                                                                    uint64
 	ConfirmOverwriteImport                                                         bool
 	FilesSession, RemotePath, SelectedRemote, LocalPath, TargetSession, TargetPath string
 	Files                                                                          []sftpfs.Entry
@@ -56,6 +61,7 @@ func (a *App) activeID() string {
 }
 func (a *App) handlePhase2(e Event) {
 	s := &a.Phase2
+	s.syncEditorText()
 	if e.Files != nil && e.Files.Session == a.activeID() {
 		s.FilesSession = e.Files.Session
 		s.RemotePath = e.Files.Path
@@ -69,6 +75,8 @@ func (a *App) handlePhase2(e Event) {
 			s.EditorSession = e.Editor.Session
 			s.Document = d
 			s.EditorText = d.Text
+			s.prepareEditorBuffer()
+			s.Code.Buffer.MarkSaved()
 			a.Page = "editor"
 		}
 	}
@@ -295,7 +303,9 @@ func (a *App) editorView(c *ui.Context) {
 				ui.Text(c, "● 未保存")
 			}
 		})
-		ui.TextArea(c.Key(s.EditorSession+":"+s.Document.Path), &s.EditorText).Label("远程文本").Grow(1).FillWidth()
+		s.prepareEditorBuffer()
+		editor.View(c.Key(s.EditorSession+":"+s.Document.Path), &s.Code).Grow(1).FillWidth()
+		s.syncEditorText()
 		field(c, "外部编辑器程序", &s.ExternalProgram)
 		field(c, "编辑器参数 JSON（如 [\"--wait\"]）", &s.ExternalArgs)
 		ui.Text(c, "程序必须等待编辑结束；成功后清理明文，失败保留私密恢复文件并提示路径；自动回传检查远端冲突").FontSize(11)
@@ -499,4 +509,26 @@ func (a *App) dataView(c *ui.Context) {
 			s.ExportPassword = ""
 		}
 	})
+}
+
+// WriteTo (not String) preserves the official buffer's CRLF save representation.
+func (s *phase2State) syncEditorText() {
+	if s.Code.Buffer == nil || s.Code.Buffer.Version() == s.CodeVersion {
+		return
+	}
+	var out bytes.Buffer
+	s.Code.Buffer.WriteTo(&out)
+	s.EditorText = out.String()
+	s.CodeSource = s.EditorText
+	s.CodeVersion = s.Code.Buffer.Version()
+}
+func (s *phase2State) prepareEditorBuffer() {
+	key := s.EditorSession + ":" + s.Document.Path
+	if s.Code.Buffer == nil || s.CodePath != key || s.CodeSource != s.EditorText {
+		s.Code = editor.State{Buffer: editor.NewBuffer(s.EditorText), Label: "远程文本"}
+		s.Code.Buffer.SetLanguage(editor.LanguageFor(s.Document.Path))
+		s.CodePath = key
+		s.CodeSource = s.EditorText
+		s.CodeVersion = s.Code.Buffer.Version()
+	}
 }

@@ -1,21 +1,38 @@
 package storage
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/pressly/goose/v3"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/security"
 	"time"
 )
 
+// Goose owns ordering, version records and transaction boundaries. JSON backfill
+// remains a Go migration because resource payloads are application-specific.
 func (s *Store) upgradeSchema() error {
-	tx, e := s.db.Begin()
+	provider, e := goose.NewProvider(goose.DialectSQLite3, s.db, nil, goose.WithGoMigrations(
+		goose.NewGoMigration(1, &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
+			_, e := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS resources(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,envelope BLOB NOT NULL);`)
+			return e
+		}}, nil),
+		goose.NewGoMigration(2, &goose.GoFunc{RunTx: s.schemaV3}, nil),
+		goose.NewGoMigration(3, &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
+			_, e := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS sync_recovery(id TEXT PRIMARY KEY,workspace TEXT NOT NULL,envelope BLOB NOT NULL);`)
+			return e
+		}}, nil),
+	))
 	if e != nil {
 		return e
 	}
-	defer tx.Rollback()
+	_, e = provider.Up(context.Background())
+	return e
+}
+func (s *Store) schemaV3(_ context.Context, tx *sql.Tx) error {
 	rows, e := tx.Query("PRAGMA table_info(resources)")
 	if e != nil {
 		return e
@@ -44,7 +61,6 @@ CREATE TABLE IF NOT EXISTS profile_state(singleton INTEGER PRIMARY KEY CHECK(sin
 CREATE TABLE IF NOT EXISTS deletions(kind TEXT NOT NULL,id TEXT NOT NULL,scope TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));
 CREATE TABLE IF NOT EXISTS workspaces(id TEXT PRIMARY KEY,name TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS scope_state(scope TEXT PRIMARY KEY,generation INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS sync_recovery(id TEXT PRIMARY KEY,workspace TEXT NOT NULL,envelope BLOB NOT NULL);
 CREATE TABLE IF NOT EXISTS sync_state(workspace TEXT PRIMARY KEY,head TEXT NOT NULL,baseline INTEGER NOT NULL);
 PRAGMA user_version=3;`)
 	if e != nil {
@@ -96,7 +112,7 @@ PRAGMA user_version=3;`)
 			return e
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 func timestamp() string { return time.Now().UTC().Format("2006-01-02T15:04:05.000Z") }
 func withMeta(v map[string]any, m model.Meta) ([]byte, error) {

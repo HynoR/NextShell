@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -74,9 +73,16 @@ func Save(ctx context.Context, c *sftpfs.Client, d Document, text string) (Docum
 	return d, nil
 }
 
+// Watcher is supplied by Platform; core never depends on a desktop toolkit.
+type Watcher interface {
+	Next(context.Context) error
+	Close() error
+}
+type WatchFactory func(context.Context, string) (Watcher, error)
+
 // External cleans private plaintext staging after success; failures retain a recovery file and return its path.
 // A save conflicts instead of overwriting a remotely changed file. program is an executable path, not a shell command.
-func External(ctx context.Context, c *sftpfs.Client, d Document, program string, onSave func(Document), args ...string) (result error) {
+func External(ctx context.Context, c *sftpfs.Client, d Document, watch WatchFactory, program string, onSave func(Document), args ...string) (result error) {
 	if strings.TrimSpace(program) == "" {
 		return errors.New("external editor executable required")
 	}
@@ -96,6 +102,30 @@ func External(ctx context.Context, c *sftpfs.Client, d Document, program string,
 	if e = os.WriteFile(local, []byte(d.Text), 0600); e != nil {
 		return e
 	}
+	if watch == nil {
+		return errors.New("external editor watcher required")
+	}
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	defer cancelWatch()
+	watcher, e := watch(watchCtx, local)
+	if e != nil {
+		return e
+	}
+	defer watcher.Close()
+	changes := make(chan error, 1)
+	go func() {
+		for {
+			err := watcher.Next(watchCtx)
+			select {
+			case changes <- err:
+			case <-watchCtx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	cmd := exec.CommandContext(ctx, program, append(append([]string{}, args...), local)...)
 	if e = cmd.Start(); e != nil {
 		return e
@@ -103,8 +133,6 @@ func External(ctx context.Context, c *sftpfs.Client, d Document, program string,
 	started = true
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
 	syncFile := func() error {
 		info, e := os.Lstat(local)
 		if e != nil {
@@ -146,7 +174,12 @@ func External(ctx context.Context, c *sftpfs.Client, d Document, program string,
 				return err
 			}
 			return syncFile()
-		case <-ticker.C:
+		case watchErr := <-changes:
+			if watchErr != nil {
+				cmd.Process.Kill()
+				<-done
+				return watchErr
+			}
 			if e = syncFile(); e != nil {
 				cmd.Process.Kill()
 				<-done

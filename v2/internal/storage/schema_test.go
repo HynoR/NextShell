@@ -169,3 +169,47 @@ func TestDeletionTombstonePreventsImplicitIDReuse(t *testing.T) {
 		t.Fatal("deletion ledger lost")
 	}
 }
+
+func TestGooseVersionsReopenAndTransactionalFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "schema.db")
+	db, e := sql.Open("sqlite", path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = db.Exec(`PRAGMA application_id=1314080818;PRAGMA user_version=2;CREATE TABLE resources(kind TEXT,id TEXT,data BLOB,PRIMARY KEY(kind,id));INSERT INTO resources VALUES('connection','bad','invalid-json');`)
+	if e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	if broken, e := Open(path); e == nil {
+		broken.Close()
+		t.Fatal("bad backfill succeeded")
+	}
+	db, _ = sql.Open("sqlite", path)
+	var n int
+	if e = db.QueryRow(`SELECT count(*) FROM pragma_table_info('resources')`).Scan(&n); e != nil || n != 3 {
+		t.Fatalf("migration did not roll back: %d %v", n, e)
+	}
+	if e = db.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&n); e != nil || n != 1 {
+		t.Fatal(n, e)
+	}
+	raw, _ := json.Marshal(conn("bad"))
+	if _, e = db.Exec("UPDATE resources SET data=?", raw); e != nil {
+		t.Fatal(e)
+	}
+	db.Close()
+	for i := 0; i < 2; i++ {
+		s, e := Open(path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = s.db.QueryRow(`SELECT count(*) FROM goose_db_version WHERE is_applied=1 AND version_id>0`).Scan(&n); e != nil || n != 3 {
+			t.Fatal("unexpected goose version records", n, e)
+		}
+		var table string
+		if e = s.db.QueryRow(`SELECT name FROM sqlite_master WHERE name='sync_recovery'`).Scan(&table); e != nil {
+			t.Fatal(e)
+		}
+		s.Close()
+	}
+}

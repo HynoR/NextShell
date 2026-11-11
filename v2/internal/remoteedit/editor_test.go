@@ -3,6 +3,7 @@ package remoteedit
 import (
 	"context"
 	"errors"
+	"github.com/egoist/mygo"
 	"nextshell.dev/v2/internal/sftpfs"
 	"nextshell.dev/v2/internal/sshclient"
 	"nextshell.dev/v2/internal/testutil"
@@ -78,7 +79,7 @@ func TestExternalEditorAutoReturnArgvAndCleanup(t *testing.T) {
 	script := "#!/bin/sh\n[ \"$1\" = '--wait' ] || exit 3\nprintf '%s' \"$2\" > " + strconv.Quote(record) + "\nprintf first > \"$2\"\nsleep 0.35\nprintf second > \"$2\"\nsleep 0.35\n"
 	os.WriteFile(program, []byte(script), 0700)
 	saved := 0
-	e := External(context.Background(), c, d, program, func(doc Document) {
+	e := External(context.Background(), c, d, nativeWatch, program, func(doc Document) {
 		saved++
 		if doc.Text != "first" && doc.Text != "second" {
 			t.Error(doc)
@@ -105,7 +106,7 @@ func TestExternalEditorConflictRetainsPrivateRecovery(t *testing.T) {
 	program := filepath.Join(t.TempDir(), "editor")
 	script := "#!/bin/sh\nprintf '%s' \"$1\" > " + strconv.Quote(record) + "\nprintf local-edit > \"$1\"\nprintf remote-edit > " + strconv.Quote(p) + "\n"
 	os.WriteFile(program, []byte(script), 0700)
-	e := External(context.Background(), c, d, program, nil)
+	e := External(context.Background(), c, d, nativeWatch, program, nil)
 	if !errors.Is(e, ErrConflict) || !strings.Contains(e.Error(), "recovery file retained") {
 		t.Fatal(e)
 	}
@@ -128,4 +129,16 @@ func TestExternalEditorConflictRetainsPrivateRecovery(t *testing.T) {
 	if string(got) != "remote-edit" {
 		t.Fatal("remote conflict overwritten")
 	}
+}
+
+type testWatch struct{ w *mygo.FileWatcher }
+
+func (w testWatch) Next(ctx context.Context) error { _, e := w.w.Next(ctx); return e }
+func (w testWatch) Close() error                   { return w.w.Close() }
+func nativeWatch(ctx context.Context, path string) (Watcher, error) {
+	w, e := mygo.WatchFiles(ctx, path, mygo.FileWatchOptions{})
+	if e != nil {
+		return nil, e
+	}
+	return testWatch{w}, nil
 }

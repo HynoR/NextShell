@@ -63,14 +63,7 @@ func Open(path string) (*Store, error) {
 			return nil, e
 		}
 	}
-	_, e = db.Exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
- BEGIN IMMEDIATE;
- CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS resources(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));
- CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,envelope BLOB NOT NULL);
- PRAGMA application_id=1314080818;
-
- COMMIT;`)
+	_, e = db.Exec(`PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA application_id=1314080818;`)
 	if e != nil {
 		db.Close()
 		return nil, e
