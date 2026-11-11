@@ -17,7 +17,7 @@ func TestOfficialEditorBufferPreservesCRLFAndDirtyEvents(t *testing.T) {
 		t.Fatalf("CRLF lost: %q", s.EditorText)
 	}
 	a.handlePhase2(Event{Editor: &EditorResult{Document: remoteedit.Document{Path: "/b", Text: "unexpected"}}})
-	if s.Document.Path != "/a.go" || s.EditorText != "changed\r\ntext\r\n" {
+	if len(s.Documents) != 2 || s.Documents[0].Document.Path != "/a.go" || s.Documents[0].Text != "changed\r\ntext\r\n" {
 		t.Fatal("dirty official buffer discarded")
 	}
 }

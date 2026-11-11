@@ -42,7 +42,7 @@ func TestPhase2NativePanelsAndSavedCommands(t *testing.T) {
 	a.Phase2.EditorText = "unsaved"
 	p.events = []appui.Event{{Editor: &appui.EditorResult{Session: "remote", Document: remoteedit.Document{Path: "/tmp/late", Text: "late"}}}}
 	tt.Frame()
-	if a.Phase2.EditorText != "unsaved" {
+	if len(a.Phase2.Documents) != 2 || a.Phase2.Documents[0].Text != "unsaved" {
 		t.Fatal("late editor response lost unsaved text")
 	}
 	if path := os.Getenv("NEXTSHELL_PHASE2_SCREENSHOT"); path != "" {

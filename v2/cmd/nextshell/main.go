@@ -33,7 +33,7 @@ func main() {
 	mygo.App.WhenReady(func() {
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell 2 · Native", Width: 1280, Height: 850, MinWidth: 1000, MinHeight: 650, TitleBarStyle: mygo.TitleBarHidden, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		w.OnClose(func(e *mygo.CloseEvent) {
-			if len(a.Tabs) > 0 && !a.ExitConfirmed {
+			if (len(a.Tabs) > 0 || a.DirtyDocumentCount() > 0) && !a.ExitConfirmed {
 				e.PreventDefault()
 				a.ConfirmExit = true
 				p.Invalidate()

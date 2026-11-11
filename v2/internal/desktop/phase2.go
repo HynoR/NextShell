@@ -197,7 +197,7 @@ func (p *Platform) SaveRemote(session string, doc remoteedit.Document, text stri
 			if e != nil {
 				return e
 			}
-			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next}, Message: "remote file saved"})
+			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "remote file saved"})
 			return nil
 		})
 	})
@@ -211,7 +211,7 @@ func (p *Platform) ExternalEdit(session, remote, executable string, args []strin
 				return e
 			}
 			return remoteedit.External(p.ctx, c, doc, watchEditor, executable, func(next remoteedit.Document) {
-				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next}, Message: "external editor saved remote file"})
+				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "external editor saved remote file"})
 			}, args...)
 		})
 		if e != nil {

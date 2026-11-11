@@ -132,6 +132,7 @@ type FileListing struct {
 	Entries       []sftpfs.Entry
 }
 type EditorResult struct {
+	Saved    bool
 	Session  string
 	Document remoteedit.Document
 }

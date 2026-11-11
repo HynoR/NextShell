@@ -19,6 +19,9 @@ import (
 )
 
 type phase2State struct {
+	Documents                                                                      []*remoteDocument
+	ActiveDocument                                                                 int
+	CloseDocumentKey                                                               string
 	FileSelection                                                                  ui.Selection[string]
 	Clipboard                                                                      remoteClipboard
 	DiagnosticID, DiagnosticTarget, DiagnosticText                                 string
@@ -32,7 +35,7 @@ type phase2State struct {
 	HistoryVisible, ClearHistoryConfirm                                            bool
 	FileList                                                                       ui.ListState
 	FileRow                                                                        int
-	Code                                                                           editor.State
+	Code                                                                           *editor.State
 	CodeSource, CodePath                                                           string
 	CodeVersion                                                                    uint64
 	ConfirmOverwriteImport                                                         bool
@@ -97,17 +100,7 @@ func (a *App) handlePhase2(e Event) {
 		s.Files = e.Files.Entries
 	}
 	if e.Editor != nil {
-		d := e.Editor.Document
-		if s.EditorText != s.Document.Text && (s.Document.Path != d.Path || s.EditorSession != e.Editor.Session || s.EditorText != d.Text) {
-			a.Message = "远端更新到达，已保留未保存文本；保存会核对远端哈希"
-		} else {
-			s.EditorSession = e.Editor.Session
-			s.Document = d
-			s.EditorText = d.Text
-			s.prepareEditorBuffer()
-			s.Code.Buffer.MarkSaved()
-			a.Page = "editor"
-		}
+		a.receiveDocument(e.Editor)
 	}
 	if e.Monitor != nil {
 		s.MonitorSession = e.Monitor.Session
@@ -139,11 +132,14 @@ func (a *App) queue(req TransferRequest) {
 }
 func (a *App) openEditor(session, remote string) {
 	s := &a.Phase2
-	if s.Document.Path != "" && s.EditorText != s.Document.Text {
-		s.OpenSession = session
-		s.OpenPath = remote
-		a.Page = "editor"
-		return
+	s.storeActiveDocument()
+	key := documentKey(session, remote)
+	for i, d := range s.Documents {
+		if d.Key == key {
+			s.selectDocument(i)
+			a.Page = "editor"
+			return
+		}
 	}
 	a.P.OpenRemote(session, remote)
 	a.Page = "editor"
@@ -382,6 +378,8 @@ func (a *App) editorView(c *ui.Context) {
 	s := &a.Phase2
 	ui.Column(c).Key("editor-page").Grow(1).FillWidth().Padding(PageInset).Gap(FormGap).Children(func() {
 		ui.Text(c, "远程文本编辑（UTF-8，最大 8 MiB）").FontSize(26).Bold()
+		a.documentTabs(c)
+		a.documentCloseDialog(c)
 		if s.OpenPath != "" {
 			ui.Text(c, "打开另一文件将丢弃当前未保存文本："+s.OpenPath)
 			ui.Row(c).Gap(6).Children(func() {
@@ -413,7 +411,7 @@ func (a *App) editorView(c *ui.Context) {
 			}
 		})
 		s.prepareEditorBuffer()
-		editor.View(c.Key(s.EditorSession+":"+s.Document.Path), &s.Code).Grow(1).FillWidth()
+		editor.View(c.Key(documentKey(s.EditorSession, s.Document.Path)), s.Code).Grow(1).FillWidth()
 		s.syncEditorText()
 		field(c, "外部编辑器程序", &s.ExternalProgram)
 		field(c, "编辑器参数 JSON（如 [\"--wait\"]）", &s.ExternalArgs)
@@ -652,7 +650,7 @@ func (a *App) dataView(c *ui.Context) {
 
 // WriteTo (not String) preserves the official buffer's CRLF save representation.
 func (s *phase2State) syncEditorText() {
-	if s.Code.Buffer == nil || s.Code.Buffer.Version() == s.CodeVersion {
+	if s.Code == nil || s.Code.Buffer == nil || s.Code.Buffer.Version() == s.CodeVersion {
 		return
 	}
 	var out bytes.Buffer
@@ -662,9 +660,9 @@ func (s *phase2State) syncEditorText() {
 	s.CodeVersion = s.Code.Buffer.Version()
 }
 func (s *phase2State) prepareEditorBuffer() {
-	key := s.EditorSession + ":" + s.Document.Path
-	if s.Code.Buffer == nil || s.CodePath != key || s.CodeSource != s.EditorText {
-		s.Code = editor.State{Buffer: editor.NewBuffer(s.EditorText), Label: "远程文本"}
+	key := documentKey(s.EditorSession, s.Document.Path)
+	if s.Code == nil || s.Code.Buffer == nil || s.CodePath != key || s.CodeSource != s.EditorText {
+		s.Code = &editor.State{Buffer: editor.NewBuffer(s.EditorText), Label: "远程文本"}
 		s.Code.Buffer.SetLanguage(editor.LanguageFor(s.Document.Path))
 		s.CodePath = key
 		s.CodeSource = s.EditorText

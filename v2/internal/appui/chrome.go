@@ -61,7 +61,7 @@ func (a *App) chrome(c *ui.Context) {
 		})
 		if a.ConfirmExit {
 			ui.Row(c).FillWidth().Padding(12).Gap(12).Background(t.Surface).Children(func() {
-				ui.Text(c, fmt.Sprintf("仍有 %d 个会话，退出将断开连接", len(a.Tabs)))
+				ui.Text(c, fmt.Sprintf("仍有 %d 个会话、%d 个未保存文档，退出将断开连接并丢弃修改", len(a.Tabs), a.DirtyDocumentCount()))
 				if ui.Button(c, "退出应用").Clicked() {
 					a.ExitConfirmed = true
 					a.P.Quit()
