@@ -5,12 +5,14 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/tabswitch"
 	"strconv"
 	"strings"
 )
 
 type tabDrag string
 type App struct {
+	TabMRU                     tabswitch.MRU
 	Links                      []string
 	ConnectionTags             string
 	Actions                    []func()
@@ -183,6 +185,7 @@ func (a *App) View(c *ui.Context) {
 				a.Tabs = append(a.Tabs, e.Session)
 				a.Active = len(a.Tabs) - 1
 			}
+			a.TabMRU.Sync(a.tabIDs(), e.Session.ID)
 			a.TabName = e.Session.Title
 			a.Page = "terminal"
 		}
@@ -194,6 +197,7 @@ func (a *App) View(c *ui.Context) {
 		}
 	}
 	a.refreshTitles()
+	a.mruShortcuts(c)
 	a.chrome(c)
 	a.deleteView(c)
 	a.parityDialogs(c)

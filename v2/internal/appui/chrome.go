@@ -32,6 +32,21 @@ func (a *App) chrome(c *ui.Context) {
 			ui.Split(c, &a.SidebarWidth, func() { a.sidebar(c) }, func() {
 				ui.Column(c).Fill().MinWidth(0).Children(func() {
 					a.tabstrip(c)
+					if a.TabMRU.Active() {
+						ui.Row(c).FillWidth().Padding(6, 16).Gap(12).Background(t.SurfaceHover).Children(func() {
+							ui.Text(c, "最近使用 · 松开 Ctrl 确认 · Esc 取消").TextColor(t.TextMuted)
+							for _, id := range a.TabMRU.Cycle {
+								for _, s := range a.Tabs {
+									if s.ID == id {
+										e := ui.Text(c, s.Title).SingleLine()
+										if id == a.TabMRU.Preview() {
+											e.Bold().TextColor(t.Accent)
+										}
+									}
+								}
+							}
+						})
+					}
 					ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() {
 						if len(a.Prompts) > 0 {
 							a.promptView(c)
