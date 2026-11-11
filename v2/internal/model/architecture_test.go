@@ -13,7 +13,7 @@ import (
 
 func TestArchitectureCoreAndPlatformBoundary(t *testing.T) {
 	root := ".."
-	core := []string{"model", "security", "storage", "sshclient", "exchange", "sftpfs", "transfer", "remoteedit", "monitor", "cloudv2"}
+	core := []string{"model", "security", "storage", "sshclient", "exchange", "sftpfs", "transfer", "remoteedit", "monitor", "cloudv2", "cloudhttp", "cloudsync", "agent", "mcpendpoint", "shellintegration"}
 	check := func(pkg string, ui bool) {
 		entries, e := os.ReadDir(filepath.Join(root, pkg))
 		if e != nil {
@@ -47,7 +47,7 @@ func TestArchitectureCoreAndPlatformBoundary(t *testing.T) {
 						return true
 					}
 					ident, ok := sel.X.(*ast.Ident)
-					if ok && (ident.Name == "remoteedit" || ident.Name == "sftpfs" || ident.Name == "transfer" || ident.Name == "monitor") {
+					if ok && (ident.Name == "remoteedit" || ident.Name == "sftpfs" || ident.Name == "transfer" || ident.Name == "monitor" || ident.Name == "cloudsync" || ident.Name == "cloudhttp" || ident.Name == "agent" || ident.Name == "mcpendpoint" || ident.Name == "shellintegration") {
 						t.Error("UI invoked core I/O instead of Platform", ident.Name, sel.Sel.Name)
 					}
 					return true

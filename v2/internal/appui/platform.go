@@ -3,10 +3,13 @@ package appui
 
 import (
 	"github.com/egoist/mygo/plugins/terminal"
+	"nextshell.dev/v2/internal/agent"
+	"nextshell.dev/v2/internal/cloudsync"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
 	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/storage"
 	"nextshell.dev/v2/internal/transfer"
 )
 
@@ -25,14 +28,15 @@ type Prompt struct {
 	Done      <-chan struct{}
 }
 type Event struct {
-	Files     *FileListing
-	Editor    *EditorResult
-	Monitor   *MonitorResult
-	Import    *ImportPreview
-	ShellMark *PromptEvent // reserved: no producer while OSC 133 waits on upstream
-	Session   *Session
-	Message   string
-	Prompt    *Prompt
+	FocusID, WorkspaceID string
+	Files                *FileListing
+	Editor               *EditorResult
+	Monitor              *MonitorResult
+	Import               *ImportPreview
+	ShellMark            *PromptEvent // reserved: no producer while OSC 133 waits on upstream
+	Session              *Session
+	Message              string
+	Prompt               *Prompt
 }
 type TerminalCapabilities struct{ OSC7, ScreenText, OSC133 bool }
 
@@ -93,6 +97,19 @@ type Platform interface {
 	PreviewImport(path, password, format string)
 	CommitImport(token, folder, policy string)
 	ExportConnections(path string, password *string, ids []string)
+	CloudOverview() CloudOverview
+	CloudConnect(endpoint, id, name, auth, encryption string, join bool)
+	CloudSync(id string, useRemote bool)
+	CloudBackground(id string, on bool)
+	CloudCopy(id string, ids []string) error
+	AgentOverview() AgentOverview
+	AgentEndpoint(on bool) error
+	AgentToken(rotate bool) (string, error)
+	AgentHalt(bool)
+	AgentRespond(id string, approve bool)
+	AgentBlacklist(string)
+	TerminalTitle(string) string
+	ShellCommand(shell string) (string, error)
 	Shutdown()
 }
 
@@ -118,4 +135,15 @@ type ImportPreview struct {
 type TransferRequest struct {
 	Session, TargetSession, Kind, Local, Remote, Destination string
 	Overwrite                                                bool
+}
+
+type CloudOverview struct {
+	Workspaces []storage.Workspace
+	Statuses   []cloudsync.Status
+}
+type AgentOverview struct {
+	URL      string
+	Halted   bool
+	Pending  []agent.Pending
+	Activity []agent.Activity
 }

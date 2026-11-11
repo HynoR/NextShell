@@ -6,7 +6,10 @@ import (
 	"errors"
 	"github.com/egoist/mygo/plugins/terminal"
 	"io"
+	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/cloudsync"
+	"nextshell.dev/v2/internal/mcpendpoint"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/sshclient"
@@ -19,6 +22,11 @@ import (
 )
 
 type Platform struct {
+	featureMu       sync.Mutex
+	clouds          map[string]*cloudsync.Service
+	gateway         *agent.Gateway
+	endpoint        *mcpendpoint.Endpoint
+	endpointURL     string
 	sshSessions     map[string]*sshclient.Session
 	queue           *transfer.Queue
 	imports         map[string]importPlan
@@ -50,6 +58,8 @@ func Open(path string) (*Platform, error) {
 	p.monitorPrevious = map[string]monitor.Snapshot{}
 	p.monitorBusy = map[string]bool{}
 	p.monitorWatches = map[string]context.CancelFunc{}
+	p.clouds = map[string]*cloudsync.Service{}
+	p.gateway = agent.New(agentBackend{p}, p.Invalidate)
 	p.queue = transfer.New(2, p.Invalidate)
 	return p, nil
 }
@@ -149,6 +159,9 @@ func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
 	return k, p.SaveKey(k)
 }
 func (p *Platform) ask(title string, questions []string, echo []bool) ([]string, error) {
+	return p.askContext(p.ctx, title, questions, echo)
+}
+func (p *Platform) askContext(ctx context.Context, title string, questions []string, echo []bool) ([]string, error) {
 	done := make(chan struct{})
 	defer func() { close(done); p.emit(appui.Event{}) }()
 	req := &appui.Prompt{Done: done, Title: title, Questions: questions, Echo: echo, Answers: make(chan []string, 1)}
@@ -161,8 +174,8 @@ func (p *Platform) ask(title string, questions []string, echo []bool) ([]string,
 			return nil, errors.New("用户取消认证")
 		}
 		return a, nil
-	case <-p.ctx.Done():
-		return nil, p.ctx.Err()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	case <-t.C:
 		return nil, errors.New("认证提示超时")
 	}
@@ -185,6 +198,9 @@ func (p *Platform) Connect(c model.Connection) {
 	})
 }
 func (p *Platform) connect(c model.Connection, replace string) error {
+	return p.connectContext(p.ctx, c, replace)
+}
+func (p *Platform) connectContext(ctx context.Context, c model.Connection, replace string) error {
 	if c.ID != "" {
 		stored, e := p.store.Connection(c.ID)
 		if e != nil {
@@ -222,7 +238,7 @@ func (p *Platform) connect(c model.Connection, replace string) error {
 			}
 			return nil
 		}
-		a, e := p.ask("核对服务器指纹后输入 TRUST", []string{addr + "\n" + fp}, []bool{true})
+		a, e := p.askContext(ctx, "核对服务器指纹后输入 TRUST", []string{addr + "\n" + fp}, []bool{true})
 		if e != nil {
 			return e
 		}
@@ -231,13 +247,17 @@ func (p *Platform) connect(c model.Connection, replace string) error {
 		}
 		return p.store.PinHost(addr, fp)
 	}, Keyboard: func(user, instruction string, questions []string, echo []bool) ([]string, error) {
-		return p.ask("SSH "+user+" "+instruction, questions, echo)
+		return p.askContext(ctx, "SSH "+user+" "+instruction, questions, echo)
 	}}
-	s, e := sshclient.Dial(p.ctx, o)
+	s, e := sshclient.Dial(ctx, o)
 	if e != nil {
 		return e
 	}
-	t, e := terminal.New(terminal.Options{Conn: s, NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
+	if e = ctx.Err(); e != nil {
+		s.Close()
+		return e
+	}
+	t, e := terminal.New(p.terminalOptions(terminal.Options{Conn: s, NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
 	if e != nil {
 		s.Close()
 		return e
@@ -268,7 +288,7 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 }
 func (p *Platform) Local() {
 	p.launch(func() {
-		t, e := terminal.New(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
+		t, e := terminal.New(p.terminalOptions(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 			return
@@ -308,6 +328,7 @@ func (p *Platform) Shutdown() {
 	for _, t := range ts {
 		t.Close()
 	}
+	p.closeFeatures()
 	p.queue.Close()
 	p.wg.Wait()
 	p.store.Close()
@@ -338,7 +359,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 			}
 			return
 		}
-		t, e := terminal.New(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
+		t, e := terminal.New(p.terminalOptions(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 			return
