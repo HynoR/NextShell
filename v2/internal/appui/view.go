@@ -333,15 +333,13 @@ func (a *App) sendCommand() {
 	}
 }
 func field(c *ui.Context, label string, value *string) {
-	ui.Form(c, func() { ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Grow(1) }).FillWidth() }).FillWidth()
+	ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Grow(1) }).FillWidth()
 }
 func password(c *ui.Context, label string, value *string) {
-	ui.Form(c, func() {
-		ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Password().Grow(1) }).FillWidth()
-	}).FillWidth()
+	ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Password().Grow(1) }).FillWidth()
 }
 func choice(c *ui.Context, label string, value *string, options []string) {
-	ui.Form(c, func() { ui.Field(c, label, func() { ui.Select(c, value, options).Label(label).Grow(1) }).FillWidth() }).FillWidth()
+	ui.Field(c, label, func() { ui.Select(c, value, options).Label(label).Grow(1) }).FillWidth()
 }
 func chooseID(c *ui.Context, label string, id *string, ids, names []string) {
 	name := "（无）"
@@ -388,82 +386,84 @@ func (a *App) proxyChoice(c *ui.Context, id *string) {
 func (a *App) connectionsView(c *ui.Context) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
-			ui.Text(c, "连接管理").FontSize(26).Bold()
-			choice(c, "资源视图", &a.ConnectionLayout, []string{"table", "grid"})
-			ui.Row(c).Gap(5).Children(func() {
-				if ui.Button(c, "新建连接").Clicked() {
-					a.newConnection()
-				}
-				if ui.PrimaryButton(c, "保存连接").Clicked() {
-					a.saveConnection()
-				}
-				if ui.Button(c, "连接当前配置").Clicked() {
-					a.connectDraft()
-				}
-				if a.Edit.ID != "" && ui.Button(c, "移入回收站").Clicked() {
-					a.Edit.Deleted = true
-					a.status(a.P.SaveConnection(a.Edit, nil))
-					a.reload()
-					a.newConnection()
-				}
-			})
-			field(c, "名称", &a.Edit.Name)
-			field(c, "标签（逗号分隔）", &a.ConnectionTags)
-			field(c, "连接备注", &a.Edit.Notes)
-			field(c, "主机", &a.Edit.Host)
-			field(c, "端口", &a.Port)
-			field(c, "用户", &a.Edit.User)
-			choice(c, "认证", &a.Edit.Auth, []string{"password", "key", "agent", "keyboard"})
-			password(c, "密码（不回显）", &a.Password)
-			ui.Checkbox(c, &a.ReplaceSecret, "替换已保存密码（空值会清除）")
-			a.keyChoice(c, &a.Edit.KeyID)
-			a.proxyChoice(c, &a.Edit.ProxyID)
-			a.folderChoice(c, "目录", &a.Edit.FolderID)
-			ui.Checkbox(c.Key("use-known-hosts"), &a.Edit.UseKnownHosts, "只读 ~/.ssh/known_hosts（数据库指纹优先）")
-			field(c, "固定主机指纹", &a.Edit.Fingerprint)
-			choice(c, "编码", &a.Edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
-			ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认")
-			field(c, "keepalive 秒（0=显式关闭，继承值见设置）", &a.Keepalive)
-			ui.Text(c, "所有连接（勾选后可批量绑定上述认证、密钥和代理）").Bold()
-			var container ui.Element
-			if a.ConnectionLayout == "grid" {
-				container = ui.Grid(c).Columns(2).FillWidth().Gap(8)
-			} else {
-				container = ui.Column(c).FillWidth().Gap(6)
-			}
-			container.Children(func() {
-				for _, cc := range a.Data.Connections {
-					if cc.Deleted {
-						continue
+			ui.Form(c, func() {
+				ui.Text(c, "连接管理").FontSize(26).Bold()
+				choice(c, "资源视图", &a.ConnectionLayout, []string{"table", "grid"})
+				ui.Row(c).Gap(5).Children(func() {
+					if ui.Button(c, "新建连接").Clicked() {
+						a.newConnection()
 					}
-					var row ui.Element
-					if a.ConnectionLayout == "grid" {
-						row = ui.Column(c).Key(cc.ID + "card").Padding(10).Gap(6)
-					} else {
-						row = ui.Row(c).Key(cc.ID + "manage").Gap(6)
+					if ui.PrimaryButton(c, "保存连接").Clicked() {
+						a.saveConnection()
 					}
-					a.connectionMenu(row.Label("连接行 "+cc.Name), cc)
-					row.Children(func() {
-						sel := a.Selected[cc.ID]
-						ui.Checkbox(c, &sel, cc.Name+" · "+cc.User+"@"+cc.Address())
-						a.Selected[cc.ID] = sel
-						if ui.Button(c, "编辑").Clicked() {
-							a.edit(cc)
+					if ui.Button(c, "连接当前配置").Clicked() {
+						a.connectDraft()
+					}
+					if a.Edit.ID != "" && ui.Button(c, "移入回收站").Clicked() {
+						a.Edit.Deleted = true
+						a.status(a.P.SaveConnection(a.Edit, nil))
+						a.reload()
+						a.newConnection()
+					}
+				})
+				field(c, "名称", &a.Edit.Name)
+				field(c, "标签（逗号分隔）", &a.ConnectionTags)
+				field(c, "连接备注", &a.Edit.Notes)
+				field(c, "主机", &a.Edit.Host)
+				field(c, "端口", &a.Port)
+				field(c, "用户", &a.Edit.User)
+				choice(c, "认证", &a.Edit.Auth, []string{"password", "key", "agent", "keyboard"})
+				password(c, "密码（不回显）", &a.Password)
+				ui.Checkbox(c, &a.ReplaceSecret, "替换已保存密码（空值会清除）")
+				a.keyChoice(c, &a.Edit.KeyID)
+				a.proxyChoice(c, &a.Edit.ProxyID)
+				a.folderChoice(c, "目录", &a.Edit.FolderID)
+				ui.Checkbox(c.Key("use-known-hosts"), &a.Edit.UseKnownHosts, "只读 ~/.ssh/known_hosts（数据库指纹优先）")
+				field(c, "固定主机指纹", &a.Edit.Fingerprint)
+				choice(c, "编码", &a.Edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
+				ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认")
+				field(c, "keepalive 秒（0=显式关闭，继承值见设置）", &a.Keepalive)
+				ui.Text(c, "所有连接（勾选后可批量绑定上述认证、密钥和代理）").Bold()
+				var container ui.Element
+				if a.ConnectionLayout == "grid" {
+					container = ui.Grid(c).Columns(2).FillWidth().Gap(8)
+				} else {
+					container = ui.Column(c).FillWidth().Gap(6)
+				}
+				container.Children(func() {
+					for _, cc := range a.Data.Connections {
+						if cc.Deleted {
+							continue
 						}
-						if ui.Button(c, "复制配置").Clicked() {
-							copy, e := a.P.DuplicateConnection(cc.ID)
-							a.status(e)
-							if e == nil {
-								a.reload()
-								a.edit(copy)
+						var row ui.Element
+						if a.ConnectionLayout == "grid" {
+							row = ui.Column(c).Key(cc.ID + "card").Padding(10).Gap(6)
+						} else {
+							row = ui.Row(c).Key(cc.ID + "manage").Gap(6)
+						}
+						a.connectionMenu(row.Label("连接行 "+cc.Name), cc)
+						row.Children(func() {
+							sel := a.Selected[cc.ID]
+							ui.Checkbox(c, &sel, cc.Name+" · "+cc.User+"@"+cc.Address())
+							a.Selected[cc.ID] = sel
+							if ui.Button(c, "编辑").Clicked() {
+								a.edit(cc)
 							}
-						}
-					})
+							if ui.Button(c, "复制配置").Clicked() {
+								copy, e := a.P.DuplicateConnection(cc.ID)
+								a.status(e)
+								if e == nil {
+									a.reload()
+									a.edit(copy)
+								}
+							}
+						})
+					}
+				})
+				if ui.Button(c, "批量绑定认证").Clicked() {
+					a.batchBind()
 				}
-			})
-			if ui.Button(c, "批量绑定认证").Clicked() {
-				a.batchBind()
-			}
+			}).FillWidth().Gap(FormGap)
 		})
 	})
 }
@@ -561,150 +561,156 @@ func (a *App) batchBind() {
 func (a *App) foldersView(c *ui.Context) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
-			ui.Text(c, "目录管理").FontSize(26).Bold()
-			field(c, "目录名称", &a.Folder.Name)
-			a.folderChoice(c, "父目录", &a.Folder.ParentID)
-			ui.Row(c).Gap(5).Children(func() {
-				if ui.Button(c, "新目录").Clicked() {
-					a.Folder = model.Folder{}
-				}
-				if ui.PrimaryButton(c, "保存目录").Clicked() {
-					f := a.Folder
-					if f.ID == "" {
-						f.ID = a.P.NewID()
+			ui.Form(c, func() {
+				ui.Text(c, "目录管理").FontSize(26).Bold()
+				field(c, "目录名称", &a.Folder.Name)
+				a.folderChoice(c, "父目录", &a.Folder.ParentID)
+				ui.Row(c).Gap(5).Children(func() {
+					if ui.Button(c, "新目录").Clicked() {
+						a.Folder = model.Folder{}
 					}
-					e := a.P.SaveFolder(f)
-					a.status(e)
-					if e == nil {
-						a.Folder = f
-						a.reload()
-					}
-				}
-			})
-			for _, f := range a.Data.Folders {
-				ui.Row(c).Key(f.ID).Gap(6).Children(func() {
-					ui.Text(c, f.Name).Grow(1)
-					if ui.Button(c, "编辑").Clicked() {
-						a.Folder = f
-					}
-					if ui.Button(c, "删除").Clicked() {
-						a.DeleteKind = "folder"
-						a.DeleteID = f.ID
+					if ui.PrimaryButton(c, "保存目录").Clicked() {
+						f := a.Folder
+						if f.ID == "" {
+							f.ID = a.P.NewID()
+						}
+						e := a.P.SaveFolder(f)
+						a.status(e)
+						if e == nil {
+							a.Folder = f
+							a.reload()
+						}
 					}
 				})
-			}
+				for _, f := range a.Data.Folders {
+					ui.Row(c).Key(f.ID).Gap(6).Children(func() {
+						ui.Text(c, f.Name).Grow(1)
+						if ui.Button(c, "编辑").Clicked() {
+							a.Folder = f
+						}
+						if ui.Button(c, "删除").Clicked() {
+							a.DeleteKind = "folder"
+							a.DeleteID = f.ID
+						}
+					})
+				}
+			}).FillWidth().Gap(FormGap)
 		})
 	})
 }
 func (a *App) keysView(c *ui.Context) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
-			ui.Text(c, "SSH 密钥").FontSize(26).Bold()
-			field(c, "名称", &a.Key.Name)
-			choice(c, "算法", &a.KeyAlgorithm, []string{"ed25519", "rsa-2048", "rsa-4096"})
-			field(c, "导入文件路径", &a.KeyPath)
-			password(c, "密钥口令", &a.Key.Passphrase)
-			ui.Text(c, "也可粘贴 PEM / OpenSSH 私钥（仅保存时读取）")
-			ui.TextArea(c, &a.Key.Private).Height(130)
-			ui.Row(c).Gap(6).Children(func() {
-				if ui.Button(c, "生成密钥").Clicked() {
-					_, e := a.P.GenerateKey(a.Key.Name, a.KeyAlgorithm)
-					a.status(e)
-					a.Key = model.Key{}
-					a.reload()
-				}
-				if ui.Button(c, "导入文件").Clicked() {
-					_, e := a.P.ImportKey(a.KeyPath, a.Key.Passphrase)
-					a.status(e)
-					a.Key = model.Key{}
-					a.reload()
-				}
-				if ui.Button(c, "保存粘贴密钥").Clicked() {
-					k := a.Key
-					if k.ID == "" {
-						k.ID = a.P.NewID()
-					}
-					a.status(a.P.SaveKey(k))
-					a.Key = model.Key{}
-					a.reload()
-				}
-			})
-			for _, k := range a.Data.Keys {
-				ui.Column(c).Key(k.ID).Children(func() {
-					ui.Text(c, k.Name).Bold()
-					ui.Text(c, k.Public).FontSize(11)
-					field(c, "新密钥名称", &a.KeyRename)
-					if ui.Button(c, "重命名密钥").Clicked() {
-						a.status(a.P.RenameKey(k.ID, a.KeyRename))
+			ui.Form(c, func() {
+				ui.Text(c, "SSH 密钥").FontSize(26).Bold()
+				field(c, "名称", &a.Key.Name)
+				choice(c, "算法", &a.KeyAlgorithm, []string{"ed25519", "rsa-2048", "rsa-4096"})
+				field(c, "导入文件路径", &a.KeyPath)
+				password(c, "密钥口令", &a.Key.Passphrase)
+				ui.Text(c, "也可粘贴 PEM / OpenSSH 私钥（仅保存时读取）")
+				ui.TextArea(c, &a.Key.Private).Height(130)
+				ui.Row(c).Gap(6).Children(func() {
+					if ui.Button(c, "生成密钥").Clicked() {
+						_, e := a.P.GenerateKey(a.Key.Name, a.KeyAlgorithm)
+						a.status(e)
+						a.Key = model.Key{}
 						a.reload()
 					}
-					ui.Row(c).Children(func() {
-						if ui.Button(c, "删除密钥").Clicked() {
-							a.DeleteKind = "key"
-							a.DeleteID = k.ID
+					if ui.Button(c, "导入文件").Clicked() {
+						_, e := a.P.ImportKey(a.KeyPath, a.Key.Passphrase)
+						a.status(e)
+						a.Key = model.Key{}
+						a.reload()
+					}
+					if ui.Button(c, "保存粘贴密钥").Clicked() {
+						k := a.Key
+						if k.ID == "" {
+							k.ID = a.P.NewID()
 						}
-					})
+						a.status(a.P.SaveKey(k))
+						a.Key = model.Key{}
+						a.reload()
+					}
 				})
-			}
+				for _, k := range a.Data.Keys {
+					ui.Column(c).Key(k.ID).Children(func() {
+						ui.Text(c, k.Name).Bold()
+						ui.Text(c, k.Public).FontSize(11)
+						field(c, "新密钥名称", &a.KeyRename)
+						if ui.Button(c, "重命名密钥").Clicked() {
+							a.status(a.P.RenameKey(k.ID, a.KeyRename))
+							a.reload()
+						}
+						ui.Row(c).Children(func() {
+							if ui.Button(c, "删除密钥").Clicked() {
+								a.DeleteKind = "key"
+								a.DeleteID = k.ID
+							}
+						})
+					})
+				}
+			}).FillWidth().Gap(FormGap)
 		})
 	})
 }
 func (a *App) proxiesView(c *ui.Context) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Gap(FormGap).Children(func() {
-			ui.Text(c, "SOCKS 代理").FontSize(26).Bold()
-			field(c, "名称", &a.Proxy.Name)
-			choice(c, "类型", &a.Proxy.Kind, []string{"socks4", "socks5"})
-			field(c, "主机", &a.Proxy.Host)
-			field(c, "端口", &a.ProxyPort)
-			field(c, "用户", &a.Proxy.User)
-			password(c, "密码", &a.ProxyPassword)
-			ui.Checkbox(c, &a.ReplaceProxySecret, "替换代理密码")
-			ui.Row(c).Gap(6).Children(func() {
-				if ui.Button(c, "新代理").Clicked() {
-					a.Proxy = model.Proxy{Kind: "socks5"}
-					a.ProxyPort = "1080"
-					a.ProxyPassword = ""
-				}
-				if ui.PrimaryButton(c, "保存代理").Clicked() {
-					p := a.Proxy
-					port, e := strconv.Atoi(a.ProxyPort)
-					if e != nil {
+			ui.Form(c, func() {
+				ui.Text(c, "SOCKS 代理").FontSize(26).Bold()
+				field(c, "名称", &a.Proxy.Name)
+				choice(c, "类型", &a.Proxy.Kind, []string{"socks4", "socks5"})
+				field(c, "主机", &a.Proxy.Host)
+				field(c, "端口", &a.ProxyPort)
+				field(c, "用户", &a.Proxy.User)
+				password(c, "密码", &a.ProxyPassword)
+				ui.Checkbox(c, &a.ReplaceProxySecret, "替换代理密码")
+				ui.Row(c).Gap(6).Children(func() {
+					if ui.Button(c, "新代理").Clicked() {
+						a.Proxy = model.Proxy{Kind: "socks5"}
+						a.ProxyPort = "1080"
+						a.ProxyPassword = ""
+					}
+					if ui.PrimaryButton(c, "保存代理").Clicked() {
+						p := a.Proxy
+						port, e := strconv.Atoi(a.ProxyPort)
+						if e != nil {
+							a.status(e)
+							return
+						}
+						p.Port = port
+						var sec *string
+						if p.ID == "" || a.ReplaceProxySecret || a.ProxyPassword != "" {
+							sec = &a.ProxyPassword
+						}
+						if p.ID == "" {
+							p.ID = a.P.NewID()
+						}
+						e = a.P.SaveProxy(p, sec)
 						a.status(e)
-						return
-					}
-					p.Port = port
-					var sec *string
-					if p.ID == "" || a.ReplaceProxySecret || a.ProxyPassword != "" {
-						sec = &a.ProxyPassword
-					}
-					if p.ID == "" {
-						p.ID = a.P.NewID()
-					}
-					e = a.P.SaveProxy(p, sec)
-					a.status(e)
-					if e == nil {
-						a.Proxy = p
-						a.ProxyPassword = ""
-						a.ReplaceProxySecret = false
-						a.reload()
-					}
-				}
-			})
-			for _, p := range a.Data.Proxies {
-				ui.Row(c).Key(p.ID).Gap(6).Children(func() {
-					ui.Text(c, p.Name+" · "+p.Kind).Grow(1)
-					if ui.Button(c, "编辑").Clicked() {
-						a.Proxy = p
-						a.ProxyPort = strconv.Itoa(p.Port)
-						a.ProxyPassword = ""
-					}
-					if ui.Button(c, "删除").Clicked() {
-						a.DeleteKind = "proxy"
-						a.DeleteID = p.ID
+						if e == nil {
+							a.Proxy = p
+							a.ProxyPassword = ""
+							a.ReplaceProxySecret = false
+							a.reload()
+						}
 					}
 				})
-			}
+				for _, p := range a.Data.Proxies {
+					ui.Row(c).Key(p.ID).Gap(6).Children(func() {
+						ui.Text(c, p.Name+" · "+p.Kind).Grow(1)
+						if ui.Button(c, "编辑").Clicked() {
+							a.Proxy = p
+							a.ProxyPort = strconv.Itoa(p.Port)
+							a.ProxyPassword = ""
+						}
+						if ui.Button(c, "删除").Clicked() {
+							a.DeleteKind = "proxy"
+							a.DeleteID = p.ID
+						}
+					})
+				}
+			}).FillWidth().Gap(FormGap)
 		})
 	})
 }

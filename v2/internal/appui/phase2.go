@@ -121,7 +121,7 @@ func (a *App) handlePhase2(e Event) {
 }
 func (a *App) phasePage(c *ui.Context, title string, body func()) {
 	ui.Scroll(c).Key("page-" + a.Page).Grow(1).FillWidth().Padding(PageInset).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Gap(FormGap).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Children(func() { ui.Text(c, title).FontSize(26).Bold(); body() })
+		ui.Column(c).FillWidth().MaxWidth(1120).Padding(PanelInset).Gap(FormGap).Radius(PanelRadius).Background(c.Theme().Surface).Border(1, c.Theme().Border).Children(func() { ui.Text(c, title).FontSize(26).Bold(); ui.Form(c, body).FillWidth().Gap(FormGap) })
 	})
 }
 func (a *App) queue(req TransferRequest) {
