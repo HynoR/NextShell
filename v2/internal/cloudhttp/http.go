@@ -197,6 +197,19 @@ func (c *Client) Push(ctx context.Context, commit cloudv2.Commit, key cloudv2.Wr
 	if e != nil || len(raw) > cloudv2.MaxPacket {
 		return errors.New("publish too large")
 	}
-	_, e = c.call(ctx, "POST", "/v2/workspaces/"+commit.WorkspaceID, raw)
-	return e
+	raw, e = c.call(ctx, "POST", "/v2/workspaces/"+commit.WorkspaceID, raw)
+	if e != nil {
+		return e
+	}
+	var ack struct {
+		Version int    `json:"version"`
+		Head    string `json:"head"`
+	}
+	if e = decode(raw, &ack); e != nil {
+		return e
+	}
+	if ack.Version != cloudv2.Version || ack.Head != commit.ID {
+		return errors.New("invalid publish acknowledgement")
+	}
+	return nil
 }

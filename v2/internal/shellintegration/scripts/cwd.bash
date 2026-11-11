@@ -11,6 +11,10 @@ __nextshell_emit_cwd() {
 if [[ $(declare -p PROMPT_COMMAND 2>/dev/null || true) == 'declare -a'* ]]; then
   if [[ " ${PROMPT_COMMAND[*]} " != *' __nextshell_emit_cwd '* ]]; then PROMPT_COMMAND+=(__nextshell_emit_cwd); fi
 else
-  case ";${PROMPT_COMMAND:-};" in *'__nextshell_emit_cwd;'*) ;; *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND; }__nextshell_emit_cwd";; esac
+  case ";${PROMPT_COMMAND:-};" in *'__nextshell_emit_cwd;'*) ;;
+    *) # A newline preserves trailing semicolons AND existing end-of-line comments.
+       if [[ -n ${PROMPT_COMMAND:-} ]]; then PROMPT_COMMAND+=$'\n'; fi
+       PROMPT_COMMAND+='__nextshell_emit_cwd';;
+  esac
 fi
 __nextshell_emit_cwd

@@ -38,8 +38,9 @@ func (p *Platform) CloudOverview() appui.CloudOverview {
 }
 func (p *Platform) CloudConnect(endpoint, id, name, auth, encryption string, join bool) {
 	p.operation(func(ctx context.Context) error {
-		p.featureMu.Lock()
-		defer p.featureMu.Unlock()
+		if encryption != "" && auth == encryption {
+			return errors.New("认证 token 不得复用为加密口令")
+		}
 		var keys storage.WorkspaceSecrets
 		var e error
 		isNew := id == "" || join
@@ -108,6 +109,14 @@ func (p *Platform) CloudConnect(endpoint, id, name, auth, encryption string, joi
 		}
 		service, e := cloudsync.New(p.store, id, client, p.Invalidate)
 		if e != nil {
+			return e
+		}
+		if e = ctx.Err(); e != nil {
+			return e
+		}
+		p.featureMu.Lock()
+		defer p.featureMu.Unlock()
+		if e = ctx.Err(); e != nil {
 			return e
 		}
 		if old := p.clouds[id]; old != nil {
@@ -222,7 +231,9 @@ func (p *Platform) AgentBlacklist(text string) {
 			lines[i] = lines[i][:512]
 		}
 	}
-	p.gateway.SetBlacklist(lines)
+	if e := p.gateway.SetBlacklist(lines); e != nil {
+		p.emit(appui.Event{Message: "黑名单正则无效，已保留原规则"})
+	}
 }
 func (p *Platform) closeFeatures() {
 	p.featureMu.Lock()

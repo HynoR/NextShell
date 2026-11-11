@@ -172,6 +172,11 @@ func (s *Store) Connections() ([]model.Connection, error) {
 func (s *Store) Connection(id string) (model.Connection, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.connectionUnlocked(id)
+}
+
+// connectionUnlocked requires Store.mu; used by atomic compound operations.
+func (s *Store) connectionUnlocked(id string) (model.Connection, error) {
 	c, e := get[model.Connection](s, "connection", id)
 	if e != nil {
 		return c, e
@@ -247,6 +252,11 @@ func (s *Store) Keys() ([]model.Key, error) { return list[model.Key](s, "key") }
 func (s *Store) Key(id string) (model.Key, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.keyUnlocked(id)
+}
+
+// keyUnlocked requires Store.mu; used by atomic compound operations.
+func (s *Store) keyUnlocked(id string) (model.Key, error) {
 	k, e := get[model.Key](s, "key", id)
 	if e != nil {
 		return k, e
@@ -279,6 +289,11 @@ func (s *Store) Proxies() ([]model.Proxy, error) { return list[model.Proxy](s, "
 func (s *Store) Proxy(id string) (model.Proxy, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.proxyUnlocked(id)
+}
+
+// proxyUnlocked requires Store.mu; used by atomic compound operations.
+func (s *Store) proxyUnlocked(id string) (model.Proxy, error) {
 	p, e := get[model.Proxy](s, "proxy", id)
 	if e != nil {
 		return p, e

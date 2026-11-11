@@ -149,4 +149,33 @@ func TestMCPAuthenticationOriginHostBodyAndLegacyProtocol(t *testing.T) {
 	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil || result.Result.ProtocolVersion != "2025-06-18" || resp.Header.Get("Mcp-Session-Id") == "" {
 		t.Fatal(result, err, resp.Status)
 	}
+
+	sid := resp.Header.Get("Mcp-Session-Id")
+	for _, method := range []string{"GET", "DELETE"} {
+		request, _ := http.NewRequest(method, url, nil)
+		request.Header.Set("Mcp-Session-Id", sid)
+		unauthorized, e := http.DefaultClient.Do(request)
+		if e != nil {
+			t.Fatal(e)
+		}
+		unauthorized.Body.Close()
+		if unauthorized.StatusCode != 401 {
+			t.Fatal("method bypassed authentication", method, unauthorized.StatusCode)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	request, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Mcp-Session-Id", sid)
+	request.Header.Set("Mcp-Protocol-Version", "2025-06-18")
+	request.Header.Set("Accept", "text/event-stream")
+	stream, e := http.DefaultClient.Do(request)
+	if e != nil {
+		t.Fatal("SDK SSE not established", e)
+	}
+	stream.Body.Close()
+	if stream.StatusCode != 200 || !strings.Contains(stream.Header.Get("Content-Type"), "text/event-stream") {
+		t.Fatal("SSE not supported", stream.Status)
+	}
 }

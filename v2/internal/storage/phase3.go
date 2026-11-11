@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"nextshell.dev/v2/internal/cloudv2"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/security"
@@ -134,6 +135,16 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 	var folders []model.Folder
 	var keys []model.Key
 	var proxies []model.Proxy
+	existingFolders, e := s.Folders()
+	if e != nil {
+		return e
+	}
+	names := map[string]bool{}
+	for _, f := range existingFolders {
+		if f.ScopeID() == workspace {
+			names[f.ParentID+"\x00"+f.Name] = true
+		}
+	}
 	folderIDs, keyIDs, proxyIDs := map[string]string{}, map[string]string{}, map[string]string{}
 	var folder func(string, int) (string, error)
 	folder = func(old string, depth int) (string, error) {
@@ -159,6 +170,14 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 		}
 		f.ID = ID()
 		f.ParentID = parent
+		base := f.Name
+		for n := 2; names[parent+"\x00"+f.Name]; n++ {
+			f.Name = fmt.Sprintf("%s (%d)", base, n)
+		}
+		if _, e = model.NormalizeFolderName(f.Name); e != nil {
+			return "", e
+		}
+		names[parent+"\x00"+f.Name] = true
 		f.Meta = model.Meta{Scope: workspace}
 		folderIDs[old] = f.ID
 		folders = append(folders, f)
@@ -170,7 +189,7 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 			continue
 		}
 		seen[id] = true
-		c, e := s.Connection(id)
+		c, e := s.connectionUnlocked(id)
 		if e != nil {
 			return e
 		}
@@ -184,7 +203,7 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 		if c.KeyID != "" {
 			old := c.KeyID
 			if keyIDs[old] == "" {
-				k, e := s.Key(old)
+				k, e := s.keyUnlocked(old)
 				if e != nil {
 					return e
 				}
@@ -201,7 +220,7 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 		if c.ProxyID != "" {
 			old := c.ProxyID
 			if proxyIDs[old] == "" {
-				p, e := s.Proxy(old)
+				p, e := s.proxyUnlocked(old)
 				if e != nil {
 					return e
 				}

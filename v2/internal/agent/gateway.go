@@ -8,6 +8,8 @@ import (
 	"errors"
 	"io"
 	"nextshell.dev/v2/internal/cloudv2"
+	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -144,10 +146,19 @@ func (g *Gateway) Halt(h bool) {
 	g.mu.Unlock()
 	g.record("global", map[bool]string{true: "halted", false: "resumed"}[h])
 }
-func (g *Gateway) SetBlacklist(lines []string) {
+func (g *Gateway) SetBlacklist(lines []string) error {
+	for _, line := range lines {
+		p := strings.TrimSpace(line)
+		if strings.HasPrefix(p, "re:") {
+			if _, e := regexp.Compile(strings.TrimPrefix(p, "re:")); e != nil {
+				return errors.New("invalid blacklist regular expression")
+			}
+		}
+	}
 	g.mu.Lock()
 	g.blacklist = append([]string{}, lines...)
 	g.mu.Unlock()
+	return nil
 }
 func (g *Gateway) Pending() []Pending {
 	g.mu.Lock()
@@ -328,7 +339,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if live == nil {
 			return fail("not_found")
 		}
-		if live.Local || a.Mode == "foreground" {
+		if live.Local || (a.Mode != "" && a.Mode != "background") {
 			return fail("unavailable")
 		}
 		if strings.TrimSpace(a.Command) == "" {
@@ -382,14 +393,20 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	}
 	if mutates && !approved {
 		g.mu.Lock()
+		for id, p := range g.pending {
+			if !p.ExpiresAt.After(g.now()) {
+				delete(g.pending, id)
+			}
+		}
 		if len(g.pending) >= 100 {
 			g.mu.Unlock()
 			return fail("busy")
 		}
 		for _, p := range g.pending {
-			if p.owner == clientID && p.Tool == tool && p.args == a && p.ExpiresAt.After(g.now()) {
+			if p.owner == clientID && p.Tool == tool && reflect.DeepEqual(p.args, a) && p.ExpiresAt.After(g.now()) {
+				decision := p.decision
 				g.mu.Unlock()
-				if p.decision < 0 {
+				if decision < 0 {
 					return fail("denied")
 				}
 				return Result{OK: true, Data: map[string]any{"status": "pending", "requestId": p.ID}}
@@ -400,7 +417,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if summary == "" {
 			summary = tool + " " + a.Target
 		}
-		g.pending[id] = &Pending{ID: id, Client: Redact(clientName), Tool: tool, Target: a.Target, Summary: summary, ExpiresAt: g.now().Add(2 * time.Minute), args: a, owner: clientID}
+		g.pending[id] = &Pending{ID: id, Client: Redact(clientName), Tool: tool, Target: a.Target, Summary: Redact(summary), ExpiresAt: g.now().Add(2 * time.Minute), args: a, owner: clientID}
 		g.mu.Unlock()
 		if g.changed != nil {
 			g.changed()

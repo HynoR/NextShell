@@ -69,13 +69,15 @@ func Dangerous(command string, blacklist []string) bool {
 	}
 	for _, p := range blacklist {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			if strings.Contains(command, p) {
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(p, "re:") {
+			if re, e := regexp.Compile(strings.TrimPrefix(p, "re:")); e == nil && re.MatchString(command) {
 				return true
 			}
-			if re, e := regexp.Compile(p); e == nil && re.MatchString(command) {
-				return true
-			}
+		} else if strings.Contains(strings.ToLower(command), strings.ToLower(p)) {
+			return true
 		}
 	}
 	return false

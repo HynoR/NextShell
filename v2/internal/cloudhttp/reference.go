@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"nextshell.dev/v2/internal/cloudv2"
 	"strings"
@@ -14,13 +15,14 @@ import (
 // ReferenceServer is a bounded, single-account, IN-MEMORY TEST/REFERENCE implementation.
 // It is NOT a production service and has no persisted accounts, memberships or recovery.
 type ReferenceServer struct {
-	mu       sync.Mutex
-	verifier []byte
-	sessions map[[32]byte]time.Time
-	heads    map[string]string
-	commits  map[string]cloudv2.Commit
-	keys     map[string]cloudv2.WrappedKey
-	now      func() time.Time
+	mu          sync.Mutex
+	verifier    []byte
+	sessions    map[[32]byte]time.Time
+	heads       map[string]string
+	commits     map[string]cloudv2.Commit
+	keys        map[string]cloudv2.WrappedKey
+	now         func() time.Time
+	storedBytes int
 }
 
 func NewReference(token string) (*ReferenceServer, error) {
@@ -35,7 +37,13 @@ func (s *ReferenceServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	if r.Header.Get("Origin") != "" {
+	remote, _, remoteErr := net.SplitHostPort(r.RemoteAddr)
+	host, _, hostErr := net.SplitHostPort(r.Host)
+	if hostErr != nil {
+		host = r.Host
+	}
+	ip := net.ParseIP(host)
+	if remoteErr != nil || net.ParseIP(remote) == nil || !net.ParseIP(remote).IsLoopback() || ip == nil || !ip.IsLoopback() || r.Header.Get("Origin") != "" {
 		http.Error(w, "browser origins not supported", 403)
 		return
 	}
@@ -174,10 +182,11 @@ func (s *ReferenceServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "reused commit", 409)
 			return
 		}
-		if len(s.commits) >= 256 {
+		if len(s.commits) >= 256 || s.storedBytes+len(body) > cloudv2.MaxPacket {
 			http.Error(w, "reference history capacity", 507)
 			return
 		}
+		s.storedBytes += len(body)
 		s.commits[commit.ID] = commit
 		s.heads[id] = commit.ID
 		s.keys[id] = key

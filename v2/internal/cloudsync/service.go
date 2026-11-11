@@ -200,6 +200,16 @@ func (s *Service) Start(ctx context.Context, interval time.Duration) {
 	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
+		defer func() {
+			cancel()
+			s.mu.Lock()
+			s.cancel = nil
+			s.status.Background = false
+			s.mu.Unlock()
+			if s.changed != nil {
+				s.changed()
+			}
+		}()
 		delay := interval
 		for {
 			e := s.Once(ctx)

@@ -60,6 +60,7 @@ func Open(path string) (*Platform, error) {
 	p.monitorWatches = map[string]context.CancelFunc{}
 	p.clouds = map[string]*cloudsync.Service{}
 	p.gateway = agent.New(agentBackend{p}, p.Invalidate)
+	p.gateway.Halt(true)
 	p.queue = transfer.New(2, p.Invalidate)
 	return p, nil
 }

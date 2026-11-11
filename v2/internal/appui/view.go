@@ -12,6 +12,7 @@ import (
 type tabDrag string
 type App struct {
 	Phase2                     phase2State
+	Phase3                     phase3State
 	ConfirmExit, ExitConfirmed bool
 	KeyAlgorithm               string
 	Search, ConnectionLayout   string
@@ -51,6 +52,7 @@ type App struct {
 func New(p Platform) *App {
 	a := &App{KeyAlgorithm: "ed25519", P: p, Active: -1, Page: "terminal", Selected: map[string]bool{}, Collapsed: map[string]bool{}, ShowWorkbench: true, ConnectionLayout: "table"}
 	a.Phase2.init()
+	a.Phase3.init()
 	a.newConnection()
 	a.Proxy = model.Proxy{Kind: "socks5"}
 	a.ProxyPort = "1080"
@@ -134,6 +136,7 @@ func (a *App) View(c *ui.Context) {
 	a.Prompts = alive
 	for _, e := range a.P.Poll() {
 		a.handlePhase2(e)
+		a.handlePhase3(e)
 		if e.Session != nil {
 			replaced := false
 			for i, old := range a.Tabs {
@@ -270,6 +273,12 @@ func (a *App) View(c *ui.Context) {
 						a.commandsView(c)
 					case "data":
 						a.dataView(c)
+					case "cloud":
+						a.cloudView(c)
+					case "agent":
+						a.agentView(c)
+					case "shell":
+						a.shellView(c)
 					case "activity":
 						a.activityView(c)
 					default:
@@ -279,7 +288,7 @@ func (a *App) View(c *ui.Context) {
 				a.workbench(c)
 			})
 			ui.Column(c).Width(126).FillHeight().Gap(8).Padding(8).Children(func() {
-				for _, v := range []struct{ ID, Label string }{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"activity", "活动面板"}} {
+				for _, v := range []struct{ ID, Label string }{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}} {
 					if ui.Button(c, v.Label).FillWidth().Clicked() {
 						a.Page = v.ID
 					}
