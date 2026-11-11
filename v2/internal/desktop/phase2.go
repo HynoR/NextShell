@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/pkg/sftp"
 	"io"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/exchange"
@@ -61,6 +62,13 @@ func (p *Platform) ListFiles(session, remote string) {
 			if remote == "" {
 				remote = "."
 			}
+			if remote == "~" || strings.HasPrefix(remote, "~/") {
+				home, err := c.RealPath(".")
+				if err != nil {
+					return err
+				}
+				remote = path.Join(home, strings.TrimPrefix(strings.TrimPrefix(remote, "~"), "/"))
+			}
 			resolved, e := c.RealPath(remote)
 			if e != nil {
 				return e
@@ -82,6 +90,12 @@ func (p *Platform) FileAction(session, action, from, to string) {
 			}
 			var e error
 			switch action {
+			case "create":
+				var f *sftp.File
+				f, e = c.OpenFile(from, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+				if e == nil {
+					e = f.Close()
+				}
 			case "mkdir":
 				e = c.Mkdir(from)
 			case "rename":
@@ -100,6 +114,13 @@ func (p *Platform) FileAction(session, action, from, to string) {
 	})
 }
 func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
+	if req.Local == "~" || strings.HasPrefix(req.Local, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		req.Local = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(req.Local, "~"), "/"))
+	}
 	if _, e := p.ssh(req.Session); e != nil {
 		return "", e
 	}

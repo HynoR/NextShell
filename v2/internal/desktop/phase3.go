@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"github.com/egoist/mygo/plugins/terminal"
-	"github.com/egoist/mygo/ui"
 	"golang.org/x/crypto/ssh"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
@@ -15,7 +14,6 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/shellintegration"
 	"nextshell.dev/v2/internal/storage"
-	"runtime"
 	"strings"
 	"time"
 	"unicode"
@@ -278,18 +276,36 @@ func (p *Platform) TerminalTitle(id string) string {
 }
 func (p *Platform) ShellCommand(shell string) (string, error) { return shellintegration.Command(shell) }
 func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
-	if runtime.GOOS == "linux" && o.Font.Family == "" && o.Font.Size == 0 {
-		for _, f := range ui.FontFamilies() {
-			if f.Name == "Noto Sans Mono CJK SC" {
-				o.Font = terminal.Font{Family: f.Name, Size: 14}
-				break
-			}
-		}
+	prefs := p.Preferences()
+	o.Font = terminalFont(prefs)
+	o.Scrollback = prefs.ScrollbackMiB << 20
+	o.NoBlink = !prefs.CursorBlink
+	switch prefs.Cursor {
+	case "bar":
+		o.Cursor = terminal.CursorBar
+	case "underline":
+		o.Cursor = terminal.CursorUnderline
+	default:
+		o.Cursor = terminal.CursorBlock
+	}
+	o.NoClipboardWrite = !prefs.ClipboardWrite
+	o.ClipboardRead = terminal.ClipboardDeny
+	if prefs.ClipboardReadAsk {
+		o.ClipboardRead = terminal.ClipboardAsk
+	}
+	if o.Conn == nil && prefs.LocalShell != "" {
+		o.Command = []string{prefs.LocalShell}
 	}
 	o.OnTitle = func(string) { p.Invalidate() }
-	o.OnBell = func() { p.emit(appui.Event{Message: "终端响铃（BEL）"}) }
+	o.OnBell = func() {
+		if p.Preferences().Notifications {
+			p.emit(appui.Event{Message: "终端响铃（BEL）"})
+		}
+	}
 	o.OnNotify = func(title, body string) {
-		p.emit(appui.Event{Message: "终端通知：" + cleanTerminalText(title+" · "+body, 512)})
+		if p.Preferences().Notifications {
+			p.emit(appui.Event{Message: "终端通知：" + cleanTerminalText(title+" · "+body, 512)})
+		}
 	}
 	return o
 }

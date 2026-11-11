@@ -22,6 +22,8 @@ import (
 )
 
 type Platform struct {
+	clipboard       func(string)
+	preferences     model.Preferences
 	featureMu       sync.Mutex
 	clouds          map[string]*cloudsync.Service
 	gateway         *agent.Gateway
@@ -51,8 +53,13 @@ func Open(path string) (*Platform, error) {
 	if e != nil {
 		return nil, e
 	}
+	prefs, e := s.Preferences()
+	if e != nil {
+		s.Close()
+		return nil, e
+	}
 	ctx, c := context.WithCancel(context.Background())
-	p := &Platform{store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
+	p := &Platform{preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
 	p.sshSessions = map[string]*sshclient.Session{}
 	p.imports = map[string]importPlan{}
 	p.monitorPrevious = map[string]monitor.Snapshot{}
@@ -227,7 +234,18 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		}
 		pr = &a
 	}
-	c.Keepalive = c.EffectiveKeepalive()
+	prefs := p.Preferences()
+	if c.KeepaliveEnabled == nil && c.Keepalive == 0 {
+		c.Keepalive = 0
+		if prefs.KeepaliveEnabled {
+			c.Keepalive = prefs.KeepaliveSeconds
+			if c.KeepaliveIntervalSec != nil {
+				c.Keepalive = *c.KeepaliveIntervalSec
+			}
+		}
+	} else {
+		c.Keepalive = c.EffectiveKeepalive()
+	}
 	if c.Fingerprint == "" {
 		pin, err := p.store.HostPin(c.Address())
 		if err != nil {
@@ -451,5 +469,15 @@ func (p *Platform) Exited(id string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func (p *Platform) SetClipboard(fn func(string)) { p.mu.Lock(); p.clipboard = fn; p.mu.Unlock() }
+func (p *Platform) CopyText(s string) {
+	p.mu.Lock()
+	fn := p.clipboard
+	p.mu.Unlock()
+	if fn != nil {
+		fn(s)
 	}
 }

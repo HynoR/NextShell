@@ -11,6 +11,13 @@ import (
 
 type tabDrag string
 type App struct {
+	Actions                    []func()
+	RenameConnection           model.Connection
+	RenameText                 string
+	RenameOpen, TrashConfirm   bool
+	TrashTargets               []model.Connection
+	Prefs                      model.Preferences
+	Settings                   settingsState
 	Appearance, TreeSelection  string
 	SidebarWidth               float32
 	Phase2                     phase2State
@@ -53,7 +60,11 @@ type App struct {
 
 func New(p Platform) *App {
 	a := &App{Appearance: "跟随系统", SidebarWidth: 260, KeyAlgorithm: "ed25519", P: p, Active: -1, Page: "terminal", Selected: map[string]bool{}, Collapsed: map[string]bool{}, ShowWorkbench: true, ConnectionLayout: "table"}
+	a.Prefs = p.Preferences()
+	a.Settings.load(a.Prefs)
+	a.Appearance = a.Prefs.Appearance
 	a.Phase2.init()
+	a.Phase2.ExternalProgram = a.Prefs.EditorCommand
 	a.Phase3.init()
 	a.newConnection()
 	a.Proxy = model.Proxy{Kind: "socks5"}
@@ -83,10 +94,10 @@ func (a *App) reload() {
 	a.HistoryIndex = len(a.History)
 }
 func (a *App) newConnection() {
-	a.Edit = model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, Keepalive: 30}
+	a.Edit = model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, Keepalive: 0}
 	a.Port = "22"
-	a.Keepalive = "30"
-	a.InheritKeepalive = false
+	a.Keepalive = strconv.Itoa(a.Prefs.KeepaliveSeconds)
+	a.InheritKeepalive = true
 	a.Password = ""
 	a.ReplaceSecret = false
 }
@@ -98,7 +109,7 @@ func (a *App) edit(c model.Connection) {
 	if c.KeepaliveIntervalSec != nil {
 		interval = *c.KeepaliveIntervalSec
 	} else if a.InheritKeepalive {
-		interval = model.DefaultKeepaliveSeconds
+		interval = a.Prefs.KeepaliveSeconds
 	}
 	a.Keepalive = strconv.Itoa(interval)
 	a.Password = ""
@@ -128,6 +139,7 @@ func (a *App) closeTab(i int) {
 func (a *App) View(c *ui.Context) {
 	c.SetTheme(designTheme(c.Theme(), a.Appearance, c.Preferences().HighContrast))
 	a.P.SetWake(c.Services().Invalidate)
+	a.P.SetClipboard(c.Services().WriteClipboard)
 	alive := a.Prompts[:0]
 	for _, p := range a.Prompts {
 		select {
@@ -141,7 +153,8 @@ func (a *App) View(c *ui.Context) {
 		a.handlePhase2(e)
 		a.handlePhase3(e)
 		if e.Session != nil {
-			e.Session.Terminal.SetTheme(terminalLight, terminalDark)
+			light, dark := TerminalThemes(a.Prefs)
+			e.Session.Terminal.SetTheme(light, dark)
 			replaced := false
 			for i, old := range a.Tabs {
 				if e.Session.Replaces == old.ID {
@@ -171,6 +184,13 @@ func (a *App) View(c *ui.Context) {
 	a.refreshTitles()
 	a.chrome(c)
 	a.deleteView(c)
+	a.parityDialogs(c)
+	actions := a.Actions
+	a.Actions = nil
+	for _, fn := range actions {
+		fn()
+		c.Invalidate()
+	}
 }
 func (a *App) tree(c *ui.Context, parent string, depth int) {
 	if depth > 30 {
@@ -189,6 +209,7 @@ func (a *App) tree(c *ui.Context, parent string, depth int) {
 			continue
 		}
 		item := ui.SidebarItem(c, cc.ID, appIcons["connections"], cc.Name).Padding(8, 8, 8, 8+float32(depth)*12).Tooltip(cc.User + "@" + cc.Host)
+		a.connectionMenu(item, cc)
 		item.Children(func() {
 			b := ui.ButtonBase(c).Label("编辑").Tooltip("编辑 "+cc.Name).Size(24, 24).Center().Children(func() { ui.Icon(c, appIcons["edit"]).FontSize(14).TextColor(c.Theme().TextMuted) })
 			if b.Clicked() {
@@ -250,7 +271,8 @@ func (a *App) terminalView(c *ui.Context) {
 		}
 	})
 	if live := a.current(); live != nil {
-		terminal.View(c.Key(live.ID+"terminal"), live.Terminal).Grow(1).FillWidth().AutoFocus()
+		element := terminal.View(c.Key(live.ID+"terminal"), live.Terminal).Grow(1).FillWidth().AutoFocus()
+		a.terminalShortcuts(element)
 	}
 }
 func (a *App) workbench(c *ui.Context) {
@@ -298,22 +320,15 @@ func (a *App) sendCommand() {
 	}
 }
 func field(c *ui.Context, label string, value *string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
-		ui.TextInput(c, value).Label(label).Grow(1)
-	})
+	ui.Form(c, func() { ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Grow(1) }).FillWidth() }).FillWidth()
 }
 func password(c *ui.Context, label string, value *string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
-		ui.TextInput(c, value).Label(label).Password().Grow(1)
-	})
+	ui.Form(c, func() {
+		ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Password().Grow(1) }).FillWidth()
+	}).FillWidth()
 }
 func choice(c *ui.Context, label string, value *string, options []string) {
-	ui.Row(c).FillWidth().Gap(8).Children(func() {
-		ui.Text(c, label).Width(FieldLabelWidth).TextColor(c.Theme().TextMuted)
-		ui.Select(c, value, options).Label(label).Grow(1)
-	})
+	ui.Form(c, func() { ui.Field(c, label, func() { ui.Select(c, value, options).Label(label).Grow(1) }).FillWidth() }).FillWidth()
 }
 func chooseID(c *ui.Context, label string, id *string, ids, names []string) {
 	name := "（无）"
@@ -392,8 +407,8 @@ func (a *App) connectionsView(c *ui.Context) {
 			ui.Checkbox(c.Key("use-known-hosts"), &a.Edit.UseKnownHosts, "只读 ~/.ssh/known_hosts（数据库指纹优先）")
 			field(c, "固定主机指纹", &a.Edit.Fingerprint)
 			choice(c, "编码", &a.Edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
-			ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认（启用）")
-			field(c, "keepalive 秒（0=显式关闭，默认30）", &a.Keepalive)
+			ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认")
+			field(c, "keepalive 秒（0=显式关闭，继承值见设置）", &a.Keepalive)
 			ui.Text(c, "所有连接（勾选后可批量绑定上述认证、密钥和代理）").Bold()
 			var container ui.Element
 			if a.ConnectionLayout == "grid" {
@@ -412,6 +427,7 @@ func (a *App) connectionsView(c *ui.Context) {
 					} else {
 						row = ui.Row(c).Key(cc.ID + "manage").Gap(6)
 					}
+					a.connectionMenu(row.Label("连接行 "+cc.Name), cc)
 					row.Children(func() {
 						sel := a.Selected[cc.ID]
 						ui.Checkbox(c, &sel, cc.Name+" · "+cc.User+"@"+cc.Address())
@@ -752,7 +768,7 @@ func (a *App) promptView(c *ui.Context) {
 
 func (a *App) matches(c model.Connection) bool {
 	q := strings.ToLower(strings.TrimSpace(a.Search))
-	return q == "" || strings.Contains(strings.ToLower(c.Name+" "+c.Host+" "+c.User), q)
+	return q == "" || strings.Contains(strings.ToLower(c.Name+" "+c.Host+" "+c.User+" "+c.Notes+" "+strings.Join(c.Tags, " ")+" "+a.folderSearchText(c.FolderID)), q)
 }
 func (a *App) moveTab(id string, to int) {
 	from := -1
@@ -783,7 +799,7 @@ func (a *App) moveTab(id string, to int) {
 
 func (a *App) refreshTitles() {
 	for _, s := range a.Tabs {
-		if s.ManualTitle {
+		if s.ManualTitle || !a.Prefs.TitleUpdates {
 			continue
 		}
 		next := a.P.TerminalTitle(s.ID)
@@ -795,4 +811,13 @@ func (a *App) refreshTitles() {
 			}
 		}
 	}
+}
+
+func (a *App) folderSearchText(id string) string {
+	for _, f := range a.Data.Folders {
+		if f.ID == id {
+			return f.Name
+		}
+	}
+	return ""
 }

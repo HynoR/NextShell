@@ -159,6 +159,7 @@ func (a *App) filesView(c *ui.Context) {
 			ui.Text(c, "尚未加载此会话的目录，请刷新")
 		} else {
 			zone := ui.Column(c).FillWidth().MinHeight(80).Gap(3)
+			a.filesBlankMenu(zone, id)
 			for _, local := range zone.DroppedFiles() {
 				a.queue(TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(s.RemotePath, filepath.Base(local)), Overwrite: s.Overwrite})
 			}
@@ -185,7 +186,9 @@ func (a *App) filesView(c *ui.Context) {
 						if f.Directory {
 							actionLabel = "打开 " + f.Name
 						}
-						if ghost(c, label, ic).Label(actionLabel).Clicked() {
+						button := ghost(c, label, ic).Label(actionLabel)
+						a.fileMenu(button, id, f)
+						if button.Clicked() {
 							s.SelectedRemote = f.Path
 							if f.Directory {
 								s.RemotePath = f.Path
@@ -219,6 +222,15 @@ func (a *App) filesView(c *ui.Context) {
 		}
 		field(c, "选定/远端文件", &s.SelectedRemote)
 		field(c, "本地文件/目录", &s.LocalPath)
+		ui.Row(c).Gap(6).Children(func() {
+			if ui.Button(c, "默认上传目录").Clicked() {
+				s.RemotePath = a.Prefs.UploadDir
+				a.P.ListFiles(id, s.RemotePath)
+			}
+			if ui.Button(c, "默认下载位置").Clicked() {
+				s.LocalPath = filepath.Join(a.Prefs.DownloadDir, path.Base(s.SelectedRemote))
+			}
+		})
 		ui.Checkbox(c, &s.Overwrite, "允许覆盖现有普通文件（目录打包不覆盖）")
 		ui.Row(c).Gap(6).Wrap().Children(func() {
 			if ui.Button(c, "上传文件").Clicked() {
@@ -267,6 +279,10 @@ func (a *App) filesView(c *ui.Context) {
 		})
 		if s.Action != "" {
 			ui.Text(c, s.Action+": "+s.ActionFrom+" → "+s.ActionTo)
+			field(c, "操作源路径", &s.ActionFrom)
+			if s.Action == "rename" {
+				field(c, "操作目标路径", &s.ActionTo)
+			}
 			ui.Row(c).Gap(6).Children(func() {
 				if ui.Button(c, "确认远端操作").Clicked() {
 					a.P.FileAction(id, s.Action, s.ActionFrom, s.ActionTo)

@@ -57,6 +57,8 @@ type Snapshot struct {
 }
 type Platform interface {
 	Snapshot() (Snapshot, error)
+	Preferences() model.Preferences
+	SavePreferences(model.Preferences) error
 	SaveConnection(model.Connection, *string) error
 	SaveFolder(model.Folder) error
 	SaveKey(model.Key) error
@@ -80,6 +82,8 @@ type Platform interface {
 	Exited(id string) bool
 	Poll() []Event
 	SetWake(func())
+	SetClipboard(func(string))
+	CopyText(string)
 	Quit()
 	ListFiles(session, path string)
 	FileAction(session, action, from, to string)

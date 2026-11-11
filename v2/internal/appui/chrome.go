@@ -8,7 +8,7 @@ import (
 
 type navigationItem struct{ ID, Label string }
 
-var navigation = []navigationItem{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}}
+var navigation = []navigationItem{{"terminal", "终端"}, {"connections", "连接"}, {"keys", "密钥管理"}, {"proxies", "代理管理"}, {"files", "文件"}, {"transfers", "传输"}, {"editor", "远程编辑"}, {"monitor", "监控"}, {"commands", "命令库"}, {"data", "导入导出"}, {"cloud", "云同步"}, {"agent", "Agent 网关"}, {"shell", "Shell 集成"}, {"activity", "活动面板"}, {"settings", "设置"}}
 
 func ghost(c *ui.Context, label, icon string) ui.Element {
 	t := c.Theme()
@@ -88,7 +88,13 @@ func (a *App) titlebar(c *ui.Context) {
 		if ghost(c, "本地终端", "terminal").Clicked() {
 			a.P.Local()
 		}
+		before := a.Appearance
 		ui.Select(c, &a.Appearance, []string{"跟随系统", "浅色", "深色"}).Label("外观").Width(106)
+		if before != a.Appearance {
+			v := a.Prefs
+			v.Appearance = a.Appearance
+			a.savePreferences(v)
+		}
 	})
 }
 func (a *App) sidebar(c *ui.Context) {
@@ -161,6 +167,7 @@ func (a *App) tabstrip(c *ui.Context) {
 		tabs.List.AlignItems(ui.Stretch).Gap(2).Padding(5, 8).Children(func() {
 			for i, s := range a.Tabs {
 				tab := tabs.Tab(i).Label(s.Title).Padding(5, 12).Gap(8).Radius(7).AlignItems(ui.Center).Drag(tabDrag(s.ID))
+				a.tabMenu(tab, s, i)
 				if x, ok := ui.Drop[tabDrag](tab); ok {
 					a.moveTab(string(x), i)
 				}
@@ -228,6 +235,8 @@ func (a *App) pageView(c *ui.Context) {
 		a.agentView(c)
 	case "shell":
 		a.shellView(c)
+	case "settings":
+		a.settingsView(c)
 	case "activity":
 		a.activityView(c)
 	default:
