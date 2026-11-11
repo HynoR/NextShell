@@ -16,3 +16,18 @@ func TestTerminalURLSafety(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomaticDownloadNameCannotEscapeConfiguredDirectory(t *testing.T) {
+	for _, s := range []string{"", ".", "..", "../../.bashrc", "/tmp/file", "C:\\Windows\\file", "a\ncommand", "a\x00b"} {
+		t.Run(s, func(t *testing.T) {
+			if ValidateDownloadName(s) == nil {
+				t.Fatal("unsafe accepted")
+			}
+		})
+	}
+	for _, s := range []string{"report.txt", "中文.txt", "a'b;quoted.txt"} {
+		if e := ValidateDownloadName(s); e != nil {
+			t.Fatal(e)
+		}
+	}
+}

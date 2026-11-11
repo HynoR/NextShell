@@ -17,3 +17,11 @@ func ValidateTerminalURL(raw string) error {
 	}
 	return nil
 }
+
+// A server-supplied directory entry must never turn an automatic download into path traversal.
+func ValidateDownloadName(name string) error {
+	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00\r\n") {
+		return fmt.Errorf("远端名称不是安全的本地单段文件名；请使用手工下载路径")
+	}
+	return nil
+}

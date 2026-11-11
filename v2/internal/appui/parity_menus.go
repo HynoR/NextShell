@@ -246,6 +246,10 @@ func (a *App) fileMenu(item ui.Element, id string, f sftpfs.Entry) {
 		}
 		if !f.Symlink {
 			if m.Item("下载到默认位置").Chosen() {
+				if err := model.ValidateDownloadName(f.Name); err != nil {
+					a.status(err)
+					return
+				}
 				kind := "download"
 				if f.Directory {
 					kind = "download-packed"
