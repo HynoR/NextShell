@@ -16,6 +16,7 @@ import (
 )
 
 type phase2State struct {
+	ConfirmOverwriteImport                                                         bool
 	FilesSession, RemotePath, SelectedRemote, LocalPath, TargetSession, TargetPath string
 	Files                                                                          []sftpfs.Entry
 	Overwrite, FollowCWD                                                           bool
@@ -35,8 +36,6 @@ type phase2State struct {
 	Import                                                                         *ImportPreview
 	ExportPath, ExportPassword                                                     string
 	EncryptExport                                                                  bool
-	MigrationPath                                                                  string
-	ConfirmMigration                                                               bool
 }
 
 func (s *phase2State) init() {
@@ -79,6 +78,7 @@ func (a *App) handlePhase2(e Event) {
 	}
 	if e.Import != nil {
 		s.Import = e.Import
+		s.ConfirmOverwriteImport = false
 		a.Page = "data"
 	}
 	if e.Message != "" {
@@ -397,6 +397,9 @@ func (a *App) commandsView(c *ui.Context) {
 		field(c, "命令名称", &s.Command.Name)
 		field(c, "命令分组", &s.Command.Group)
 		field(c, "描述", &s.Command.Description)
+		appendCR := s.Command.AppendCR == nil || *s.Command.AppendCR
+		ui.Checkbox(c, &appendCR, "执行时追加回车")
+		s.Command.AppendCR = &appendCR
 		ui.TextArea(c, &s.Command.Text).Label("保存的命令").Height(130).FillWidth()
 		ui.Row(c).Gap(6).Children(func() {
 			if ui.Button(c, "新命令").Clicked() {
@@ -410,7 +413,7 @@ func (a *App) commandsView(c *ui.Context) {
 				a.reload()
 			}
 			if ui.Button(c, "在当前会话执行").Clicked() {
-				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, false))
+				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, false, appendCR))
 			}
 		})
 		ui.Checkbox(c, &s.CommandAll, "确认将当前命令发往全部打开会话")
@@ -418,7 +421,7 @@ func (a *App) commandsView(c *ui.Context) {
 			if !s.CommandAll {
 				a.Message = "请先确认全部会话执行"
 			} else {
-				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, true))
+				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, true, appendCR))
 				s.CommandAll = false
 			}
 		}
@@ -438,13 +441,13 @@ func (a *App) commandsView(c *ui.Context) {
 }
 func (a *App) dataView(c *ui.Context) {
 	s := &a.Phase2
-	a.phasePage(c, "导入 / 导出 / 1.x 迁移", func() {
+	a.phasePage(c, "导入 / 导出（v1 连接文件）", func() {
 		ui.Text(c, "导入先预览再确认，密码不会在预览显示；XOR 旧导出按计划不支持")
 		field(c, "导入文件/目录", &s.ImportPath)
 		choice(c, "来源格式", &s.ImportFormat, []string{"nextshell", "finalshell"})
 		password(c, "解密口令", &s.ImportPassword)
 		a.folderChoice(c, "目标目录", &s.ImportFolder)
-		choice(c, "已有主机策略", &s.ImportPolicy, []string{"skip", "duplicate"})
+		choice(c, "已有主机策略", &s.ImportPolicy, []string{"skip", "rename-copy", "overwrite"})
 		if ui.Button(c, "预览导入").Clicked() {
 			a.P.PreviewImport(s.ImportPath, s.ImportPassword, s.ImportFormat)
 			s.ImportPassword = ""
@@ -455,7 +458,17 @@ func (a *App) dataView(c *ui.Context) {
 			for _, w := range s.Import.Warnings {
 				ui.Text(c, w)
 			}
+			for _, target := range s.Import.Targets {
+				ui.Text(c, "现有目标："+target)
+			}
+			if s.ImportPolicy == "overwrite" {
+				ui.Checkbox(c, &s.ConfirmOverwriteImport, "确认覆盖列出的唯一目标；文件明确携带的空密码将清空密码")
+			}
 			if ui.Button(c, "确认导入预览连接").Clicked() {
+				if s.ImportPolicy == "overwrite" && !s.ConfirmOverwriteImport {
+					a.Message = "请先确认覆盖"
+					return
+				}
 				a.P.CommitImport(s.Import.Token, s.ImportFolder, s.ImportPolicy)
 			}
 		}
@@ -484,17 +497,6 @@ func (a *App) dataView(c *ui.Context) {
 			}
 			a.P.ExportConnections(s.ExportPath, pass, ids)
 			s.ExportPassword = ""
-		}
-		ui.Text(c, "1.x 只读迁移：原库不修改，设备密钥从旧 app_settings 解密并重新加密到 v2").Bold()
-		field(c, "旧 nextshell.db", &s.MigrationPath)
-		ui.Checkbox(c, &s.ConfirmMigration, "确认将旧资料快照迁入当前 v2（原库只读）")
-		if ui.Button(c, "迁移 1.x 数据库").Clicked() {
-			if !s.ConfirmMigration {
-				a.Message = "请先确认迁移"
-			} else {
-				a.P.MigrateLegacy(s.MigrationPath)
-				s.ConfirmMigration = false
-			}
 		}
 	})
 }

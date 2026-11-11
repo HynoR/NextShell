@@ -7,7 +7,6 @@ import (
 	"io"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/exchange"
-	"nextshell.dev/v2/internal/migrate"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
@@ -265,12 +264,16 @@ func (p *Platform) SignalProcess(session string, pid int, signal string) {
 	})
 }
 func (p *Platform) SaveCommand(c model.Command) error { return p.store.SaveCommand(c) }
-func (p *Platform) ExecuteCommand(session, text string, all bool) error {
+func (p *Platform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("empty command")
 	}
+	suffix := "\r"
+	if len(appendCR) > 0 && !appendCR[0] {
+		suffix = ""
+	}
 	if !all {
-		return p.Send(session, text+"\r")
+		return p.Send(session, text+suffix)
 	}
 	p.mu.Lock()
 	ids := make([]string, 0, len(p.sessions))
@@ -283,7 +286,7 @@ func (p *Platform) ExecuteCommand(session, text string, all bool) error {
 	}
 	var errs []string
 	for _, id := range ids {
-		if e := p.Send(id, text+"\r"); e != nil {
+		if e := p.Send(id, text+suffix); e != nil {
 			errs = append(errs, id+": "+e.Error())
 		}
 	}
@@ -324,6 +327,7 @@ func (p *Platform) PreviewImport(file, password, format string) {
 			return errors.New("import source cannot be a symlink")
 		}
 		var entries []exchange.Entry
+		plainCredentials := false
 		parse := func(file, override string) error {
 			raw, e := readImportFile(file)
 			if e != nil {
@@ -337,6 +341,9 @@ func (p *Platform) PreviewImport(file, password, format string) {
 				f, err := exchange.Decode(raw, pass)
 				e = err
 				parsed = f.Connections
+				if f.PlainCredentials {
+					plainCredentials = true
+				}
 				if override != "" {
 					for i := range parsed {
 						parsed[i].GroupPath = override
@@ -401,12 +408,36 @@ func (p *Platform) PreviewImport(file, password, format string) {
 		if len(entries) == 0 {
 			return errors.New("no importable connections")
 		}
+		if plainCredentials {
+			warnings = append(warnings, "此文件含明文密码；确认后将使用 v2 设备密钥重新加密保存")
+		}
+		generation, e := p.store.Generation()
+		if e != nil {
+			return e
+		}
 		keys, e := p.store.Keys()
+		if e != nil {
+			return e
+		}
+		localKeys := []model.Key{}
+		for _, k := range keys {
+			if k.ScopeID() == model.LocalScope {
+				localKeys = append(localKeys, k)
+			}
+		}
+		keys = localKeys
+		existing, e := p.store.Connections()
 		if e != nil {
 			return e
 		}
 		preview := &appui.ImportPreview{Token: p.NewID(), Count: len(entries), Warnings: warnings}
 		for _, entry := range entries {
+			candidate := exchange.FromEntry(entry, keys)
+			for _, old := range existing {
+				if old.ScopeID() == model.LocalScope && !old.Deleted && endpoint(old) == endpoint(candidate) {
+					preview.Targets = append(preview.Targets, old.ID+" · "+old.Name)
+				}
+			}
 			if len(preview.Names) < 100 {
 				preview.Names = append(preview.Names, entry.Name)
 			}
@@ -422,22 +453,48 @@ func (p *Platform) PreviewImport(file, password, format string) {
 			p.mu.Unlock()
 			return errors.New("too many pending import previews; restart to clear")
 		}
-		p.imports[preview.Token] = entries
+		after, e := p.store.Generation()
+		if e != nil {
+			p.mu.Unlock()
+			return e
+		}
+		if after != generation {
+			p.mu.Unlock()
+			return errors.New("profile changed during preview; retry")
+		}
+		p.imports[preview.Token] = importPlan{Entries: entries, Generation: generation}
 		p.mu.Unlock()
 		p.emit(appui.Event{Import: preview})
 		return nil
 	})
 }
+
+type importPlan struct {
+	Entries    []exchange.Entry
+	Generation int64
+}
+
+func endpoint(c model.Connection) string { return c.User + "\x00" + c.Address() }
 func (p *Platform) CommitImport(token, folder, policy string) {
 	p.operation(func(ctx context.Context) error {
-		if policy != "skip" && policy != "duplicate" {
-			return errors.New("import policy must be skip or duplicate")
+		if policy == "" {
+			policy = "skip"
+		}
+		if policy != "skip" && policy != "rename-copy" && policy != "overwrite" {
+			return errors.New("import policy must be skip, rename-copy or overwrite")
 		}
 		p.mu.Lock()
-		entries, ok := p.imports[token]
+		plan, ok := p.imports[token]
 		p.mu.Unlock()
 		if !ok {
 			return errors.New("import preview expired")
+		}
+		g, e := p.store.Generation()
+		if e != nil {
+			return e
+		}
+		if g != plan.Generation {
+			return errors.New("import preview is stale; preview again")
 		}
 		snapshot, e := p.Snapshot()
 		if e != nil {
@@ -446,46 +503,83 @@ func (p *Platform) CommitImport(token, folder, policy string) {
 		folders := map[string]model.Folder{}
 		byName := map[string]string{}
 		for _, f := range snapshot.Folders {
+			if f.ScopeID() != model.LocalScope {
+				continue
+			}
 			folders[f.ID] = f
 			byName[f.ParentID+"\x00"+f.Name] = f.ID
 		}
 		if folder != "" {
-			if _, ok = folders[folder]; !ok {
-				return errors.New("target import folder not found")
+			if _, ok := folders[folder]; !ok {
+				return errors.New("target import folder not found in local scope")
 			}
 		}
-		b := storage.Bundle{}
-		conflicts := map[string]bool{}
-		key := func(c model.Connection) string { return c.User + "\x00" + c.Address() }
+		keys := []model.Key{}
+		for _, k := range snapshot.Keys {
+			if k.ScopeID() == model.LocalScope {
+				keys = append(keys, k)
+			}
+		}
+		b := storage.Bundle{Overwrite: map[string]bool{}, ExpectedGeneration: &plan.Generation}
+		conflicts := map[string][]model.Connection{}
+		names := map[string]bool{}
 		for _, c := range snapshot.Connections {
-			if !c.Deleted {
-				conflicts[key(c)] = true
+			if c.ScopeID() == model.LocalScope && !c.Deleted {
+				conflicts[endpoint(c)] = append(conflicts[endpoint(c)], c)
+				names[c.Name] = true
 			}
 		}
+		usedTargets := map[string]bool{}
 		skipped := 0
-		for _, entry := range entries {
-			c := exchange.FromEntry(entry, snapshot.Keys)
-			if policy == "skip" && conflicts[key(c)] {
+		for _, entry := range plan.Entries {
+			c := exchange.FromEntry(entry, keys)
+			matches := conflicts[endpoint(c)]
+			if policy == "skip" && len(matches) > 0 {
 				skipped++
 				continue
 			}
 			c.ID = p.NewID()
-			parent := folder
-			for _, name := range exchange.Segments(entry.GroupPath) {
-				k := parent + "\x00" + name
-				id := byName[k]
-				if id == "" {
-					id = p.NewID()
-					byName[k] = id
-					b.Folders = append(b.Folders, model.Folder{ID: id, Name: name, ParentID: parent})
+			overwriting := policy == "overwrite" && len(matches) > 0
+			if overwriting {
+				if len(matches) != 1 || usedTargets[matches[0].ID] {
+					return errors.New("ambiguous overwrite endpoint; choose rename-copy or skip")
 				}
-				parent = id
+				old, e := p.store.Connection(matches[0].ID)
+				if e != nil {
+					return e
+				}
+				c = exchange.MergeEntry(old, entry, keys)
+				b.Overwrite[c.ID] = true
+				usedTargets[c.ID] = true
+			} else {
+				if policy == "rename-copy" {
+					base := c.Name
+					for n := 2; names[c.Name]; n++ {
+						c.Name = fmt.Sprintf("%s（导入 %d）", base, n)
+					}
+				}
+				names[c.Name] = true
 			}
-			c.FolderID = parent
+			if !overwriting || entry.Has("groupPath") {
+				parent := folder
+				for _, name := range exchange.Segments(entry.GroupPath) {
+					k := parent + "\x00" + name
+					id := byName[k]
+					if id == "" {
+						id = p.NewID()
+						byName[k] = id
+						b.Folders = append(b.Folders, model.Folder{ID: id, Name: name, ParentID: parent})
+					}
+					parent = id
+				}
+				c.FolderID = parent
+			}
 			b.Connections = append(b.Connections, c)
-			conflicts[key(c)] = true
+			if !overwriting {
+				conflicts[endpoint(c)] = append(conflicts[endpoint(c)], c)
+			}
 		}
-		if e = p.store.ApplyBundle(b, ""); e != nil {
+		if e = p.store.ApplyBundle(b); e != nil {
 			return e
 		}
 		p.mu.Lock()
@@ -521,8 +615,11 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 		}
 		var entries []exchange.Entry
 		for _, meta := range snap.Connections {
-			if meta.Deleted || (len(ids) > 0 && !selected[meta.ID]) {
+			if meta.ScopeID() != model.LocalScope || meta.Deleted || (len(ids) > 0 && !selected[meta.ID]) {
 				continue
+			}
+			if strings.EqualFold(meta.Encoding, "shift_jis") {
+				return errors.New("shift_jis cannot be represented in v1 export; choose a compatible encoding or deselect it")
 			}
 			c, e := p.store.Connection(meta.ID)
 			if e != nil {
@@ -565,16 +662,6 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 			return closeErr
 		}
 		p.emit(appui.Event{Message: fmt.Sprintf("exported %d connections", len(entries))})
-		return nil
-	})
-}
-func (p *Platform) MigrateLegacy(file string) {
-	p.operation(func(ctx context.Context) error {
-		r, e := migrate.Run(ctx, file, p.store, func(context.Context) (string, error) { return p.ReadLegacyDeviceKey() })
-		if e != nil {
-			return e
-		}
-		p.emit(appui.Event{Message: fmt.Sprintf("1.x migration: connections=%d keys=%d proxies=%d folders=%d commands=%d already=%v; %s", r.Connections, r.Keys, r.Proxies, r.Folders, r.Commands, r.Already, strings.Join(r.Warnings, "; "))})
 		return nil
 	})
 }

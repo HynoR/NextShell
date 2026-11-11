@@ -2,7 +2,6 @@
 package storage
 
 import (
-	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -17,9 +16,6 @@ import (
 	"sync"
 )
 
-type LegacyKeyReader interface {
-	ReadLegacyDeviceKey(context.Context) (string, error)
-}
 type Store struct {
 	db  *sql.DB
 	key []byte
@@ -57,7 +53,7 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
-	if (tables > 0 && appID != 0x4e534832) || (appID != 0 && appID != 0x4e534832) || version > 2 {
+	if (tables > 0 && appID != 0x4e534832) || (appID != 0 && appID != 0x4e534832) || version > 3 {
 		db.Close()
 		return nil, errors.New("not a supported NextShell v2 profile; refusing to modify legacy/foreign database")
 	}
@@ -73,9 +69,13 @@ func Open(path string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS resources(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));
  CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,envelope BLOB NOT NULL);
  PRAGMA application_id=1314080818;
- PRAGMA user_version=2;
+
  COMMIT;`)
 	if e != nil {
+		db.Close()
+		return nil, e
+	}
+	if e = s.upgradeSchema(); e != nil {
 		db.Close()
 		return nil, e
 	}
@@ -89,6 +89,13 @@ func (s *Store) resolveKey() error {
 	var h string
 	e := s.db.QueryRow("SELECT value FROM app_settings WHERE key='device_key'").Scan(&h)
 	if errors.Is(e, sql.ErrNoRows) {
+		var count int
+		if err := s.db.QueryRow("SELECT count(*) FROM secrets").Scan(&count); err != nil {
+			return err
+		}
+		if count > 0 {
+			return errors.New("device key missing with existing secrets; refusing replacement")
+		}
 		k, e := security.Random(32)
 		if e != nil {
 			return e
@@ -114,31 +121,17 @@ func (s *Store) resolveKey() error {
 func (s *Store) Close() error { return s.db.Close() }
 func ID() string              { return uuid.NewString() }
 func (s *Store) put(kind, id string, v any, secret *string) error {
-	b, e := json.Marshal(v)
-	if e != nil {
-		return e
-	}
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	_, e = tx.Exec("INSERT INTO resources(kind,id,data) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET data=excluded.data", kind, id, b)
-	if e != nil {
+	if e = s.putTx(tx, kind, id, v, secret, false); e != nil {
 		return e
-	}
-	if secret != nil {
-		env, e := security.Seal([]byte(*secret), s.key, "nextshell-secret:"+kind+":"+id)
-		if e != nil {
-			return e
-		}
-		_, e = tx.Exec("INSERT INTO secrets(id,envelope) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET envelope=excluded.envelope", kind+":"+id, env)
-		if e != nil {
-			return e
-		}
 	}
 	return tx.Commit()
 }
+
 func list[T any](s *Store, kind string) ([]T, error) {
 	r, e := s.db.Query("SELECT data FROM resources WHERE kind=? ORDER BY id", kind)
 	if e != nil {
@@ -236,7 +229,7 @@ func (s *Store) SaveFolder(f model.Folder) error {
 		return e
 	}
 	for _, other := range folders {
-		if other.ID != f.ID && other.Name == f.Name && other.ParentID == f.ParentID {
+		if other.ID != f.ID && other.Name == f.Name && other.ParentID == f.ParentID && other.ScopeID() == f.ScopeID() {
 			return errors.New("duplicate folder name in the same parent")
 		}
 	}
@@ -276,6 +269,7 @@ func (s *Store) Key(id string) (model.Key, error) {
 	return k, e
 }
 func (s *Store) SaveKey(k model.Key) error {
+	keyMetadata(&k)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if k.ID == "" || k.Name == "" || k.Private == "" {
@@ -341,6 +335,9 @@ func (s *Store) Delete(kind, id string) error {
 		return e
 	}
 	defer tx.Rollback()
+	if e = s.tombstoneTx(tx, kind, id); e != nil {
+		return e
+	}
 	if _, e = tx.Exec("DELETE FROM resources WHERE kind=? AND id=?", kind, id); e != nil {
 		return e
 	}

@@ -9,29 +9,55 @@ import (
 	"strings"
 )
 
+const LocalScope = "local"
+
+type Meta struct {
+	Scope     string `json:"scope"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+	Revision  int64  `json:"revision"`
+	DeletedAt string `json:"deletedAt,omitempty"`
+}
+
+func (m Meta) ScopeID() string {
+	if m.Scope == "" {
+		return LocalScope
+	}
+	return m.Scope
+}
+
+type KeyReference struct {
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+}
 type Connection struct {
-	Tags           []string `json:"tags,omitempty"`
-	Notes          string   `json:"notes,omitempty"`
-	Favorite       bool     `json:"favorite,omitempty"`
-	Backspace      string   `json:"backspaceMode,omitempty"`
-	DeleteMode     string   `json:"deleteMode,omitempty"`
-	Monitor        bool     `json:"monitorSession,omitempty"`
-	NeedsKeyRebind bool     `json:"needsKeyRebind,omitempty"`
-	OriginalAuth   string   `json:"originalAuth,omitempty"`
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	FolderID       string   `json:"folderId,omitempty"`
-	Host           string   `json:"host"`
-	Port           int      `json:"port"`
-	User           string   `json:"user"`
-	Auth           string   `json:"auth"` // password, key, agent, keyboard
-	Secret         string   `json:"-"`
-	KeyID          string   `json:"keyId,omitempty"`
-	ProxyID        string   `json:"proxyId,omitempty"`
-	Fingerprint    string   `json:"fingerprint,omitempty"`
-	Encoding       string   `json:"encoding"`
-	Keepalive      int      `json:"keepalive"`
-	Deleted        bool     `json:"deleted,omitempty"`
+	SourceKeyRef *KeyReference `json:"sourceKeyRef,omitempty"`
+	Meta
+	StrictHostKeyChecking bool     `json:"strictHostKeyChecking"`
+	KeepaliveEnabled      *bool    `json:"keepAliveEnabled,omitempty"`
+	KeepaliveIntervalSec  *int     `json:"keepAliveIntervalSec,omitempty"`
+	Tags                  []string `json:"tags,omitempty"`
+	Notes                 string   `json:"notes,omitempty"`
+	Favorite              bool     `json:"favorite,omitempty"`
+	Backspace             string   `json:"backspaceMode,omitempty"`
+	DeleteMode            string   `json:"deleteMode,omitempty"`
+	Monitor               bool     `json:"monitorSession,omitempty"`
+	NeedsKeyRebind        bool     `json:"needsKeyRebind,omitempty"`
+	OriginalAuth          string   `json:"originalAuth,omitempty"`
+	ID                    string   `json:"id"`
+	Name                  string   `json:"name"`
+	FolderID              string   `json:"folderId,omitempty"`
+	Host                  string   `json:"host"`
+	Port                  int      `json:"port"`
+	User                  string   `json:"user"`
+	Auth                  string   `json:"auth"` // password, key, agent, keyboard
+	Secret                string   `json:"-"`
+	KeyID                 string   `json:"keyId,omitempty"`
+	ProxyID               string   `json:"proxyId,omitempty"`
+	Fingerprint           string   `json:"fingerprint,omitempty"`
+	Encoding              string   `json:"encoding"`
+	Keepalive             int      `json:"keepalive"`
+	Deleted               bool     `json:"deleted,omitempty"`
 }
 
 func (c Connection) Address() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
@@ -55,6 +81,9 @@ func (c Connection) Validate() error {
 	default:
 		return errors.New("不支持的编码")
 	}
+	if c.KeepaliveIntervalSec != nil && (*c.KeepaliveIntervalSec < 0 || *c.KeepaliveIntervalSec > 3600 || (*c.KeepaliveIntervalSec == 0 && (c.KeepaliveEnabled == nil || *c.KeepaliveEnabled))) {
+		return errors.New("keepalive interval 须为 1–3600 秒")
+	}
 	if c.Keepalive < 0 || c.Keepalive > 3600 {
 		return errors.New("keepalive 须为 0–3600 秒")
 	}
@@ -62,18 +91,26 @@ func (c Connection) Validate() error {
 }
 
 type Folder struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	ParentID string `json:"parentId,omitempty"`
+	Meta
+	SortIndex int    `json:"sortIndex"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	ParentID  string `json:"parentId,omitempty"`
 }
 type Key struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Public     string `json:"public"`
-	Private    string `json:"-"`
-	Passphrase string `json:"-"`
+	Meta
+	KeyType     string `json:"keyType,omitempty"`
+	KeyBits     int    `json:"keyBits,omitempty"`
+	KeyComment  string `json:"keyComment,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Public      string `json:"public"`
+	Private     string `json:"-"`
+	Passphrase  string `json:"-"`
 }
 type Proxy struct {
+	Meta
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Kind     string `json:"kind"`
@@ -117,6 +154,8 @@ func QuickConnect(s string) (Connection, error) {
 }
 
 type Command struct {
+	Meta
+	AppendCR    *bool  `json:"appendCr,omitempty"`
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
@@ -132,4 +171,21 @@ func NormalizeFolderName(name string) (string, error) {
 		return "", errors.New("目录名称不能为空或包含路径分隔符/NUL")
 	}
 	return name, nil
+}
+
+const DefaultKeepaliveSeconds = 30
+
+// EffectiveKeepalive resolves wire tri-state at the Platform connection boundary only.
+func (c Connection) EffectiveKeepalive() int {
+	if c.KeepaliveEnabled != nil {
+		if !*c.KeepaliveEnabled {
+			return 0
+		}
+	} else if c.Keepalive > 0 {
+		return c.Keepalive
+	}
+	if c.KeepaliveIntervalSec != nil && *c.KeepaliveIntervalSec > 0 {
+		return *c.KeepaliveIntervalSec
+	}
+	return DefaultKeepaliveSeconds
 }

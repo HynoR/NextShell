@@ -1,4 +1,4 @@
-# NextShell 2 — native Phase 1 + Phase 2
+# NextShell 2 — native Phase 1 + Phase 2 + Phase 2.5
 
 Independent Go module. 1.x remains specification only; no Electron/React code is reused. Native UI is pinned to **mygo v0.8.3**; pure-Go SQLite to **modernc.org/sqlite v1.44.3**. All work is local on `v2`.
 
@@ -20,7 +20,7 @@ From repository root, use `go -C v2 build ./...` / `go -C v2 test ./...`.
 ## Structure and boundaries
 
 - `cmd/nextshell`: native window composition and guarded close lifecycle; `cmd/probe`: reproducible framework checks.
-- `internal/model`, `security`, `storage`, `sshclient`, `exchange`, `migrate`, `sftpfs`, `transfer`, `remoteedit`, `monitor`: UI-independent core. An AST regression test forbids core UI imports and appui system-I/O imports/calls.
+- `internal/model`, `security`, `storage`, `sshclient`, `exchange`, `cloudv2`, `sftpfs`, `transfer`, `remoteedit`, `monitor`: UI-independent core. An AST regression test forbids core UI imports and appui system-I/O imports/calls.
 - `internal/appui`: native layout and injected `Platform` contract. It holds native terminal presentation handles; connections, management I/O, workbench sends, screen reads and application exit go through Platform.
 - `internal/desktop`: system implementation: database, key-file reading, SSH, native terminal creation, asynchronous prompts, session lifetime. No frontend IPC.
 
@@ -44,7 +44,7 @@ OSC 133 is **deferred, waiting on upstream** by alex's decision. `PromptEvent` /
 
 Chinese IME, hardware GPU, Windows/macOS real machines, tray and multi-window remain **UNVERIFIED**. Linux native single-window/software rendering and local protocol servers are tested, not a claim of cross-platform daily-use acceptance. SSH agent currently uses Unix sockets, not Windows named-pipe/Pageant integration. Keys are generated unencrypted inside the device-encrypted vault; encrypted key import is supported.
 
-Legacy keychain fallback remains an explicit unsupported Platform stub (`NextShell` / `device-key`); migration reads the old DB `app_settings.value_json` device key first. Cloud workspaces/sync and shell event integration are later phases. There is no distribution/signing/update pipeline for v2 yet.
+There is NO v1 database/device-key/keychain migration or fallback, and no archive API. Only user-exported v1 connection files may be imported. Real cloud networking and shell event integration remain later phases. There is no distribution/signing/update pipeline for v2 yet.
 
 ## Phase 2 workflows
 
@@ -55,13 +55,19 @@ Use the right activity bar: **文件 / 传输 / 远程编辑 / 监控 / 命令�
 - Remote editor: UTF-8 regular text up to 8 MiB; hash conflict detection and atomic SFTP save. External executable + JSON argv array (e.g. `["--wait"]`, no shell interpolation), watched auto-return. Successful sessions remove private staging; errors preserve a private recovery file and report its path. Read that message and remove recovery copies yourself when no longer needed.
 - Linux monitoring uses a separate bounded exec probe: CPU deltas, memory/swap, aggregate non-loopback network rates, disks, system info, process and SS/netstat panels. TERM/KILL/STOP/CONT require UI confirmation. Missing tools/permissions produce warnings, not fabricated metrics.
 - Saved commands: CRUD/grouping and current/all-session sends (explicit all-session confirmation). Commands/history are local plaintext; do not save credentials there. Template metadata is preserved, not expanded.
-- Data: preview then atomic import; preserve/reuse directory chains; skip or duplicate conflicts. FinalShell single JSON/directory import, unsigned/signed Java-Random DES password decoding and missing-key rebinding. Encrypted `b64##` `nextshell-connections` v1 exports are 1.x-compatible; plain exports omit passwords, exports never include private keys. Export refuses existing output files.
-- 1.x migration: choose **旧数据库路径** in 导入导出, not `--db`. Source opens read-only and is not changed; versions through known schema 29, local connections/keys/proxies/empty folders/commands/history are imported atomically under an isolated root, credentials re-encrypted with the v2 device key. Snapshot marker prevents duplicate migration. Existing v2 history is merged within its 100-entry bound.
+- Data: preview then atomic import; preserve/reuse directory chains; default skip, rename-copy (new UUID/name), or explicit confirmed overwrite of a unique local endpoint. Previews identify target IDs and become invalid after profile edits. Overwrite preserves target identity, absent passwords and fields not in the file; an explicit empty password clears it. FinalShell single JSON/directory import, unsigned/signed Java-Random DES password decoding and missing-key rebinding. Encrypted `b64##` `nextshell-connections` v1 exports are 1.x-compatible; plain exports omit passwords, exports never include private keys. Export refuses existing output files.
+- No v1 profile upgrade: export a connection file from v1, preview/import it in v2. No old DB, device key, keychain, archive or migration UI. Import accepts v1 encrypted/plain non-XOR files; contradictory omitted-password flags are rejected. Key fingerprints must match when supplied; unresolved key references are retained for rebinding.
 
-Migration is not a whole-database backup. The selected legacy tables (including preferences/template parameters/recycle entries/cloud records) are retained in an encrypted JSON snapshot; these extra resources are NOT activated. Core `Store.LegacyArchive(marker)` supports recovery, not a UI restore/export workflow. Keep the original 1.x DB. Path-only private keys are never automatically read and need explicit rebinding. Missing/corrupt keys or credentials abort the import, never silently replace them.
+## Phase 2.5 offline foundation
 
-Limits: no overwrite import policy; no cloud activation or recycle/preference/template restoration UI; no arbitrary non-UTF-8 text editing; no resume-from-byte-offset transfers. Remote edit is optimistic hash checking, not remote CAS (another writer can race between check and rename). A dropped connection/cancelled SFTP channel can leave a uniquely named `.nextshell-*.part` remotely; cleanup is best effort. Packed/local directory publication and non-extension SFTP rename cannot promise a cross-platform atomic no-replace against a concurrent writer. Network rates aggregate interfaces; there is no interface selector or chart history yet. Native drop/external desktop-editor UX still needs real desktop acceptance.
+Own schema 3 internally upgrades ONLY existing v2 profiles, preserving UUIDs, device key and secrets. Resource scope, UTC millisecond timestamps, revision, sort/key metadata, command append-CR, keepalive tri-state, deletion ledger, workspace vault and trusted sync heads are independent of v1. File imports target local scope only; folder/key/proxy references cannot cross scopes. A missing device key with existing secrets fails closed. Historic opaque settings are left untouched, not migrated/restored.
 
-See `../docs/v2/PHASE2-CHECKLIST.md` and `../docs/v2/PHASE2-REPORT.md` for exact evidence and scope.
+`internal/cloudv2` is a new **version=2 offline contract**, NOT old cloud sync v3. It does NOT interoperate with v1 clients/workspaces. Independent random auth token/verifier; separate passphrase-derived KEK wraps a random DEK; whole snapshots (metadata, commands and secrets) use AES-256-GCM. Whole-workspace CAS + local dirty/head/revision checks prevent implicit overwrite. No HTTP client/login/background upload or production server exists here. See [offline security contract](../docs/v2/CLOUD-V2-OFFLINE.md). Independent review, recovery and actual networking are Phase 3 work.
+
+The v1 connection exchange remains version 1, not a complete v2 backup. IDs/timestamps/proxies/private keys/commands/empty folders/trust/workspace metadata are absent by design. Shift-JIS cannot be represented and is refused for compatible export. Actual first-party v1 TS crypto/parser are exercised in both directions (Node 24 required for that integration test); the unrelated crypto-js dependency is a throwing stub, never used by those NextShell-only tests. FinalShell retains its independent first-party vector tests.
+
+Limits: no online cloud activation or recycle/preference/template restoration UI; no arbitrary non-UTF-8 text editing; no resume-from-byte-offset transfers. Remote edit is optimistic hash checking, not remote CAS (another writer can race between check and rename). A dropped connection/cancelled SFTP channel can leave a uniquely named `.nextshell-*.part` remotely; cleanup is best effort. Packed/local directory publication and non-extension SFTP rename cannot promise a cross-platform atomic no-replace against a concurrent writer. Network rates aggregate interfaces; there is no interface selector or chart history yet. Native drop/external desktop-editor UX still needs real desktop acceptance.
+
+See `../docs/v2/PHASE2.5-PLAN.md` and `../docs/v2/PHASE2.5-REPORT.md` for the current boundary; Phase 1/2 reports are historical.
 
 Testing covers first-party 1.x fingerprint/key-material, folder/export/parser specs, deterministic Node crypto/FinalShell vectors and real loopback SSH/SFTP servers. `internal/security/testdata/generate-vector.mjs` reproduces the fixture from 1.x constants; it never uses real credentials.

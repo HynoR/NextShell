@@ -5,20 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"nextshell.dev/v2/internal/model"
-	"nextshell.dev/v2/internal/security"
 	"strings"
 )
 
-var ErrAlreadyImported = errors.New("snapshot already imported")
-
 type Bundle struct {
-	Folders     []model.Folder
-	Connections []model.Connection
-	Keys        []model.Key
-	Proxies     []model.Proxy
-	Commands    []model.Command
-	History     []string
-	Archive     []byte
+	Folders            []model.Folder
+	Connections        []model.Connection
+	Overwrite          map[string]bool
+	ExpectedGeneration *int64
+	Keys               []model.Key
+	Proxies            []model.Proxy
+	Commands           []model.Command
 }
 
 func (s *Store) Commands() ([]model.Command, error) { return list[model.Command](s, "command") }
@@ -31,18 +28,10 @@ func (s *Store) SaveCommand(c model.Command) error {
 	return s.put("command", c.ID, c, nil)
 }
 
-// ApplyBundle commits an entire import or migration atomically. It never overwrites an existing id.
-// The idempotence marker is committed in the same transaction as every row and credential.
-func (s *Store) ApplyBundle(b Bundle, marker string) error {
+// ApplyBundle atomically inserts or explicitly overwrites local file imports.
+func (s *Store) ApplyBundle(b Bundle) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if marker != "" {
-		if done, e := s.Imported(marker); e != nil {
-			return e
-		} else if done {
-			return ErrAlreadyImported
-		}
-	}
 	existingFolders, e := s.Folders()
 	if e != nil {
 		return e
@@ -67,6 +56,9 @@ func (s *Store) ApplyBundle(b Bundle, marker string) error {
 		proxies[p.ID] = true
 	}
 	for i, f := range b.Folders {
+		if f.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		name, err := model.NormalizeFolderName(f.Name)
 		if err != nil {
 			return err
@@ -95,12 +87,15 @@ func (s *Store) ApplyBundle(b Bundle, marker string) error {
 			id = parent.ParentID
 		}
 		for _, other := range folders {
-			if f.ID != other.ID && f.ParentID == other.ParentID && f.Name == other.Name {
+			if f.ID != other.ID && f.ParentID == other.ParentID && f.Name == other.Name && f.ScopeID() == other.ScopeID() {
 				return errors.New("import sibling folder collision")
 			}
 		}
 	}
 	for _, k := range b.Keys {
+		if k.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		if k.ID == "" || k.Name == "" || k.Private == "" {
 			return errors.New("invalid imported key")
 		}
@@ -110,6 +105,9 @@ func (s *Store) ApplyBundle(b Bundle, marker string) error {
 		keys[k.ID] = true
 	}
 	for _, p := range b.Proxies {
+		if p.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		if p.ID == "" {
 			return errors.New("missing proxy id")
 		}
@@ -122,6 +120,9 @@ func (s *Store) ApplyBundle(b Bundle, marker string) error {
 		proxies[p.ID] = true
 	}
 	for _, c := range b.Connections {
+		if c.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		if e = c.Validate(); e != nil {
 			return fmt.Errorf("%s: %w", c.Name, e)
 		}
@@ -141,130 +142,81 @@ func (s *Store) ApplyBundle(b Bundle, marker string) error {
 		}
 	}
 	for _, c := range b.Commands {
+		if c.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		if c.ID == "" || c.Name == "" || strings.TrimSpace(c.Text) == "" {
 			return errors.New("invalid imported command")
 		}
 	}
-	var mergedHistory []string
-	if b.History != nil {
-		existing, err := s.History()
-		if err != nil {
-			return err
-		}
-		history := append(append([]string{}, b.History...), existing...)
-		seen := map[string]bool{}
-		var reversed []string
-		for i := len(history) - 1; i >= 0; i-- {
-			if !seen[history[i]] {
-				seen[history[i]] = true
-				reversed = append(reversed, history[i])
-			}
-		}
-		history = history[:0]
-		for i := len(reversed) - 1; i >= 0; i-- {
-			history = append(history, reversed[i])
-		}
-		mergedHistory = history
-	}
+
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	if marker != "" {
-		var n int
-		if e = tx.QueryRow("SELECT count(*) FROM app_settings WHERE key=?", "import:"+marker).Scan(&n); e != nil {
+	if b.ExpectedGeneration != nil {
+		var generation int64
+		if e = tx.QueryRow("SELECT generation FROM profile_state WHERE singleton=1").Scan(&generation); e != nil {
 			return e
 		}
-		if n > 0 {
-			return ErrAlreadyImported
+		if generation != *b.ExpectedGeneration {
+			return errors.New("import preview is stale; preview again")
 		}
-		if _, e = tx.Exec("INSERT INTO app_settings(key,value) VALUES(?,?)", "import:"+marker, "complete"); e != nil {
-			return e
-		}
-	}
-	put := func(kind, id string, v any, secret *string) error {
-		data, e := json.Marshal(v)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.Exec("INSERT INTO resources(kind,id,data) VALUES(?,?,?)", kind, id, data); e != nil {
-			return e
-		}
-		if secret != nil {
-			envelope, e := security.Seal([]byte(*secret), s.key, "nextshell-secret:"+kind+":"+id)
-			if e != nil {
-				return e
-			}
-			_, e = tx.Exec("INSERT INTO secrets(id,envelope) VALUES(?,?)", kind+":"+id, envelope)
-			return e
-		}
-		return nil
 	}
 	for _, f := range b.Folders {
-		if e = put("folder", f.ID, f, nil); e != nil {
+		if e = s.putTx(tx, "folder", f.ID, f, nil, false); e != nil {
 			return e
 		}
 	}
 	for _, k := range b.Keys {
+		if k.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		sec, _ := json.Marshal(struct{ Private, Passphrase string }{k.Private, k.Passphrase})
 		v := string(sec)
-		if e = put("key", k.ID, k, &v); e != nil {
+		if e = s.putTx(tx, "key", k.ID, k, &v, false); e != nil {
 			return e
 		}
 	}
 	for _, p := range b.Proxies {
+		if p.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
 		v := p.Password
-		if e = put("proxy", p.ID, p, &v); e != nil {
+		if e = s.putTx(tx, "proxy", p.ID, p, &v, false); e != nil {
 			return e
 		}
 	}
 	for _, c := range b.Connections {
+		if c.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
+		var n int
+		var scope string
+		e = tx.QueryRow("SELECT count(*),coalesce(scope,'local') FROM resources WHERE kind='connection' AND id=?", c.ID).Scan(&n, &scope)
+		if e != nil {
+			return e
+		}
+		if n > 0 && (!b.Overwrite[c.ID] || scope != model.LocalScope) {
+			return errors.New("connection ID collision or non-local overwrite")
+		}
 		v := c.Secret
-		if e = put("connection", c.ID, c, &v); e != nil {
+		if e = s.putTx(tx, "connection", c.ID, c, &v, false); e != nil {
 			return e
 		}
 	}
 	for _, c := range b.Commands {
-		if e = put("command", c.ID, c, nil); e != nil {
+		var n int
+		if e = tx.QueryRow("SELECT count(*) FROM resources WHERE kind='command' AND id=?", c.ID).Scan(&n); e != nil {
 			return e
 		}
-	}
-	if b.History != nil {
-		history := mergedHistory
-		if len(history) > 100 {
-			history = history[len(history)-100:]
+		if n > 0 {
+			return errors.New("import command ID collision")
 		}
-		raw, _ := json.Marshal(history)
-		if _, e = tx.Exec("INSERT INTO app_settings(key,value) VALUES('command_history',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", string(raw)); e != nil {
-			return e
-		}
-	}
-	if len(b.Archive) > 0 {
-		envelope, e := security.Seal(b.Archive, s.key, "nextshell-legacy-archive:"+marker)
-		if e != nil {
-			return e
-		}
-		if _, e = tx.Exec("INSERT INTO secrets(id,envelope) VALUES(?,?)", "legacy-archive:"+marker, envelope); e != nil {
+		if e = s.putTx(tx, "command", c.ID, c, nil, false); e != nil {
 			return e
 		}
 	}
 	return tx.Commit()
-}
-func (s *Store) Imported(marker string) (bool, error) {
-	var n int
-	e := s.db.QueryRow("SELECT count(*) FROM app_settings WHERE key=?", "import:"+marker).Scan(&n)
-	return n > 0, e
-}
-
-// LegacyArchive returns the decrypted selected-table snapshot, not a byte-for-byte database backup.
-// No UI or implicit file export exposes this potentially secret-bearing recovery material.
-func (s *Store) LegacyArchive(marker string) ([]byte, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var raw []byte
-	if e := s.db.QueryRow("SELECT envelope FROM secrets WHERE id=?", "legacy-archive:"+marker).Scan(&raw); e != nil {
-		return nil, e
-	}
-	return security.Unseal(raw, s.key, "nextshell-legacy-archive:"+marker)
 }

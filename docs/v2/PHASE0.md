@@ -1,6 +1,6 @@
 # 阶段 0：本地验证与批准延期项
 
-更新：2026-11-10 Asia/Singapore (UTC+8)。先前的 OSC 133 阻塞停止记录见 git 历史；alex 后续明确决定等待上游 API，并批准其余阶段 1 工作继续。
+更新：2026-11-11 北京时间（Asia/Shanghai，UTC+8）。先前的 OSC 133 阻塞停止记录见 git 历史；alex 后续明确决定等待上游 API，并批准其余阶段 1 工作继续。
 
 ## 定型
 
@@ -8,7 +8,7 @@
 - pure-Go **modernc.org/sqlite v1.44.3**，全新 schema；独立 OS 配置目录 `NextShell-v2/nextshell.db`。
 - 设备密钥保存于同库 `app_settings.device_key`，凭据 AES-256-GCM 加密、资源标识作为 AAD。数据库与密钥同处只降低意外明文暴露，不防整个设备/数据库被窃。
 - 以 SQLite application_id=0x4e534832 和 user_version=2 识别 v2；拒绝写入旧版或不认识的数据库。损坏设备密钥报错，不生成新密钥覆盖。
-- 老 keytar `service=NextShell` / `account=device-key` 仅有 Platform 显式 stub；不会在新 profile 启动时读取钥匙串。阶段 2 的只读迁移器现已优先读取旧库 `app_settings.value_json` 中的设备密钥；无旧 keychain 回读能力时明确报错，不能冒充凭据已恢复。
+- **阶段 2.5 新边界**：无 v1 DB/device key/keychain 读取或 fallback/stub；只识别 v2 profile。用户须先从 v1 导出文件再导入。新云 version=2 离线契约与旧云/v1 工作区不互通。
 
 ## 验证状态
 
@@ -45,3 +45,5 @@ alex 后续只放宽 OSC 133 这一项参考权限。依其许可将仓库克隆
 无外部 issue、评论、推送或 PR。
 
 阶段 2 更新：未新增路线否决阻塞；未改动 mygo 固定版本、OSC 133 延期结论或上表 UNVERIFIED 项。本阶段未再次访问 finallyshell 或其他第三方 SSH 客户端代码。
+
+阶段 2.5 更新：移除迁移器/stub/UI/归档逻辑；不是新的否决阻塞。新云仅离线验证，真实服务器/安全审计/跨设备引导 UNVERIFIED。OSC 133、IME、Win/macOS、托盘与多窗口的结论不变。

@@ -6,7 +6,7 @@
 
 | 范围 | 实现 / 证据 |
 |---|---|
-| 1.x DB | `migrate.Run` 只读 SQLite 快照；识别已知表及 <=29 schema，DB device_key 优先、fallback 经 Platform；本地连接/凭据/密钥/代理/空目录/命令/历史、隔离导入根、幂等 marker、事务回滚、新设备密钥重新加密 |
+| 1.x DB | **阶段 2.5 已删除**：不兼容/迁移旧 DB；仅手动导入导出连接文件 |
 | 数据保护 | 真实 SQLite fixture：源文件前后字节相同、无 WAL/SHM；坏密钥/坏引用/损坏密文/未来 schema/目录环/非法端口/重复 ID 均不部分写入；目标既有数据和历史不被覆盖 |
 | SFTP | 真实 Go SSH + SFTP 服务端：浏览、创建/重命名/删除、上传下载、禁止意外覆盖、POSIX 原子替换、权限、取消与暂存清理、拒绝链接、跨服务器流传输 |
 | 队列 / 打包 | 并发 2、字节进度、取消/失败/重试；真实 SSH 执行 tar.gz 上下行、新目标约束、shell 引号注入测试；拒绝路径逃逸/链接/特殊文件/超限展开、损坏 gzip trailer |
@@ -37,8 +37,7 @@ go test -race ./... -count=1
 
 ## 明确限制 / 偏差
 
-- DB 迁移保留的是**查询白名单表的加密 JSON 快照**，不是源库完整备份。云数据、回收站、偏好、模板参数只归档不激活；源库应保留。`Store.LegacyArchive` 可读，尚无 UI 恢复功能。旧路径型私钥需手动重绑。
-- keytar `NextShell` / `device-key` 是明确 stub；只在缺少 DB key 且有旧密文时请求 fallback，失败即停止迁移。
+- **阶段 2.5 替代**：不再保留/读取迁移归档 API、keychain stub 或旧设备密钥；已有 profile 中的历史 opaque settings 不自动清理。
 - 导入冲突仅 skip / duplicate，没有 overwrite。XOR 读取按计划删除；导出只含公钥引用，不含私钥。
 - 打包依赖远端 Linux tar + GNU mv，不覆盖/合并既有树；无断点续传。取消/断网后远端 `.part` 清理仅尽力而为；不承诺所有远端/文件系统均可原子 no-replace。
 - 远程编辑仅 UTF-8、8 MiB；hash 检查不是服务器 CAS，存在检查与重命名间并发写入窗口。外部编辑器必须等待退出，失败保留明文恢复文件（私密目录）供用户自行取回及清理。

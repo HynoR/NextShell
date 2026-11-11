@@ -1,0 +1,29 @@
+{
+  "source": "apps/desktop/src/main/services/connection-export-crypto.ts + import-export.ts",
+  "password": "互通口令 🔒",
+  "plain": "{\n  \"format\": \"nextshell-connections\",\n  \"version\": 1,\n  \"exportedAt\": \"2026-11-11T00:00:00.000Z\",\n  \"connections\": [\n    {\n      \"name\": \"实际 TS 向量\",\n      \"host\": \"example.test\",\n      \"port\": 2222,\n      \"username\": \"用户\",\n      \"authType\": \"password\",\n      \"password\": \"密码 🔑\",\n      \"keepAliveEnabled\": false,\n      \"keepAliveIntervalSec\": 45,\n      \"groupPath\": \"/workspace/old-slug/生产/server\",\n      \"tags\": [\n        \"运维\"\n      ],\n      \"notes\": \"<notes>&\",\n      \"favorite\": true,\n      \"terminalEncoding\": \"gb18030\",\n      \"backspaceMode\": \"ascii-delete\",\n      \"deleteMode\": \"ascii-delete\",\n      \"monitorSession\": false\n    }\n  ]\n}",
+  "payload": "uzjmOOcOcHowqF/uL6MIllL5NYAlTepkqnEO4So4/eaccggpzagYBd18Y4+2Lo3PxJGzoYBrgooRoRAHauE2knXcNPuBGTfUO7cpo6tWbJ60wJ+iWBLI2PzSDMi2EJBc9hlKzpA/r/RUkkfgA2Q0G08r/5vTgFuPDSVwvkfjiHgU2wckWvV/uZffmte5TrBdhTl2MVPJNec08sDPZF/RBuSQvx06sNNA+jMalbxgw0FrOuYn7knx+yWypG+EdVOB3Gj6Dm1gdOkGUSV+ICBLMuCoCQesccOcfKt0GQfNy4wsEiEpo/wWfvrHfcstNhVi4V771Vr+vGNX4NDBMotU9naCRvM3UO1anzaqSKt0r2RaNu3ROJQJQU1JfGqKoh50ClXu20D5JrTSgMiwqvKmH4WUFbJiJWETwY0ETwEo5yvedbjKoraguCS/MsoIFEQo0ImbImbgAF836j2+lhpewJTpgAW+jHs6mliJSRqeKY5aUdrHV7atjYTMeIJiIeZBaTCzzx1fh5rG0gUlJy4tu/aj5AFUG9TPBkpVLdG3AYa46RyHG4ER4hFTnsO3LoQUUobrBXZ1dIS0mPYA3AsL4OxJqFUMNj+C2bluLVKqLMX2VPXPEsH8fOpPrRHS9fOkJGHec5RbPOXM3FhDOdbLItBCo5pxturKR5ZrZ7cxSmcRz4BEdHfCQ3B5jEH745a2WvLU6XihqH+ScXwiKV6jV4a1BOi/w0mhtsjxWj2/b/ISmcQSkSsuAhq65IQiDfdO4lQobm9y2Xp1hEgCPHVnjXQuZ083nIu4IF/lZ4E5OSJaP8j13qFCBio9Vd8l8JioginRS09CfSyyWxoHVG90CI+R5IJMkeAnZ1qN3S8oFdbigfOPJ1BgHow8s4+W8kdN9jX+RFhVvHGD5fhHu9F3GRM+jl6sb3U+1FI9Q3+CIrTtg54b5VHPDWTzSLIsHGfQ8hz2OSq6cgQ=",
+  "parsed": [
+    {
+      "name": "实际 TS 向量",
+      "host": "example.test",
+      "port": 2222,
+      "username": "用户",
+      "authType": "password",
+      "password": "密码 🔑",
+      "keepAliveEnabled": false,
+      "keepAliveIntervalSec": 45,
+      "groupPath": "/workspace/old-slug/生产/server",
+      "tags": [
+        "运维"
+      ],
+      "notes": "<notes>&",
+      "favorite": true,
+      "terminalEncoding": "gb18030",
+      "backspaceMode": "ascii-delete",
+      "deleteMode": "ascii-delete",
+      "monitorSession": false,
+      "sourceFormat": "nextshell"
+    }
+  ]
+}

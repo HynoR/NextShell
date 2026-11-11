@@ -122,9 +122,6 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 	if c := p.Capabilities(); !c.OSC7 || !c.ScreenText || c.OSC133 {
 		t.Fatal("OSC capabilities fabricated")
 	}
-	if _, e := p.ReadLegacyDeviceKey(); e == nil {
-		t.Fatal("legacy stub must report unsupported")
-	}
 }
 func TestPromptCancellationAndShutdown(t *testing.T) {
 	p := desktopFixture(t)

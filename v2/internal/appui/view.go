@@ -28,6 +28,7 @@ type App struct {
 	Message                   string
 	Logs                      []string
 	Edit                      model.Connection
+	InheritKeepalive          bool
 	Port, Keepalive, Password string
 	ReplaceSecret             bool
 	Folder                    model.Folder
@@ -81,13 +82,21 @@ func (a *App) newConnection() {
 	a.Edit = model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, Keepalive: 30}
 	a.Port = "22"
 	a.Keepalive = "30"
+	a.InheritKeepalive = false
 	a.Password = ""
 	a.ReplaceSecret = false
 }
 func (a *App) edit(c model.Connection) {
 	a.Edit = c
 	a.Port = strconv.Itoa(c.Port)
-	a.Keepalive = strconv.Itoa(c.Keepalive)
+	a.InheritKeepalive = c.KeepaliveEnabled == nil && c.Keepalive == 0
+	interval := c.Keepalive
+	if c.KeepaliveIntervalSec != nil {
+		interval = *c.KeepaliveIntervalSec
+	} else if a.InheritKeepalive {
+		interval = model.DefaultKeepaliveSeconds
+	}
+	a.Keepalive = strconv.Itoa(interval)
 	a.Password = ""
 	a.ReplaceSecret = false
 	a.Page = "connections"
@@ -492,7 +501,8 @@ func (a *App) connectionsView(c *ui.Context) {
 			a.folderChoice(c, "目录", &a.Edit.FolderID)
 			field(c, "固定主机指纹", &a.Edit.Fingerprint)
 			choice(c, "编码", &a.Edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
-			field(c, "keepalive 秒", &a.Keepalive)
+			ui.Checkbox(c, &a.InheritKeepalive, "keepalive 启用状态继承应用默认（启用）")
+			field(c, "keepalive 秒（0=显式关闭，默认30）", &a.Keepalive)
 			ui.Text(c, "所有连接（勾选后可批量绑定上述认证、密钥和代理）").Bold()
 			var container ui.Element
 			if a.ConnectionLayout == "grid" {
@@ -546,6 +556,21 @@ func (a *App) draft() (model.Connection, error) {
 	cc.Keepalive, e = strconv.Atoi(a.Keepalive)
 	if e != nil {
 		return cc, fmt.Errorf("无效 keepalive")
+	}
+	if a.InheritKeepalive {
+		cc.KeepaliveEnabled = nil
+		if cc.Keepalive != model.DefaultKeepaliveSeconds {
+			interval := cc.Keepalive
+			cc.KeepaliveIntervalSec = &interval
+		} else if a.Edit.KeepaliveIntervalSec == nil {
+			cc.KeepaliveIntervalSec = nil
+		}
+		cc.Keepalive = 0
+	} else {
+		enabled := cc.Keepalive > 0
+		cc.KeepaliveEnabled = &enabled
+		interval := cc.Keepalive
+		cc.KeepaliveIntervalSec = &interval
 	}
 	return cc, cc.Validate()
 }

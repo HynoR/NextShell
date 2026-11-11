@@ -4,11 +4,9 @@ package desktop
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/egoist/mygo/plugins/terminal"
 	"io"
 	"nextshell.dev/v2/internal/appui"
-	"nextshell.dev/v2/internal/exchange"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/sshclient"
@@ -23,7 +21,7 @@ import (
 type Platform struct {
 	sshSessions     map[string]*sshclient.Session
 	queue           *transfer.Queue
-	imports         map[string][]exchange.Entry
+	imports         map[string]importPlan
 	monitorPrevious map[string]monitor.Snapshot
 	monitorBusy     map[string]bool
 	monitorWatches  map[string]context.CancelFunc
@@ -48,7 +46,7 @@ func Open(path string) (*Platform, error) {
 	ctx, c := context.WithCancel(context.Background())
 	p := &Platform{store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
 	p.sshSessions = map[string]*sshclient.Session{}
-	p.imports = map[string][]exchange.Entry{}
+	p.imports = map[string]importPlan{}
 	p.monitorPrevious = map[string]monitor.Snapshot{}
 	p.monitorBusy = map[string]bool{}
 	p.monitorWatches = map[string]context.CancelFunc{}
@@ -212,6 +210,7 @@ func (p *Platform) connect(c model.Connection, replace string) error {
 		}
 		pr = &a
 	}
+	c.Keepalive = c.EffectiveKeepalive()
 	o := sshclient.Options{Connection: c, Key: k, Proxy: pr, Timeout: 2 * time.Minute, KeepaliveTimeout: 15 * time.Second, HostKey: func(addr, fp string) error {
 		pin, e := p.store.HostPin(addr)
 		if e != nil {
@@ -294,11 +293,6 @@ func (p *Platform) CloseSession(id string) {
 	}
 }
 
-// Legacy keychain fallback is deliberately not invoked on fresh v2 startup.
-// Phase 2 migrator may call this explicitly; no replacement key is silently minted.
-func (p *Platform) ReadLegacyDeviceKey() (string, error) {
-	return "", fmt.Errorf("UNVERIFIED: legacy keytar service NextShell / account device-key reader is not implemented; import the DB-resident device_key or re-enter credentials")
-}
 func (p *Platform) Shutdown() {
 	p.mu.Lock()
 	if p.closed {

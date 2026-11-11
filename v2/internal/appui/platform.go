@@ -76,7 +76,6 @@ type Platform interface {
 	Poll() []Event
 	SetWake(func())
 	Quit()
-	ReadLegacyDeviceKey() (string, error)
 	ListFiles(session, path string)
 	FileAction(session, action, from, to string)
 	QueueTransfer(TransferRequest) (string, error)
@@ -90,11 +89,10 @@ type Platform interface {
 	WatchMonitor(session string, on bool)
 	SignalProcess(session string, pid int, signal string)
 	SaveCommand(model.Command) error
-	ExecuteCommand(session, text string, all bool) error
+	ExecuteCommand(session, text string, all bool, appendCR ...bool) error
 	PreviewImport(path, password, format string)
 	CommitImport(token, folder, policy string)
 	ExportConnections(path string, password *string, ids []string)
-	MigrateLegacy(path string)
 	Shutdown()
 }
 
@@ -111,6 +109,7 @@ type MonitorResult struct {
 	Snapshot monitor.Snapshot
 }
 type ImportPreview struct {
+	Targets                                     []string
 	Warnings                                    []string
 	Token                                       string
 	Count, PasswordsUnavailable, KeysNeedRebind int

@@ -1,5 +1,7 @@
 # 阶段 2 报告
 
+> 历史验收记录：阶段 2.5 已按 alex 决定移除 v1 DB 迁移器、keychain stub、迁移 UI 和归档逻辑；旧测试数/功能描述不代表当前版本。当前边界见 PHASE2.5-REPORT.md。
+
 2026-11-10 SGT（Asia/Singapore，UTC+8）。本地 `/workspace/NextShell`、分支 `v2`；未推送、未开 PR；阶段 3 未开始。
 
 ## 完成及提交

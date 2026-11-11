@@ -16,7 +16,7 @@
 | 密钥与代理管理 | 密钥生成/文件与粘贴导入/口令/改名/删除，SOCKS 代理 CRUD；核心测试 + TestKeyAndProxyManagementForms |
 | 存储与密钥 | 纯 Go SQLite，新 schema，设备密钥在 DB 且重启保持，密文/AAD 防替换，拒绝旧库与损坏 key；storage Go tests |
 | Platform 隔离 | 核心依赖树无 mygo；UI 的系统操作经 Platform；TestDesktopSSHTrustCloneAndReconnect 验证提示、元数据不泄漏密码与重连 |
-| 1.x 规格移植 | fingerprint/key-material 测试，Node scrypt/AES-GCM 确定性向量；迁移器/FinalShell/导出测试按阶段 2 执行 |
+| 1.x 规格移植 | fingerprint/key-material 测试，Node scrypt/AES-GCM 确定性向量；阶段 2 的迁移器在 2.5 已取消；保留 FinalShell/导出文件测试 |
 | OSC 133 | alex 批准延期；保留接口，不实现观察器，能力 false |
 
 ## 不应误读的边界

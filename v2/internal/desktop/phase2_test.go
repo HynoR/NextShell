@@ -156,7 +156,7 @@ func TestPhase2PlatformImportPreviewExportAndFolderSpecs(t *testing.T) {
 		t.Fatal("reimport skip/reuse failed")
 	}
 	pv = preview()
-	p.CommitImport(pv.Token, "", "duplicate")
+	p.CommitImport(pv.Token, "", "rename-copy")
 	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
 	snap, _ = p.Snapshot()
 	if len(snap.Connections) != 2 || len(snap.Folders) != 2 {
@@ -226,7 +226,7 @@ func TestPhase2FinalShellDirectoryPreviewAndImport(t *testing.T) {
 	if pv.Count != 2 || pv.KeysNeedRebind != 1 || len(pv.Warnings) != 2 {
 		t.Fatal(pv)
 	}
-	p.CommitImport(pv.Token, "", "duplicate")
+	p.CommitImport(pv.Token, "", "rename-copy")
 	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
 	snap, _ := p.Snapshot()
 	if len(snap.Folders) != 2 || len(snap.Connections) != 2 {

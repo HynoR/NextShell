@@ -22,27 +22,29 @@ type KeyRef struct {
 	Fingerprint string `json:"fingerprint,omitempty"`
 }
 type Entry struct {
-	Name                 string   `json:"name"`
-	Host                 string   `json:"host"`
-	Port                 int      `json:"port"`
-	Username             string   `json:"username"`
-	AuthType             string   `json:"authType"`
-	Password             *string  `json:"password,omitempty"`
-	KeepAliveEnabled     *bool    `json:"keepAliveEnabled,omitempty"`
-	KeepAliveIntervalSec *int     `json:"keepAliveIntervalSec,omitempty"`
-	GroupPath            string   `json:"groupPath"`
-	Tags                 []string `json:"tags"`
-	Notes                string   `json:"notes,omitempty"`
-	Favorite             bool     `json:"favorite"`
-	Encoding             string   `json:"terminalEncoding"`
-	Backspace            string   `json:"backspaceMode"`
-	Delete               string   `json:"deleteMode"`
-	Monitor              bool     `json:"monitorSession"`
-	KeyRef               *KeyRef  `json:"sshKeyRef,omitempty"`
-	NeedsKeyRebind       bool     `json:"-"`
-	PasswordUnavailable  bool     `json:"-"`
+	Present              map[string]bool `json:"-"`
+	Name                 string          `json:"name"`
+	Host                 string          `json:"host"`
+	Port                 int             `json:"port"`
+	Username             string          `json:"username"`
+	AuthType             string          `json:"authType"`
+	Password             *string         `json:"password,omitempty"`
+	KeepAliveEnabled     *bool           `json:"keepAliveEnabled,omitempty"`
+	KeepAliveIntervalSec *int            `json:"keepAliveIntervalSec,omitempty"`
+	GroupPath            string          `json:"groupPath"`
+	Tags                 []string        `json:"tags"`
+	Notes                string          `json:"notes,omitempty"`
+	Favorite             bool            `json:"favorite"`
+	Encoding             string          `json:"terminalEncoding"`
+	Backspace            string          `json:"backspaceMode"`
+	Delete               string          `json:"deleteMode"`
+	Monitor              bool            `json:"monitorSession"`
+	KeyRef               *KeyRef         `json:"sshKeyRef,omitempty"`
+	NeedsKeyRebind       bool            `json:"-"`
+	PasswordUnavailable  bool            `json:"-"`
 }
 type File struct {
+	PlainCredentials    bool    `json:"-"`
 	Format              string  `json:"format"`
 	Version             int     `json:"version"`
 	ExportedAt          string  `json:"exportedAt"`
@@ -124,7 +126,8 @@ func Decode(raw []byte, password *string) (File, error) {
 	if len(raw) > 64<<20 {
 		return out, errors.New("import exceeds 64 MiB")
 	}
-	if bytes.HasPrefix(raw, []byte("b64##")) {
+	encrypted := bytes.HasPrefix(raw, []byte("b64##"))
+	if encrypted {
 		if password == nil {
 			return out, errors.New("encrypted export requires password")
 		}
@@ -147,6 +150,12 @@ func Decode(raw []byte, password *string) (File, error) {
 		return out, errors.New("too many connections")
 	}
 	for i, v := range out.Connections {
+		if !encrypted && v.Password != nil {
+			out.PlainCredentials = true
+		}
+		if out.PasswordsOmitted && v.Password != nil {
+			return out, errors.New("passwordsOmitted contradicts a supplied password")
+		}
 		if (v.AuthType == "password" || v.AuthType == "interactive") && v.Password == nil {
 			out.Connections[i].PasswordUnavailable = true
 		}
@@ -159,6 +168,9 @@ func Decode(raw []byte, password *string) (File, error) {
 			return out, errors.New("invalid authType")
 		}
 	}
+	if len(out.Connections) == 0 {
+		return out, errors.New("empty connection export")
+	}
 	return out, nil
 }
 func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
@@ -170,6 +182,10 @@ func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
 	if e.GroupPath == "" {
 		e.GroupPath = "/server"
 	}
+	e.Encoding = strings.ToLower(e.Encoding)
+	if e.Encoding == "utf8" {
+		e.Encoding = "utf-8"
+	}
 	if e.Encoding == "" {
 		e.Encoding = "utf-8"
 	}
@@ -179,11 +195,21 @@ func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
 	if e.Delete == "" {
 		e.Delete = "vt220-delete"
 	}
-	enabled := c.Keepalive > 0
-	interval := c.Keepalive
-	e.KeepAliveEnabled = &enabled
-	e.KeepAliveIntervalSec = &interval
-	if c.Auth == "password" || c.Auth == "keyboard" {
+	e.KeepAliveEnabled = c.KeepaliveEnabled
+	e.KeepAliveIntervalSec = c.KeepaliveIntervalSec
+	if e.KeepAliveEnabled == nil && c.Keepalive > 0 {
+		enabled := true
+		interval := c.Keepalive
+		e.KeepAliveEnabled = &enabled
+		e.KeepAliveIntervalSec = &interval
+	}
+	if c.NeedsKeyRebind && c.OriginalAuth == "key" {
+		e.AuthType = "privateKey"
+		if c.SourceKeyRef != nil {
+			e.KeyRef = &KeyRef{Name: c.SourceKeyRef.Name, Fingerprint: c.SourceKeyRef.Fingerprint}
+		}
+	}
+	if e.AuthType == "password" || e.AuthType == "interactive" {
 		pass := c.Secret
 		e.Password = &pass
 	}
@@ -197,7 +223,7 @@ func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
 	return e
 }
 func FromEntry(e Entry, keys []model.Key) model.Connection {
-	c := model.Connection{Name: e.Name, Host: e.Host, Port: e.Port, User: e.Username, Auth: e.AuthType, Tags: e.Tags, Notes: e.Notes, Favorite: e.Favorite, Encoding: e.Encoding, Backspace: e.Backspace, DeleteMode: e.Delete, Monitor: e.Monitor, NeedsKeyRebind: e.NeedsKeyRebind}
+	c := model.Connection{KeepaliveEnabled: e.KeepAliveEnabled, KeepaliveIntervalSec: e.KeepAliveIntervalSec, Name: e.Name, Host: e.Host, Port: e.Port, User: e.Username, Auth: e.AuthType, Tags: e.Tags, Notes: e.Notes, Favorite: e.Favorite, Encoding: e.Encoding, Backspace: e.Backspace, DeleteMode: e.Delete, Monitor: e.Monitor, NeedsKeyRebind: e.NeedsKeyRebind}
 	if e.Password != nil {
 		c.Secret = *e.Password
 	}
@@ -219,6 +245,9 @@ func FromEntry(e Entry, keys []model.Key) model.Connection {
 			c.Auth = "keyboard"
 			c.NeedsKeyRebind = true
 			c.OriginalAuth = "key"
+			if e.KeyRef != nil {
+				c.SourceKeyRef = &model.KeyReference{Name: e.KeyRef.Name, Fingerprint: e.KeyRef.Fingerprint}
+			}
 		} else {
 			c.Auth = "key"
 		}
@@ -239,6 +268,7 @@ func MatchKey(ref *KeyRef, keys []model.Key) string {
 				return k.ID
 			}
 		}
+		return ""
 	}
 	var ids []string
 	for _, k := range keys {
@@ -268,4 +298,94 @@ func Segments(legacy string) []string {
 		}
 	}
 	return out
+}
+
+func (e *Entry) UnmarshalJSON(raw []byte) error {
+	type wire Entry
+	var w wire
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return err
+	}
+	w.Present = map[string]bool{}
+	for k, v := range fields {
+		if bytes.Equal(bytes.TrimSpace(v), []byte("null")) && (k == "password" || k == "keepAliveEnabled" || k == "keepAliveIntervalSec") {
+			return fmt.Errorf("null %s is not an omitted field", k)
+		}
+		w.Present[k] = true
+	}
+	*e = Entry(w)
+	return nil
+}
+func (e Entry) Has(field string) bool {
+	if e.Present == nil {
+		return true
+	}
+	return e.Present[field]
+}
+
+// MergeEntry preserves target identity and fields absent from the interchange contract.
+func MergeEntry(old model.Connection, e Entry, keys []model.Key) model.Connection {
+	previousKey := old.KeyID
+	previousAuth := old.Auth
+	fresh := FromEntry(e, keys)
+	old.Name = fresh.Name
+	old.Host = fresh.Host
+	old.Port = fresh.Port
+	old.User = fresh.User
+	old.Auth = fresh.Auth
+	old.KeyID = fresh.KeyID
+	old.NeedsKeyRebind = fresh.NeedsKeyRebind
+	old.OriginalAuth = fresh.OriginalAuth
+	old.SourceKeyRef = fresh.SourceKeyRef
+	if e.AuthType == "privateKey" && e.KeyRef == nil && previousAuth == "key" && previousKey != "" {
+		old.Auth = "key"
+		old.KeyID = previousKey
+		old.NeedsKeyRebind = false
+		old.OriginalAuth = ""
+		old.SourceKeyRef = nil
+	}
+	if e.Password != nil {
+		old.Secret = *e.Password
+	}
+	if e.Has("tags") {
+		old.Tags = fresh.Tags
+	}
+	if e.Has("notes") {
+		old.Notes = fresh.Notes
+	}
+	if e.Has("favorite") {
+		old.Favorite = fresh.Favorite
+	}
+	if e.Has("terminalEncoding") {
+		old.Encoding = fresh.Encoding
+	}
+	if e.Has("backspaceMode") {
+		old.Backspace = fresh.Backspace
+	}
+	if e.Has("deleteMode") {
+		old.DeleteMode = fresh.DeleteMode
+	}
+	if e.Has("monitorSession") {
+		old.Monitor = fresh.Monitor
+	}
+	if e.KeepAliveEnabled != nil {
+		old.KeepaliveEnabled = e.KeepAliveEnabled
+	}
+	if e.KeepAliveIntervalSec != nil {
+		old.KeepaliveIntervalSec = e.KeepAliveIntervalSec
+	}
+	if old.KeepaliveEnabled != nil {
+		old.Keepalive = 0
+		if *old.KeepaliveEnabled {
+			old.Keepalive = 30
+			if old.KeepaliveIntervalSec != nil {
+				old.Keepalive = *old.KeepaliveIntervalSec
+			}
+		}
+	}
+	return old
 }

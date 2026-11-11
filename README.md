@@ -1,3 +1,5 @@
+> **v2 分支说明（阶段 2.5）**：实际重写是 [`v2/`](./v2/README.md) 的独立 Go/mygo 应用；以下 Electron/1.x 文档仅作历史规格参考。没有 v1 DB/设备密钥/钥匙串迁移，唯一旧数据入口是用户导出的 v1 连接文件（拒绝 XOR）。云是独立 version 2 离线协议，不与 v1 同工作区互通；联网在阶段 3。验收见 [`docs/v2/PHASE2.5-REPORT.md`](./docs/v2/PHASE2.5-REPORT.md)。
+
 # NextShell
 
 NextShell 是一个基于 Electron + React + TypeScript 的桌面运维客户端，使用 pnpm Workspace 管理应用与共享包。

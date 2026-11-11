@@ -1,0 +1,34 @@
+{
+  "password": "independent KEK 密码",
+  "dek": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "kek": "gBsPvJKtXRK6fXyY6ZNpYGNtBUFVjq1rAMYCXVcwF3o=",
+  "wrapped": {
+    "version": 2,
+    "workspaceId": "10000000-0000-4000-8000-000000000001",
+    "keyId": "20000000-0000-4000-8000-000000000001",
+    "kdf": {
+      "name": "scrypt",
+      "n": 32768,
+      "r": 8,
+      "p": 1,
+      "salt": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8="
+    },
+    "nonce": "QEFCQ0RFRkdISUpL",
+    "ciphertext": "0U08x7tS3/qXLpJFTt2AgaDzzMOIAqvFuyjTqrf5hzj2wAAyT+B/s600fVmb83D1"
+  },
+  "snapshot": {
+    "version": 2,
+    "workspaceId": "10000000-0000-4000-8000-000000000001",
+    "name": "vector-workspace",
+    "records": []
+  },
+  "commit": {
+    "version": 2,
+    "workspaceId": "10000000-0000-4000-8000-000000000001",
+    "keyId": "20000000-0000-4000-8000-000000000001",
+    "commitId": "30000000-0000-4000-8000-000000000001",
+    "parentId": "",
+    "nonce": "UFFSU1RVVldYWVpb",
+    "ciphertext": "6QVAEZYj0IkylAdX4cP0upFEjptDEv9rQKva+cFwpURh37rtRhajhFn30a7lstTv4RtGNBotYl2v9tQ0n/k0oxJG/vTonnJTGNWSav0yJTGqivB1n4V2DZMeb+08YullyNY+sXjGqnhq4FeoWt5+bdEQe6HjNzbbEA=="
+  }
+}

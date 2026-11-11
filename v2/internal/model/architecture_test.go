@@ -13,7 +13,7 @@ import (
 
 func TestArchitectureCoreAndPlatformBoundary(t *testing.T) {
 	root := ".."
-	core := []string{"model", "security", "storage", "sshclient", "exchange", "migrate", "sftpfs", "transfer", "remoteedit", "monitor"}
+	core := []string{"model", "security", "storage", "sshclient", "exchange", "sftpfs", "transfer", "remoteedit", "monitor", "cloudv2"}
 	check := func(pkg string, ui bool) {
 		entries, e := os.ReadDir(filepath.Join(root, pkg))
 		if e != nil {
