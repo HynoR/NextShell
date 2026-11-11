@@ -15,7 +15,7 @@ import (
 // Goose owns ordering, version records and transaction boundaries. JSON backfill
 // remains a Go migration because resource payloads are application-specific.
 func (s *Store) upgradeSchema() error {
-	provider, e := goose.NewProvider(goose.DialectSQLite3, s.db, nil, goose.WithGoMigrations(
+	provider, e := goose.NewProvider(goose.DialectSQLite3, s.db, nil, goose.WithDisableGlobalRegistry(true), goose.WithGoMigrations(
 		goose.NewGoMigration(1, &goose.GoFunc{RunTx: func(ctx context.Context, tx *sql.Tx) error {
 			_, e := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS app_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS resources(kind TEXT NOT NULL,id TEXT NOT NULL,data BLOB NOT NULL,PRIMARY KEY(kind,id));CREATE TABLE IF NOT EXISTS secrets(id TEXT PRIMARY KEY,envelope BLOB NOT NULL);`)
 			return e

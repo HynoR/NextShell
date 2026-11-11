@@ -14,7 +14,7 @@
 
 ## 本来已采用
 
-- mygo v0.8.3 原生 Row/Column/Button/Scroll/Input、terminal 插件、本地 PTY、SSH Conn、官方拖放、多窗口/主题/托盘 API；没有另一套 UI 框架、VT 仿真器或自研基础绘制工具包。
+- mygo v0.8.3 原生 Row/Column/Button/Scroll/Input、terminal 插件、本地 PTY、SSH Conn、官方拖放、单主窗口 API；没有另一套 UI 框架、VT 仿真器或自研基础绘制工具包。
 - `golang.org/x/crypto v0.58.0`：SSH、agent、scrypt；标准库 AES/GCM/随机数/归档。
 - `github.com/pkg/sftp v1.13.12`；`golang.org/x/text v0.44.0` 编码；`golang.org/x/net v0.62.0` SOCKS5。
 - 远端 Linux `/proc` / `ss` 监控适合当前架构，不能以本机 gopsutil 代替。
@@ -28,4 +28,8 @@
 - gopsutil v4、pro-bing：当前没有手写本机监控/ping 功能可替换，未塞无用依赖；本机监控、ping、traceroute 功能尚未实现。没有链接 NTrace-core / GPL nexttrace。日后若做 nexttrace，仅可选调用用户自行安装的外部二进制。
 - `mygo/netproxy`：本阶段云客户端强制回环、不代理、不连真实服务；跟随系统代理会破坏测试边界，因此不引入 core/UI 耦合。公网/HTTPS 服务与代理策略留后续。
 - 自动更新、i18n 在阶段 4 才用官方能力；不引社区 UI、第二套托盘/更新器/钥匙串库。没有采用文档中标“未核实”的 go-winio、社区 UI 或压缩库。
-- 中文 IME、macOS/Windows、真实托盘/多窗口仍 UNVERIFIED。OSC 133 仍无公开事件 API，继续 deferred, waiting on upstream；没有自写流观察器。
+- 托盘、多窗口、主题设置不是已完成的产品功能：当前只有单主窗口，没有自研替代；后续应直接采用官方 API。中文 IME、macOS/Windows、真实托盘/多窗口仍 UNVERIFIED。OSC 133 仍无公开事件 API，继续 deferred, waiting on upstream；没有自写流观察器。
+
+## 替换提交的独立验证
+
+`go build ./...`、`go vet ./...`、普通及 `-race` 全量测试均成功。替换完成时两轮各有 117 个通过顶层、253 条 test pass 运行、227 个通过叶子，0 失败 / 0 跳过（按实际存在测试名的前缀判断父子；用最后一个斜杠判断会把带路径的向量名误算成叶子）。日志：`/workspace/NextShell-notes/ecosystem-{test,race}.json`。后续再显式关闭 Goose 全局 migration 注册表，Provider 只采用本包给定的三个 migration；最终阶段 3 验证覆盖该隔离选项。
