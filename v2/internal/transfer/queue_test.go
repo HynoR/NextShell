@@ -93,3 +93,31 @@ func TestQueueFailureRetry(t *testing.T) {
 		t.Fatal(q.List())
 	}
 }
+
+func TestClearCompletedRetainsActiveAndRetryableJobs(t *testing.T) {
+	q := New(1, nil)
+	defer q.Close()
+	q.Add("done", func(context.Context, func(int64)) error { return nil })
+	waitJobs(t, q, func(js []Job) bool { return js[0].State == "done" })
+	q.Add("failed", func(context.Context, func(int64)) error { return errors.New("retryable") })
+	waitJobs(t, q, func(js []Job) bool { return len(js) == 2 && js[1].State == "failed" })
+	entered := make(chan struct{})
+	q.Add("running", func(ctx context.Context, _ func(int64)) error { close(entered); <-ctx.Done(); return ctx.Err() })
+	<-entered
+	q.Add("queued", func(ctx context.Context, _ func(int64)) error { <-ctx.Done(); return ctx.Err() })
+	if n := q.ClearCompleted(); n != 1 {
+		t.Fatal(n)
+	}
+	js := q.List()
+	if len(js) != 3 || js[0].State != "failed" {
+		t.Fatal(js)
+	}
+	if n := q.ClearCompleted(); n != 0 {
+		t.Fatal(n)
+	}
+	q.CancelAll()
+	waitJobs(t, q, func(js []Job) bool { return js[1].State == "cancelled" && js[2].State == "cancelled" })
+	if len(q.List()) != 3 {
+		t.Fatal("failed/cancelled records removed")
+	}
+}

@@ -90,6 +90,8 @@ type Platform interface {
 	QueueTransfer(TransferRequest) (string, error)
 	Transfers() []transfer.Job
 	CancelTransfer(id string)
+	CancelAllTransfers()
+	ClearCompletedTransfers() int
 	RetryTransfer(id string) error
 	OpenRemote(session, path string)
 	SaveRemote(session string, doc remoteedit.Document, text string)

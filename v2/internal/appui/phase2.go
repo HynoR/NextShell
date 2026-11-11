@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"nextshell.dev/v2/internal/commandtemplate"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
@@ -18,6 +19,13 @@ import (
 )
 
 type phase2State struct {
+	TemplateSource, TemplateID                                                     string
+	Parameters                                                                     []commandParameter
+	TransferFilter, CommandSearch, CommandGroup, MonitorFilter                     string
+	ProcessList, NetworkList                                                       ui.ListState
+	ProcessRow, NetworkRow                                                         int
+	ProcessSort                                                                    ui.SortOrder
+	HistoryVisible, ClearHistoryConfirm                                            bool
 	FileList                                                                       ui.ListState
 	FileRow                                                                        int
 	Code                                                                           editor.State
@@ -47,6 +55,11 @@ type phase2State struct {
 
 func (s *phase2State) init() {
 	s.ExternalArgs = "[]"
+	s.TransferFilter = "全部"
+	s.CommandGroup = "全部"
+	s.ProcessRow = -1
+	s.NetworkRow = -1
+	s.ProcessSort = ui.SortOrder{Column: "CPU", Descending: true}
 	s.RemotePath = "."
 	s.FileRow = -1
 	s.Signal = "TERM"
@@ -298,9 +311,39 @@ func (a *App) filesView(c *ui.Context) {
 func (a *App) transfersView(c *ui.Context) {
 	a.phasePage(c, "传输队列", func() {
 		ui.Text(c, "并发 2；取消会关闭该任务的独立 SFTP/exec 通道；失败可重试")
-		for _, j := range a.P.Transfers() {
+		jobs := a.P.Transfers()
+		counts := map[string]int{}
+		for _, j := range jobs {
+			counts[j.State]++
+		}
+		ui.Text(c, fmt.Sprintf("等待 %d · 运行 %d · 完成 %d · 失败 %d · 已取消 %d", counts["queued"], counts["running"], counts["done"], counts["failed"], counts["cancelled"]))
+		ui.Row(c).Gap(8).Children(func() {
+			choice(c, "传输状态", &a.Phase2.TransferFilter, []string{"全部", "queued", "running", "done", "failed", "cancelled"})
+			if ui.Button(c, "取消全部传输").Clicked() {
+				a.P.CancelAllTransfers()
+			}
+			if ui.Button(c, "清除已完成").Clicked() {
+				a.Message = fmt.Sprintf("已清除 %d 个完成任务", a.P.ClearCompletedTransfers())
+			}
+		})
+		if len(jobs) == 0 {
+			ui.Text(c, "暂无传输任务，从文件页上传或下载即可开始").TextColor(c.Theme().TextMuted)
+		}
+		visible := 0
+		for _, j := range jobs {
+			if a.Phase2.TransferFilter != "全部" && a.Phase2.TransferFilter != j.State {
+				continue
+			}
+			visible++
 			ui.Column(c).Key(j.ID).FillWidth().Gap(4).Children(func() {
 				ui.Text(c, fmt.Sprintf("%s · %s · %d bytes · 第 %d 次", j.Label, j.State, j.Bytes, j.Attempt))
+				elapsed := time.Since(j.Started)
+				if !j.Finished.IsZero() {
+					elapsed = j.Finished.Sub(j.Started)
+				}
+				if !j.Started.IsZero() && elapsed > 0 {
+					ui.Text(c, fmt.Sprintf("平均 %.1f KiB/s · %.1f 秒（无总量时不虚构百分比/ETA）", float64(j.Bytes)/1024/elapsed.Seconds(), elapsed.Seconds())).TextColor(c.Theme().TextMuted)
+				}
 				if j.Error != "" {
 					ui.Text(c, j.Error)
 				}
@@ -316,6 +359,9 @@ func (a *App) transfersView(c *ui.Context) {
 					}
 				})
 			})
+		}
+		if visible == 0 && len(jobs) > 0 {
+			ui.Text(c, "当前筛选没有任务").TextColor(c.Theme().TextMuted)
 		}
 	})
 }
@@ -403,7 +449,7 @@ func (a *App) monitorView(c *ui.Context) {
 			return
 		}
 		m := s.Monitor
-		ui.Text(c, "采样会话: "+s.MonitorSession+" · "+m.At.In(time.FixedZone("SGT", 8*3600)).Format("15:04:05 MST"))
+		ui.Text(c, "采样会话: "+s.MonitorSession+" · "+m.At.In(time.FixedZone("CST", 8*3600)).Format("15:04:05 MST"))
 		switch s.MonitorPage {
 		case "system":
 			ui.Text(c, m.Info)
@@ -413,6 +459,11 @@ func (a *App) monitorView(c *ui.Context) {
 				cpu = fmt.Sprintf("%.1f%%", m.CPUPercent)
 			}
 			ui.Text(c, "CPU: "+cpu)
+			if m.HasDelta {
+				ui.Progress(c, clampRatio(m.CPUPercent/100)).FillWidth()
+			}
+			ui.Text(c, "内存使用率").TextColor(c.Theme().TextMuted)
+			ui.Progress(c, memoryRatio(m.MemoryTotal, m.MemoryAvailable)).FillWidth()
 			ui.Text(c, fmt.Sprintf("内存 %.1f / %.1f MiB · Swap %.1f / %.1f MiB", float64(m.MemoryTotal-m.MemoryAvailable)/(1<<20), float64(m.MemoryTotal)/(1<<20), float64(m.SwapTotal-m.SwapFree)/(1<<20), float64(m.SwapTotal)/(1<<20)))
 			ui.Text(c, fmt.Sprintf("网络（排除 lo） RX %.0f B/s / TX %.0f B/s", m.RXPerSecond, m.TXPerSecond))
 			for _, d := range m.Disks {
@@ -435,15 +486,9 @@ func (a *App) monitorView(c *ui.Context) {
 					}
 				}
 			}
-			for _, p := range m.Processes {
-				if ui.Button(c, fmt.Sprintf("%d %s CPU %.1f%% MEM %.1f MiB · %s", p.PID, p.User, p.CPU, p.MemoryMB, p.Command)).Key(fmt.Sprint("pid", p.PID)).Clicked() {
-					s.PID = strconv.Itoa(p.PID)
-				}
-			}
+			a.processTable(c, m.Processes)
 		case "network":
-			for _, n := range m.Network {
-				ui.Text(c, fmt.Sprintf("%s %s %s:%d → %s:%d · %d/%s · 连接%d IP%d", n.Protocol, n.State, n.LocalIP, n.LocalPort, n.RemoteIP, n.RemotePort, n.PID, n.Process, n.Connections, n.UniqueIPs))
-			}
+			a.networkTable(c, m.Network)
 		}
 		for _, w := range m.Warnings {
 			ui.Text(c, w)
@@ -454,6 +499,7 @@ func (a *App) commandsView(c *ui.Context) {
 	s := &a.Phase2
 	a.phasePage(c, "命令库", func() {
 		ui.Text(c, "命令与历史以本地明文保存，请勿输入密码或密钥")
+		a.commandHistory(c)
 		field(c, "命令名称", &s.Command.Name)
 		field(c, "命令分组", &s.Command.Group)
 		field(c, "描述", &s.Command.Description)
@@ -461,6 +507,14 @@ func (a *App) commandsView(c *ui.Context) {
 		ui.Checkbox(c, &appendCR, "执行时追加回车")
 		s.Command.AppendCR = &appendCR
 		ui.TextArea(c, &s.Command.Text).Label("保存的命令").Height(130).FillWidth()
+		s.prepareParameters()
+		for i := range s.Parameters {
+			field(c, "参数 "+s.Parameters[i].Key, &s.Parameters[i].Value)
+		}
+		if len(s.Parameters) > 0 {
+			ui.Text(c, "参数原样替换，不自动shell转义；参数值仅内存，未持久化历史。").TextColor(c.Theme().TextMuted)
+			ui.Text(c, "预览："+s.commandText())
+		}
 		ui.Row(c).Gap(6).Children(func() {
 			if ui.Button(c, "新命令").Clicked() {
 				s.Command = model.Command{Group: "默认"}
@@ -473,7 +527,7 @@ func (a *App) commandsView(c *ui.Context) {
 				a.reload()
 			}
 			if ui.Button(c, "在当前会话执行").Clicked() {
-				if e := a.P.ExecuteCommand(a.activeID(), s.Command.Text, false, appendCR); e != nil {
+				if e := a.P.ExecuteCommand(a.activeID(), s.commandText(), false, appendCR); e != nil {
 					a.status(e)
 				} else {
 					a.Page = "terminal"
@@ -486,12 +540,27 @@ func (a *App) commandsView(c *ui.Context) {
 			if !s.CommandAll {
 				a.Message = "请先确认全部会话执行"
 			} else {
-				a.status(a.P.ExecuteCommand(a.activeID(), s.Command.Text, true, appendCR))
+				a.status(a.P.ExecuteCommand(a.activeID(), s.commandText(), true, appendCR))
 				s.CommandAll = false
 			}
 		}
+		ui.SearchField(c, &s.CommandSearch).Label("搜索命令库").Placeholder("名称 / 分组 / 描述 / 命令内容").FillWidth()
+		groups := []string{"全部"}
+		for _, v := range a.Data.Commands {
+			if !contains(groups, v.Group) {
+				groups = append(groups, v.Group)
+			}
+		}
+		choice(c, "筛选命令分组", &s.CommandGroup, groups)
+		visible := 0
 		for _, command := range a.Data.Commands {
-			ui.Row(c).Key(command.ID).Gap(6).Children(func() {
+			if !commandMatches(command, s.CommandSearch, s.CommandGroup) {
+				continue
+			}
+			visible++
+			row := ui.Row(c).Key(command.ID).Label("命令行 " + command.Name).Gap(6)
+			a.commandMenu(row, command)
+			row.Children(func() {
 				if ui.Button(c, command.Group+" / "+command.Name).Grow(1).Clicked() {
 					s.Command = command
 				}
@@ -501,7 +570,9 @@ func (a *App) commandsView(c *ui.Context) {
 				}
 			})
 		}
-		a.deleteView(c)
+		if visible == 0 {
+			ui.Text(c, "没有匹配的命令；可新建命令或清除筛选").TextColor(c.Theme().TextMuted)
+		}
 	})
 }
 func (a *App) dataView(c *ui.Context) {
@@ -586,4 +657,31 @@ func (s *phase2State) prepareEditorBuffer() {
 		s.CodeSource = s.EditorText
 		s.CodeVersion = s.Code.Buffer.Version()
 	}
+}
+
+type commandParameter struct{ Key, Value string }
+
+func (s *phase2State) prepareParameters() {
+	if s.TemplateSource == s.Command.Text && s.TemplateID == s.Command.ID {
+		return
+	}
+	old := map[string]string{}
+	if s.TemplateID == s.Command.ID {
+		for _, v := range s.Parameters {
+			old[v.Key] = v.Value
+		}
+	}
+	s.Parameters = nil
+	for _, key := range commandtemplate.Keys(s.Command.Text) {
+		s.Parameters = append(s.Parameters, commandParameter{key, old[key]})
+	}
+	s.TemplateID = s.Command.ID
+	s.TemplateSource = s.Command.Text
+}
+func (s *phase2State) commandText() string {
+	params := map[string]string{}
+	for _, v := range s.Parameters {
+		params[v.Key] = v.Value
+	}
+	return commandtemplate.Render(s.Command.Text, params)
 }

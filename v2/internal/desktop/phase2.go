@@ -696,3 +696,6 @@ func (p *Platform) SessionDir(id string) string {
 	}
 	return t.Dir()
 }
+
+func (p *Platform) CancelAllTransfers()          { p.queue.CancelAll() }
+func (p *Platform) ClearCompletedTransfers() int { return p.queue.ClearCompleted() }

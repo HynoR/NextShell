@@ -148,3 +148,35 @@ func (q *Queue) Retry(id string) error {
 	return errors.New("unknown job")
 }
 func (q *Queue) Close() { q.mu.Lock(); q.closed = true; q.cancel(); q.mu.Unlock(); q.wg.Wait() }
+
+// ClearCompleted removes only successful jobs, retaining failures for retry and active work.
+func (q *Queue) ClearCompleted() int {
+	q.mu.Lock()
+	original := q.items
+	kept := original[:0]
+	n := 0
+	for _, it := range q.items {
+		if it.job.State == "done" {
+			n++
+		} else {
+			kept = append(kept, it)
+		}
+	}
+	clear(original[len(kept):])
+	q.items = kept
+	q.mu.Unlock()
+	if n > 0 {
+		q.notify()
+	}
+	return n
+}
+func (q *Queue) CancelAll() {
+	q.mu.Lock()
+	for _, it := range q.items {
+		if it.job.State == "running" || it.job.State == "queued" {
+			it.cancel()
+		}
+	}
+	q.mu.Unlock()
+	q.notify()
+}

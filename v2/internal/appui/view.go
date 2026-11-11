@@ -689,7 +689,17 @@ func (a *App) deleteView(c *ui.Context) {
 		return
 	}
 	open := true
-	choice := ui.AlertDialog(c, &open, "永久删除", "确认删除 "+a.DeleteKind+"？这会永久删除记录和凭据，不能从回收站恢复。", "取消删除", "确认删除")
+	title, message := "永久删除", "确认删除 "+a.DeleteKind+"？这会永久删除记录和凭据，不能从回收站恢复。"
+	if a.DeleteKind == "command" {
+		title = "删除命令"
+		message = "删除后无法恢复。"
+		for _, v := range a.Data.Commands {
+			if v.ID == a.DeleteID {
+				message = "删除命令「" + v.Name + "」？删除后无法恢复。"
+			}
+		}
+	}
+	choice := ui.AlertDialog(c, &open, title, message, "取消删除", "确认删除")
 	if choice == 1 {
 		if e := a.P.Delete(a.DeleteKind, a.DeleteID); e != nil {
 			a.status(e)
