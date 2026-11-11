@@ -28,7 +28,7 @@
 - security 的 scrypt/AES-GCM 及 Node 向量：它们也是文件/新云协议，不是“旧架构包袱”。本地 device-key crypto 独立保留。
 - SSH/SFTP/编辑/监控/命令库、Platform 边界与真实本地服务器测试不变。OSC 133 继续等待上游。
 
-## 4. 文件兼容范围（建议默认，不需要另选架构）
+## 3. 文件兼容范围（建议默认，不需要另选架构）
 
 | 输入 | 支持策略 |
 |---|---|
@@ -65,13 +65,13 @@
 - v2 独有字段如 shift_jis、云关联和新设置不能假装 v1 可用；选中不可表示的连接时提示/拒绝该兼容导出，不静默改编码。完整 v2 备份格式以后另立独立 format，不把 version 改成 2 就宣称 v1 能读。
 
 
-## 5. 自主 schema 与同步语义
+## 4. 自主 schema 与同步语义
 
-保留 JSON resource payload，新增资源 scope/createdAt/updatedAt/revision/deletedAt、工作区表、同步状态与加密删除日志；字段/索引不受 v1 DB 约束。新资源 UUID 稳定，不每次拉取重建。工作区数据隔离，连接/key/proxy/folder 不跨 scope 引用；入站快照原子应用和 head 更新，失败全部回滚。local edits 与 remote apply 两种写路径，入站时间不改为 now；仅重加密不制造内容变更。
+保留 JSON resource payload，新增资源 scope/createdAt/updatedAt/revision/deletedAt、工作区表、同步状态与本地删除日志（上云时随快照整体加密）；字段/索引不受 v1 DB 约束。新资源 UUID 稳定，不每次拉取重建。工作区数据隔离，连接/key/proxy/folder 不跨 scope 引用；入站快照原子应用和 head 更新，失败全部回滚。local edits 与 remote apply 两种写路径，入站时间不改为 now；仅重加密不制造内容变更。
 
 补 folder.sortIndex、key metadata、command.appendCr、keepalive 未指定/关闭/开启三态；保留本地信任策略。完整快照含所有活动资源与 tombstone，元数据、引用、命令、密码/私钥都在密文内。使用整工作区原子 CAS head（资源与命令一起，不再沿用 v1 分离命令版本）。本地 baseline/generation 检查防止拉取覆盖未同步编辑，双端变更停止，明确选择后才替换。
 
-## 6. 新云协议 version 2（合理默认）
+## 5. 新云协议 version 2（合理默认）
 
 ### 独立认证与加密
 
@@ -88,11 +88,11 @@
 
 这是自研协议草案与实现，**不是已通过独立密码学审计的生产协议**。不对恶意客户端/被控本机/弱加密口令离线猜测提供不切实际保证。正式联网之前需要审计、恢复流程、认证生命周期和真实服务器一致性验收。
 
-## 7. 本地 secrets
+## 6. 本地 secrets
 
 fresh v2 随机 device key32 保存在 v2 DB。缺 key 但已有 secrets 必须报损坏，不能重生成；不查 keychain。文件密码/云加密口令只用于边界解密，转存使用本地 device key。工作区 auth token/DEK 在本地设备加密 vault 中，不能出现在列举元数据、日志、预览；本地数据库被整体窃取仍不在此保护范围内。
 
-## 8. 顺序与验收
+## 7. 顺序与验收
 
 1. 删迁移专用包/stub/UI/tests/archive branches，保留通用事务导入、历史 API/外部 profile 拒绝。
 2. v2-only schema 升级/元数据/scope/删除日志/工作区与 CAS 状态，保留旧 v2 数据和原子回滚。
