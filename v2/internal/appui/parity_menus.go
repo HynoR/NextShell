@@ -231,49 +231,61 @@ func (a *App) activateTab(i int) {
 }
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 func (a *App) fileMenu(item ui.Element, id string, f sftpfs.Entry) {
-	item.ContextMenu(func(m *ui.Menu) {
-		s := &a.Phase2
-		if f.Directory {
-			if m.Item("打开目录").Chosen() {
-				s.SelectedRemote = f.Path
-				s.RemotePath = f.Path
-				a.P.ListFiles(id, f.Path)
-			}
-		} else if !f.Symlink {
-			if m.Item("编辑文件").Chosen() {
-				a.later(func() { a.openEditor(id, f.Path) })
-			}
-		}
-		if !f.Symlink {
-			if m.Item("下载到默认位置").Chosen() {
-				if err := model.ValidateDownloadName(f.Name); err != nil {
-					a.status(err)
-					return
-				}
-				kind := "download"
-				if f.Directory {
-					kind = "download-packed"
-				}
-				a.later(func() {
-					a.queue(TransferRequest{Session: id, Kind: kind, Remote: f.Path, Local: filepath.Join(a.Prefs.DownloadDir, f.Name), Overwrite: s.Overwrite})
-				})
-			}
-		}
-		if m.Item("复制路径").Chosen() {
-			a.P.CopyText(f.Path)
-		}
-		if m.Item("重命名远端路径").Chosen() {
+	item.ContextMenu(func(m *ui.Menu) { a.fileMenuItems(m, id, f) })
+}
+func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
+	if m.Item("复制所选").Chosen() {
+		a.setRemoteClipboard(id, &f, false)
+	}
+	if m.Item("剪切所选").Chosen() {
+		a.setRemoteClipboard(id, &f, true)
+	}
+	if m.Item("粘贴到当前目录").Chosen() {
+		a.pasteRemoteClipboard(id)
+	}
+	m.Separator()
+
+	s := &a.Phase2
+	if f.Directory {
+		if m.Item("打开目录").Chosen() {
 			s.SelectedRemote = f.Path
-			s.Action = "rename"
-			s.ActionFrom = f.Path
-			s.ActionTo = f.Path
+			s.RemotePath = f.Path
+			a.P.ListFiles(id, f.Path)
 		}
-		if m.Item("删除远端路径").Chosen() {
-			s.SelectedRemote = f.Path
-			s.Action = "remove"
-			s.ActionFrom = f.Path
+	} else if !f.Symlink {
+		if m.Item("编辑文件").Chosen() {
+			a.later(func() { a.openEditor(id, f.Path) })
 		}
-	})
+	}
+	if !f.Symlink {
+		if m.Item("下载到默认位置").Chosen() {
+			if err := model.ValidateDownloadName(f.Name); err != nil {
+				a.status(err)
+				return
+			}
+			kind := "download"
+			if f.Directory {
+				kind = "download-packed"
+			}
+			a.later(func() {
+				a.queue(TransferRequest{Session: id, Kind: kind, Remote: f.Path, Local: filepath.Join(a.Prefs.DownloadDir, f.Name), Overwrite: s.Overwrite})
+			})
+		}
+	}
+	if m.Item("复制路径").Chosen() {
+		a.P.CopyText(f.Path)
+	}
+	if m.Item("重命名远端路径").Chosen() {
+		s.SelectedRemote = f.Path
+		s.Action = "rename"
+		s.ActionFrom = f.Path
+		s.ActionTo = f.Path
+	}
+	if m.Item("删除远端路径").Chosen() {
+		s.SelectedRemote = f.Path
+		s.Action = "remove"
+		s.ActionFrom = f.Path
+	}
 }
 func (a *App) filesBlankMenu(item ui.Element, id string) {
 	item.ContextMenu(func(m *ui.Menu) {

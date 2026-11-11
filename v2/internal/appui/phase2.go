@@ -19,6 +19,8 @@ import (
 )
 
 type phase2State struct {
+	FileSelection                                                                  ui.Selection[string]
+	Clipboard                                                                      remoteClipboard
 	DiagnosticID, DiagnosticTarget, DiagnosticText                                 string
 	DiagnosticBusy                                                                 bool
 	TemplateSource, TemplateID                                                     string
@@ -86,6 +88,10 @@ func (a *App) handlePhase2(e Event) {
 		s.DiagnosticText = e.Diagnostic.Kind + "\n" + e.Diagnostic.Text
 	}
 	if e.Files != nil && e.Files.Session == a.activeID() {
+		if s.FilesSession != e.Files.Session || s.RemotePath != e.Files.Path {
+			s.FileSelection.Clear()
+			s.FileRow = -1
+		}
 		s.FilesSession = e.Files.Session
 		s.RemotePath = e.Files.Path
 		s.Files = e.Files.Entries
@@ -184,11 +190,18 @@ func (a *App) filesView(c *ui.Context) {
 				a.queue(TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(s.RemotePath, filepath.Base(local)), Overwrite: s.Overwrite})
 			}
 			zone.Children(func() {
-				ui.Text(c, "可将本地文件拖入列表上传（文件夹请用打包上传）")
+				a.fileClipboardToolbar(c, id)
+				ui.Text(c, "Ctrl/Shift 多选 · 本地文件可拖入上传（文件夹请用打包上传）")
 				s.FileList.Selected = &s.FileRow
+				s.FileList.Selection = &s.FileSelection
 				s.FileList.RoundRows = true
 				s.FileList.Key = func(i int) any { return s.Files[i].Path }
 				s.FileList.Label = func(i int) string { return s.Files[i].Name }
+				s.FileList.CellMenu = func(m *ui.Menu, row, col int) {
+					if row >= 0 && row < len(s.Files) {
+						a.fileMenuItems(m, id, s.Files[row])
+					}
+				}
 				cols := []ui.TableColumn{{Title: "名称"}, {Title: "大小", Width: 90, Align: ui.End}, {Title: "权限", Width: 145}, {Title: "操作", Width: 120}}
 				table := ui.Table(c.Key("sftp-file-list-"+id), &s.FileList, cols, len(s.Files), func(row, col int) {
 					f := s.Files[row]
@@ -206,15 +219,7 @@ func (a *App) filesView(c *ui.Context) {
 						if f.Directory {
 							actionLabel = "打开 " + f.Name
 						}
-						button := ghost(c, label, ic).Label(actionLabel)
-						a.fileMenu(button, id, f)
-						if button.Clicked() {
-							s.SelectedRemote = f.Path
-							if f.Directory {
-								s.RemotePath = f.Path
-								a.P.ListFiles(id, f.Path)
-							}
-						}
+						ui.Row(c).Label(actionLabel).Gap(8).AlignItems(ui.Center).Children(func() { ui.Icon(c, appIcons[ic]).FontSize(17); ui.Text(c, label).SingleLine() })
 					case 1:
 						ui.Text(c, fmt.Sprintf("%d B", f.Size)).TextColor(c.Theme().TextMuted).FontSize(12)
 					case 2:
@@ -225,6 +230,7 @@ func (a *App) filesView(c *ui.Context) {
 						}
 					}
 				}).Height(260).FillWidth().Border(1, c.Theme().Border).Radius(c.Theme().Radius)
+				a.fileClipboardKeys(table, id)
 				if table.Changed() && s.FileRow >= 0 && s.FileRow < len(s.Files) {
 					s.SelectedRemote = s.Files[s.FileRow].Path
 				}

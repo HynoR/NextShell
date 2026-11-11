@@ -6,6 +6,7 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sftpfs"
 	"testing"
+	"time"
 )
 
 func TestRefreshedNavigationBothAppearances(t *testing.T) {
@@ -119,6 +120,8 @@ func TestRefreshedSFTPTableActions(t *testing.T) {
 		t.Fatal("directory Enter action lost", p.listed)
 	}
 	p.listed = ""
+	tt.Advance(time.Second)
+	click(t, tt, "打开 dir")
 	click(t, tt, "打开 dir")
 	if p.listed != "/lab/dir" {
 		t.Fatal("directory navigation lost", p.listed)

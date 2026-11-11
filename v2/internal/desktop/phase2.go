@@ -125,13 +125,24 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 		return "", e
 	}
 	switch req.Kind {
-	case "upload", "download", "upload-packed", "download-packed", "cross":
+	case "upload", "download", "upload-packed", "download-packed", "cross", "copy", "move":
 	default:
 		return "", errors.New("unsupported transfer kind")
 	}
-	if req.Kind == "cross" {
+	if req.Kind == "cross" || req.Kind == "copy" || req.Kind == "move" {
 		if _, e := p.ssh(req.TargetSession); e != nil {
 			return "", e
+		}
+	}
+	sameServer := req.Session == req.TargetSession
+	if req.Kind == "cross" || req.Kind == "copy" || req.Kind == "move" {
+		p.mu.Lock()
+		src, srcOK := p.credentials[req.Session]
+		dst, dstOK := p.credentials[req.TargetSession]
+		p.mu.Unlock()
+		sameServer = sameServer || (srcOK && dstOK && src.Address() == dst.Address() && src.User == dst.User)
+		if req.Kind == "move" && !sameServer {
+			return "", errors.New("cut/paste is only available on the same server/account")
 		}
 	}
 	label := req.Kind + ": " + req.Remote
@@ -152,9 +163,11 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 				return c.Upload(ctx, req.Local, req.Remote, req.Overwrite, progress)
 			case "download":
 				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
-			case "cross":
+			case "move":
+				return c.RenamePath(req.Remote, req.Destination)
+			case "cross", "copy":
 				return p.withSFTP(ctx, req.TargetSession, func(target *sftpfs.Client) error {
-					return sftpfs.Cross(ctx, c, target, req.Remote, req.Destination, req.Overwrite, progress)
+					return sftpfs.CopyTree(ctx, c, target, req.Remote, req.Destination, sameServer, progress)
 				})
 			}
 			return errors.New("invalid transfer")
