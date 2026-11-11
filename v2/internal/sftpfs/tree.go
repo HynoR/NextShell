@@ -70,6 +70,11 @@ func CopyTree(ctx context.Context, source, target *Client, from, to string, same
 	}
 	owned := []created{{stage, true}}
 	defer func() {
+		for _, node := range owned {
+			if node.dir {
+				_ = target.Chmod(node.path, 0700)
+			}
+		}
 		for i := len(owned) - 1; i >= 0; i-- {
 			if owned[i].dir {
 				_ = target.RemoveDirectory(owned[i].path)

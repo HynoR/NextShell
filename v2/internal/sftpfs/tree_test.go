@@ -55,7 +55,18 @@ func TestRecursiveCopyRefusesLinksSelfAndCancellation(t *testing.T) {
 	if err := CopyTree(context.Background(), c, c, from, filepath.Join(from, "nested"), true, nil); err == nil {
 		t.Fatal("self copy accepted")
 	}
-	if err := os.Symlink("good", filepath.Join(from, "link")); err != nil {
+	readonly := filepath.Join(from, "nested")
+	if err := os.Mkdir(readonly, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(readonly, "item"), []byte("private"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(readonly, 0500); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(readonly, 0700)
+	if err := os.Symlink("good", filepath.Join(from, "z-link")); err != nil {
 		t.Fatal(err)
 	}
 	if err := CopyTree(context.Background(), c, c, from, filepath.Join(root, "fail"), true, nil); err == nil || !strings.Contains(err.Error(), "symlink") {

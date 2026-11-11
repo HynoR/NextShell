@@ -167,6 +167,15 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 				return c.RenamePath(req.Remote, req.Destination)
 			case "cross", "copy":
 				return p.withSFTP(ctx, req.TargetSession, func(target *sftpfs.Client) error {
+					if req.Kind == "cross" && req.Overwrite {
+						info, err := c.Lstat(req.Remote)
+						if err != nil {
+							return err
+						}
+						if info.Mode().IsRegular() {
+							return sftpfs.Cross(ctx, c, target, req.Remote, req.Destination, true, progress)
+						}
+					}
 					return sftpfs.CopyTree(ctx, c, target, req.Remote, req.Destination, sameServer, progress)
 				})
 			}

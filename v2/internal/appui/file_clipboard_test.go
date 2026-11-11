@@ -28,7 +28,7 @@ func TestOfficialFileMultiselectionAndClipboardAcrossSessions(t *testing.T) {
 	if a.Phase2.FileSelection.Len() != 2 {
 		t.Fatal("official multiselect", a.Phase2.FileSelection.Len())
 	}
-	click(t, tt, "复制所选")
+	tt.Key(ui.Ctrl, ui.KeyC)
 	p.events = []appui.Event{{Session: &appui.Session{ID: "two", Title: "two", Terminal: newTerminal(t, "")}}}
 	tt.Frame()
 	a.Page = "files"

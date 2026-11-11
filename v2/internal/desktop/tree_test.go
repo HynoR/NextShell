@@ -31,3 +31,19 @@ func TestProductionQueueRecursiveCopyAndCut(t *testing.T) {
 		t.Fatal("cross-server move accepted")
 	}
 }
+func TestCrossFileExplicitOverwriteStillWorks(t *testing.T) {
+	p := desktopFixture(t)
+	src, root := phase2SSH(t, p)
+	dst, target := phase2SSH(t, p)
+	from, to := filepath.Join(root, "from"), filepath.Join(target, "existing")
+	os.WriteFile(from, []byte("new contents"), 0600)
+	os.WriteFile(to, []byte("keep unless explicitly allowed"), 0600)
+	id, err := p.QueueTransfer(appui.TransferRequest{Session: src, TargetSession: dst, Kind: "cross", Remote: from, Destination: to, Overwrite: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueue(t, p, id)
+	if b, err := os.ReadFile(to); err != nil || string(b) != "new contents" {
+		t.Fatal(err, string(b))
+	}
+}
