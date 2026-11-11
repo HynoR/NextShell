@@ -11,6 +11,7 @@ import (
 
 type tabDrag string
 type App struct {
+	Links                      []string
 	ConnectionTags             string
 	Actions                    []func()
 	RenameConnection           model.Connection
@@ -143,6 +144,7 @@ func (a *App) View(c *ui.Context) {
 	c.SetTheme(designTheme(c.Theme(), a.Appearance, c.Preferences().HighContrast))
 	a.P.SetWake(c.Services().Invalidate)
 	a.P.SetClipboard(c.Services().WriteClipboard)
+	a.P.SetURLopener(c.Services().OpenURL)
 	alive := a.Prompts[:0]
 	for _, p := range a.Prompts {
 		select {
@@ -153,6 +155,13 @@ func (a *App) View(c *ui.Context) {
 	}
 	a.Prompts = alive
 	for _, e := range a.P.Poll() {
+		if e.Link != "" {
+			if a.Prefs.HyperlinkConfirm {
+				a.Links = append(a.Links, e.Link)
+			} else {
+				a.status(a.P.OpenURL(e.Link))
+			}
+		}
 		a.handlePhase2(e)
 		a.handlePhase3(e)
 		if e.Session != nil {

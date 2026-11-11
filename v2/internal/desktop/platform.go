@@ -22,6 +22,7 @@ import (
 )
 
 type Platform struct {
+	urlOpener        func(string)
 	diagnosticCancel context.CancelFunc
 	clipboard        func(string)
 	preferences      model.Preferences

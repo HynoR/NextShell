@@ -30,6 +30,7 @@ type Prompt struct {
 }
 type DiagnosticResult struct{ ID, Kind, Text string }
 type Event struct {
+	Link                 string
 	Diagnostic           *DiagnosticResult
 	FocusID, WorkspaceID string
 	Files                *FileListing
@@ -86,6 +87,8 @@ type Platform interface {
 	SetWake(func())
 	SetClipboard(func(string))
 	CopyText(string)
+	SetURLopener(func(string))
+	OpenURL(string) error
 	Quit()
 	ListFiles(session, path string)
 	FileAction(session, action, from, to string)

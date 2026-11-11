@@ -86,6 +86,16 @@ func (a *App) connectionMenu(item ui.Element, cc model.Connection) {
 	})
 }
 func (a *App) parityDialogs(c *ui.Context) {
+	if len(a.Links) > 0 {
+		open := true
+		choice := ui.AlertDialog(c, &open, "打开外部链接", "链接显示文本可能与实际目标地址不一致，请确认完整地址可信：\n"+a.Links[0], "取消打开链接", "打开链接")
+		if choice == 1 {
+			a.status(a.P.OpenURL(a.Links[0]))
+		}
+		if !open {
+			a.Links = a.Links[1:]
+		}
+	}
 	ui.Modal(c, &a.RenameOpen, func() {
 		ui.Column(c).Width(430).Padding(PanelInset).Gap(FormGap).Children(func() {
 			ui.Text(c, "重命名连接").FontSize(20).Bold()

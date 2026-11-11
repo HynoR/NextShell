@@ -114,3 +114,23 @@ func TestKeepalivePreferenceInheritance(t *testing.T) {
 		})
 	}
 }
+
+func TestTerminalLinksConsumeDefaultAndUseInjectedOpener(t *testing.T) {
+	p := desktopFixture(t)
+	o := p.terminalOptions(terminal.Options{})
+	if !o.OpenLink("https://example.invalid/path") {
+		t.Fatal("default opener not consumed")
+	}
+	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Link != "" })
+	if e.Link != "https://example.invalid/path" {
+		t.Fatal(e.Link)
+	}
+	calls := 0
+	p.SetURLopener(func(string) { calls++ })
+	if err := p.OpenURL("file:///etc/passwd"); err == nil || calls != 0 {
+		t.Fatal("unsafe opened")
+	}
+	if err := p.OpenURL(e.Link); err != nil || calls != 1 {
+		t.Fatal(err, calls)
+	}
+}

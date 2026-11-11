@@ -296,6 +296,14 @@ func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
 	if o.Conn == nil && prefs.LocalShell != "" {
 		o.Command = []string{prefs.LocalShell}
 	}
+	o.OpenLink = func(link string) bool {
+		if err := model.ValidateTerminalURL(link); err != nil {
+			p.emit(appui.Event{Message: err.Error()})
+		} else {
+			p.emit(appui.Event{Link: link})
+		}
+		return true
+	}
 	o.OnTitle = func(string) { p.Invalidate() }
 	o.OnBell = func() {
 		if p.Preferences().Notifications {

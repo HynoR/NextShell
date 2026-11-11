@@ -9,6 +9,7 @@ import (
 
 // Preferences are local UI/runtime policy, never cloud resource/key material.
 type Preferences struct {
+	HyperlinkConfirm bool    `json:"hyperlinkConfirm"`
 	Appearance       string  `json:"appearance"`
 	FontFamily       string  `json:"fontFamily"`
 	FontSize         int     `json:"fontSize"`
@@ -33,7 +34,7 @@ type Preferences struct {
 }
 
 func DefaultPreferences() Preferences {
-	return Preferences{Appearance: "跟随系统", FontSize: 14, LineHeight: 1.2, TerminalTheme: "跟随外观", Background: "#0b1220", Foreground: "#d8e3f0", Cursor: "block", CursorBlink: true, ScrollbackMiB: 10, TitleUpdates: true, Notifications: true, UploadDir: "~", DownloadDir: "~/Downloads", KeepaliveEnabled: true, KeepaliveSeconds: 15}
+	return Preferences{HyperlinkConfirm: true, Appearance: "跟随系统", FontSize: 14, LineHeight: 1.2, TerminalTheme: "跟随外观", Background: "#0b1220", Foreground: "#d8e3f0", Cursor: "block", CursorBlink: true, ScrollbackMiB: 10, TitleUpdates: true, Notifications: true, UploadDir: "~", DownloadDir: "~/Downloads", KeepaliveEnabled: true, KeepaliveSeconds: 15}
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
