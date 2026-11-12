@@ -55,8 +55,7 @@ claude mcp add nextshell -- npx --allow-remote=root -y https://github.com/HynoR/
 - 文件面板暂不支持把文件拖出到 Finder / 资源管理器下载,请用右键「下载到…」;拖入上传可用。
 - 监控和打包传输要求远端是 Linux。
 - Windows 上的 SSH agent 只支持系统自带的 OpenSSH Agent(需在"可选功能"里安装 OpenSSH 客户端并启动 ssh-agent 服务),暂不支持 Pageant。
-- Windows 和 Linux 版本未经真机日用验证,欢迎反馈:默认下载目录、打开文件夹、本地终端(PowerShell)、Agent 登录。
-- 平台验证程度不同:macOS 是主要验证平台;Windows 和 Linux 是第一次发布,欢迎反馈问题。
+- macOS 是主要验证平台;Windows 和 Linux 是第一次发布,未经真机日用,欢迎反馈:默认下载目录、打开文件夹、本地终端(PowerShell)、Agent 登录。
 
 ### 反馈问题
 

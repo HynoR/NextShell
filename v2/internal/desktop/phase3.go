@@ -567,10 +567,18 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	}
 	if room := b.limit - len(b.data); n > room {
 		b.truncated = true
-		for room > 0 && !utf8.RuneStart(p[room]) {
-			room--
+		b.data = append(b.data, p[:room]...)
+		// Drop a trailing partial character: the cut, or an earlier write that ended exactly at the
+		// limit, can fall inside one.
+		for i := len(b.data) - 1; i >= 0 && i >= len(b.data)-utf8.UTFMax; i-- {
+			if utf8.RuneStart(b.data[i]) {
+				if !utf8.FullRune(b.data[i:]) {
+					b.data = b.data[:i]
+				}
+				break
+			}
 		}
-		p = p[:room]
+		return n, nil
 	}
 	b.data = append(b.data, p...)
 	return n, nil
