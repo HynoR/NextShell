@@ -145,26 +145,27 @@ func (a *App) paletteItems() []paletteItem {
 		}
 	}
 	for _, v := range actions {
-		add("操作", v.title, actionKeys[v.title], "", func(ui.Modifiers) { v.run() })
+		add("操作", v.title, actionKey(v.title), "", func(ui.Modifiers) { v.run() })
 	}
 	return out
 }
 
-// actionKeys are the shortcuts the palette shows beside the actions that have one. The letters take appMod
+// actionKey is the shortcut the palette shows beside an action that has one. The letters take appMod
 // (⌘ on macOS, Ctrl+Shift elsewhere: a plain Ctrl+letter belongs to the shell); the comma takes ⌘ or Ctrl.
-var actionKeys = map[string]string{
-	"打开本地终端":       appShortcutLabel("T"),
-	"连接管理器":        appShortcutLabel("O"),
-	"打开设置":         shortcutLabel(","),
-	"显示 / 隐藏左栏":    appShortcutLabel("B"),
-	"显示 / 隐藏底部工作区": appShortcutLabel("J"),
-}
-
-func appShortcutLabel(key string) string {
-	if appMod == ui.Cmd {
-		return shortcutLabel(key)
+func actionKey(title string) string {
+	switch title {
+	case "打开本地终端":
+		return appShortcutLabel("T")
+	case "连接管理器":
+		return appShortcutLabel("O")
+	case "打开设置":
+		return shortcutLabel(",")
+	case "显示 / 隐藏左栏":
+		return appShortcutLabel("B")
+	case "显示 / 隐藏底部工作区":
+		return appShortcutLabel("J")
 	}
-	return "Ctrl+Shift+" + key
+	return ""
 }
 
 func (a *App) toggleAppearance() {
@@ -257,6 +258,6 @@ func (a *App) paletteView(c *ui.Context, anchor ui.Element) {
 				}
 			})
 		})
-		muted(c, "回车执行 · "+shortcutLabel("回车")+" 连接并打开 SFTP · Alt+回车 片段发送到全部会话").Padding(2, 4)
+		muted(c, "回车执行 · "+shortcutLabel("回车")+" 连接并打开 SFTP · "+altShortcutLabel("回车")+" 片段发送到全部会话").Padding(2, 4)
 	})
 }

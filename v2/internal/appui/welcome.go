@@ -95,7 +95,7 @@ func (a *App) welcomeView(c *ui.Context) {
 						a.P.Local()
 					}
 				})
-				muted(c, shortcutLabel("K")+" 搜索主机、标签和操作").AlignSelf(ui.Center).TextColor(t.TextMuted)
+				muted(c, appShortcutLabel("K")+" 搜索主机、标签和操作").AlignSelf(ui.Center).TextColor(t.TextMuted)
 			})
 		})
 	})

@@ -498,12 +498,41 @@ func (a *App) shortcuts(c *ui.Context) {
 		a.activateTab((a.Active + 1) % len(a.Tabs))
 	}
 }
-func shortcutLabel(key string) string {
-	if runtime.GOOS == "darwin" {
-		return "⌘" + key
+
+// osName is the system the shortcut labels are written for; tests change it to read them for another.
+var osName = runtime.GOOS
+
+// chord writes a shortcut the way the system does: ⌘⇧F on macOS, Ctrl+Shift+F elsewhere. Cmd is ⌘ or
+// Ctrl, Alt is ⌥ or Alt.
+func chord(goos string, mods ui.Modifiers, key string) string {
+	out := ""
+	for _, m := range []struct {
+		bit      ui.Modifiers
+		mac, win string
+	}{{ui.Cmd, "⌘", "Ctrl+"}, {ui.Shift, "⇧", "Shift+"}, {ui.Alt, "⌥", "Alt+"}} {
+		switch {
+		case mods&m.bit == 0:
+		case goos == "darwin":
+			out += m.mac
+		default:
+			out += m.win
+		}
 	}
-	return "Ctrl+" + key
+	return out + key
 }
+
+// shortcutLabel is a ⌘ (Ctrl) shortcut; appShortcutLabel one of the app's letter shortcuts, which a
+// terminal in focus only takes with Shift added outside macOS (see appMod); findShortcutLabel is find in
+// the terminal; altShortcutLabel one with the Option (Alt) key.
+func shortcutLabel(key string) string { return chord(osName, ui.Cmd, key) }
+func appShortcutLabel(key string) string {
+	if osName == "darwin" {
+		return chord(osName, ui.Cmd, key)
+	}
+	return chord(osName, ui.Cmd|ui.Shift, key)
+}
+func findShortcutLabel() string          { return chord(osName, ui.Cmd|ui.Shift, "F") }
+func altShortcutLabel(key string) string { return chord(osName, ui.Alt, key) }
 
 func orDefault(s, d string) string {
 	if s == "" {
@@ -518,8 +547,14 @@ func dot(c *ui.Context, color ui.Color) ui.Element {
 	return ui.Box(c).Size(8, 8).Radius(4).Background(color)
 }
 func iconButton(c *ui.Context, label, icon string) ui.Element {
+	return iconButtonTip(c, label, label, icon)
+}
+
+// iconButtonTip is iconButton whose tooltip says more than its name, as the shortcut. (A second Tooltip
+// call does not replace the first: both show, one over the other.)
+func iconButtonTip(c *ui.Context, label, tip, icon string) ui.Element {
 	t := c.Theme()
-	b := ui.ButtonBase(c).Label(label).Tooltip(label).Size(28, 28).Radius(t.Radius).Center().TextColor(t.TextMuted)
+	b := ui.ButtonBase(c).Label(label).Tooltip(tip).Size(28, 28).Radius(t.Radius).Center().TextColor(t.TextMuted)
 	if b.Hovered() {
 		b.Background(t.SurfaceHover).TextColor(t.Text)
 	}

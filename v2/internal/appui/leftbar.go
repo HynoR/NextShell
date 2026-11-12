@@ -16,7 +16,7 @@ func (a *App) leftColumn(c *ui.Context) {
 	a.traceDrawer(c)
 	if a.layout.leftHidden {
 		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(10).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
-			if iconButton(c, "展开左栏", "panel-left").Tooltip("展开左栏 " + shortcutLabel("B")).Clicked() {
+			if iconButtonTip(c, "展开左栏", "展开左栏 "+appShortcutLabel("B"), "panel-left").Clicked() {
 				a.layout.leftHidden = false
 			}
 			if s != nil {
@@ -47,7 +47,7 @@ func (a *App) leftColumn(c *ui.Context) {
 }
 
 func (a *App) foldLeft(c *ui.Context) {
-	if iconButton(c, "收起左栏", "panel-left").Tooltip("收起左栏 " + shortcutLabel("B")).Clicked() {
+	if iconButtonTip(c, "收起左栏", "收起左栏 "+appShortcutLabel("B"), "panel-left").Clicked() {
 		a.layout.leftHidden = true
 	}
 }

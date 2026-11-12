@@ -137,7 +137,7 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 			b.text = ""
 			in.Focus()
 		}
-		find := iconButton(c, "查找 "+shortcutLabel("⇧F"), "search")
+		find := iconButton(c, "查找 "+findShortcutLabel(), "search")
 		if b.finding {
 			find.Background(t.SurfacePressed)
 		}
