@@ -9,6 +9,7 @@ import (
 	probing "github.com/prometheus-community/pro-bing"
 	"net/netip"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,9 +39,15 @@ func Ping(ctx context.Context, target string) (PingResult, error) {
 	p.Count = 3
 	p.Interval = 150 * time.Millisecond
 	p.Timeout = 3 * time.Second
-	p.SetPrivileged(false)
+	// Windows has no unprivileged ICMP socket: pro-bing's "privileged" (raw) mode is the only one
+	// there, and the library documents it as working without elevation.
+	p.SetPrivileged(runtime.GOOS == "windows")
 	if e = p.RunWithContext(ctx); e != nil {
-		return result, fmt.Errorf("ICMP ping不可用（需系统允许非特权ping socket）：%w", e)
+		need := "需系统允许非特权ping socket"
+		if runtime.GOOS == "windows" {
+			need = "需系统允许原始ICMP socket，防火墙或安全软件可能拦截了它"
+		}
+		return result, fmt.Errorf("ICMP ping不可用（%s）：%w", need, e)
 	}
 	s := p.Statistics()
 	result = PingResult{s.PacketsSent, s.PacketsRecv, s.PacketLoss, s.MinRtt, s.AvgRtt, s.MaxRtt}
