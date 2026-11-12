@@ -396,3 +396,24 @@ func TestManagerAtItsMinimumWidthKeepsAWholeTile(t *testing.T) {
 		}
 	}
 }
+
+// The import preview words the platform's English notes in Chinese; what it cannot place is
+// "部分内容无法导入", with the original as the tooltip.
+func TestImportPreviewNotesAreInChinese(t *testing.T) {
+	a, p, tt := fixture(t)
+	mt := manager(a)
+	p.events = append(p.events, appui.Event{Import: &appui.ImportPreview{Count: 2, Names: []string{"a", "b"}, Token: "t", Warnings: []string{
+		"skipped symlink old-config", "此文件含明文密码；确认后将使用 v2 设备密钥重新加密保存", "broken.json: invalid character 'x' looking for beginning of value", "decoder exploded",
+	}}})
+	tt.Frame()
+	mt.Frame()
+	has(t, mt, "将导入 2 个主机", "已跳过链接文件「old-config」", "此文件含明文密码；导入后会加密保存在本机", "「broken.json」无法读取，已跳过", "部分内容无法导入")
+	for _, raw := range []string{"skipped symlink", "v2 设备密钥", "invalid character", "decoder exploded"} {
+		if mt.HasText(raw) {
+			t.Fatalf("%q shows in the preview", raw)
+		}
+	}
+	if info, ok := mt.AccessByRole(ui.RoleText, "部分内容无法导入"); !ok || info.Description != "decoder exploded" {
+		t.Fatal("the original wording is not the tooltip", info.Description)
+	}
+}

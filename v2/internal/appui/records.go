@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
@@ -667,7 +668,8 @@ func (a *App) importDialog(c *ui.Context) {
 					}
 					muted(c, strings.Join(p.Names, "、"))
 					for _, w := range p.Warnings {
-						ui.Text(c, w).FontSize(12).TextColor(t.Warning)
+						text, detail := importNote(w)
+						ui.Text(c, text).FontSize(12).TextColor(t.Warning).Tooltip(detail)
 					}
 					for _, target := range p.Targets {
 						muted(c, "已存在："+target)
@@ -688,6 +690,25 @@ func (a *App) importDialog(c *ui.Context) {
 			})
 		})
 	})
+}
+
+// importNote words a note of the import preview for the user. The platform's own are partly English (a skipped
+// link, a file that could not be read, with the reader's error); known ones are said in Chinese, others as
+// "部分内容无法导入". The original wording stays as the tooltip, for whoever needs to look into it.
+func importNote(w string) (text, detail string) {
+	switch {
+	case strings.HasPrefix(w, "skipped symlink "):
+		return "已跳过链接文件「" + strings.TrimPrefix(w, "skipped symlink ") + "」", ""
+	case strings.Contains(w, "明文密码"):
+		return "此文件含明文密码；导入后会加密保存在本机", ""
+	}
+	if name, _, ok := strings.Cut(w, ": "); ok && strings.HasSuffix(strings.ToLower(name), ".json") {
+		return "「" + name + "」无法读取，已跳过", w
+	}
+	if strings.IndexFunc(w, func(r rune) bool { return unicode.Is(unicode.Han, r) }) >= 0 {
+		return w, "" // already worded for the user
+	}
+	return "部分内容无法导入", w
 }
 func (a *App) commitImportButton(c *ui.Context) {
 	s := &a.hosts.records.data
