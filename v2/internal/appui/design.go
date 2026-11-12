@@ -62,6 +62,30 @@ func designTheme(base *ui.Theme, mode string, highContrast bool) *ui.Theme {
 	return &t
 }
 
+// Selected rows of tables, lists and sidebars are filled with Accent and their
+// text is AccentText: 4.8:1 in the light theme and 10:1 in the dark one, also
+// in a window that is not active (design_test.go checks all of these). Text
+// that colors itself no longer follows the row, so it asks for its color here.
+
+// mutedOnRow is the color of secondary text (icons, sizes, dates) in a row that
+// may be selected. TextMuted on the accent fill is 1.1:1 in the light theme.
+func mutedOnRow(t *ui.Theme, selected bool) ui.Color {
+	if selected {
+		return t.AccentText
+	}
+	return t.TextMuted
+}
+
+// accentInk is accent-colored text on the pale accent tint of a chosen button
+// or on SurfaceHover. Accent itself is 3.7:1 to 4.3:1 there in the light theme,
+// so that theme uses the deeper AccentPressed (6.4:1 or better).
+func accentInk(t *ui.Theme) ui.Color {
+	if t.Dark {
+		return t.Accent
+	}
+	return t.AccentPressed
+}
+
 var terminalLight, terminalDark = terminalPalette(false), terminalPalette(true)
 
 func terminalPalette(dark bool) *terminal.Theme {

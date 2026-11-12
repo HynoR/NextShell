@@ -363,7 +363,7 @@ func (a *App) documentTabs(c *ui.Context) {
 				}
 				e := tabs.Tab(i).Label("文档 "+d.Document.Path).Padding(6, 10).Gap(8).Radius(t.Radius).Tooltip(d.Document.Path).AlignItems(ui.Center)
 				if i == s.active {
-					e.Background(t.SurfaceHover).TextColor(t.Accent)
+					e.Background(t.SurfaceHover).TextColor(accentInk(t))
 				}
 				e.Children(func() {
 					ui.Text(c, label).SingleLine()

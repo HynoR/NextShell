@@ -204,6 +204,7 @@ func (a *App) filesPanel(c *ui.Context) {
 		cols := []ui.TableColumn{{Title: "名称", ID: "name", Sortable: true}, {Title: "大小", ID: "size", Width: 64, Align: ui.End, Sortable: true}, {Title: "修改时间", ID: "modified", Width: 84, Sortable: true}}
 		table := ui.Table(c.Key("files-"+id), &s.list, cols, len(s.entries), func(row, col int) {
 			f := s.entries[row]
+			faint := mutedOnRow(t, s.selection.Has(f.Path))
 			switch col {
 			case 0:
 				if s.renaming == f.Path {
@@ -219,7 +220,7 @@ func (a *App) filesPanel(c *ui.Context) {
 					label = "打开 " + f.Name
 				}
 				ui.Row(c).Label(label).Gap(6).AlignItems(ui.Center).Tooltip(f.Mode).Children(func() {
-					ui.Icon(c, appIcons[icon]).FontSize(15).TextColor(t.TextMuted)
+					ui.Icon(c, appIcons[icon]).FontSize(15).TextColor(faint)
 					name := f.Name
 					if f.Symlink {
 						name += " →"
@@ -231,9 +232,9 @@ func (a *App) filesPanel(c *ui.Context) {
 				if !f.Directory {
 					size = humanSize(f.Size)
 				}
-				ui.Text(c, size).FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, size).FontSize(12).TextColor(faint)
 			case 2:
-				ui.Text(c, shortTime(f.Modified)).FontSize(12).TextColor(t.TextMuted).SingleLine()
+				ui.Text(c, shortTime(f.Modified)).FontSize(12).TextColor(faint).SingleLine()
 			}
 		}).Grow(1).FillWidth()
 		a.fileClipboardKeys(table, id)

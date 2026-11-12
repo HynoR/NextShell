@@ -12,6 +12,7 @@ import (
 
 type hostsState struct {
 	selected           string
+	listFocused        bool // the sidebar has the focus, so its chosen row is on the accent fill
 	filter             string
 	filterOpen         bool
 	collapsed          map[string]bool
@@ -192,6 +193,10 @@ func (a *App) sidebar(c *ui.Context) {
 			}
 			a.hostTree(c, "", 0)
 		}).Label("主机列表").Grow(1).FillWidth()
+		if f := list.Focused(); f != h.listFocused {
+			h.listFocused = f
+			c.Invalidate()
+		}
 		if list.Shortcut(0, ui.KeyEnter) {
 			if cc, ok := a.host(h.selected); ok {
 				a.connect(cc)
@@ -277,7 +282,14 @@ func (a *App) hostItem(c *ui.Context, cc model.Connection, where string) {
 	item := ui.SidebarItem(c.Key(where+cc.ID), cc.ID, appIcons["server"], cc.Name).Tooltip(cc.User + "@" + cc.Address()).Drag(hostDrag(cc.ID))
 	a.hostMenu(item, cc)
 	if color, ok := a.hostStatus(c, cc.ID); ok {
-		item.Children(func() { dot(c, color) })
+		// On the accent fill of the chosen row the dot would be lost: ring it in the row's text color.
+		ring := a.hosts.selected == cc.ID && a.hosts.listFocused
+		item.Children(func() {
+			d := dot(c, color)
+			if ring {
+				d.Border(1.5, c.Theme().AccentText)
+			}
+		})
 	}
 	if item.DoubleClicked() {
 		a.connect(cc)
@@ -548,7 +560,7 @@ func (a *App) hostDialog(c *ui.Context) {
 					for i, label := range []string{"常规", "认证", "高级"} {
 						b := ui.ButtonBase(c).Label(label).Padding(6, 10).Radius(t.Radius).FillWidth()
 						if i == e.section {
-							b.Background(t.Accent.Alpha(.15)).TextColor(t.Accent)
+							b.Background(t.Accent.Alpha(.15)).TextColor(accentInk(t))
 						} else if b.Hovered() {
 							b.Background(t.SurfaceHover)
 						}

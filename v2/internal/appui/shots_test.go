@@ -129,10 +129,22 @@ func TestScreenshots(t *testing.T) {
 	}}})
 	tt.Frame()
 	shot(tt, "02b-files-breadcrumbs-natural-order")
+	// Selected rows: two files and a host, where the accent fill carries the text.
+	click(t, tt, "选择 access.log.2")
+	if e := tt.ClickWith(ui.Cmd, "选择 access.log"); e != nil {
+		t.Fatal(e)
+	}
+	tt.ClickAt(73, 330) // db-master in the sidebar; its tab has the same label
+	shot(tt, "02c-selected-rows")
+	tt.Key(0, ui.KeyEscape)
 	click(t, tt, "监控")
 	shot(tt, "03-main-monitor")
 	click(t, tt, "进程")
 	shot(tt, "04-main-monitor-processes")
+	click(t, tt, "网络")
+	click(t, tt, "tcp ESTAB")
+	shot(tt, "04a-main-monitor-network-selected")
+	click(t, tt, "进程")
 	dblclick(t, tt, "postgres: checkpointer")
 	shot(tt, "04b-process-drawer")
 	click(t, tt, "关闭详情")
