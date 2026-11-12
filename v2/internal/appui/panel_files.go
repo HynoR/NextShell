@@ -529,7 +529,7 @@ func (a *App) filesPanel(c *ui.Context) {
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
 func (a *App) followHint(c *ui.Context) {
 	t := c.Theme()
-	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + shortcutLabel("K") + "，选「插入目录跟踪脚本」，检查后回车执行即可。"
+	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + appShortcutLabel("K") + "，选「让文件面板跟随终端目录」，检查后回车执行即可。"
 	if a.Prefs.ShellIntegration == "off" {
 		text = "目录跟踪在设置里是关闭的。到设置的「Shell 集成」打开后，文件面板才能跟随终端目录。"
 	}

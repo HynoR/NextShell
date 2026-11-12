@@ -255,7 +255,7 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 		t.Fatal("a hint before the toggle is on")
 	}
 	click(t, tt, "跟随终端目录")
-	has(t, tt, "还没有收到终端的当前目录，暂时无法跟随。", "插入目录跟踪脚本")
+	has(t, tt, "还没有收到终端的当前目录，暂时无法跟随。", "让文件面板跟随终端目录")
 	for _, s := range tt.Texts() {
 		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") {
 			t.Fatal("the hint names a file:", s)
