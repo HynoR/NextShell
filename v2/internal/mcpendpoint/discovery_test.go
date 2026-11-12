@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 )
 
 func readDiscovery(t *testing.T, path string) Discovery {
@@ -75,6 +76,11 @@ func TestDiscoveryWriteTightensLooseExistingModeAndIsAtomicForReaders(t *testing
 			case <-stop:
 				return
 			default:
+			}
+			if runtime.GOOS == "windows" {
+				// Go opens files without FILE_SHARE_DELETE, so a rename waits (WriteDiscovery retries for up to
+				// 2 s) until the reader's handle is closed; give it gaps instead of a hammering loop.
+				time.Sleep(time.Millisecond)
 			}
 			if raw, e := os.ReadFile(path); e == nil {
 				var d Discovery
