@@ -357,3 +357,69 @@ func TestDesktopSSHWrongPasswordAsksAgainAtMostThreeTimes(t *testing.T) {
 		t.Fatal("third failure did not end the attempt", ev)
 	}
 }
+
+// TestCancelConnect stops a connect in its handshake and at its host key dialog: the network connection
+// closes, the dialog goes, no failure is reported and nothing is left running.
+func TestCancelConnect(t *testing.T) {
+	p := desktopFixture(t)
+	l, e := net.Listen("tcp", "127.0.0.1:0")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer l.Close()
+	h, ps, _ := net.SplitHostPort(l.Addr().String())
+	port, _ := strconv.Atoi(ps)
+	silent := model.Connection{ID: p.NewID(), Name: "silent", Host: h, Port: port, User: "u", Auth: "password", Encoding: "utf-8"}
+	secret := "x"
+	if e := p.SaveConnection(silent, &secret); e != nil {
+		t.Fatal(e)
+	}
+	p.Connect(silent)
+	c, e := l.Accept() // the server never answers: the handshake waits
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer c.Close()
+	p.CancelConnect(silent.ID)
+	c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, e := io.Copy(io.Discard, c); e != nil {
+		t.Fatal("the connection stayed open", e)
+	}
+
+	conn, _ := desktopSSH(t)
+	conn.ID = p.NewID()
+	if e := p.SaveConnection(conn, &conn.Secret); e != nil {
+		t.Fatal(e)
+	}
+	p.Connect(conn)
+	ask := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	p.CancelConnect(conn.ID)
+	select {
+	case <-ask.Prompt.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the host key dialog stayed")
+	}
+	waitIdle(t, p)
+	for _, e := range p.Poll() {
+		if e.Failed != "" || e.Message != "" || e.Session != nil {
+			t.Fatalf("cancelled connect reported %+v", e)
+		}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.connects) != 0 || len(p.sessions) != 0 {
+		t.Fatal("left behind", p.connects, p.sessions)
+	}
+}
+
+// waitIdle waits for the platform's background work to end.
+func waitIdle(t *testing.T, p *Platform) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { p.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a connect is still running")
+	}
+}

@@ -183,8 +183,22 @@ func (a *App) pendingStrip(c *ui.Context, pending []model.Connection) {
 			ui.Box(c).Size(6, 6).Radius(3).Background(t.Warning)
 			ui.Text(c, cc.Name).SingleLine().MaxWidth(180).FontSize(13)
 			ui.Text(c, "连接中").FontSize(11).TextColor(t.Warning).SingleLine()
+			x := ui.ButtonBase(c).Label("取消连接 "+cc.Name).Tooltip("取消连接").Size(18, 18).Radius(4).Center()
+			if x.Hovered() {
+				x.Background(t.SurfacePressed)
+			}
+			x.Children(func() { ui.Icon(c, appIcons["close"]).FontSize(12).TextColor(t.TextMuted) })
+			if x.Clicked() {
+				a.later(func() { a.cancelConnect(cc.ID) })
+			}
 		})
 	}
+}
+
+// cancelConnect stops connecting to saved host id; its 连接中 tab or status goes.
+func (a *App) cancelConnect(id string) {
+	delete(a.hosts.connecting, id)
+	a.P.CancelConnect(id)
 }
 
 // connectingView fills the centre column while the first tab is still connecting.
@@ -193,5 +207,9 @@ func (a *App) connectingView(c *ui.Context, pending []model.Connection) {
 		ui.Spinner(c)
 		ui.Text(c, "正在连接 "+pending[0].Name+"…").Bold()
 		muted(c, pending[0].User+"@"+pending[0].Address())
+		if ui.Button(c, "取消").Label("取消连接").Clicked() || c.Shortcut(0, ui.KeyEscape) {
+			a.later(func() { a.cancelConnect(pending[0].ID) })
+		}
+		muted(c, "按 Esc 取消").FontSize(11)
 	})
 }

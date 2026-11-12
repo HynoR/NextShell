@@ -390,6 +390,37 @@ func TestConnectingTabAppearsOnFirstConnect(t *testing.T) {
 	}
 }
 
+func TestConnectingTabCancels(t *testing.T) {
+	p := newPlatform(t)
+	host := saveHost(t, p, model.Connection{Name: "first", Host: "first.example", User: "u"})
+	a, tt := start(p)
+	connect := func() {
+		click(t, tt, "快速连接")
+		tt.Type("first")
+		tt.Key(0, ui.KeyEnter)
+		has(t, tt, "正在连接 first…")
+	}
+	connect()
+	click(t, tt, "取消连接 first") // the tab's close button
+	connect()
+	tt.Key(0, ui.KeyEscape)
+	connect()
+	tt.Key(appMod(), ui.KeyW)
+	if tt.HasText("正在连接 first…") || len(p.cancelled) != 3 || p.cancelled[2] != host.ID {
+		t.Fatal("cancel", p.cancelled, tt.Texts())
+	}
+	// Closing a tab that is reconnecting stops the reconnect too.
+	s := session(t, p, tt, "one", "first", host)
+	s.Terminal.Close()
+	<-s.Terminal.Done()
+	tt.Frame()
+	click(t, tt, "重新连接")
+	tt.Key(appMod(), ui.KeyW)
+	if len(a.Tabs) != 0 || len(p.cancelled) != 4 {
+		t.Fatal("reconnect not cancelled", p.cancelled)
+	}
+}
+
 func TestSendCommandDialogAndHistory(t *testing.T) {
 	_, p, tt := fixture(t)
 	session(t, p, tt, "one", "one", remoteHost("one"))

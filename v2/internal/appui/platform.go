@@ -124,6 +124,8 @@ type Platform interface {
 	// ReplaceKey gives key id a new private key, read from path unless pem is set; it keeps its name.
 	ReplaceKey(id, path, pem, passphrase string) error
 	Connect(model.Connection)
+	// CancelConnect stops the connects in progress to saved connection id, reporting nothing.
+	CancelConnect(id string)
 	Local()
 	Reconnect(*Session)
 	CloneSession(*Session)

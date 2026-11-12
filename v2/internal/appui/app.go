@@ -430,11 +430,13 @@ func (a *App) shortcuts(c *ui.Context) {
 	if c.Shortcut(appMod, ui.KeyT) {
 		a.P.Local()
 	}
-	if c.Shortcut(appMod, ui.KeyW) && a.current() != nil {
+	if c.Shortcut(appMod, ui.KeyW) {
 		if tool := a.activeTool(); tool != nil {
 			a.closeTool(*tool)
-		} else {
+		} else if a.current() != nil {
 			a.closeTab(a.Active)
+		} else if pending := a.pendingTabs(); len(a.Tabs) == 0 && len(pending) > 0 { // the 连接中 page shows
+			a.cancelConnect(pending[0].ID)
 		}
 	}
 	// The ⌘ letters a shell also uses take Ctrl only outside the terminal, as ⌘K does.

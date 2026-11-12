@@ -21,6 +21,7 @@ type fakePlatform struct {
 	connects                    []model.Connection
 	local, cloned, reconnected  int
 	closed, listed, sent        []string
+	cancelled                   []string
 	reloaded                    []string
 	queued                      []appui.TransferRequest
 	actions                     [][3]string
@@ -42,6 +43,7 @@ func (p *fakePlatform) Poll() []appui.Event {
 }
 func (p *fakePlatform) Connect(c model.Connection)    { p.connects = append(p.connects, c) }
 func (p *fakePlatform) Local()                        { p.local++ }
+func (p *fakePlatform) CancelConnect(id string)       { p.cancelled = append(p.cancelled, id) }
 func (p *fakePlatform) CloneSession(s *appui.Session) { p.cloned++ }
 func (p *fakePlatform) Reconnect(s *appui.Session)    { p.reconnected++ }
 func (p *fakePlatform) CloseSession(id string)        { p.closed = append(p.closed, id) }
