@@ -16,6 +16,7 @@ import (
 
 func fixture(t *testing.T) (*sftpfs.Client, string) {
 	t.Helper()
+	testutil.RequirePOSIXRemote(t)
 	root := t.TempDir()
 	server, e := testutil.New(root)
 	if e != nil {

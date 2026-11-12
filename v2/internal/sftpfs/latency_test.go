@@ -70,6 +70,7 @@ func delayProxy(t *testing.T, target string, oneWay time.Duration) string {
 // A 20 ms RTT link must not cap SFTP at 32 KiB / RTT (1.6 MB/s): sequential 32 KiB writes would need
 // ~5 s for these 8 MiB, pipelined requests need a fraction of a second.
 func TestTransfersAreNotRoundTripBound(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	root := t.TempDir()
 	server, e := testutil.New(root)
 	if e != nil {

@@ -15,6 +15,7 @@ import (
 
 func client(t testing.TB) (*Client, string) {
 	t.Helper()
+	testutil.RequirePOSIXRemote(t)
 	root := t.TempDir()
 	server, e := testutil.New(root)
 	if e != nil {
