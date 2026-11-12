@@ -16,6 +16,8 @@ go vet ./... && go test ./... && go test -race ./...
 docker run --rm -v "$PWD":/src -w /src -v nextshell-gomod:/go/pkg/mod -e GOTOOLCHAIN=auto golang:1.27 go test ./... -count=1
 # 真实 OpenSSH 互操作测试(Docker):
 go test -tags interop ./internal/interop/ -count=1 -timeout 30m
+# 会打开窗口的端到端测试(默认跳过):SIGTERM 在会话打开时无需确认即退出
+NEXTSHELL_GUI_TESTS=1 go test ./cmd/nextshell -run SIGTERM -count=1
 ```
 
 Agent 测试:`go run -tags nextshell_devtools ./cmd/nextshell --agent-test --db <临时目录>/t.db` 启动即开启 MCP 和自动批准,并在 stderr 打印 `mcp.json` 路径(必须带 `--db`;默认和发布构建没有这个参数)。
