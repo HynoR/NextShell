@@ -16,18 +16,18 @@ import (
 // sessions, SFTP and transfers recorded instead of touching the network.
 type fakePlatform struct {
 	*desktop.Platform
-	terminals                  map[string]*terminal.Terminal
-	events                     []appui.Event
-	connects                   []model.Connection
-	local, cloned, reconnected int
-	closed, listed, sent       []string
-	reloaded                   []string
-	queued                     []appui.TransferRequest
-	actions                    [][3]string
-	jobs                       []transfer.Job
-	watching                   map[string]bool
-	opened                     []string
-	settingsShown              int
+	terminals                   map[string]*terminal.Terminal
+	events                      []appui.Event
+	connects                    []model.Connection
+	local, cloned, reconnected  int
+	closed, listed, sent        []string
+	reloaded                    []string
+	queued                      []appui.TransferRequest
+	actions                     [][3]string
+	jobs                        []transfer.Job
+	watching, detailed          map[string]bool
+	opened                      []string
+	settingsShown, managerShown int
 }
 
 func (p *fakePlatform) Poll() []appui.Event {
@@ -55,11 +55,11 @@ func (p *fakePlatform) QueueTransfer(r appui.TransferRequest) (string, error) {
 	p.queued = append(p.queued, r)
 	return "job", nil
 }
-func (p *fakePlatform) Transfers() []transfer.Job       { return p.jobs }
-func (p *fakePlatform) RefreshMonitor(string)           {}
-func (p *fakePlatform) WatchMonitor(id string, on bool) { p.watching[id] = on }
-func (p *fakePlatform) WatchMonitorDetail(string, bool) {}
-func (p *fakePlatform) OpenRemote(session, path string) { p.opened = append(p.opened, path) }
+func (p *fakePlatform) Transfers() []transfer.Job             { return p.jobs }
+func (p *fakePlatform) RefreshMonitor(string)                 {}
+func (p *fakePlatform) WatchMonitor(id string, on bool)       { p.watching[id] = on }
+func (p *fakePlatform) WatchMonitorDetail(id string, on bool) { p.detailed[id] = on }
+func (p *fakePlatform) OpenRemote(session, path string)       { p.opened = append(p.opened, path) }
 func (p *fakePlatform) ReloadRemote(session, path string) {
 	p.reloaded = append(p.reloaded, path)
 }
@@ -102,7 +102,7 @@ func newPlatform(t *testing.T) *fakePlatform {
 		t.Fatal(e)
 	}
 	t.Cleanup(p.Shutdown)
-	return &fakePlatform{Platform: p, terminals: map[string]*terminal.Terminal{}, watching: map[string]bool{}}
+	return &fakePlatform{Platform: p, terminals: map[string]*terminal.Terminal{}, watching: map[string]bool{}, detailed: map[string]bool{}}
 }
 func fixture(t *testing.T) (*appui.App, *fakePlatform, *ui.Tester) {
 	t.Helper()
@@ -115,6 +115,7 @@ func fixture(t *testing.T) (*appui.App, *fakePlatform, *ui.Tester) {
 func start(p *fakePlatform) (*appui.App, *ui.Tester) {
 	a := appui.New(p)
 	a.ShowSettings = func() { p.settingsShown++ }
+	a.ShowManager = func() { p.managerShown++ }
 	return a, ui.NewTester(a.View, 1280, 800)
 }
 func click(t *testing.T, tt *ui.Tester, label string) {

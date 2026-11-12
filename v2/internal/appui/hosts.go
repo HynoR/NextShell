@@ -72,6 +72,9 @@ func (a *App) connect(cc model.Connection) {
 		a.report(a.P.SaveUIState("recent", strings.Join(a.hosts.recent, "\n")), "")
 	}
 	a.P.Connect(cc)
+	if a.view == managerWindow { // the session opens in the main window
+		a.raiseMain()
+	}
 }
 func remove(ss []string, s string) []string {
 	out := ss[:0:0]
@@ -138,7 +141,8 @@ func (a *App) hostStatus(c *ui.Context, id string) (ui.Color, bool) {
 	return t.TextMuted, seen
 }
 
-func (a *App) sidebar(c *ui.Context) {
+// hostTree is the connection manager's tree of folders and hosts.
+func (a *App) hostTree(c *ui.Context) {
 	t := c.Theme()
 	h := &a.hosts
 	ui.Column(c).Fill().MinWidth(0).Background(t.Surface).Children(func() {
@@ -194,7 +198,7 @@ func (a *App) sidebar(c *ui.Context) {
 				})
 				h.collapsed["★"] = !open
 			}
-			a.hostTree(c, "", 0)
+			a.hostFolder(c, "", 0)
 		}).Label("主机列表").Grow(1).FillWidth()
 		if f := list.Focused(); f != h.listFocused {
 			h.listFocused = f
@@ -208,12 +212,13 @@ func (a *App) sidebar(c *ui.Context) {
 		ui.Row(c).FillWidth().Padding(6, 8).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
 			if ghost(c, "本地终端", "terminal").Grow(1).Clicked() {
 				a.P.Local()
+				a.raiseMain()
 			}
 		})
 	})
 }
 
-func (a *App) hostTree(c *ui.Context, parent string, depth int) {
+func (a *App) hostFolder(c *ui.Context, parent string, depth int) {
 	if depth > 30 {
 		return
 	}
@@ -243,7 +248,7 @@ func (a *App) hostTree(c *ui.Context, parent string, depth int) {
 			continue
 		}
 		open := !a.hosts.collapsed[f.ID]
-		section := ui.SidebarSection(c.Key(f.ID+"folder"), fmt.Sprintf("%s  %d", f.Name, a.folderCount(f.ID)), &open, func() { a.hostTree(c, f.ID, depth+1) })
+		section := ui.SidebarSection(c.Key(f.ID+"folder"), fmt.Sprintf("%s  %d", f.Name, a.folderCount(f.ID)), &open, func() { a.hostFolder(c, f.ID, depth+1) })
 		if depth > 0 {
 			section.PaddingStart(12) // nests inside the parent's section, so it adds up per depth
 		}
@@ -309,8 +314,8 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 		if m.Item("连接").Chosen() {
 			a.later(func() { a.connect(cc) })
 		}
-		if m.Item("连接并打开文件面板").Chosen() {
-			a.later(func() { a.connect(cc); a.showPanel(panelFiles) })
+		if m.Item("连接并打开 SFTP").Chosen() {
+			a.later(func() { a.connect(cc); a.showBench(benchFiles) })
 		}
 		m.Separator()
 		if m.Item("编辑…").Chosen() {
@@ -463,10 +468,13 @@ func (a *App) folderMenu(e ui.Element, f model.Folder) {
 
 // Host editor.
 
+// newHost, editHost and editFolder open their dialog in the connection manager.
 func (a *App) newHost(folder string) {
+	a.openManager()
 	a.hosts.editor = hostEditor{open: true, edit: model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, FolderID: folder}, port: "22", keepaliveMode: keepaliveGlobal, keepalive: strconv.Itoa(model.DefaultKeepaliveSeconds), inheritOrig: true}
 }
 func (a *App) editHost(c model.Connection) {
+	a.openManager()
 	e := hostEditor{open: true, edit: c, port: strconv.Itoa(c.Port), tags: strings.Join(c.Tags, ", "), keepalive: strconv.Itoa(c.EffectiveKeepalive())}
 	switch {
 	case c.KeepaliveEnabled == nil && c.Keepalive == 0:
@@ -702,7 +710,10 @@ func indexOf(ss []string, s string) int {
 
 // Folder dialog.
 
-func (a *App) editFolder(f model.Folder) { a.hosts.folder = folderEditor{open: true, folder: f} }
+func (a *App) editFolder(f model.Folder) {
+	a.openManager()
+	a.hosts.folder = folderEditor{open: true, folder: f}
+}
 func (a *App) folderDialog(c *ui.Context) {
 	e := &a.hosts.folder
 	if !e.open {

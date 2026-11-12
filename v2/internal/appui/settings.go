@@ -180,7 +180,7 @@ func (a *App) SettingsView(c *ui.Context) {
 			a.savePreferences(p)
 		}
 	}
-	a.confirmView(c, true)
+	a.confirmView(c, settingsWindow)
 	a.detailView(c, settingsWindow)
 	a.runActions(c)
 	a.flushToasts(c, settingsWindow)

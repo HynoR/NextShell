@@ -1,6 +1,7 @@
 package appui
 
 import (
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -55,9 +56,45 @@ func (a *App) restoreTabs() {
 
 type tabDrag string
 
+// tabBar heads the centre column: the tabs, and a button for a new local terminal or a recent host.
+func (a *App) tabBar(c *ui.Context) {
+	t := c.Theme()
+	ui.Row(c).FillWidth().Height(38).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
+		a.tabStrip(c)
+		plus := iconButton(c, "新建本地终端", "plus")
+		if plus.Clicked() {
+			a.P.Local()
+		}
+		plus.PopoverMenu(func(m *ui.Menu) {
+			if m.Item("本地终端").Chosen() {
+				a.later(a.P.Local)
+			}
+			if m.Item("打开连接管理器").Chosen() {
+				a.later(a.openManager)
+			}
+			m.Separator()
+			for _, cc := range a.hosts.recentHosts(a, 10) {
+				if m.Item(cc.Name).ID(cc.ID).Subtitle(cc.User + "@" + cc.Host).Chosen() {
+					a.later(func() { a.connect(cc) })
+				}
+			}
+		})
+		ui.Spacer(c).Grow(1)
+	})
+}
+
+// hostColors tell hosts apart on tabs; a host keeps its color across runs.
+var hostColors = []string{"#4d9fff", "#a78bfa", "#f472b6", "#2dd4bf", "#fb923c", "#818cf8", "#38bdf8", "#e879f9"}
+
+func hostColor(s *Session) ui.Color {
+	h := fnv.New32a()
+	h.Write([]byte(orDefault(s.Connection.ID, s.Connection.User+"@"+s.Connection.Address())))
+	return ui.Hex(hostColors[h.Sum32()%uint32(len(hostColors))])
+}
+
 func (a *App) tabStrip(c *ui.Context) {
 	t := c.Theme()
-	ui.ScrollHorizontal(c).Height(40).MinWidth(0).Shrink(1).Children(func() {
+	ui.ScrollHorizontal(c).Height(38).MinWidth(0).Shrink(1).Children(func() {
 		if len(a.Tabs) == 0 {
 			return
 		}
@@ -65,7 +102,7 @@ func (a *App) tabStrip(c *ui.Context) {
 		// the only one in the background) must stay that way, so it gets a copy and a.Active only follows a click.
 		selected := a.Active
 		tabs := ui.TabsBase(c, &selected, len(a.Tabs))
-		tabs.List.Height(40).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
+		tabs.List.Height(38).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
 				tab := tabs.Tab(i).Label(s.Title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Drag(tabDrag(s.ID)).Tooltip(a.tabTooltip(s))
@@ -90,9 +127,11 @@ func (a *App) tabStrip(c *ui.Context) {
 					if exited || i != a.Active {
 						color = t.TextMuted
 					}
-					if exited {
-						ui.Text(c, "⟳").FontSize(12).TextColor(t.TextMuted)
+					if !s.Local {
+						ui.Box(c).Size(3, 14).Radius(1.5).Background(hostColor(s))
 					}
+					label, status := a.sessionStatus(c, s)
+					ui.Box(c).Size(6, 6).Radius(3).Background(status).Label("状态 " + label)
 					a.agentBadge(c, s)
 					if a.tabs.renaming == s.ID {
 						in := ui.TextInput(c.Key("rename-"+s.ID), &a.tabs.renameText).Label("标签名称").Width(140).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
@@ -107,6 +146,16 @@ func (a *App) tabStrip(c *ui.Context) {
 						}
 					} else {
 						ui.Text(c, s.Title).SingleLine().MaxWidth(180).FontSize(13).TextColor(color)
+					}
+					if exited && label != "连接中" {
+						r := ui.ButtonBase(c).Label("重新连接 "+s.Title).Tooltip("重新连接").Size(18, 18).Radius(4).Center()
+						if r.Hovered() {
+							r.Background(t.SurfacePressed)
+						}
+						r.Children(func() { ui.Icon(c, appIcons["refresh"]).FontSize(12).TextColor(t.Warning) })
+						if r.Clicked() {
+							a.later(func() { a.reconnect(s) })
+						}
 					}
 					x := ui.ButtonBase(c).Label("关闭标签 "+s.Title).Tooltip("关闭标签").Size(18, 18).Radius(4).Center()
 					if x.Hovered() {
@@ -158,7 +207,10 @@ func (a *App) tabMenu(item ui.Element, s *Session) {
 			a.later(func() { a.P.CloneSession(s) })
 		}
 		if m.Item("重新连接").Chosen() {
-			a.later(func() { a.P.Reconnect(s) })
+			a.later(func() { a.reconnect(s) })
+		}
+		if m.Item("打开连接管理器").Chosen() {
+			a.later(a.openManager)
 		}
 		m.Separator()
 		if m.Item("清屏").Chosen() {

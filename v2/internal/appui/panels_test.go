@@ -150,7 +150,7 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	}
 	// A local tab has no file panel.
 	session(t, p, tt, "local", "local", model.Connection{})
-	has(t, tt, "文件面板用于远程 SSH 会话")
+	has(t, tt, "SFTP 用于远程 SSH 会话")
 }
 
 func TestRemoteEditorOpensFromFilesAndGuardsDirtyClose(t *testing.T) {
@@ -221,7 +221,6 @@ func TestSnippetsPanelSendParamsCreateAndDelete(t *testing.T) {
 	if len(snap.Commands) != 2 {
 		t.Fatal("snippet not deleted")
 	}
-	click(t, tt, "片段")
 	tt.RightClick("片段 plain")
 	tt.ChooseMenuItem("发送到全部会话…")
 	click(t, tt, "发送到 1 个会话")
@@ -230,18 +229,38 @@ func TestSnippetsPanelSendParamsCreateAndDelete(t *testing.T) {
 	}
 }
 
-func TestMonitorPanelSamplesOnlyWhileVisible(t *testing.T) {
+func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	_, p, tt := fixture(t)
+	tt.SetSize(1280, 1100) // room for the process drawer
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
-	has(t, tt, "正在采样…（仅支持 Linux 服务器）")
+	has(t, tt, "系统监控", "正在采样…（仅支持 Linux 服务器）")
+	if !p.watching["one"] || p.detailed["one"] {
+		t.Fatal("the left column samples lightly", p.watching, p.detailed)
+	}
 	now := time.Now()
+	light := monitorSnapshot(now, 0)
+	light.Detail, light.Processes, light.Network = false, nil, nil
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: light}})
+	tt.Frame()
+	has(t, tt, "CPU", "内存", "交换", "磁盘", "0.42 0.38 0.35", "20%", "59.0G / 80.0G", "↑ 39.1K/s", "Ubuntu 24.04 LTS · 4 核 · 运行 12 天")
+	// 进程管理器 opens the process page, which waits for a full sample instead of showing none.
+	click(t, tt, "进程管理器")
+	if !p.detailed["one"] {
+		t.Fatal("process page without the full probe")
+	}
+	has(t, tt, "正在采样…（仅支持 Linux 服务器）")
+	if tt.HasText("0 / 0 个进程") {
+		t.Fatal("a light sample showed as no processes")
+	}
 	for i := range 3 {
-		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: monitorSnapshot(now.Add(time.Duration(i)*2*time.Second), i)}})
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: monitorSnapshot(now.Add(time.Duration(i+1)*2*time.Second), i)}})
 	}
 	tt.Frame()
-	has(t, tt, "CPU", "内存", "网络", "磁盘", "负载 0.42 0.38 0.35")
-	click(t, tt, "进程")
+	has(t, tt, "nginx: worker process", "3 / 3 个进程")
+	// A light sample after a full one keeps the last full tables.
+	light.At = now.Add(10 * time.Second)
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: light}})
+	tt.Frame()
 	has(t, tt, "nginx: worker process", "3 / 3 个进程")
 	click(t, tt, "过滤进程")
 	tt.Type("postgres")
@@ -257,15 +276,22 @@ func TestMonitorPanelSamplesOnlyWhileVisible(t *testing.T) {
 	tt.RightClick("postgres: checkpointer")
 	tt.ChooseMenuItem("详细信息")
 	has(t, tt, "进程 2201")
+	click(t, tt, "网络管理器")
+	has(t, tt, "tcp LISTEN")
 	click(t, tt, "历史")
 	has(t, tt, "CPU · %")
-	session(t, p, tt, "two", "two", remoteHost("two"))
-	if p.watching["one"] || !p.watching["two"] {
-		t.Fatal("watch did not follow the active tab", p.watching)
+	if p.detailed["one"] || !p.watching["one"] {
+		t.Fatal("history keeps the full probe", p.detailed)
 	}
-	click(t, tt, "文件")
-	if p.watching["two"] {
-		t.Fatal("still sampling with the panel hidden")
+	click(t, tt, "进程")
+	session(t, p, tt, "two", "two", remoteHost("two"))
+	if p.watching["one"] || !p.watching["two"] || p.detailed["one"] || !p.detailed["two"] {
+		t.Fatal("watch did not follow the active tab", p.watching, p.detailed)
+	}
+	tt.Key(appMod(), ui.KeyB)
+	click(t, tt, "SFTP")
+	if p.watching["two"] || p.detailed["two"] {
+		t.Fatal("still sampling with nothing showing it")
 	}
 }
 
@@ -294,6 +320,7 @@ func TestSendCommandDialogAndHistory(t *testing.T) {
 
 func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 	_, p, tt := fixture(t)
+	tt.SetSize(1280, 1400) // every row in view
 	session(t, p, tt, "one", "one", remoteHost("one"))
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	listing(p, tt, "one", "/d",
@@ -320,7 +347,8 @@ func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 		t.Fatal("default order", got)
 	}
 	click(t, tt, "大小")
-	click(t, tt, "大小") // descending
+	tt.Advance(time.Second) // not a double click
+	click(t, tt, "大小")      // descending
 	if got := order(); got != "zeta alpha File2 file10" {
 		t.Fatal("size descending", got)
 	}

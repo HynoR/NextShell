@@ -7,15 +7,15 @@ import (
 )
 
 type dialogState struct {
-	prompts       []*Prompt
-	answers       []string
-	remember      bool
-	changedAsk    bool // the second confirmation of a changed host key
-	links         []string
-	detail        string
-	detailIn      window // where the details of an error toast show: the window it showed in
-	pending       *confirmation
-	pendingWindow bool // true: the settings window shows it
+	prompts    []*Prompt
+	answers    []string
+	remember   bool
+	changedAsk bool // the second confirmation of a changed host key
+	links      []string
+	detail     string
+	detailIn   window // where the details of an error toast show: the window it showed in
+	pending    *confirmation
+	pendingIn  window // the window that asked shows it
 }
 
 // confirmation is an alert for a dangerous action, whose button names the action.
@@ -27,11 +27,14 @@ type confirmation struct {
 // confirm asks before run, in the window that asked.
 func (a *App) confirm(title, message, action string, run func()) {
 	a.dialogs.pending = &confirmation{title, message, action, run}
-	a.dialogs.pendingWindow = a.view == settingsWindow
+	a.dialogs.pendingIn = a.view
+	if a.view == editorWindow { // it has no alerts of its own
+		a.dialogs.pendingIn = mainWindow
+	}
 }
-func (a *App) confirmView(c *ui.Context, settings bool) {
+func (a *App) confirmView(c *ui.Context, w window) {
 	d := &a.dialogs
-	if d.pending == nil || d.pendingWindow != settings {
+	if d.pending == nil || d.pendingIn != w {
 		return
 	}
 	p := d.pending
@@ -71,13 +74,10 @@ func (d *dialogState) answer(values []string) {
 }
 
 func (a *App) dialogsView(c *ui.Context) {
-	a.hostDialog(c)
-	a.folderDialog(c)
-	a.batchDialog(c)
 	a.fileDialogView(c)
 	a.snippetDialogs(c)
 	a.editorDialog(c)
-	a.confirmView(c, false)
+	a.confirmView(c, mainWindow)
 	d := &a.dialogs
 	if len(d.links) > 0 {
 		open := true

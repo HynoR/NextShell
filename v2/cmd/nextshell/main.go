@@ -79,6 +79,20 @@ func main() {
 		}))})
 		settings.OnClosed(func() { settings = nil })
 	}
+	var manager *mygo.Window
+	a.ShowManager = func() {
+		if manager != nil {
+			manager.Show()
+			manager.Focus()
+			return
+		}
+		manager = mygo.NewWindow(mygo.WindowOptions{Title: "连接管理器", Width: 960, Height: 640, MinWidth: 640, MinHeight: 420, StateKey: "manager", Content: ui.View(closeOnCmdW(a.ManagerView, func() {
+			if manager != nil {
+				manager.Close()
+			}
+		}))})
+		manager.OnClosed(func() { manager = nil })
+	}
 	a.PickFiles = func(o appui.FilePick, done func([]string)) {
 		if dir, e := desktop.LocalPath(o.DefaultPath); e == nil {
 			o.DefaultPath = dir

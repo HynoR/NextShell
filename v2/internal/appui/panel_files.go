@@ -145,7 +145,7 @@ func (a *App) filesPanel(c *ui.Context) {
 	s := &a.files
 	sess := a.remote()
 	if sess == nil {
-		emptyState(c, "文件面板用于远程 SSH 会话", "切换到一个远程标签，或从左侧连接主机。")
+		emptyState(c, "SFTP 用于远程 SSH 会话", "切换到一个远程标签，或从「服务器」连接主机。")
 		return
 	}
 	id := sess.ID
@@ -201,7 +201,7 @@ func (a *App) filesPanel(c *ui.Context) {
 				a.fileMenuItems(m, id, s.entries[row])
 			}
 		}
-		cols := []ui.TableColumn{{Title: "名称", ID: "name", Sortable: true}, {Title: "大小", ID: "size", Width: 64, Align: ui.End, Sortable: true}, {Title: "修改时间", ID: "modified", Width: 84, Sortable: true}}
+		cols := []ui.TableColumn{{Title: "名称", ID: "name", Sortable: true}, {Title: "大小", ID: "size", Width: 64, Align: ui.End, Sortable: true}, {Title: "修改时间", ID: "modified", Width: 100, Sortable: true}}
 		table := ui.Table(c.Key("files-"+id), &s.list, cols, len(s.entries), func(row, col int) {
 			f := s.entries[row]
 			faint := mutedOnRow(t, s.selection.Has(f.Path))
@@ -682,97 +682,78 @@ func (a *App) fileClipboardKeys(e ui.Element, id string) {
 	}
 }
 
-// Transfers: a count in the status bar opening the queue in a popover.
+// Transfers: the queue in the activity column.
 
-func (a *App) transfersStatus(c *ui.Context) {
-	t := c.Theme()
-	jobs := a.P.Transfers()
-	active := 0
+func activeTransfers(jobs []transfer.Job) int {
+	n := 0
 	for _, j := range jobs {
 		if j.State == "queued" || j.State == "running" {
-			active++
+			n++
 		}
 	}
-	label := "⇅ 传输"
-	if active > 0 {
-		label = fmt.Sprintf("⇅ %d 个传输", active)
-		c.After(time.Second)
-	}
-	b := ui.ButtonBase(c).Label("传输列表").Padding(0, 6).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
-		if active > 0 {
-			ui.Spinner(c).Size(10, 10)
-		}
-	})
-	if b.Clicked() {
-		a.layout.transfersOpen = !a.layout.transfersOpen
-	}
-	ui.Popover(c, b, &a.layout.transfersOpen, func() { a.transferList(c) })
+	return n
 }
-func (a *App) transferList(c *ui.Context) {
+
+func (a *App) transferSection(c *ui.Context) {
 	t := c.Theme()
 	jobs := a.P.Transfers()
 	states := map[string]string{"queued": "等待", "running": "进行中", "done": "完成", "failed": "失败", "cancelled": "已取消"}
-	ui.Column(c).Width(380).Gap(8).Children(func() {
+	ui.Column(c).FillWidth().Gap(8).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "传输").Bold().Grow(1)
-			if len(jobs) > 0 && ghost(c, "全部取消", "").Clicked() {
+			sectionLabel(c, "传输队列").Grow(1)
+			if activeTransfers(jobs) > 0 && ghost(c, "全部取消", "").Clicked() {
 				a.P.CancelAllTransfers()
+			}
+			if len(jobs) > activeTransfers(jobs) && ghost(c, "清除已完成", "").Clicked() {
+				a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
 			}
 		})
 		if len(jobs) == 0 {
-			muted(c, "没有传输任务。把文件拖到文件面板即可上传。")
+			muted(c, "没有传输任务。把文件拖到 SFTP 即可上传。")
 		}
-		ui.Scroll(c).MaxHeight(320).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Gap(8).Children(func() {
-				for _, j := range jobs {
-					ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Children(func() {
-						ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-							ui.Text(c, j.Label).SingleLine().Grow(1).MinWidth(0)
-							switch j.State {
-							case "queued", "running":
-								if ghost(c, "取消", "").Clicked() {
-									a.P.CancelTransfer(j.ID)
-								}
-							case "failed", "cancelled":
-								if ghost(c, "重试", "").Clicked() {
-									a.report(a.P.RetryTransfer(j.ID), "")
-								}
-							}
-						})
-						if j.State == "running" {
-							ui.Progress(c, transferFraction(j)).FillWidth()
+		for _, j := range jobs {
+			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, j.Label).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(j.Label)
+					switch j.State {
+					case "queued", "running":
+						if ghost(c, "取消", "").Clicked() {
+							a.P.CancelTransfer(j.ID)
 						}
-						detail := states[j.State] + " · " + humanSize(j.Bytes)
-						if j.Total > 0 {
-							detail = fmt.Sprintf("%s · %d%% · %s / %s", states[j.State], int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
+					case "failed", "cancelled":
+						if ghost(c, "重试", "").Clicked() {
+							a.report(a.P.RetryTransfer(j.ID), "")
 						}
-						if elapsed := j.Finished.Sub(j.Started); !j.Started.IsZero() && !j.Finished.IsZero() && elapsed > 0 {
-							detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-						} else if !j.Started.IsZero() && j.Finished.IsZero() {
-							if elapsed := time.Since(j.Started); elapsed > 0 {
-								detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-							}
-						}
-						if j.Attempt > 1 {
-							detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
-						}
-						muted(c, detail)
-						if j.Error != "" {
-							ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-								title, _ := humanize(j.Error)
-								ui.Text(c, title).FontSize(12).TextColor(t.Danger).SingleLine().Grow(1).MinWidth(0)
-								if ghost(c, "详情", "").Clicked() {
-									a.dialogs.detail = j.Error
-								}
-							})
+					}
+				})
+				if j.State == "running" {
+					ui.Progress(c, transferFraction(j)).FillWidth()
+				}
+				detail := states[j.State] + " · " + humanSize(j.Bytes)
+				if j.Total > 0 {
+					detail = fmt.Sprintf("%s · %d%% · %s / %s", states[j.State], int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
+				}
+				if elapsed := j.Finished.Sub(j.Started); !j.Started.IsZero() && !j.Finished.IsZero() && elapsed > 0 {
+					detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
+				} else if !j.Started.IsZero() && j.Finished.IsZero() {
+					if elapsed := time.Since(j.Started); elapsed > 0 {
+						detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
+					}
+				}
+				if j.Attempt > 1 {
+					detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
+				}
+				muted(c, detail).FontSize(11)
+				if j.Error != "" {
+					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+						title, _ := humanize(j.Error)
+						ui.Text(c, title).FontSize(12).TextColor(t.Danger).SingleLine().Grow(1).MinWidth(0)
+						if ghost(c, "详情", "").Clicked() {
+							a.dialogs.detail, a.dialogs.detailIn = j.Error, mainWindow
 						}
 					})
 				}
 			})
-		})
-		if ui.Button(c, "清除已完成").Clicked() {
-			a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
 		}
 	})
 }

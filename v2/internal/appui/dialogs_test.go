@@ -173,8 +173,12 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	tt.Key(0, ui.KeyDown)
 	tt.Key(0, ui.KeyUp)
 	tt.Key(0, ui.KeyEnter)
-	has(t, tt, "常规", "认证", "高级")
-	tt.Key(0, ui.KeyEscape)
+	mt := ui.NewTester(a.ManagerView, 960, 700)
+	if p.managerShown != 1 {
+		t.Fatal("新建主机 did not open the connection manager")
+	}
+	has(t, mt, "常规", "认证", "高级")
+	mt.Key(0, ui.KeyEscape)
 	tt.Key(appMod(), ui.KeyK)
 	tt.Type("打开设置")
 	tt.Key(0, ui.KeyEnter)

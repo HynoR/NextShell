@@ -28,7 +28,7 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 	p := newPlatform(t)
 	saved := saveHost(t, p, model.Connection{Name: "saved-box", Host: "10.9.9.9", User: "ops"})
 	a, tt := start(p)
-	has(t, tt, "NextShell", "最近", "saved-box", "+ 新建主机", "导入…", "打开本地终端", "未打开会话")
+	has(t, tt, "NextShell", "最近", "saved-box", "+ 新建主机", "导入…", "打开本地终端", "未选择服务器")
 	click(t, tt, "快速连接")
 	tt.Type("tester@localhost:2222")
 	tt.Key(0, ui.KeyEnter)
@@ -45,26 +45,45 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 	if p.local != 1 {
 		t.Fatal("local terminal")
 	}
-	// The saved host connecting shows amber until its session arrives.
 	session(t, p, tt, "s1", "saved-box", saved)
-	has(t, tt, "ops@10.9.9.9 · 已连接 不到 1 分钟", "UTF-8")
+	has(t, tt, "已连接", "ops@10.9.9.9:22", "UTF-8 · 已连接 不到 1 分钟")
 	if tt.HasText("最近") {
 		t.Fatal("welcome shown with a tab")
 	}
-	tt.Key(appMod(), ui.KeyB)
-	if tt.HasText("主机") && tt.HasText("本地终端") {
-		t.Fatal("sidebar not hidden")
+	// The left column samples the server while it shows.
+	if !p.watching["s1"] || p.detailed["s1"] {
+		t.Fatal("left column did not sample, or sampled processes", p.watching, p.detailed)
 	}
 	tt.Key(appMod(), ui.KeyB)
+	if tt.HasText("系统监控") || !tt.HasText("展开左栏") || p.watching["s1"] {
+		t.Fatal("left column not folded, or still sampling")
+	}
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
-	has(t, tt, "文件", "监控", "片段")
-	if !p.watching["s1"] {
-		t.Fatal("monitor not sampled while visible")
+	has(t, tt, "历史", "进程", "网络")
+	if !p.watching["s1"] || p.detailed["s1"] {
+		t.Fatal("系统信息 shows history without sampling, or with the full probe")
+	}
+	click(t, tt, "进程")
+	if !p.detailed["s1"] {
+		t.Fatal("process page without the full probe")
 	}
 	tt.Key(appMod(), ui.KeyJ)
-	if tt.HasText("片段") || p.watching["s1"] {
-		t.Fatal("panel did not close or monitor kept sampling")
+	if tt.HasText("系统信息视图") || p.watching["s1"] || p.detailed["s1"] {
+		t.Fatal("workbench did not fold or sampling went on", p.watching, p.detailed)
 	}
+	tt.Key(appMod(), ui.KeyO)
+	if p.managerShown != 1 {
+		t.Fatal("manager shortcut")
+	}
+	// The layout comes back on the next start.
+	_, bt := start(p)
+	bt.Frame()
+	session(t, p, bt, "s2", "saved-box", saved)
+	if !bt.HasText("展开左栏") || bt.HasText("系统信息视图") || !bt.HasText("展开工作区") {
+		t.Fatal("layout not restored", bt.Texts())
+	}
+	tt.Key(appMod(), ui.KeyB)
+	tt.Key(appMod(), ui.KeyJ)
 	tt.Key(ui.Cmd, ui.KeyComma)
 	if p.settingsShown != 1 {
 		t.Fatal("settings shortcut")
@@ -101,9 +120,22 @@ func TestNoImplementationTermsInVisibleText(t *testing.T) {
 	}
 }
 
+// manager opens the connection manager window of a.
+func manager(a *appui.App) *ui.Tester { return ui.NewTester(a.ManagerView, 960, 700) }
+
 func TestHostEditorCreateEditValidateAndTrash(t *testing.T) {
-	a, p, tt := fixture(t)
-	session(t, p, tt, "local", "本地", model.Connection{}) // hide the welcome page's recent hosts
+	a, p, main := fixture(t)
+	session(t, p, main, "local", "本地", model.Connection{})
+	if main.HasText("主机列表") {
+		t.Fatal("the main window lists hosts")
+	}
+	raised := 0
+	a.RaiseWindow = func(focus bool) {
+		if focus {
+			raised++
+		}
+	}
+	tt := manager(a)
 	click(t, tt, "新建")
 	click(t, tt, "新建主机…")
 	has(t, tt, "新建主机", "常规", "认证", "高级")
@@ -141,8 +173,8 @@ func TestHostEditorCreateEditValidateAndTrash(t *testing.T) {
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("2200")
 	click(t, tt, "保存并连接")
-	if len(p.connects) != 1 || p.connects[0].Port != 2200 {
-		t.Fatal("save and connect", p.connects)
+	if len(p.connects) != 1 || p.connects[0].Port != 2200 || raised != 1 {
+		t.Fatal("save and connect opens in the main window", p.connects, raised)
 	}
 
 	if e := tt.RightClick("web-a"); e != nil {
@@ -199,8 +231,8 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	saveHost(t, p, model.Connection{Name: "alpha", Host: "a.example", User: "u", FolderID: prod.ID, ProxyID: "px"})
 	saveHost(t, p, model.Connection{Name: "beta", Host: "b.example", User: "u", FolderID: child.ID})
 	saveHost(t, p, model.Connection{Name: "gamma", Host: "g.example", User: "u"})
-	_, tt := start(p)
-	session(t, p, tt, "local", "本地", model.Connection{})
+	a, main := start(p)
+	tt := manager(a)
 	has(t, tt, "生产  2", "子目录  1", "alpha", "beta", "gamma")
 	click(t, tt, "生产  2")
 	if tt.HasText("alpha") || tt.HasText("beta") {
@@ -242,13 +274,14 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	if len(p.connects) != 1 || p.connects[0].Name != "beta" {
 		t.Fatal("double click connect", p.connects)
 	}
-	// A failed connect turns the dot red; Failed carries the host's ID.
+	// A failed connect shows in the main window; Failed carries the host's ID.
 	p.events = append(p.events, appui.Event{Failed: p.connects[0].ID, Message: "connection refused"})
+	main.Frame()
+	has(t, main, "连接被拒绝：服务器没有在这个端口提供 SSH 服务")
+	click(t, main, "详情")
+	has(t, main, "connection refused")
+	click(t, main, "关闭")
 	tt.Frame()
-	has(t, tt, "连接被拒绝：服务器没有在这个端口提供 SSH 服务")
-	click(t, tt, "详情")
-	has(t, tt, "connection refused")
-	click(t, tt, "关闭")
 
 	if e := tt.RightClick("子目录  1"); e != nil {
 		t.Fatal(e)
@@ -304,8 +337,8 @@ func TestDragHostIntoFolderAndMoveFoldersUp(t *testing.T) {
 		}
 	}
 	h := saveHost(t, p, model.Connection{Name: "web-1", Host: "w", Port: 22, User: "u", Auth: "agent", FolderID: "甲"})
-	_, tt := start(p)
-	session(t, p, tt, "local", "local", model.Connection{}) // hides the welcome page's host cards
+	a, _ := start(p)
+	tt := manager(a)
 	drag(t, tt, "web-1", "丙  0")
 	snap, _ := p.Snapshot()
 	for _, c := range snap.Connections {

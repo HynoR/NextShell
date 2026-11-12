@@ -16,9 +16,10 @@ import (
 
 type monitorState struct {
 	histories                     map[string]*monitor.History
-	session, watching             string
+	details                       map[string]monitor.Snapshot // the last full sample per session, for the process and network pages
+	session, watching, detailed   string
 	snap                          monitor.Snapshot
-	page                          int // 概览, 历史, 进程, 网络
+	page                          int // pageHistory, pageProcesses, pageNetwork
 	filter, netFilter             string
 	processList, networkList      ui.ListState
 	processRow, networkRow        int
@@ -27,8 +28,16 @@ type monitorState struct {
 	historyDisk, historyInterface string
 }
 
+// The pages of the workbench's 系统信息 tab.
+const (
+	pageHistory = iota
+	pageProcesses
+	pageNetwork
+)
+
 func (s *monitorState) init() {
 	s.histories = map[string]*monitor.History{}
+	s.details = map[string]monitor.Snapshot{}
 	s.processRow, s.networkRow = -1, -1
 	s.processSort = ui.SortOrder{Column: "CPU", Descending: true}
 }
@@ -39,26 +48,51 @@ func (s *monitorState) handle(a *App, e Event) {
 	s.record(e.Monitor.Session, e.Monitor.Snapshot)
 	s.session = e.Monitor.Session
 	s.snap = e.Monitor.Snapshot
+	if s.snap.Detail {
+		s.details[s.session] = s.snap
+	}
 }
-func (s *monitorState) forget(id string) { delete(s.histories, id) }
+func (s *monitorState) forget(id string) {
+	delete(s.histories, id)
+	delete(s.details, id)
+}
 
-// watch samples the active remote session while the monitor panel shows, and nothing else.
-func (s *monitorState) watch(a *App, visible bool) {
+// watchMonitor samples the active connected SSH session while the left column
+// or the 系统信息 tab shows it, and adds processes and connections while one
+// of their pages shows.
+func (a *App) watchMonitor() {
+	s := &a.monitor
 	id := ""
-	if r := a.remote(); visible && r != nil {
+	if r := a.remote(); r != nil && !a.P.Exited(r.ID) {
 		id = r.ID
 	}
-	if id == s.watching {
-		return
+	sysinfo := !a.layout.benchHidden && a.layout.bench == benchSysinfo
+	watch, detailed := "", ""
+	if id != "" && (!a.layout.leftHidden || sysinfo) {
+		watch = id
 	}
-	if s.watching != "" {
-		a.P.WatchMonitor(s.watching, false)
+	if id != "" && sysinfo && s.page != pageHistory {
+		detailed = id
 	}
-	if id != "" {
-		a.P.RefreshMonitor(id)
-		a.P.WatchMonitor(id, true)
+	if detailed != s.detailed {
+		if s.detailed != "" {
+			a.P.WatchMonitorDetail(s.detailed, false)
+		}
+		if detailed != "" {
+			a.P.WatchMonitorDetail(detailed, true)
+		}
+		s.detailed = detailed
 	}
-	s.watching = id
+	if watch != s.watching {
+		if s.watching != "" {
+			a.P.WatchMonitor(s.watching, false)
+		}
+		if watch != "" {
+			a.P.RefreshMonitor(watch)
+			a.P.WatchMonitor(watch, true)
+		}
+		s.watching = watch
+	}
 }
 
 // record keeps at most 32 sessions' histories, dropping the stalest.
@@ -86,111 +120,141 @@ func (s *monitorState) record(id string, snap monitor.Snapshot) {
 	h.Append(snap)
 }
 
-func (a *App) monitorPanel(c *ui.Context) {
+// sysinfoPanel is the workbench's 系统信息 tab: the history, process and network pages.
+func (a *App) sysinfoPanel(c *ui.Context) {
 	s := &a.monitor
 	sess := a.remote()
 	if sess == nil {
-		emptyState(c, "监控用于远程 SSH 会话", "切换到一个远程标签即可查看 CPU、内存、网络和进程。")
+		emptyState(c, "系统信息用于远程 SSH 会话", "切换到一个远程标签即可查看历史曲线、进程和网络连接。")
 		return
 	}
 	id := sess.ID
-	if s.session != id || s.snap.At.IsZero() {
-		ui.Column(c).Fill().Center().Gap(8).Children(func() {
+	ui.Row(c).FillWidth().Padding(6, 8, 4, 8).Children(func() {
+		ui.Segmented(c, &s.page, "历史", "进程", "网络").FillEqually().Label("系统信息视图").Width(300)
+	})
+	full, ok := s.details[id]
+	switch {
+	case s.page == pageHistory:
+		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() { a.monitorHistory(c, id) })
+		})
+	case !ok: // light samples leave the tables out: nothing yet is not "none"
+		sampling(c)
+	case s.page == pageProcesses:
+		a.processTable(c, id, full)
+	default:
+		a.networkTable(c, full.Network)
+	}
+}
+
+func sampling(c *ui.Context) {
+	ui.Column(c).Fill().Center().Gap(8).Children(func() {
+		ui.Spinner(c)
+		muted(c, "正在采样…（仅支持 Linux 服务器）")
+	})
+}
+
+// Metric colors: CPU blue, memory green, swap indigo, disk cyan; upload orange, download green.
+func metricColor(t *ui.Theme, name string) ui.Color {
+	dark := map[string]string{"cpu": "#4d9fff", "mem": "#34d399", "swap": "#818cf8", "disk": "#22d3ee", "up": "#fb923c", "down": "#34d399"}
+	light := map[string]string{"cpu": "#2563eb", "mem": "#059669", "swap": "#4f46e5", "disk": "#0e7490", "up": "#c2410c", "down": "#047857"}
+	if t.Dark {
+		return ui.Hex(dark[name])
+	}
+	return ui.Hex(light[name])
+}
+
+// monitorSidebar is the left column's 系统监控: bars for CPU, memory, swap and
+// disk, load, network rates and a line about the system.
+func (a *App) monitorSidebar(c *ui.Context, sess *Session) {
+	t := c.Theme()
+	sectionLabel(c, "系统监控")
+	m := a.monitor.snap
+	switch {
+	case sess.Local:
+		muted(c, "本地终端不采样")
+		return
+	case a.P.Exited(sess.ID):
+		muted(c, "连接断开后不再采样")
+		return
+	case a.monitor.session != sess.ID || m.At.IsZero():
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Spinner(c)
 			muted(c, "正在采样…（仅支持 Linux 服务器）")
 		})
 		return
 	}
-	m := s.snap
-	ui.Row(c).FillWidth().Padding(8, 8, 4, 8).Children(func() {
-		ui.Segmented(c, &s.page, "概览", "历史", "进程", "网络").FillEqually().Label("监控视图").Grow(1)
-	})
-	switch s.page {
-	case 0:
-		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(8).Gap(8).Children(func() { a.monitorOverview(c, id, m) })
+	if m.Load != "" {
+		ui.Row(c).FillWidth().Gap(8).Padding(6, 8).Radius(6).Background(t.Background).Border(1, t.Border).Children(func() {
+			muted(c, "负载")
+			ui.Text(c, m.Load).Font("monospace").FontSize(12).SingleLine()
 		})
-	case 1:
-		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() { a.monitorHistory(c, id) })
-		})
-	case 2:
-		a.processTable(c, id, m.Processes)
-	default:
-		a.networkTable(c, m.Network)
 	}
-}
-
-func (a *App) monitorOverview(c *ui.Context, id string, m monitor.Snapshot) {
-	h := a.monitor.histories[id]
-	cpu := "—"
+	used := func(total, free uint64) string {
+		return humanSize(int64(total-min(free, total))) + " / " + humanSize(int64(total))
+	}
 	if m.HasDelta {
-		cpu = fmt.Sprintf("%.0f%%", m.CPUPercent)
+		meterRow(c, "CPU", m.CPUPercent, "", metricColor(t, "cpu"))
+	} else {
+		meterRow(c, "CPU", 0, "—", metricColor(t, "cpu"))
 	}
-	ui.Grid(c).Columns(2).FillWidth().Gap(8).Children(func() {
-		statCard(c, "CPU", cpu, "", h, "cpu", 100)
-		mem := memoryRatio(m.MemoryTotal, m.MemoryAvailable)
-		statCard(c, "内存", fmt.Sprintf("%.0f%%", mem*100), fmt.Sprintf("%s / %s", humanSize(int64(m.MemoryTotal-min(m.MemoryAvailable, m.MemoryTotal))), humanSize(int64(m.MemoryTotal))), h, "memory", 100)
-		statCard(c, "网络", "↓ "+humanSize(int64(m.RXPerSecond))+"/s", "↑ "+humanSize(int64(m.TXPerSecond))+"/s", h, "rx", 0)
-		disk, diskSub := "—", ""
-		for _, d := range m.Disks {
-			if d.Mount == "/" || disk == "—" {
-				disk = fmt.Sprintf("%.0f%%", d.UsedPercent)
-				diskSub = d.Mount + " · " + humanSize(int64(d.TotalKB)*1024)
-			}
+	meterRow(c, "内存", memoryRatio(m.MemoryTotal, m.MemoryAvailable)*100, used(m.MemoryTotal, m.MemoryAvailable), metricColor(t, "mem"))
+	if m.SwapTotal > 0 {
+		meterRow(c, "交换", memoryRatio(m.SwapTotal, m.SwapFree)*100, used(m.SwapTotal, m.SwapFree), metricColor(t, "swap"))
+	} else {
+		meterRow(c, "交换", 0, "未启用", metricColor(t, "swap"))
+	}
+	for i, d := range m.Disks {
+		if d.Mount == "/" || i == len(m.Disks)-1 && !slices.ContainsFunc(m.Disks, func(d monitor.Disk) bool { return d.Mount == "/" }) {
+			meterRow(c, "磁盘", d.UsedPercent, humanSize(int64(d.UsedKB)*1024)+" / "+humanSize(int64(d.TotalKB)*1024), metricColor(t, "disk")).Tooltip(d.Mount + "  " + d.Device)
+			break
 		}
-		statCard(c, "磁盘", disk, diskSub, h, "disk:/", 100)
+	}
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		muted(c, "网络").Label("网络速率").Width(32)
+		ui.Text(c, "↑ "+humanSize(int64(m.TXPerSecond))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "up")).SingleLine().Grow(1).Basis(0)
+		ui.Text(c, "↓ "+humanSize(int64(m.RXPerSecond))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "down")).SingleLine().Grow(1).Basis(0)
 	})
-	t := c.Theme()
-	ui.Column(c).FillWidth().Gap(4).Padding(4, 2).Children(func() {
-		if m.Info != "" {
-			ui.Text(c, m.Info).FontSize(12).TextColor(t.TextMuted)
-		}
-		if m.Load != "" {
-			muted(c, "负载 "+m.Load)
-		}
-		if m.SwapTotal > 0 {
-			muted(c, fmt.Sprintf("交换 %s / %s", humanSize(int64(m.SwapTotal-min(m.SwapFree, m.SwapTotal))), humanSize(int64(m.SwapTotal))))
-		}
-		for _, d := range m.Disks {
-			muted(c, fmt.Sprintf("%s  %.0f%%  %s", d.Mount, d.UsedPercent, d.Device))
-		}
-		for _, w := range m.Warnings {
-			ui.Text(c, w).FontSize(12).TextColor(t.Warning)
+	if m.Info != "" {
+		muted(c, m.Info).FontSize(11).Tooltip(m.Info)
+	}
+	for _, w := range m.Warnings {
+		ui.Text(c, w).FontSize(11).TextColor(t.Warning)
+	}
+	ui.Row(c).FillWidth().Gap(6).Padding(4, 0, 0, 0).Children(func() {
+		for _, v := range []struct {
+			label, icon string
+			page        int
+		}{{"进程管理器", "cpu", pageProcesses}, {"网络管理器", "globe", pageNetwork}} {
+			b := ui.ButtonBase(c).Label(v.label).Grow(1).Basis(0).Height(28).Gap(4).Radius(t.Radius).Center().Border(1, t.Border)
+			if b.Hovered() {
+				b.Background(t.SurfaceHover)
+			}
+			b.Children(func() {
+				ui.Icon(c, appIcons[v.icon]).FontSize(13).TextColor(t.TextMuted)
+				ui.Text(c, v.label).FontSize(12).SingleLine()
+			})
+			if b.Clicked() {
+				a.monitor.page = v.page
+				a.showBench(benchSysinfo)
+			}
 		}
 	})
 }
 
-// statCard is a number with a sparkline of its history.
-func statCard(c *ui.Context, title, value, sub string, h *monitor.History, key string, ceiling float64) {
-	t := c.Theme()
-	ui.Column(c.Key("card-"+title)).Padding(10).Gap(2).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
-		muted(c, title)
-		ui.Text(c, value).FontSize(18).Bold().SingleLine()
-		if sub != "" {
-			muted(c, sub).SingleLine()
-		}
-		if h == nil || len(h.Points) < 2 {
-			return
-		}
-		var xs, ys []float32
-		top := ceiling
-		if top == 0 {
-			top = 1
-			for _, p := range h.Points {
-				if v := p.Value(key); !math.IsNaN(v) && v > top {
-					top = v
-				}
+// meterRow is a metric's name and value over its bar, amber from 70% and red from 90%.
+func meterRow(c *ui.Context, name string, percent float64, detail string, color ui.Color) ui.Element {
+	return ui.Column(c.Key("meter-" + name)).FillWidth().Gap(3).Children(func() {
+		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+			muted(c, name).Grow(1)
+			if detail != "" {
+				ui.Text(c, detail).Font("monospace").FontSize(11).TextColor(c.Theme().TextMuted).SingleLine()
 			}
-		}
-		x, y := chart.NewLinear(0, float64(len(h.Points)-1)), chart.NewLinear(0, top)
-		for i, p := range h.Points {
-			xs = append(xs, x.At(float64(i)))
-			ys = append(ys, y.At(p.Value(key)))
-		}
-		ui.Box(c).FillWidth().Height(24).Margin(4, 0, 0, 0).Draw(func(p *ui.Painter, r ui.Rect) {
-			p.StrokePath(chart.Line(r, xs, ys, chart.CurveLinear), 1.5, t.Accent)
+			if detail != "—" {
+				ui.Text(c, fmt.Sprintf("%.0f%%", percent)).Font("monospace").FontSize(12).Bold().SingleLine().Width(38).TextAlign(ui.End)
+			}
 		})
+		ui.Meter(c, clampRatio(percent/100)*100, 0, 100, &ui.MeterLevels{Warning: 70, Critical: 90, NormalColor: color}).Label(name).FillWidth().Height(6).Radius(3)
 	})
 }
 
@@ -363,8 +427,9 @@ func compare(a, b float64) int {
 	return 0
 }
 
-func (a *App) processTable(c *ui.Context, id string, processes []monitor.Process) {
+func (a *App) processTable(c *ui.Context, id string, snap monitor.Snapshot) {
 	s := &a.monitor
+	processes := snap.Processes
 	ui.SearchField(c, &s.filter).Label("过滤进程").Placeholder("PID、用户或命令").Margin(4, 8)
 	rows := filteredProcesses(processes, s.filter, s.processSort)
 	s.processList.Sort = &s.processSort
@@ -403,7 +468,7 @@ func (a *App) processTable(c *ui.Context, id string, processes []monitor.Process
 		s.detail = rows[s.processRow].PID
 	}
 	if s.detail != 0 {
-		a.processDrawer(c, id, processes)
+		a.processDrawer(c, id, snap)
 	}
 	muted(c, fmt.Sprintf("%d / %d 个进程 · 双击查看详情，右键发送信号", len(rows), len(processes))).Padding(4, 10)
 }
@@ -433,45 +498,49 @@ func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 
 // processDrawer details one process under the table; it follows the PID
 // across samples and says so when the process is gone.
-func (a *App) processDrawer(c *ui.Context, id string, processes []monitor.Process) {
+func (a *App) processDrawer(c *ui.Context, id string, snap monitor.Snapshot) {
 	s := &a.monitor
+	processes := snap.Processes
 	t := c.Theme()
 	i := slices.IndexFunc(processes, func(v monitor.Process) bool { return v.PID == s.detail })
-	ui.Column(c).FillWidth().MaxHeight(260).Padding(10).Gap(6).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Label("进程详情").Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("进程 %d", s.detail)).Bold().Grow(1)
-			if iconButton(c, "关闭详情", "close").Clicked() {
-				s.detail = 0
-			}
-		})
-		if i < 0 {
-			muted(c, "进程已退出")
-			return
-		}
-		v := processes[i]
-		ui.Scroll(c).FillWidth().MaxHeight(72).Children(func() {
-			ui.Text(c, v.Command).Font("monospace").FontSize(12).Wrap().Selectable().Label("命令行")
-		})
-		started := s.snap.At.Add(-time.Duration(v.Elapsed) * time.Second)
-		for _, kv := range [][2]string{
-			{"用户", v.User},
-			{"启动时间", started.Format("2006-01-02 15:04:05") + "（已运行 " + uptime(time.Duration(v.Elapsed)*time.Second) + "）"},
-			{"CPU / 内存", fmt.Sprintf("%.1f%% / %.0f MB（%.1f%%）", v.CPU, v.MemoryMB, v.MemoryPercent)},
-			{"父进程 · 状态", fmt.Sprintf("%d · %s · nice %d", v.PPID, v.State, v.Nice)},
-		} {
-			ui.Row(c).FillWidth().Gap(8).Children(func() {
-				ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(84)
-				ui.Text(c, kv[1]).FontSize(12).SingleLine().Grow(1).MinWidth(0)
+	// The workbench can be low: the drawer scrolls rather than push its buttons out of the window.
+	ui.Scroll(c).FillWidth().MaxHeight(260).Shrink(1).MinHeight(0).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
+		ui.Column(c).FillWidth().Padding(10).Gap(6).Label("进程详情").Children(func() {
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				ui.Text(c, fmt.Sprintf("进程 %d", s.detail)).Bold().Grow(1)
+				if iconButton(c, "关闭详情", "close").Clicked() {
+					s.detail = 0
+				}
 			})
-		}
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.Button(c, "复制命令行").Clicked() {
-				a.P.CopyText(v.Command)
-				a.toast("已复制命令行")
+			if i < 0 {
+				muted(c, "进程已退出")
+				return
 			}
-			if ui.Button(c, "结束进程…").Clicked() {
-				a.confirm(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
+			v := processes[i]
+			ui.Scroll(c).FillWidth().MaxHeight(72).Children(func() {
+				ui.Text(c, v.Command).Font("monospace").FontSize(12).Wrap().Selectable().Label("命令行")
+			})
+			started := snap.At.Add(-time.Duration(v.Elapsed) * time.Second)
+			for _, kv := range [][2]string{
+				{"用户", v.User},
+				{"启动时间", started.Format("2006-01-02 15:04:05") + "（已运行 " + uptime(time.Duration(v.Elapsed)*time.Second) + "）"},
+				{"CPU / 内存", fmt.Sprintf("%.1f%% / %.0f MB（%.1f%%）", v.CPU, v.MemoryMB, v.MemoryPercent)},
+				{"父进程 · 状态", fmt.Sprintf("%d · %s · nice %d", v.PPID, v.State, v.Nice)},
+			} {
+				ui.Row(c).FillWidth().Gap(8).Children(func() {
+					ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(84)
+					ui.Text(c, kv[1]).FontSize(12).SingleLine().Grow(1).MinWidth(0)
+				})
 			}
+			ui.Row(c).Gap(8).Children(func() {
+				if ui.Button(c, "复制命令行").Clicked() {
+					a.P.CopyText(v.Command)
+					a.toast("已复制命令行")
+				}
+				if ui.Button(c, "结束进程…").Clicked() {
+					a.confirm(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
+				}
+			})
 		})
 	})
 }

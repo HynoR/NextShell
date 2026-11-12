@@ -257,7 +257,7 @@ func (a *App) EditorView(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Padding(8, 12, 12, 12).Gap(8).Background(t.Background).Children(func() {
 		if len(s.documents) == 0 {
-			emptyState(c, "没有打开的远程文件", "在文件面板里双击文件即可编辑。")
+			emptyState(c, "没有打开的远程文件", "在 SFTP 里双击文件即可编辑。")
 			return
 		}
 		a.editorBody(c)

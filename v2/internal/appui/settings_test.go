@@ -220,7 +220,7 @@ func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
 	p.cloud = appui.CloudOverview{Workspaces: []storage.Workspace{{ID: id, Name: "团队"}}, Statuses: []cloudsync.Status{{WorkspaceID: id, State: "conflict"}}}
 	p.events = append(p.events, appui.Event{WorkspaceID: id})
 	tt.Frame()
-	has(t, tt, "☁ 同步冲突")
+	has(t, tt, "同步冲突")
 	click(t, st, "同步")
 	click(t, st, "团队")
 	click(t, st, "使用云端版本…")
@@ -241,7 +241,7 @@ func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
 		p.agent = appui.AgentOverview{Pending: []agent.Pending{{ID: "r", Client: "client", Tool: "exec", Target: "s", Summary: "pwd", ExpiresAt: time.Now().Add(time.Minute)}}}
 		tt.Frame()
 		has(t, tt, "Agent 待批准 1")
-		click(t, tt, "Agent 待批准")
+		click(t, tt, "Agent 待批准 1") // the folded activity column opens, then its entry opens the settings
 		click(t, st, "Agent")
 		label := map[bool]string{true: "批准", false: "拒绝"}[approve]
 		click(t, st, label)
@@ -287,10 +287,11 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 		if (st.Click("同步") == nil) != enabled {
 			t.Errorf("enabled=%v: 同步 section", enabled)
 		}
-		if e := tt.RightClick("box"); e != nil {
+		mt := ui.NewTester(a.ManagerView, 960, 700)
+		if e := mt.RightClick("box"); e != nil {
 			t.Fatal(e)
 		}
-		if (tt.ChooseMenuItem("复制到云工作区…") == nil) != enabled {
+		if (mt.ChooseMenuItem("复制到云工作区…") == nil) != enabled {
 			t.Errorf("enabled=%v: host menu", enabled)
 		}
 		tt.Key(appMod(), ui.KeyK)

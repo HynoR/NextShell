@@ -66,7 +66,7 @@ func (a *App) paletteItems() []paletteItem {
 		add("主机", cc.Name, cc.User+"@"+cc.Address(), cc.Host+" "+cc.User+" "+strings.Join(cc.Tags, " ")+" "+a.folderPath(cc.FolderID), func(mods ui.Modifiers) {
 			a.connect(cc)
 			if mods&ui.Cmd != 0 {
-				a.showPanel(panelFiles)
+				a.showBench(benchFiles)
 			}
 		})
 		if len(out) > before {
@@ -86,6 +86,7 @@ func (a *App) paletteItems() []paletteItem {
 		{"新建主机", func() { a.newHost("") }},
 		{"新建目录", func() { a.editFolder(model.Folder{}) }},
 		{"打开本地终端", a.P.Local},
+		{"连接管理器", a.openManager},
 		{"打开设置", func() { a.openSettings("") }},
 		{"切换深浅色", a.toggleAppearance},
 		{"导入连接", func() { a.openSettings("导入导出") }},
@@ -97,12 +98,13 @@ func (a *App) paletteItems() []paletteItem {
 		{"网络诊断（Ping / 路由追踪）", func() { a.openSettings("网络诊断") }},
 		{"发送命令…", func() { a.snippets.commandOpen = true }},
 		{"新建命令片段", func() { a.editSnippet(model.Command{Group: "默认"}) }},
-		{"显示 / 隐藏主机栏", func() { a.layout.sidebarHidden = !a.layout.sidebarHidden }},
-		{"显示 / 隐藏右侧面板", func() { a.layout.panelOpen = !a.layout.panelOpen }},
-		{"文件面板", func() { a.showPanel(panelFiles) }},
-		{"监控面板", func() { a.showPanel(panelMonitor) }},
-		{"命令片段面板", func() { a.showPanel(panelSnippets) }},
-		{"传输列表", func() { a.layout.transfersOpen = true }},
+		{"显示 / 隐藏左栏", func() { a.layout.leftHidden = !a.layout.leftHidden }},
+		{"显示 / 隐藏底部工作区", func() { a.layout.benchHidden = !a.layout.benchHidden }},
+		{"显示 / 隐藏活动栏", func() { a.layout.rightOpen = !a.layout.rightOpen }},
+		{"SFTP", func() { a.showBench(benchFiles) }},
+		{"命令库", func() { a.showBench(benchSnippets) }},
+		{"系统信息", func() { a.showBench(benchSysinfo) }},
+		{"传输队列", func() { a.layout.rightOpen = true }},
 	}
 	if a.Cloud {
 		actions = append(actions, struct {
@@ -122,7 +124,7 @@ func (a *App) paletteItems() []paletteItem {
 			run   func()
 		}{
 			{"复制会话", func() { a.P.CloneSession(s) }},
-			{"重新连接", func() { a.P.Reconnect(s) }},
+			{"重新连接", func() { a.reconnect(s) }},
 			{"重命名标签", func() { a.startRename(s) }},
 			{"关闭标签", func() { a.closeTabID(s.ID) }},
 			{"清屏", func() { s.Terminal.ClearScreen() }},
@@ -233,6 +235,6 @@ func (a *App) paletteView(c *ui.Context, anchor ui.Element) {
 				}
 			})
 		})
-		muted(c, "回车执行 · "+shortcutLabel("回车")+" 连接并打开文件面板 · Alt+回车 片段发送到全部会话").Padding(2, 4)
+		muted(c, "回车执行 · "+shortcutLabel("回车")+" 连接并打开 SFTP · Alt+回车 片段发送到全部会话").Padding(2, 4)
 	})
 }

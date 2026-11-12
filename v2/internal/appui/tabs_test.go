@@ -20,7 +20,7 @@ func TestTabRenameTitlesAndReconnect(t *testing.T) {
 	if s.Title != "connection" {
 		t.Fatal("an SSH tab shows the connection name, not the program title", s.Title)
 	}
-	has(t, tt, "· remote-title") // the program title is in the status bar
+	has(t, tt, "remote-title") // the program title is on the session card
 	dblclick(t, tt, "connection")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("manual")
@@ -196,9 +196,31 @@ func TestDisconnectedTabOffersReconnect(t *testing.T) {
 	s.Terminal.Close()
 	<-s.Terminal.Done()
 	tt.Frame()
-	has(t, tt, "连接已断开 · 按回车重新连接", "⟳", "u@gone.example · 已断开")
+	has(t, tt, "已断开", "状态 已断开", "连接已断开 · 按回车重新连接", "u@gone.example:22")
 	click(t, tt, "重新连接")
 	if p.reconnected != 1 || len(a.Tabs) != 1 {
 		t.Fatal("reconnect")
+	}
+	// Until the new session arrives the card and the tab say so; a failure turns them red.
+	has(t, tt, "连接中", "状态 连接中")
+	if tt.HasText("重新连接 gone") {
+		t.Fatal("reconnect offered while connecting")
+	}
+	p.events = append(p.events, appui.Event{Failed: s.Connection.ID, Message: "connection refused"})
+	tt.Frame()
+	has(t, tt, "失败", "状态 失败")
+	click(t, tt, "重新连接 gone") // the tab's own button
+	if p.reconnected != 2 {
+		t.Fatal("tab reconnect", p.reconnected)
+	}
+	next := &appui.Session{ID: "y", Replaces: "x", Title: "gone", Terminal: newTerminal(t, "$ "), Connection: s.Connection}
+	p.events = append(p.events, appui.Event{Session: next})
+	tt.Frame()
+	has(t, tt, "已连接", "状态 已连接")
+	// The address copies with a click.
+	click(t, tt, "复制地址 u@gone.example:22")
+	has(t, tt, "已复制")
+	if tt.Clipboard() != "u@gone.example:22" {
+		t.Fatal("copy", tt.Clipboard())
 	}
 }
