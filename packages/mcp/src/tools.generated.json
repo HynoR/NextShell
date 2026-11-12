@@ -299,6 +299,13 @@
             "minLength": 1,
             "type": "string"
           },
+          "mode": {
+            "description": "Only `background` exists: a separate channel, invisible in the tab. Interactive input goes through session_send_text.",
+            "enum": [
+              "background"
+            ],
+            "type": "string"
+          },
           "reason": {
             "description": "Shown to the user in the approval prompt.",
             "maxLength": 300,

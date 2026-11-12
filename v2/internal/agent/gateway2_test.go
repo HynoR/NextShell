@@ -331,14 +331,14 @@ func TestSearchesMatchRedactedTextOnlyAndPage(t *testing.T) {
 	if hosts := d["hosts"].([]Host); len(hosts) != 22 || hosts[0].ID != "x98" {
 		t.Fatal(len(hosts), d["offset"])
 	}
-	if d = data(t, call(g, "o", "host_list", m{"limit": 5000})); d["limit"] != 200 || len(d["hosts"].([]Host)) != 122 {
-		t.Fatal("limit not clamped to 200", d["limit"])
+	if r := call(g, "o", "host_list", m{"limit": 5000}); code(t, r) != "invalid_argument" || !strings.Contains(r.Error.Message, "limit must be between 1 and 200") {
+		t.Fatal("limit above the range must be refused, naming the range:", r.Error)
 	}
 	if d = data(t, call(g, "o", "command_search", m{"limit": 90})); len(d["matches"].([]Command)) != 90 || d["total"] != 121 {
 		t.Fatal("command_search limit ignored", len(d["matches"].([]Command)))
 	}
-	if d = data(t, call(g, "o", "command_search", m{"limit": 9999})); len(d["matches"].([]Command)) != 121 {
-		t.Fatal("limit above 200 must clamp to 200, not fall back to a default")
+	if c := code(t, call(g, "o", "command_search", m{"limit": 9999})); c != "invalid_argument" {
+		t.Fatal("limit above 200 is out of range:", c)
 	}
 	if c := code(t, call(g, "o", "host_list", m{"offset": -1})); c != "invalid_argument" {
 		t.Fatal(c)

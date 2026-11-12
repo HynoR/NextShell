@@ -147,6 +147,7 @@ var specs = []ToolSpec{
 			"target":         targetProp,
 			"command":        name("Shell command to run on the remote host.", 8192),
 			"timeoutSec":     integer("Seconds before the command is cancelled, 1-120 (default 30).", 1, 120),
+			"mode":           enum("Only `background` exists: a separate channel, invisible in the tab. Interactive input goes through session_send_text.", "background"),
 			"allowSensitive": boolean("Set only after the user agreed that credential files or the environment may be touched."),
 			"reason":         str("Shown to the user in the approval prompt.", 300),
 			"requestId":      requestProp,

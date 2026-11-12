@@ -51,6 +51,14 @@ func invoke(g *Gateway, owner, tool string, a Arguments) Result {
 	raw, _ := json.Marshal(a)
 	return g.Call(context.Background(), owner, "test client", tool, raw)
 }
+
+// readArgs are valid arguments for a read-only tool: only the targeted ones take a session.
+func readArgs(tool string) Arguments {
+	if targeted[tool] {
+		return Arguments{Target: "remote"}
+	}
+	return Arguments{}
+}
 func pendingID(t *testing.T, r Result) string {
 	t.Helper()
 	if !r.OK {
@@ -67,7 +75,7 @@ func TestDiscoveryScreenCommandsAreRedactedAndReadOnly(t *testing.T) {
 	g := New(f, nil)
 	for _, tool := range []string{"host_list", "session_list", "command_search", "session_read", "session_history"} {
 		t.Run(tool, func(t *testing.T) {
-			r := invoke(g, "owner", tool, Arguments{Target: "remote"})
+			r := invoke(g, "owner", tool, readArgs(tool))
 			raw, _ := json.Marshal(r)
 			if !r.OK || strings.Contains(string(raw), "TOPSECRET") {
 				t.Fatal(string(raw))
@@ -183,7 +191,7 @@ func TestForegroundLocalSensitivePolicyAndBlacklist(t *testing.T) {
 	for _, tc := range []struct {
 		name, code string
 		a          Arguments
-	}{{"foreground", "unavailable", Arguments{Target: "remote", Command: "pwd", Mode: "foreground"}}, {"local", "unavailable", Arguments{Target: "local", Command: "pwd"}}, {"missing", "not_found", Arguments{Target: "unknown", Command: "pwd"}}, {"danger", "forbidden", Arguments{Target: "remote", Command: "sudo rm -rf /"}}, {"env", "consent_required", Arguments{Target: "remote", Command: "cat /app/.env.production"}}} {
+	}{{"foreground", "invalid_argument", Arguments{Target: "remote", Command: "pwd", Mode: "foreground"}}, {"local", "unavailable", Arguments{Target: "local", Command: "pwd"}}, {"missing", "not_found", Arguments{Target: "unknown", Command: "pwd"}}, {"danger", "forbidden", Arguments{Target: "remote", Command: "sudo rm -rf /"}}, {"env", "consent_required", Arguments{Target: "remote", Command: "cat /app/.env.production"}}} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := invoke(g, "owner", "exec", tc.a)
 			if r.OK || r.Error.Code != tc.code {

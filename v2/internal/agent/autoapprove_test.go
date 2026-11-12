@@ -179,7 +179,7 @@ func TestAutoApproveReadOnlyToolsUnaffected(t *testing.T) {
 	g, _ := clock(f, nil)
 	g.SetAutoApprove(UntilExit)
 	for _, tool := range []string{"host_list", "session_list", "command_search", "session_read", "session_history"} {
-		if r := invoke(g, "owner", tool, Arguments{Target: "remote"}); !r.OK {
+		if r := invoke(g, "owner", tool, readArgs(tool)); !r.OK {
 			t.Fatal(tool, r.Error)
 		}
 	}

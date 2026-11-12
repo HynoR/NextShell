@@ -468,13 +468,18 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	if len(raw) == 0 {
 		raw = []byte("{}")
 	}
+	// A call that only continues a pending request (requestId) need not repeat the required arguments.
+	var probe struct {
+		RequestID string `json:"requestId"`
+	}
+	json.Unmarshal(raw, &probe)
+	if e := validateArguments(sp.Schema, raw, sp.Gated && probe.RequestID != ""); e != nil {
+		return fail("invalid_argument", e.Error())
+	}
 	var a Arguments
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if d.Decode(&a) != nil || d.Decode(new(any)) != io.EOF {
-		return fail("invalid_argument")
-	}
-	if len(a.Command) > 8192 || len(a.Target) > 128 || len(a.Query) > 200 || len(a.Name) > 256 || len(a.Reason) > 300 || (a.Group != nil && len(*a.Group) > 256) || len(a.Text) > 8192 || len(a.Keys) > 64 || len(a.ID) > 128 || len(a.WorkspaceID) > 128 || len(a.RequestID) > 128 || a.Offset < 0 {
 		return fail("invalid_argument")
 	}
 	switch tool {
@@ -893,9 +898,6 @@ func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 	wait := a.WaitFor != nil
 	if wait {
 		p := a.WaitFor.Pattern
-		if p == "" || len(p) > 200 {
-			return fail("invalid_argument", "waitFor.pattern must be 1-200 characters")
-		}
 		if expr, isRe := strings.CutPrefix(p, "re:"); isRe {
 			var e error
 			if re, e = regexp.Compile("(?m)" + expr); e != nil {
@@ -905,9 +907,6 @@ func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 			plain = p
 		}
 		if t := a.WaitFor.TimeoutSec; t != 0 {
-			if t < 1 || t > 60 {
-				return fail("invalid_argument", "waitFor.timeoutSec must be 1-60")
-			}
 			timeout = time.Duration(t) * time.Second
 		}
 	}
