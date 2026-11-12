@@ -86,7 +86,7 @@ func main() {
 			manager.Focus()
 			return
 		}
-		manager = mygo.NewWindow(mygo.WindowOptions{Title: "连接管理器", Width: 960, Height: 640, MinWidth: 640, MinHeight: 420, StateKey: "manager", Content: ui.View(closeOnCmdW(a.ManagerView, func() {
+		manager = mygo.NewWindow(mygo.WindowOptions{Title: "连接管理器", Width: 960, Height: 640, MinWidth: appui.ManagerMinWidth, MinHeight: 420, StateKey: "manager", Content: ui.View(closeOnCmdW(a.ManagerView, func() {
 			if manager != nil {
 				manager.Close()
 			}

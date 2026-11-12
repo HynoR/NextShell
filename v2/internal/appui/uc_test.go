@@ -370,3 +370,29 @@ func TestSettingsPolish(t *testing.T) {
 	}
 	has(t, st, "立即停止")
 }
+
+// At the narrowest manager window the tile column still holds a whole tile, with the host's form open or not:
+// at the old 640 the side column squeezed it to nothing.
+func TestManagerAtItsMinimumWidthKeepsAWholeTile(t *testing.T) {
+	p := newPlatform(t)
+	demo(t, p)
+	a, _ := start(p)
+	mt := ui.NewTester(a.ManagerView, appui.ManagerMinWidth, 420)
+	for _, editing := range []bool{false, true} {
+		if editing {
+			click(t, mt, "+ 新建连接")
+		}
+		tile := 0.0
+		for _, info := range mt.AccessAll() {
+			if info.Name == "legacy-box" {
+				tile = max(tile, float64(info.Bounds.W))
+				if info.Bounds.X+info.Bounds.W > appui.ManagerMinWidth-440 {
+					t.Fatalf("editing=%v: the tile reaches under the side column: %v", editing, info.Bounds)
+				}
+			}
+		}
+		if tile < 190 {
+			t.Fatalf("editing=%v: the tile is %.0f wide, want a whole 190", editing, tile)
+		}
+	}
+}
