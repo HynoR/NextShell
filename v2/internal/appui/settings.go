@@ -147,8 +147,8 @@ func (a *App) savePreferences(p model.Preferences) {
 
 // SettingsView builds the settings window.
 func (a *App) SettingsView(c *ui.Context) {
-	a.inSettings = true
-	defer func() { a.inSettings = false }()
+	a.view = settingsWindow
+	defer func() { a.view = mainWindow }()
 	a.theme(c)
 	a.wakeSettings = c.Services().Invalidate
 	t := c.Theme()
@@ -177,8 +177,9 @@ func (a *App) SettingsView(c *ui.Context) {
 		}
 	}
 	a.confirmView(c, true)
+	a.detailView(c, settingsWindow)
 	a.runActions(c)
-	a.flushToasts(c)
+	a.flushToasts(c, settingsWindow)
 	if a.wakeMain != nil {
 		a.wakeMain()
 	}

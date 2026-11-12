@@ -12,6 +12,10 @@ cd v2
 go run ./cmd/nextshell                     # 默认 profile:<系统配置目录>/NextShell-v2/nextshell.db
 go run ./cmd/nextshell --db :memory:       # 一次性 profile
 go vet ./... && go test ./... && go test -race ./...
+# macOS / Windows 上会跳过把本机当 Linux 远端的测试(打包传输、监控探针等),合并前用 Docker 在 Linux 里补跑全套:
+docker run --rm -v "$PWD":/src -w /src -v nextshell-gomod:/go/pkg/mod -e GOTOOLCHAIN=auto golang:1.27 go test ./... -count=1
+# 真实 OpenSSH 互操作测试(Docker):
+go test -tags interop ./internal/interop/ -count=1 -timeout 30m
 ```
 
 Agent 测试:`go run -tags nextshell_devtools ./cmd/nextshell --agent-test --db <临时目录>/t.db` 启动即开启 MCP 和自动批准,并在 stderr 打印 `mcp.json` 路径(必须带 `--db`;默认和发布构建没有这个参数)。

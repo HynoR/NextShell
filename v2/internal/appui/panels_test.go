@@ -453,3 +453,80 @@ func contrast(a, b ui.Color) float64 {
 	}
 	return (x + 0.05) / (y + 0.05)
 }
+
+// A toast shows in the window whose action raised it: editor actions in the editor
+// window (even when their result arrives through the main window's events),
+// settings actions in the settings window, everything else in the main window.
+func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
+	p := &keysPlatform{fakePlatform: newPlatform(t), keys: []model.HostKey{{Address: "db.example:22", Fingerprint: "SHA256:abc"}}}
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	a.ShowEditor, a.HideEditor = func() {}, func() {}
+	ed := ui.NewTester(a.EditorView, 900, 640)
+	st := ui.NewTester(a.SettingsView, 880, 640)
+	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
+	tt.Frame()
+	ed.Frame()
+	// where says which windows show text. The editor window builds first, as a focused
+	// one does, and again after the main window polled the events (the app wakes it).
+	where := func(text string) (inMain, inEditor, inSettings bool) {
+		ed.Frame()
+		st.Frame()
+		tt.Frame()
+		ed.Frame()
+		st.Frame()
+		return tt.HasText(text), ed.HasText(text), st.HasText(text)
+	}
+	expect := func(what, text string, main, editor, settings bool) {
+		t.Helper()
+		if m, e, s := where(text); m != main || e != editor || s != settings {
+			t.Fatalf("%s: shown in main=%v editor=%v settings=%v, want %v %v %v", what, m, e, s, main, editor, settings)
+		}
+	}
+
+	// The editor's save arrives as an event the main window polls.
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}, Saved: true}, Message: "已保存远程文件", ForEditor: true})
+	expect("save result", "已保存远程文件", false, true, false)
+	// Everything else, whichever window builds first.
+	p.events = append(p.events, appui.Event{Message: "外部编辑器已关闭"})
+	expect("other event", "外部编辑器已关闭", true, false, false)
+	// A toast raised while the editor window builds.
+	click(t, ed, "用外部编辑器打开")
+	expect("editor action", "请先在设置的「通用」里选择外部编辑器", false, true, false)
+	// An error's details open in the window that showed the error.
+	p.events = append(p.events, appui.Event{Message: "dial tcp: connection refused", ForEditor: true})
+	expect("editor error", "连接被拒绝：服务器没有在这个端口提供 SSH 服务", false, true, false)
+	click(t, ed, "详情")
+	expect("details of an editor error", "dial tcp: connection refused", false, true, false)
+	click(t, ed, "关闭")
+	// A toast raised while the settings window builds.
+	click(t, st, "SSH")
+	click(t, st, "移除 db.example:22")
+	click(t, st, "移除密钥")
+	expect("settings action", "已移除 db.example:22 的主机密钥", false, false, true)
+	// A reload that fails belongs to the editor too.
+	p.events = append(p.events, appui.Event{Message: "reload went wrong", ForEditor: true})
+	expect("reload failure", "reload went wrong", false, true, false)
+	// With the editor window gone its late results fall back to the main window.
+	if !a.EditorMayClose() {
+		t.Fatal("clean editor refused to close")
+	}
+	p.events = append(p.events, appui.Event{Message: "迟到的结果", ForEditor: true})
+	expect("late editor result", "迟到的结果", true, false, false)
+}
+
+func TestEditorReloadAsksThePlatformToReload(t *testing.T) {
+	a, p, tt := fixture(t)
+	a.ShowEditor = func() {}
+	ed := ui.NewTester(a.EditorView, 900, 640)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
+	tt.Frame()
+	ed.Frame()
+	click(t, ed, "重新载入")
+	click(t, ed, "丢弃并重新载入")
+	if len(p.reloaded) != 1 || p.reloaded[0] != "/etc/a.conf" || len(p.opened) != 0 {
+		t.Fatal("reload", p.reloaded, p.opened)
+	}
+}

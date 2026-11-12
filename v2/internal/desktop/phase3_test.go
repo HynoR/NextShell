@@ -11,6 +11,7 @@ import (
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/cloudhttp"
 	"nextshell.dev/v2/internal/cloudv2"
+	"nextshell.dev/v2/internal/remoteedit"
 	"os"
 	"path/filepath"
 	"strings"
@@ -182,5 +183,34 @@ func TestInstallShellHookWritesTheFileAndReportsTheLine(t *testing.T) {
 	p.CloseSession(session)
 	if r := hook(); r.Err == nil {
 		t.Fatal("closed session")
+	}
+}
+
+// What the editor window does answers with ForEditor, so the UI shows it there;
+// opening a file from the main window's panel does not.
+func TestEditorActionsAreTaggedForTheEditorWindow(t *testing.T) {
+	p := desktopFixture(t)
+	session, root := phase2SSH(t, p)
+	text := filepath.Join(root, "text")
+	os.WriteFile(text, []byte("initial"), 0600)
+	message := func() appui.Event { return awaitEvent(t, p, func(e appui.Event) bool { return e.Message != "" }) }
+
+	p.OpenRemote(session, filepath.Join(root, "missing"))
+	if e := message(); e.ForEditor {
+		t.Fatal("a failed open from the file panel is the main window's", e)
+	}
+	p.ReloadRemote(session, filepath.Join(root, "missing"))
+	if e := message(); !e.ForEditor {
+		t.Fatal("a failed reload is the editor's", e)
+	}
+	p.OpenRemote(session, text)
+	doc := awaitEvent(t, p, func(e appui.Event) bool { return e.Editor != nil }).Editor.Document
+	p.SaveRemote(session, doc, "edited")
+	if e := message(); !e.ForEditor || e.Editor == nil || !e.Editor.Saved {
+		t.Fatal("a save acknowledgement is the editor's", e)
+	}
+	p.SaveRemote(session, remoteedit.Document{Path: filepath.Join(root, "stale"), Hash: doc.Hash}, "x")
+	if e := message(); !e.ForEditor {
+		t.Fatal("a failed save is the editor's", e)
 	}
 }

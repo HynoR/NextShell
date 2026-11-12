@@ -20,13 +20,16 @@ import (
 	"testing"
 )
 
+// linuxTestCmd runs the whole suite on Linux from a non-Linux dev machine (run inside v2/).
+const linuxTestCmd = `docker run --rm -v "$PWD":/src -w /src -v nextshell-gomod:/go/pkg/mod -e GOTOOLCHAIN=auto golang:1.27 go test ./... -count=1`
+
 // RequireLinuxRemote skips t unless this machine can stand in for a Linux
 // remote: the server runs exec requests locally, while the product probes
 // /proc and uses GNU tools (mv -T, ps --sort) on the remote.
 func RequireLinuxRemote(t testing.TB) {
 	t.Helper()
 	if runtime.GOOS != "linux" {
-		t.Skipf("needs a Linux host to act as the remote (/proc, GNU coreutils); running on %s", runtime.GOOS)
+		t.Skipf("needs a Linux host to act as the remote (/proc, GNU coreutils); running on %s. Run in Docker: %s", runtime.GOOS, linuxTestCmd)
 	}
 }
 

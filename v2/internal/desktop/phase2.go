@@ -48,12 +48,16 @@ func (p *Platform) withSFTP(ctx context.Context, id string, fn func(*sftpfs.Clie
 	}
 	return fn(fs)
 }
-func (p *Platform) operation(fn func(context.Context) error) {
+func (p *Platform) operation(fn func(context.Context) error) { p.operationFor(false, fn) }
+
+// operationFor is operation for a feature of the editor window when forEditor
+// is set: its failures are tagged so the UI shows them there.
+func (p *Platform) operationFor(forEditor bool, fn func(context.Context) error) {
 	p.launch(func() {
 		ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
 		defer cancel()
 		if e := fn(ctx); e != nil {
-			p.emit(appui.Event{Message: e.Error()})
+			p.emit(appui.Event{Message: e.Error(), ForEditor: forEditor})
 		}
 	})
 }
@@ -251,11 +255,13 @@ func transferLabel(r appui.TransferRequest) string {
 		return "复制 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
 	}
 }
-func (p *Platform) Transfers() []transfer.Job     { return p.queue.List() }
-func (p *Platform) CancelTransfer(id string)      { p.queue.Cancel(id) }
-func (p *Platform) RetryTransfer(id string) error { return p.queue.Retry(id) }
-func (p *Platform) OpenRemote(session, remote string) {
-	p.operation(func(ctx context.Context) error {
+func (p *Platform) Transfers() []transfer.Job           { return p.queue.List() }
+func (p *Platform) CancelTransfer(id string)            { p.queue.Cancel(id) }
+func (p *Platform) RetryTransfer(id string) error       { return p.queue.Retry(id) }
+func (p *Platform) OpenRemote(session, remote string)   { p.openRemote(session, remote, false) }
+func (p *Platform) ReloadRemote(session, remote string) { p.openRemote(session, remote, true) }
+func (p *Platform) openRemote(session, remote string, forEditor bool) {
+	p.operationFor(forEditor, func(ctx context.Context) error {
 		return p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
 			doc, e := remoteedit.Open(c, remote)
 			if e != nil {
@@ -267,13 +273,13 @@ func (p *Platform) OpenRemote(session, remote string) {
 	})
 }
 func (p *Platform) SaveRemote(session string, doc remoteedit.Document, text string) {
-	p.operation(func(ctx context.Context) error {
+	p.operationFor(true, func(ctx context.Context) error {
 		return p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
 			next, e := remoteedit.Save(ctx, c, doc, text)
 			if e != nil {
 				return e
 			}
-			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "已保存远程文件"})
+			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "已保存远程文件", ForEditor: true})
 			return nil
 		})
 	})
@@ -291,13 +297,13 @@ func (p *Platform) ExternalEdit(session, remote, executable string, args []strin
 				return e
 			}
 			return remoteedit.External(p.ctx, c, doc, watchEditor, executable, func(next remoteedit.Document) {
-				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "外部编辑器的修改已保存到远程"})
+				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "外部编辑器的修改已保存到远程", ForEditor: true})
 			}, args...)
 		})
 		if e != nil {
-			p.emit(appui.Event{Message: e.Error()})
+			p.emit(appui.Event{Message: e.Error(), ForEditor: true})
 		} else {
-			p.emit(appui.Event{Message: "外部编辑器已关闭"})
+			p.emit(appui.Event{Message: "外部编辑器已关闭", ForEditor: true})
 		}
 	})
 }

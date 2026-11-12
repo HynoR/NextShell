@@ -45,16 +45,47 @@ type App struct {
 	settings settingsState
 	dialogs  dialogState
 
-	actions    []func()
-	toasts     []ui.Toast
-	logs       []string
-	inSettings bool
-	sync       struct {
+	actions []func()
+	// toasts waits per window until that window's view builds and shows them;
+	// view is the window being built, so a toast raised in a view belongs to it.
+	toasts [windows][]ui.Toast
+	view   window
+	logs   []string
+	sync   struct {
 		label string
 		at    time.Time
 	}
 	wakeMain, wakeSettings func()
 	wakeEditor             func()
+}
+
+// window is one of the app's windows. The remote editor's toasts show in it,
+// and so do the settings', and everything else shows in the main window.
+type window int
+
+const (
+	mainWindow window = iota
+	editorWindow
+	settingsWindow
+	windows
+)
+
+// inWindow runs fn as if w's view were building: what it toasts belongs to w.
+func (a *App) inWindow(w window, fn func()) {
+	before := a.view
+	a.view = w
+	fn()
+	a.view = before
+}
+
+// inEditorWindow is inWindow for the editor window, when it is showing; the
+// toasts of an editor action that outlives its window go to the main window.
+func (a *App) inEditorWindow(fn func()) {
+	if a.editor.windowed {
+		a.inWindow(editorWindow, fn)
+		return
+	}
+	fn()
 }
 
 type layoutState struct {
@@ -100,8 +131,11 @@ func (a *App) later(fn func()) { a.actions = append(a.actions, fn) }
 
 func (a *App) toast(msg string) {
 	a.log(msg)
-	a.toasts = append(a.toasts, ui.Toast{Title: msg, Timeout: 3 * time.Second})
+	a.addToast(ui.Toast{Title: msg, Timeout: 3 * time.Second})
 }
+
+// addToast queues t for the window being built, or the one the code runs for.
+func (a *App) addToast(t ui.Toast) { a.toasts[a.view] = append(a.toasts[a.view], t) }
 func (a *App) fail(e error) {
 	if e == nil {
 		return
@@ -116,7 +150,8 @@ func (a *App) failAs(title, msg string) {
 	if r := []rune(title); len(r) > 60 {
 		title = string(r[:60]) + "…"
 	}
-	a.toasts = append(a.toasts, ui.Toast{Title: title, Type: "error", Timeout: 6 * time.Second, Action: "详情", OnAction: func() { a.dialogs.detail = msg }})
+	w := a.view
+	a.addToast(ui.Toast{Title: title, Type: "error", Timeout: 6 * time.Second, Action: "详情", OnAction: func() { a.dialogs.detail, a.dialogs.detailIn = msg, w }})
 }
 
 // humanize turns the common network, SSH and file errors into Chinese; the
@@ -164,11 +199,11 @@ func (a *App) log(msg string) {
 		a.logs = a.logs[len(a.logs)-100:]
 	}
 }
-func (a *App) flushToasts(c *ui.Context) {
-	for _, t := range a.toasts {
+func (a *App) flushToasts(c *ui.Context, w window) {
+	for _, t := range a.toasts[w] {
 		c.AddToast(t)
 	}
-	a.toasts = nil
+	a.toasts[w] = nil
 }
 func (a *App) reload() {
 	s, e := a.P.Snapshot()
@@ -247,7 +282,11 @@ func (a *App) View(c *ui.Context) {
 	a.monitor.watch(a, a.layout.panelOpen && a.layout.panel == panelMonitor)
 	a.dialogsView(c)
 	a.runActions(c)
-	a.flushToasts(c)
+	if !a.editor.windowed { // its window closed with toasts pending
+		a.toasts[mainWindow] = append(a.toasts[mainWindow], a.toasts[editorWindow]...)
+		a.toasts[editorWindow] = nil
+	}
+	a.flushToasts(c, mainWindow)
 }
 func (a *App) runActions(c *ui.Context) {
 	actions := a.actions
@@ -294,12 +333,19 @@ func (a *App) poll() bool {
 		}
 		if e.Message != "" {
 			a.reload()
-			if e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof") {
-				a.failAs("代理连接被关闭", e.Message)
-			} else if _, known := humanize(e.Message); e.Failed != "" || known {
-				a.fail(fmt.Errorf("%s", e.Message))
+			show := func() {
+				if e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof") {
+					a.failAs("代理连接被关闭", e.Message)
+				} else if _, known := humanize(e.Message); e.Failed != "" || known {
+					a.fail(fmt.Errorf("%s", e.Message))
+				} else {
+					a.toast(e.Message)
+				}
+			}
+			if e.ForEditor {
+				a.inEditorWindow(show)
 			} else {
-				a.toast(e.Message)
+				show()
 			}
 		}
 		if e.Prompt != nil {

@@ -417,7 +417,7 @@ func (a *App) trashHosts(cs []model.Connection) {
 	a.reload()
 	if len(cs) == 1 {
 		restore := cs[0]
-		a.toasts = append(a.toasts, ui.Toast{Title: "已移入回收站：" + restore.Name, Action: "撤销", OnAction: func() {
+		a.addToast(ui.Toast{Title: "已移入回收站：" + restore.Name, Action: "撤销", OnAction: func() {
 			restore.Deleted = false
 			a.report(a.P.SaveConnection(restore, nil), "")
 			a.reload()

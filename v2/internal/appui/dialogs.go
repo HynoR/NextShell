@@ -13,6 +13,7 @@ type dialogState struct {
 	changedAsk    bool // the second confirmation of a changed host key
 	links         []string
 	detail        string
+	detailIn      window // where the details of an error toast show: the window it showed in
 	pending       *confirmation
 	pendingWindow bool // true: the settings window shows it
 }
@@ -26,7 +27,7 @@ type confirmation struct {
 // confirm asks before run, in the window that asked.
 func (a *App) confirm(title, message, action string, run func()) {
 	a.dialogs.pending = &confirmation{title, message, action, run}
-	a.dialogs.pendingWindow = a.inSettings
+	a.dialogs.pendingWindow = a.view == settingsWindow
 }
 func (a *App) confirmView(c *ui.Context, settings bool) {
 	d := &a.dialogs
@@ -97,13 +98,13 @@ func (a *App) dialogsView(c *ui.Context) {
 			a.P.Quit()
 		}
 	}
-	a.detailView(c)
+	a.detailView(c, mainWindow)
 	if len(d.prompts) > 0 {
 		a.promptView(c, d.prompts[0])
 	}
 }
-func (a *App) detailView(c *ui.Context) {
-	if a.dialogs.detail == "" {
+func (a *App) detailView(c *ui.Context, w window) {
+	if a.dialogs.detail == "" || a.dialogs.detailIn != w {
 		return
 	}
 	open := true

@@ -57,6 +57,7 @@ type Event struct {
 	Session              *Session
 	Failed               string // ID of the saved connection whose connect failed
 	Message              string
+	ForEditor            bool // Message answers an action of the remote editor, so it belongs in that window
 	Prompt               *Prompt
 }
 
@@ -128,6 +129,9 @@ type Platform interface {
 	ClearCompletedTransfers() int
 	RetryTransfer(id string) error
 	OpenRemote(session, path string)
+	// ReloadRemote is OpenRemote for the editor's reload button: the same Editor event,
+	// and a failure's Message is ForEditor.
+	ReloadRemote(session, path string)
 	SaveRemote(session string, doc remoteedit.Document, text string)
 	ExternalEdit(session, path, executable string, args []string)
 	Diagnose(kind, target string) string

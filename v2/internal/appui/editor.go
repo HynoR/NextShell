@@ -155,7 +155,7 @@ func (a *App) receiveDocument(r *EditorResult) {
 				d.Code.Buffer.MarkSaved()
 			}
 		} else if dirty {
-			a.toast("远程文件有更新，已保留未保存的修改；保存时会检查冲突")
+			a.inEditorWindow(func() { a.toast("远程文件有更新，已保留未保存的修改；保存时会检查冲突") })
 		} else {
 			d.Document = r.Document
 			d.Text = r.Document.Text
@@ -250,6 +250,8 @@ func (a *App) editorDialog(c *ui.Context) {
 // EditorView builds the remote editor window.
 func (a *App) EditorView(c *ui.Context) {
 	s := &a.editor
+	a.view = editorWindow
+	defer func() { a.view = mainWindow }()
 	a.theme(c)
 	a.wakeEditor = c.Services().Invalidate
 	t := c.Theme()
@@ -276,8 +278,9 @@ func (a *App) EditorView(c *ui.Context) {
 			s.closeAll = false
 		}
 	}
+	a.detailView(c, editorWindow)
 	a.runActions(c)
-	a.flushToasts(c)
+	a.flushToasts(c, editorWindow)
 	if a.wakeMain != nil {
 		a.wakeMain()
 	}
@@ -311,7 +314,7 @@ func (a *App) editorBody(c *ui.Context) {
 			}
 			if ui.Button(c, "丢弃并重新载入").Clicked() {
 				s.text = s.document.Text
-				a.P.OpenRemote(s.reloadSession, s.reloadPath)
+				a.P.ReloadRemote(s.reloadSession, s.reloadPath)
 				s.reloadPath = ""
 			}
 		})

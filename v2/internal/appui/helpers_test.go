@@ -22,6 +22,7 @@ type fakePlatform struct {
 	local, cloned, reconnected int
 	closed, listed, sent       []string
 	hooks                      []string // sessions asked to get the shell hook ready
+	reloaded                   []string
 	queued                     []appui.TransferRequest
 	actions                    [][3]string
 	jobs                       []transfer.Job
@@ -60,8 +61,11 @@ func (p *fakePlatform) Transfers() []transfer.Job       { return p.jobs }
 func (p *fakePlatform) RefreshMonitor(string)           {}
 func (p *fakePlatform) WatchMonitor(id string, on bool) { p.watching[id] = on }
 func (p *fakePlatform) OpenRemote(session, path string) { p.opened = append(p.opened, path) }
-func (p *fakePlatform) OpenURL(s string) error          { p.opened = append(p.opened, s); return nil }
-func (p *fakePlatform) SessionDir(id string) string     { return "" }
+func (p *fakePlatform) ReloadRemote(session, path string) {
+	p.reloaded = append(p.reloaded, path)
+}
+func (p *fakePlatform) OpenURL(s string) error      { p.opened = append(p.opened, s); return nil }
+func (p *fakePlatform) SessionDir(id string) string { return "" }
 func (p *fakePlatform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
 	p.sent = append(p.sent, text)
 	return nil
