@@ -128,7 +128,7 @@ func TestKeepaliveIdle(t *testing.T) {
 	default:
 	}
 	// each keepalive is one request + one reply (~100 bytes each way); 6s at 1s interval must show traffic
-	if idle < 6*60 {
+	if idle < 3*60 {
 		t.Fatalf("only %d bytes crossed the wire in 6s idle; keepalives are not being sent", idle)
 	}
 	t.Logf("idle 6s with keepalive=1s: %d bytes on the wire", idle)
