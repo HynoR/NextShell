@@ -59,7 +59,7 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	// An open tab comes before the host it is a session of, so Enter switches to it instead of opening another.
 	for i, s := range a.Tabs {
-		add("标签", s.Title, a.tabTooltip(s), s.Connection.Name+" "+s.Connection.Host, func(ui.Modifiers) { a.activateTab(i) })
+		add("标签", a.tabTitle(s), a.tabTooltip(s), s.Connection.Name+" "+s.Connection.Host, func(ui.Modifiers) { a.activateTab(i) })
 	}
 	limit := 0
 	for _, cc := range a.hosts.recentHosts(a, len(a.Data.Connections)) {
@@ -128,7 +128,7 @@ func (a *App) paletteItems() []paletteItem {
 			{"复制会话", func() { a.P.CloneSession(s) }},
 			{"重新连接", func() { a.reconnect(s) }},
 			{"重命名标签", func() { a.startRename(s) }},
-			{"关闭标签", func() { a.closeTabID(s.ID) }},
+			{"关闭标签", func() { a.requestClose(s.ID) }},
 			{"清屏", func() { s.Terminal.ClearScreen() }},
 			{"清除滚动缓冲", func() { s.Terminal.ClearScrollback() }},
 		}...)

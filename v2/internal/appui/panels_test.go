@@ -766,6 +766,7 @@ func TestToolTabsGoWithTheirHost(t *testing.T) {
 	click(t, tt, "进程管理器")
 	has(t, tt, "进程 · one")
 	click(t, tt, "关闭标签 one")
+	click(t, tt, "断开并关闭")
 	if tt.HasText("进程 · one") || p.detailed["one"] {
 		t.Fatal("the process tab outlived its host", p.detailed)
 	}

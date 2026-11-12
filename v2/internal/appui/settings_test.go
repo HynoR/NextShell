@@ -458,9 +458,10 @@ func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 	has(t, st, "还没有信任过的主机")
 	click(t, st, "窗口行为")
 	flip(t, st, "关闭窗口时确认")
+	flip(t, st, "关闭标签时确认")
 	flip(t, st, "启动时恢复标签")
-	if v := p.Preferences(); !v.NoCloseConfirm || !v.RestoreTabs {
-		t.Fatal("window prefs", v.NoCloseConfirm, v.RestoreTabs)
+	if v := p.Preferences(); !v.NoCloseConfirm || !v.NoTabConfirm || !v.RestoreTabs {
+		t.Fatal("window prefs", v.NoCloseConfirm, v.NoTabConfirm, v.RestoreTabs)
 	}
 	click(t, st, "终端")
 	click(t, st, "关闭")

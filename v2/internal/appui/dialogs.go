@@ -78,6 +78,7 @@ func (a *App) dialogsView(c *ui.Context) {
 	a.snippetDialogs(c)
 	a.editorDialog(c)
 	a.retryDialog(c)
+	a.closeDialog(c)
 	a.confirmView(c, mainWindow)
 	d := &a.dialogs
 	if len(d.links) > 0 {

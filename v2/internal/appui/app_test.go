@@ -92,6 +92,7 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 		t.Fatal("new local shortcut")
 	}
 	tt.Key(appMod(), ui.KeyW)
+	click(t, tt, "断开并关闭")
 	if len(a.Tabs) != 0 || len(p.closed) != 1 {
 		t.Fatal("close shortcut")
 	}

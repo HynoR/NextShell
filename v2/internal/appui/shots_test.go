@@ -346,11 +346,24 @@ func TestScreenshots(t *testing.T) {
 	}
 	shot(ed, "14b-editor-close-guard")
 
-	// A dropped connection: the card and the tab offer to reconnect.
-	one.Terminal.Close()
+	// A dropped connection: the card and the tab offer to reconnect; with the left column folded, a line
+	// under the terminal does. (The ping card above reused the id s1: point it back at this terminal.)
+	p.terminals[one.ID] = one.Terminal
+	a.Active = 0
+	a.Tabs[0].Terminal.Close()
 	<-one.Terminal.Done()
 	tt.Frame()
 	shot(tt, "17-disconnected")
+	tt.Key(appMod(), ui.KeyB)
+	shot(tt, "17b-disconnected-folded")
+	tt.Key(appMod(), ui.KeyB)
+	// Closing a connected tab asks first; the + opens a menu of the local terminal, recent hosts and the manager.
+	click(t, tt, "关闭标签 db-master")
+	shot(tt, "30-close-confirm")
+	click(t, tt, "取消")
+	click(t, tt, "新建标签")
+	shot(tt, "31-plus-menu")
+	tt.CloseMenu()
 
 	sp := &servicesPlatform{fakePlatform: p, auto: agent.AutoApproval{On: true, Expires: now.Add(42 * time.Minute)}}
 	sp.agent = appui.AgentOverview{Pending: []agent.Pending{{ID: "r", Client: "claude", Tool: "exec", Summary: "systemctl restart nginx", ExpiresAt: now.Add(time.Minute)}}}

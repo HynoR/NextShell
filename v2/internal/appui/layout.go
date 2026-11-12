@@ -113,10 +113,36 @@ func (a *App) terminalArea(c *ui.Context) {
 		if id := s.Connection.ID; id != "" && a.hosts.connecting[id] && a.P.Exited(s.ID) && term.Shortcut(0, ui.KeyEscape) {
 			a.cancelConnect(id)
 		}
+		a.endedBanner(c, s)
 		if a.cmdbar.finding {
 			a.findBar(c, s)
 		}
 		a.commandBar(c, s)
+	})
+}
+
+// endedBanner is the one line under the terminal that says the session has ended, with the way back.
+// The left column's session card says it too, so the banner shows only while that column is folded.
+func (a *App) endedBanner(c *ui.Context, s *Session) {
+	if !a.layout.leftHidden || !a.P.Exited(s.ID) {
+		return
+	}
+	if label, _ := a.sessionStatus(c, s); label == "连接中" {
+		return
+	}
+	t := c.Theme()
+	text, action := "连接已断开", "重新连接"
+	if s.Local {
+		text, action = "终端已退出", "重新打开"
+	}
+	ui.Row(c).FillWidth().Height(32).Padding(0, 12).Gap(10).AlignItems(ui.Center).Background(t.Warning.Alpha(.12)).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Label(text).Children(func() {
+		ui.Icon(c, appIcons["refresh"]).FontSize(13).TextColor(t.Warning)
+		ui.Text(c, text).FontSize(13).Bold().TextColor(t.Warning).SingleLine()
+		muted(c, "按回车键"+action).SingleLine()
+		ui.Spacer(c).Grow(1)
+		if ui.Button(c, action).Clicked() {
+			a.later(func() { a.reconnect(s) })
+		}
 	})
 }
 

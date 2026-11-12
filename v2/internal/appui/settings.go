@@ -244,6 +244,11 @@ func (a *App) windowSettings(c *ui.Context) {
 		if toggle(c, "关闭窗口时确认", &confirm) {
 			v.NoCloseConfirm = !confirm
 		}
+		tabConfirm := !v.NoTabConfirm
+		if toggle(c, "关闭标签时确认", &tabConfirm) {
+			v.NoTabConfirm = !tabConfirm
+		}
+		muted(c, "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭")
 		toggle(c, "启动时恢复标签", &v.RestoreTabs)
 		muted(c, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
 		toggle(c, "左栏默认折叠", &v.FoldLeft)

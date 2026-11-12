@@ -33,6 +33,7 @@ type Preferences struct {
 	KeepaliveSeconds int     `json:"keepaliveSeconds"`
 	NexttracePath    string  `json:"nexttracePath"`
 	NoCloseConfirm   bool    `json:"noCloseConfirm"`   // zero value: confirm closing with open tabs
+	NoTabConfirm     bool    `json:"noTabConfirm"`     // zero value: confirm closing a connected tab
 	RestoreTabs      bool    `json:"restoreTabs"`      // reopen last run's hosts and local shells
 	FoldLeft         bool    `json:"foldLeft"`         // start with the left column folded
 	FoldBench        bool    `json:"foldBench"`        // start with the bottom workbench folded

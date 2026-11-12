@@ -102,6 +102,12 @@ func (a *App) toolTabs(c *ui.Context, tabs ui.TabsParts, first int) {
 		on := a.monitor.tool == tool.key()
 		title := a.toolTitle(tool)
 		tab := tabs.Tab(first+n).Label(title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Tooltip(title)
+		if a.tabs.reveal == "tool:"+tool.key() {
+			tab.ScrollIntoView()
+		}
+		if a.middleClicked(tab, "tool:"+tool.key()) {
+			a.later(func() { a.closeTool(tool) })
+		}
 		tab.ContextMenu(func(m *ui.Menu) {
 			if m.Item("关闭").Chosen() {
 				a.later(func() { a.closeTool(tool) })

@@ -1,6 +1,7 @@
 package appui
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +16,16 @@ type tabsState struct {
 	renaming, renameText string
 	term                 ui.Handle
 	restored             bool
+	ask                  *closeAsk // a close waiting for the user's answer
+	shown, reveal        string    // the tab last scrolled to; the one to scroll to in this frame, if it changed
+	middle, held         string    // the tab the middle button was held on in the last frame, and in this one
+}
+
+// closeAsk is a close of session tabs that asks first, because some are connected.
+type closeAsk struct {
+	ids   []string
+	live  int  // connected SSH tabs among them
+	never bool // 不再询问 ticked
 }
 
 // ExitNeedsConfirm says whether closing the main window should ask first.
@@ -62,25 +73,29 @@ func (a *App) tabBar(c *ui.Context) {
 	ui.Row(c).FillWidth().Height(38).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
 		a.tabStrip(c)
 		a.pendingStrip(c, a.pendingTabs())
-		plus := iconButton(c, "新建本地终端", "plus")
-		if plus.Clicked() {
-			a.P.Local()
+		a.plusMenu(c)
+		ui.Spacer(c).Grow(1)
+	})
+}
+
+// plusMenu is the 「+」: a new local terminal, a recent host, or the connection manager.
+func (a *App) plusMenu(c *ui.Context) {
+	iconButton(c, "新建标签", "plus").PopoverMenuButton(func(m *ui.Menu) {
+		if m.Item("本地终端").Shortcut(appMod, ui.KeyT).Chosen() {
+			a.later(a.P.Local)
 		}
-		plus.PopoverMenu(func(m *ui.Menu) {
-			if m.Item("本地终端").Chosen() {
-				a.later(a.P.Local)
-			}
-			if m.Item("打开连接管理器").Chosen() {
-				a.later(a.openManager)
-			}
+		if recent := a.hosts.recentHosts(a, 10); len(recent) > 0 {
 			m.Separator()
-			for _, cc := range a.hosts.recentHosts(a, 10) {
-				if m.Item(cc.Name).ID(cc.ID).Subtitle(a.resolved(cc).User + "@" + cc.Host).Chosen() {
+			for _, cc := range recent {
+				if m.Item(cc.Name).ID(cc.ID).Subtitle(a.login(cc)).Chosen() {
 					a.later(func() { a.connect(cc) })
 				}
 			}
-		})
-		ui.Spacer(c).Grow(1)
+		}
+		m.Separator()
+		if m.Item("打开连接管理器…").Chosen() {
+			a.later(a.openManager)
+		}
 	})
 }
 
@@ -97,11 +112,23 @@ func (a *App) tabStrip(c *ui.Context) {
 		if tool != nil {
 			selected = len(a.Tabs) + slices.Index(a.monitor.tools, *tool)
 		}
+		a.tabs.reveal = ""
+		if key := a.activeTabKey(); key != a.tabs.shown { // scrolled to once, when it changes: not again, to leave the scrolling to the user
+			a.tabs.reveal, a.tabs.shown = key, key
+		}
+		defer func() { a.tabs.middle, a.tabs.held = a.tabs.held, "" }()
 		tabs := ui.TabsBase(c, &selected, len(a.Tabs)+len(a.monitor.tools))
 		tabs.List.Height(38).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
-				tab := tabs.Tab(i).Label(s.Title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Drag(tabDrag(s.ID)).Tooltip(a.tabTooltip(s))
+				title := a.tabTitle(s)
+				tab := tabs.Tab(i).Label(title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Drag(tabDrag(s.ID)).Tooltip(a.tabTooltip(s))
+				if a.tabs.reveal == s.ID {
+					tab.ScrollIntoView()
+				}
+				if a.middleClicked(tab, s.ID) {
+					a.later(func() { a.requestClose(s.ID) })
+				}
 				a.tabMenu(tab, s)
 				if x, ok := ui.Drop[tabDrag](tab); ok {
 					a.moveTab(string(x), i)
@@ -141,10 +168,10 @@ func (a *App) tabStrip(c *ui.Context) {
 							a.finishRename(s)
 						}
 					} else {
-						ui.Text(c, s.Title).SingleLine().MaxWidth(180).FontSize(13).TextColor(color)
+						ui.Text(c, title).SingleLine().MaxWidth(180).FontSize(13).TextColor(color)
 					}
 					if exited && label != "连接中" {
-						r := ui.ButtonBase(c).Label("重新连接 "+s.Title).Tooltip("重新连接").Size(18, 18).Radius(4).Center()
+						r := ui.ButtonBase(c).Label("重新连接 "+title).Tooltip("重新连接").Size(18, 18).Radius(4).Center()
 						if r.Hovered() {
 							r.Background(t.SurfacePressed)
 						}
@@ -153,14 +180,13 @@ func (a *App) tabStrip(c *ui.Context) {
 							a.later(func() { a.reconnect(s) })
 						}
 					}
-					x := ui.ButtonBase(c).Label("关闭标签 "+s.Title).Tooltip("关闭标签").Size(18, 18).Radius(4).Center()
+					x := ui.ButtonBase(c).Label("关闭标签 "+title).Tooltip("关闭标签").Size(18, 18).Radius(4).Center()
 					if x.Hovered() {
 						x.Background(t.SurfacePressed)
 					}
 					x.Children(func() { ui.Icon(c, appIcons["close"]).FontSize(12).TextColor(t.TextMuted) })
 					if x.Clicked() {
-						index := i
-						a.later(func() { a.closeTab(index) })
+						a.later(func() { a.requestClose(s.ID) })
 					}
 				})
 			}
@@ -174,6 +200,43 @@ func (a *App) tabStrip(c *ui.Context) {
 			}
 		}
 	})
+}
+
+// activeTabKey names the tab that shows, to scroll it into view when it changes.
+func (a *App) activeTabKey() string {
+	if tool := a.activeTool(); tool != nil {
+		return "tool:" + tool.key()
+	}
+	return a.activeID()
+}
+
+// middleClicked reports a click of the middle button on tab, released on it.
+func (a *App) middleClicked(tab ui.Element, key string) bool {
+	if b, ok := tab.PressedButton(); ok && b == 2 {
+		a.tabs.held = key
+		return false
+	}
+	return a.tabs.middle == key && tab.Hovered()
+}
+
+// tabTitle is the title of s's tab: a duplicate of an earlier tab's automatic title reads 「名称 (2)」.
+func (a *App) tabTitle(s *Session) string {
+	if s.ManualTitle {
+		return s.Title
+	}
+	n := 1
+	for _, o := range a.Tabs {
+		if o == s {
+			break
+		}
+		if !o.ManualTitle && o.Title == s.Title {
+			n++
+		}
+	}
+	if n > 1 {
+		return fmt.Sprintf("%s (%d)", s.Title, n)
+	}
+	return s.Title
 }
 
 // tabTooltip names what the tab is. An SSH tab shows its connection name, so the title the remote
@@ -222,7 +285,7 @@ func (a *App) tabMenu(item ui.Element, s *Session) {
 		}
 		m.Separator()
 		if m.Item("关闭").Chosen() {
-			a.later(func() { a.closeTabID(s.ID) })
+			a.later(func() { a.requestClose(s.ID) })
 		}
 		if m.Item("关闭其他").Disabled(len(a.Tabs) < 2).Chosen() {
 			a.later(func() { a.closeWhere(func(i int, o *Session) bool { return o != s }) })
@@ -276,6 +339,27 @@ func (a *App) activateTab(i int) {
 	}
 }
 func (a *App) closeTabID(id string) { a.closeTab(a.tabIndex(id)) }
+
+// requestClose is the user closing session tabs: it asks first when one is connected. An agent's
+// close, and what the user confirmed, go straight to closeTab.
+func (a *App) requestClose(ids ...string) {
+	ask := &closeAsk{ids: ids}
+	for _, id := range ids {
+		if i := a.tabIndex(id); i >= 0 && !a.Tabs[i].Local && !a.P.Exited(id) && !a.Prefs.NoTabConfirm {
+			ask.live++
+		}
+	}
+	if ask.live == 0 {
+		a.closeTabs(ids)
+		return
+	}
+	a.tabs.ask = ask
+}
+func (a *App) closeTabs(ids []string) {
+	for _, id := range ids {
+		a.closeTabID(id)
+	}
+}
 func (a *App) closeTab(i int) {
 	if i < 0 || i >= len(a.Tabs) {
 		return
@@ -300,11 +384,13 @@ func (a *App) closeTab(i int) {
 
 // closeWhere closes the tabs for which close reports true, from the right.
 func (a *App) closeWhere(close func(i int, s *Session) bool) {
+	var ids []string
 	for i := len(a.Tabs) - 1; i >= 0; i-- {
 		if close(i, a.Tabs[i]) {
-			a.closeTab(i)
+			ids = append(ids, a.Tabs[i].ID)
 		}
 	}
+	a.requestClose(ids...)
 }
 func (a *App) moveTab(id string, to int) {
 	from := a.tabIndex(id)
@@ -376,7 +462,7 @@ func (a *App) mruOverlay(c *ui.Context) {
 				if id == a.tabs.mru.Preview() {
 					row.Background(t.Accent.Alpha(.15))
 				}
-				row.Children(func() { ui.Text(c, a.Tabs[i].Title).SingleLine() })
+				row.Children(func() { ui.Text(c, a.tabTitle(a.Tabs[i])).SingleLine() })
 			}
 			if lines := lastLines(a.P.ScreenText(a.tabs.mru.Preview()), 6); lines != "" {
 				ui.Text(c, lines).Font("monospace").FontSize(11).TextColor(t.TextMuted).Padding(8).FillWidth().Background(t.Background).Radius(6)
@@ -390,4 +476,49 @@ func lastLines(s string, n int) string {
 		lines = lines[len(lines)-n:]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// closeDialog asks before the tabs of a.tabs.ask close.
+func (a *App) closeDialog(c *ui.Context) {
+	k := a.tabs.ask
+	if k == nil {
+		return
+	}
+	title, msg := "关闭标签？", "这个连接还在使用。关闭后，正在运行的命令会中断。"
+	if i := a.tabIndex(k.ids[0]); len(k.ids) == 1 && i >= 0 {
+		title = "关闭 " + a.tabTitle(a.Tabs[i]) + "？"
+	} else if len(k.ids) > 1 {
+		title, msg = fmt.Sprintf("关闭 %d 个标签？", len(k.ids)), fmt.Sprintf("其中 %d 个连接还在使用。关闭后，正在运行的命令会中断。", k.live)
+	}
+	open := true
+	dialog(c, &open, func() {
+		ui.Column(c).Width(420).Gap(12).Children(func() {
+			ui.Text(c, title).FontSize(17).Bold()
+			ui.Text(c, msg).FillWidth()
+			ui.Checkbox(c, &k.never, "不再询问")
+			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+				if ui.Button(c, "取消").Clicked() {
+					open = false
+				}
+				if ui.PrimaryButton(c, "断开并关闭").AutoFocus().Clicked() {
+					open = false
+					a.later(func() {
+						if k.never {
+							p := a.Prefs
+							p.NoTabConfirm = true
+							if e := a.P.SavePreferences(p); e != nil {
+								a.fail(e)
+							} else {
+								a.Prefs, a.settings.draft.NoTabConfirm = p, true
+							}
+						}
+						a.closeTabs(k.ids)
+					})
+				}
+			})
+		})
+	})
+	if !open {
+		a.tabs.ask = nil
+	}
 }
