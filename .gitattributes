@@ -1,0 +1,5 @@
+# Byte-exact files stay LF on Windows checkouts (core.autocrlf would turn them into CRLF).
+# The scripts are embedded into the NextShell 2 binary and typed into remote POSIX shells.
+v2/internal/shellintegration/scripts/* text eol=lf
+# TestToolsMatchBridgeSnapshot compares it byte for byte with what the Go side generates.
+packages/mcp/src/tools.generated.json text eol=lf
