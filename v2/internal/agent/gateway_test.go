@@ -37,9 +37,16 @@ func (f *fake) Exec(ctx context.Context, id, command string) (ExecResult, error)
 	}
 	return ExecResult{Output: "token=TOPSECRET", Stderr: "password=TOPSECRET"}, nil
 }
-func (f *fake) Control(id, data string) error                { f.mark("control:" + data); return nil }
-func (f *fake) Focus(id string) error                        { f.mark("focus:" + id); return nil }
-func (f *fake) Open(context.Context, string) (string, error) { f.mark("open"); return "remote", nil }
+func (f *fake) Control(id, data string) error { f.mark("control:" + data); return nil }
+func (f *fake) Focus(id string) error         { f.mark("focus:" + id); return nil }
+func (f *fake) Close(id string) error         { f.mark("close:" + id); return nil }
+func (f *fake) Open(context.Context, string, UserAction) (string, error) {
+	f.mark("open")
+	return "remote", nil
+}
+func (*fake) Closed(id string) bool                { return id == "gone" }
+func (*fake) Workspaces() ([]string, error)        { return []string{"ws"}, nil }
+func (*fake) Output(string, int64) (Output, error) { return Output{Supported: true}, nil }
 func invoke(g *Gateway, owner, tool string, a Arguments) Result {
 	raw, _ := json.Marshal(a)
 	return g.Call(context.Background(), owner, "test client", tool, raw)
@@ -253,14 +260,14 @@ func TestV1CommandRiskExactVectors(t *testing.T) {
 			})
 		}
 	}
-	for _, cmd := range []string{"cat .env", "cat /srv/app/.env.production", "echo KEY=1 >> .env", "echo x >.env.local", "sed -i 's/a/b/' ./.env && ls", "cat .env.example.md"} {
+	for _, cmd := range []string{"cat .env", "cat /srv/app/.env.production", "echo KEY=1 >> .env", "echo x >.env.local", "sed -i 's/a/b/' ./.env && ls", "cat .env.example.md", "ls .envrc", "env | grep PATH"} {
 		t.Run(cmd, func(t *testing.T) {
 			if !Sensitive(cmd) {
 				t.Fatal("sensitive vector missed", cmd)
 			}
 		})
 	}
-	for _, cmd := range []string{"env | grep PATH", "cat environment.txt", "ls .envrc"} {
+	for _, cmd := range []string{"cat environment.txt", "env FOO=1 ls", "printenv PATH"} {
 		t.Run(cmd, func(t *testing.T) {
 			if Sensitive(cmd) {
 				t.Fatal("look-alike flagged", cmd)

@@ -9,14 +9,16 @@ import (
 	"nextshell.dev/v2/internal/desktop"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
 
 type options struct {
-	db        string
-	smoke     bool
-	agentTest bool // only registered in nextshell_devtools builds
+	db         string
+	smoke      bool
+	agentTest  bool   // only registered in nextshell_devtools builds
+	importFile string // likewise: --import with --agent-test
 }
 
 func parseFlags(fs *flag.FlagSet, args []string) (options, error) {
@@ -128,6 +130,19 @@ func main() {
 	mygo.App.OnQuit(end.Finish)
 	mygo.App.WhenReady(func() {
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
+		// An agent never takes the keyboard: the first action shows the window without focus (and bounces
+		// the Dock icon); only session_focus, the hand-over, focuses it.
+		a.RaiseWindow = func(focus bool) {
+			if focus {
+				w.Show()
+				w.Focus()
+				return
+			}
+			w.ShowInactive()
+			if runtime.GOOS == "darwin" {
+				go mygo.App.Dock.Bounce(false)
+			}
+		}
 		w.OnClose(func(e *mygo.CloseEvent) {
 			if !end.Terminating() && a.ExitNeedsConfirm() {
 				e.PreventDefault()

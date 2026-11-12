@@ -21,6 +21,13 @@ type Session struct {
 	Terminal    *terminal.Terminal
 	Connection  model.Connection
 	Local       bool
+	ByAgent     bool // an MCP client opened it: it joins the strip in the background, with a badge
+}
+
+// AgentNotice reports an agent call that changes something (Pending: it waits for the user's decision).
+type AgentNotice struct {
+	Tool    string
+	Pending bool
 }
 
 // Prompt asks the user something during a connection. Kind selects the dialog:
@@ -49,6 +56,9 @@ type Event struct {
 	Link                 string
 	Diagnostic           *DiagnosticResult
 	FocusID, WorkspaceID string
+	Handover             bool         // FocusID came from an agent's session_focus: select it and, rarely, raise the window
+	CloseID              string       // an agent closed this session: drop its tab
+	Agent                *AgentNotice // an agent call changed (or wants to change) something
 	Files                *FileListing
 	Editor               *EditorResult
 	Monitor              *MonitorResult

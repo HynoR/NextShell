@@ -172,6 +172,29 @@ func (a *App) cloudSettings(c *ui.Context) {
 	})
 }
 
+func tierLabel(tier string) string {
+	switch tier {
+	case "risky":
+		return "风险操作"
+	case "sensitive":
+		return "敏感文件"
+	}
+	return ""
+}
+
+// pendingTooltip names what waits for approval: the first request's tier, target and command.
+func pendingTooltip(pending []agent.Pending) string {
+	p := pending[0]
+	line := orDefault(p.TargetName, p.Target) + " · " + p.Summary
+	if label := tierLabel(p.Tier); label != "" {
+		line = label + " · " + line
+	}
+	if r := []rune(line); len(r) > 160 {
+		line = string(r[:160]) + "…"
+	}
+	return line
+}
+
 func (a *App) agentSettings(c *ui.Context) {
 	s := &a.settings.agent
 	t := c.Theme()
@@ -211,7 +234,7 @@ func (a *App) agentSettings(c *ui.Context) {
 					s.auto = choice
 				}
 			}
-		}).Description("风险命令和黑名单命中仍需手动批准；重启应用后自动关闭").FillWidth()
+		}).Description("风险操作（sudo、rm -r、管道进 shell 等）和敏感文件仍需手动批准，黑名单与危险命令直接拒绝；重启应用后自动关闭").FillWidth()
 		if auto.On {
 			ui.Text(c, "自动批准中 · "+autoApproveLabel(auto)).TextColor(t.Warning)
 		}
@@ -267,8 +290,22 @@ func (a *App) agentSettings(c *ui.Context) {
 		}
 		for _, p := range state.Pending {
 			ui.Column(c.Key("consent-"+p.ID)).FillWidth().Padding(10).Gap(4).Radius(t.Radius).Border(1, t.Warning).Children(func() {
-				ui.Text(c, p.Client+" · "+p.Tool+" · "+p.Target).Bold()
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, p.Client+" · "+p.Tool).Bold()
+					if label := tierLabel(p.Tier); label != "" {
+						ui.Row(c).Padding(0, 6).Radius(3).Background(t.Warning.Alpha(.18)).Children(func() {
+							ui.Text(c, label).FontSize(12).Bold().TextColor(t.Warning)
+						})
+					}
+				})
+				ui.Text(c, "目标 "+orDefault(p.TargetName, p.Target)).FontSize(12)
+				if p.Reason != "" {
+					ui.Text(c, "原因 "+p.Reason).FontSize(12)
+				}
 				ui.Text(c, p.Summary).Font("monospace").FontSize(12).Selectable()
+				if p.Tier != "" {
+					muted(c, "即使开启自动批准，这类请求也必须手动批准："+orDefault(p.Why, "需要人工确认"))
+				}
 				muted(c, "到期 "+p.ExpiresAt.Local().Format("15:04:05"))
 				ui.Row(c).Gap(8).Children(func() {
 					if ui.Button(c.Key(p.ID+"-deny"), "拒绝").Clicked() {
@@ -297,7 +334,7 @@ func (a *App) agentSettings(c *ui.Context) {
 			muted(c, "暂无记录")
 		}
 		states := map[string]string{"halted": "已停止", "resumed": "已恢复", "completed": "完成", "pending": "等待批准", "failed": "失败",
-			"auto-approve on": "开启自动批准", "auto-approve off": "关闭自动批准", "auto-approve expired": "自动批准已到期", "auto-approved": "已自动批准"}
+			"user_action_required": "等待用户操作", "auto-approve on": "开启自动批准", "auto-approve off": "关闭自动批准", "auto-approve expired": "自动批准已到期", "auto-approved": "已自动批准"}
 		for i := len(state.Activity) - 1; i >= 0; i-- {
 			ev := state.Activity[i]
 			tool := ev.Tool

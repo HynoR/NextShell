@@ -487,7 +487,7 @@ func (b agentBackend) SaveCommand(c agent.Command) (agent.Command, error) {
 }
 func (b agentBackend) Read(id string) (string, error) {
 	if b.p.Exited(id) {
-		return "", errors.New("session closed")
+		return "", agent.Coded("disconnected", errors.New("session closed"))
 	}
 	return b.p.ScreenText(id), nil
 }
@@ -495,7 +495,7 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	result := agent.ExecResult{SessionID: id, Mode: "background"}
 	session, e := b.p.ssh(id)
 	if e != nil {
-		return result, e
+		return result, agent.Coded("disconnected", e)
 	}
 	cwd := b.p.SessionDir(id)
 	if cwd != "" {
@@ -541,22 +541,28 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 	b.data = append(b.data, p...)
 	return n, nil
 }
-func (b *boundedOutput) String() string              { return string(b.data) }
-func (b agentBackend) Control(id, data string) error { return b.p.Send(id, data) }
+func (b *boundedOutput) String() string { return string(b.data) }
 func (b agentBackend) Focus(id string) error {
 	if b.p.Exited(id) {
 		return errors.New("session closed")
 	}
-	b.p.emit(appui.Event{FocusID: id})
+	b.p.emit(appui.Event{FocusID: id, Handover: true})
 	return nil
 }
-func (b agentBackend) Open(ctx context.Context, id string) (string, error) {
+func (b agentBackend) Open(ctx context.Context, id string, ua agent.UserAction) (string, error) {
 	connection, e := b.p.store.Connection(id)
 	if e != nil || connection.Deleted {
-		return "", errors.New("not available")
+		return "", agent.Coded("not_found", errors.New("saved host not available"))
 	}
-	if e = b.p.connectForAgent(ctx, connection); e != nil {
-		return "", e
+	if ua == nil {
+		ua = func(string) func() { return func() {} }
+	}
+	if e = b.p.connectContext(context.WithValue(ctx, agentOrigin{}, ua), connection, ""); e != nil {
+		if b.p.ctx.Err() == nil {
+			// The agent's call may be long gone; the user is the one who can see this.
+			b.p.emit(appui.Event{Message: fmt.Sprintf("Agent 发起的连接「%s」失败：%v", connection.Name, e)})
+		}
+		return "", openError(e)
 	}
 	for _, s := range b.Sessions() {
 		if s.ConnectionID == id && s.Connected {

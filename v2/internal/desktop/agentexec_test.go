@@ -2,7 +2,6 @@ package desktop
 
 import (
 	"context"
-	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -138,64 +137,8 @@ func TestAgentSessionsAreOrderedAndDescribed(t *testing.T) {
 	check([]string{ids[1], again.ID, ids[3], ids[4], ids[5], local.ID})
 }
 
-// A host-key dialog an agent's session_open raised says so and is not tied to the call: it outlives the
-// call's timeout, a second request for the same host joins it instead of raising another, and answering
-// it completes the connection.
-func TestAgentOpenKeepsItsDialogAndJoinsLaterRequests(t *testing.T) {
-	p := desktopFixture(t)
-	server := testServer(t)
-	c := server.Options().Connection
-	c.ID, c.Fingerprint = p.NewID(), "" // unknown host: the first connection asks
-	secret := "test-password"
-	if e := p.SaveConnection(c, &secret); e != nil {
-		t.Fatal(e)
-	}
-	b := agentBackend{p}
-
-	short, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
-	defer cancel()
-	if _, e := b.Open(short, c.ID); !errors.Is(e, context.DeadlineExceeded) {
-		t.Fatal("the call should have timed out waiting for the user:", e)
-	}
-	dialog := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt
-	if dialog.Kind != appui.PromptHostKey || !dialog.ByAgent {
-		t.Fatalf("%+v", dialog)
-	}
-	time.Sleep(300 * time.Millisecond)
-	select {
-	case <-dialog.Done:
-		t.Fatal("the dialog went away with the call that raised it")
-	default:
-	}
-
-	// A later request for the same host joins the open attempt: no second dialog.
-	opened := make(chan string, 1)
-	go func() {
-		id, e := b.Open(context.Background(), c.ID)
-		if e != nil {
-			t.Error(e)
-		}
-		opened <- id
-	}()
-	time.Sleep(100 * time.Millisecond)
-	for _, e := range p.Poll() {
-		if e.Prompt != nil {
-			t.Fatal("a second dialog for the same host")
-		}
-	}
-	dialog.Answers <- []string{} // trust the key
-	var id string
-	select {
-	case id = <-opened:
-	case <-time.After(5 * time.Second):
-		t.Fatal("answering the dialog did not finish the connection")
-	}
-	if sessions := b.Sessions(); len(sessions) != 1 || sessions[0].ID != id || !sessions[0].Connected {
-		t.Fatalf("%+v %q", sessions, id)
-	}
-	t.Cleanup(func() { p.CloseSession(id) })
-}
-
+// Joining a pending attempt and outliving the caller's timeout are the gateway's job (see
+// agent/gateway2_test.go); here the backend marks the dialog and tells the user when it fails.
 func TestAgentOpenCancelledDialogReportsToTheUserAndAllowsANewAttempt(t *testing.T) {
 	p := desktopFixture(t)
 	server := testServer(t)
@@ -206,10 +149,11 @@ func TestAgentOpenCancelledDialogReportsToTheUserAndAllowsANewAttempt(t *testing
 		t.Fatal(e)
 	}
 	b := agentBackend{p}
-	short, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	b.Open(short, c.ID)
+	go b.Open(context.Background(), c.ID, nil)
 	dialog := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt
+	if !dialog.ByAgent {
+		t.Fatalf("%+v", dialog)
+	}
 	dialog.Answers <- nil // the user cancels
 	for deadline := time.Now().Add(3 * time.Second); ; {
 		var told bool
@@ -224,9 +168,9 @@ func TestAgentOpenCancelledDialogReportsToTheUserAndAllowsANewAttempt(t *testing
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	again, stop := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	again, stop := context.WithCancel(context.Background())
 	defer stop()
-	b.Open(again, c.ID)
+	go b.Open(again, c.ID, nil)
 	if next := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt; !next.ByAgent {
 		t.Fatal("a fresh attempt should ask again")
 	}

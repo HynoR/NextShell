@@ -1,9 +1,10 @@
-import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
+  CallToolRequestSchema,
   CallToolResultSchema,
+  ListToolsRequestSchema,
   type CallToolResult,
   type Tool
 } from "@modelcontextprotocol/sdk/types.js";
@@ -39,7 +40,10 @@ interface Connection {
 }
 
 export function createStdioServer(credentials: CredentialSource) {
-  const server = new McpServer({ name: "nextshell", version }, { instructions: INSTRUCTIONS });
+  const server = new Server(
+    { name: "nextshell", version },
+    { capabilities: { tools: {} }, instructions: INSTRUCTIONS }
+  );
   let current: Connection | undefined;
   let connecting: Promise<Connection> | undefined;
   let closed = false;
@@ -85,9 +89,7 @@ export function createStdioServer(credentials: CredentialSource) {
           reconnectionDelayGrowFactor: 1
         }
       });
-      const client = new Client(
-        server.server.getClientVersion() ?? { name: "nextshell-mcp", version }
-      );
+      const client = new Client(server.getClientVersion() ?? { name: "nextshell-mcp", version });
       const connection: Connection = { client, transport, tools: [] };
       current = connection;
       client.onerror = () => {
@@ -123,49 +125,56 @@ export function createStdioServer(credentials: CredentialSource) {
     }
   };
 
-  for (const [name, definition] of Object.entries(toolDefinitions)) {
-    // No outputSchema: the app's `{ ok, data?, error? }` reply is forwarded exactly as received.
-    server.registerTool(
-      name,
-      { ...definition, inputSchema: z.object(definition.inputSchema) },
-      async (args, extra) => {
-        rejected = false;
-        let connection: Connection;
-        try {
-          connection = await connect();
-        } catch (error) {
-          if (error instanceof MissingTokenError) return failure("token_missing", error.message);
-          if (rejected) return unauthorized();
-          return failure(
-            "app_unavailable",
-            `无法连接 NextShell。请启动应用、${SETUP_HINT}并检查端口${port ? ` ${port}` : ""}；稍后调用会重新连接。`
-          );
-        }
-        if (!connection.tools.some((tool) => tool.name === name)) {
-          return failure(
-            "incompatible_version",
-            "NextShell 与 MCP 包的工具定义不兼容，请更新应用及 @nextshell/mcp 后重启 MCP。"
-          );
-        }
-        try {
-          return CallToolResultSchema.parse(
-            await connection.client.callTool({ name, arguments: args }, CallToolResultSchema, {
-              timeout: CALL_TIMEOUT_MS,
-              signal: extra.signal
-            })
-          );
-        } catch {
-          await discard(connection);
-          // A 401 means the app refused the request before running anything.
-          if (rejected) return unauthorized();
-          return failure(
-            "connection_lost",
-            "调用未完成，执行结果可能未知；请检查 NextShell 中的执行状态，不要自动重复命令。下次调用会重新连接。"
-          );
-        }
+  // Offline discovery: the app's own tool list, generated into tools.generated.json.
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: toolDefinitions as unknown as Tool[]
+  }));
+  // No outputSchema: the app's `{ ok, data?, error? }` reply is forwarded exactly as received.
+  server.setRequestHandler(
+    CallToolRequestSchema,
+    async (request, extra): Promise<CallToolResult> => {
+      const name = request.params.name;
+      const args = request.params.arguments ?? {};
+      if (!toolDefinitions.some((tool) => tool.name === name)) {
+        return failure("unknown_tool", `NextShell MCP 没有名为 ${name} 的工具。`);
       }
-    );
-  }
+      rejected = false;
+      let connection: Connection;
+      try {
+        connection = await connect();
+      } catch (error) {
+        if (error instanceof MissingTokenError) return failure("token_missing", error.message);
+        if (rejected) return unauthorized();
+        return failure(
+          "app_unavailable",
+          `无法连接 NextShell。请启动应用、${SETUP_HINT}并检查端口${port ? ` ${port}` : ""}；稍后调用会重新连接。`
+        );
+      }
+      if (!connection.tools.some((tool) => tool.name === name)) {
+        return failure(
+          "incompatible_version",
+          "NextShell 与 MCP 包的工具定义不兼容，请更新应用及 @nextshell/mcp 后重启 MCP。"
+        );
+      }
+      try {
+        return CallToolResultSchema.parse(
+          await connection.client.callTool({ name, arguments: args }, CallToolResultSchema, {
+            // waitFor reads block up to 60 s inside the app; the transport must outlast them.
+            timeout: CALL_TIMEOUT_MS,
+            signal: extra.signal
+          })
+        );
+      } catch {
+        await discard(connection);
+        // A 401 means the app refused the request before running anything.
+        if (rejected) return unauthorized();
+        return failure(
+          "connection_lost",
+          "调用未完成，执行结果可能未知；请检查 NextShell 中的执行状态，不要自动重复命令。下次调用会重新连接。"
+        );
+      }
+    }
+  );
 
   const close = async () => {
     closed = true;
@@ -175,7 +184,7 @@ export function createStdioServer(credentials: CredentialSource) {
       await discard(connection);
     }
   };
-  server.server.onclose = () => {
+  server.onclose = () => {
     void close();
   };
   return { server, close };

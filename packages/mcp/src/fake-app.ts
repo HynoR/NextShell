@@ -59,7 +59,7 @@ export class FakeApp {
 
   private createSession() {
     const server = new McpServer({ name: "NextShell-v2", version: "test" });
-    for (const name of this.options.tools ?? Object.keys(toolDefinitions)) {
+    for (const name of this.options.tools ?? toolDefinitions.map((tool) => tool.name)) {
       server.registerTool(name, { inputSchema: z.looseObject({}) }, async (args) =>
         (this.options.invoke ?? (async () => success({})))(name, args)
       );

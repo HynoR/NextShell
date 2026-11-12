@@ -12,3 +12,4 @@ IPC_OPTIMIZATION_PLAN.md
 # `async (page) => {...}` expression with no trailing semicolon (the runner
 # wraps it as `await (<file>)(page)`), which is exactly what prettier would add.
 apps/desktop/scripts/renderer-repro/*.mjs
+packages/mcp/src/tools.generated.json
