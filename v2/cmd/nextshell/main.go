@@ -11,13 +11,30 @@ import (
 	"time"
 )
 
+type options struct {
+	db        string
+	smoke     bool
+	agentTest bool // only registered in nextshell_devtools builds
+}
+
+func parseFlags(fs *flag.FlagSet, args []string) (options, error) {
+	var o options
+	fs.StringVar(&o.db, "db", "", "v2 profile database (never point at a 1.x database)")
+	fs.BoolVar(&o.smoke, "smoke", false, "open a native local terminal, then exit after 4 seconds")
+	registerDevFlags(fs, &o)
+	if e := fs.Parse(args); e != nil {
+		return o, e
+	}
+	return o, checkDevFlags(o)
+}
+
 func main() {
-	db := flag.String("db", "", "v2 profile database (never point at a 1.x database)")
-	smoke := flag.Bool("smoke", false, "open a native local terminal, then exit after 4 seconds")
-	flag.Parse()
-	path := *db
+	opts, e := parseFlags(flag.CommandLine, os.Args[1:])
+	if e != nil {
+		log.Fatal(e)
+	}
+	path := opts.db
 	if path == "" {
-		var e error
 		path, e = desktop.DefaultPath()
 		if e != nil {
 			log.Fatal(e)
@@ -28,6 +45,9 @@ func main() {
 		log.Fatal(e)
 	}
 	defer p.Shutdown()
+	if e = startDevMode(p, opts, os.Stderr); e != nil {
+		log.Fatal(e)
+	}
 	a := appui.New(p)
 	p.SetQuit(func() { mygo.App.Quit() })
 	mygo.App.WhenReady(func() {
@@ -40,7 +60,7 @@ func main() {
 			}
 		})
 		w.OnClosed(func() { mygo.App.Quit() })
-		if *smoke {
+		if opts.smoke {
 			p.Local()
 			time.AfterFunc(4*time.Second, func() { mygo.RunOnMain(func() { a.ExitConfirmed = true; mygo.App.Quit() }) })
 		}
