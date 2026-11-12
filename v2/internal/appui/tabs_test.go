@@ -17,10 +17,11 @@ func TestTabRenameTitlesAndReconnect(t *testing.T) {
 	s := session(t, p, tt, "one", "connection", remoteHost("one"))
 	s.Terminal.Feed([]byte("\x1b]0;remote-title\x07"))
 	tt.Frame()
-	if s.Title != "remote-title" {
-		t.Fatal("program title not followed", s.Title)
+	if s.Title != "connection" {
+		t.Fatal("an SSH tab shows the connection name, not the program title", s.Title)
 	}
-	dblclick(t, tt, "remote-title")
+	has(t, tt, "· remote-title") // the program title is in the status bar
+	dblclick(t, tt, "connection")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("manual")
 	tt.Key(0, ui.KeyEnter)
@@ -56,6 +57,35 @@ func TestTabRenameTitlesAndReconnect(t *testing.T) {
 	}
 	if next.ManualTitle || next.Title != "one" {
 		t.Fatal("automatic title", next.Title)
+	}
+}
+
+// Local terminals keep following the program's title (while the preference allows it); SSH tabs never do.
+func TestLocalTabFollowsTheProgramTitleAndSSHTabDoesNot(t *testing.T) {
+	_, p, tt := fixture(t)
+	local := session(t, p, tt, "L", "本地终端", model.Connection{})
+	remote := session(t, p, tt, "R", "prod-db", remoteHost("prod-db"))
+	for _, s := range []*appui.Session{local, remote} {
+		s.Terminal.Feed([]byte("\x1b]0;vim notes.txt\x07"))
+	}
+	tt.Frame()
+	if local.Title != "vim notes.txt" || remote.Title != "prod-db" {
+		t.Fatal("titles", local.Title, remote.Title)
+	}
+}
+func TestLocalTabKeepsItsNameWhenProgramsMayNotRetitle(t *testing.T) {
+	p := newPlatform(t)
+	prefs := p.Preferences()
+	prefs.TitleUpdates = false
+	if e := p.SavePreferences(prefs); e != nil {
+		t.Fatal(e)
+	}
+	_, tt := start(p)
+	local := session(t, p, tt, "L", "本地终端", model.Connection{})
+	local.Terminal.Feed([]byte("\x1b]0;vim notes.txt\x07"))
+	tt.Frame()
+	if local.Title != "本地终端" {
+		t.Fatal(local.Title)
 	}
 }
 

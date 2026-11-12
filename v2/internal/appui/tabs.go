@@ -170,11 +170,18 @@ func (a *App) tabStrip(c *ui.Context) {
 		}
 	})
 }
+
+// tabTooltip names what the tab is. An SSH tab shows its connection name, so the title the remote
+// program set (often the same user@host for every tab) is shown here instead.
 func (a *App) tabTooltip(s *Session) string {
 	if s.Local {
 		return "本地终端"
 	}
-	return s.Connection.User + "@" + s.Connection.Address()
+	tip := s.Connection.User + "@" + s.Connection.Address()
+	if title := a.P.TerminalTitle(s.ID); title != "" {
+		tip += "\n" + title
+	}
+	return tip
 }
 
 func (a *App) tabMenu(item ui.Element, s *Session) {
@@ -301,10 +308,11 @@ func (a *App) moveTab(id string, to int) {
 	a.Active = a.tabIndex(active)
 }
 
-// refreshTitles follows the titles programs set, unless the user named the tab.
+// refreshTitles follows the titles programs set in local terminals, unless the user named the tab.
+// An SSH tab keeps its connection name: ten tabs to similar hosts would otherwise all read user@host.
 func (a *App) refreshTitles() {
 	for _, s := range a.Tabs {
-		if s.ManualTitle || !a.Prefs.TitleUpdates {
+		if s.ManualTitle || !s.Local || !a.Prefs.TitleUpdates {
 			continue
 		}
 		if next := a.P.TerminalTitle(s.ID); next != "" && next != s.Title {

@@ -279,7 +279,7 @@ func (a *App) terminalSettings(c *ui.Context) {
 		field(c, "滚动缓冲（MiB）", &s.scrollback).Description("1–256，新会话生效")
 	})
 	group(c, "行为", func() {
-		toggle(c, "程序可以修改标签标题", &v.TitleUpdates)
+		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("只影响本地终端。SSH 标签始终显示连接名称，程序设置的标题在标签的悬停提示和状态栏里；手动重命名优先").FillWidth()
 		toggle(c, "响铃与通知", &v.Notifications)
 		toggle(c, "打开链接前确认", &v.HyperlinkConfirm)
 		toggle(c, "允许服务器写入剪贴板", &v.ClipboardWrite)

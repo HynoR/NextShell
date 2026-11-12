@@ -50,6 +50,25 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 	return web, db
 }
 
+// titled shows the tab strip with SSH tabs to similar hosts whose shells all set the same kind of title,
+// and a local terminal running a program: SSH tabs read as the connections, the program title is in the
+// status bar, and the local tab follows its program.
+func titled(t *testing.T, shot func(*ui.Tester, string)) {
+	t.Helper()
+	p := newPlatform(t)
+	web, db := demo(t, p)
+	a, tt := start(p)
+	for i, c := range []model.Connection{web, saveHost(t, p, model.Connection{Name: "prod-web-02", Host: "10.0.0.2", User: "root"}), db} {
+		s := session(t, p, tt, "t"+string(rune('1'+i)), c.Name, c)
+		s.Terminal.Feed([]byte("\x1b]0;" + c.User + "@" + c.Name + ": ~\x07\r\n" + c.User + "@" + c.Name + ":~# "))
+	}
+	local := session(t, p, tt, "tl", "本地终端", model.Connection{})
+	local.Terminal.Feed([]byte("\x1b]0;vim notes.txt\x07"))
+	a.Active = 1
+	tt.Frame()
+	shot(tt, "02d-tab-titles")
+}
+
 func monitorSnapshot(at time.Time, i int) monitor.Snapshot {
 	return monitor.Snapshot{At: at, Info: "Ubuntu 24.04 LTS · 4 核 · 运行 12 天", Load: "0.42 0.38 0.35", HasDelta: true, HasNetworkDelta: true, CPUPercent: float64(20 + i*3%40), MemoryTotal: 8 << 30, MemoryAvailable: uint64(3+i%2) << 30, SwapTotal: 2 << 30, SwapFree: 2 << 30, RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000),
 		Disks:     []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 41 << 20, UsedPercent: 51}},
@@ -121,6 +140,7 @@ func TestScreenshots(t *testing.T) {
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	tt.Frame()
 	shot(tt, "02-main-files")
+	titled(t, shot)
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
 		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
 		{Name: "access.log.10", Path: "/var/log/nginx/access.log.10", Size: 900000, Mode: "-rw-r-----", Modified: now.Add(-240 * time.Hour)},

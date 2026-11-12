@@ -582,6 +582,9 @@ func (a *App) statusBar(c *ui.Context) {
 			label, color := a.sessionState(c, s)
 			dot(c, color)
 			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).SingleLine()
+			if title := a.P.TerminalTitle(s.ID); title != "" && !s.Local {
+				ui.Text(c, "· "+title).FontSize(12).TextColor(t.TextMuted).SingleLine().MinWidth(0).Shrink(1) // what the tab no longer shows
+			}
 		})
 		a.transfersStatus(c)
 		if s := a.current(); s != nil && !s.Local {
