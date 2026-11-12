@@ -85,6 +85,18 @@ func TestPhase2PlatformRealSSHWorkflow(t *testing.T) {
 	if string(got) != "queue upload" {
 		t.Fatal(string(got))
 	}
+	// A download to "~/Downloads/…" lands in the home directory's folder, made when it is missing.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	job, e = p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "upload"), Local: "~/Downloads/new/upload"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	waitQueue(t, p, job)
+	if got, _ := os.ReadFile(filepath.Join(home, "Downloads", "new", "upload")); string(got) != "queue upload" {
+		t.Fatal(string(got))
+	}
 	p.RefreshMonitor(session)
 	snapshot := awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil }).Monitor.Snapshot
 	if snapshot.MemoryTotal == 0 || len(snapshot.Processes) == 0 {

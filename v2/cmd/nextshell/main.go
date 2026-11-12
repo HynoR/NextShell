@@ -8,9 +8,7 @@ import (
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
 	"os"
-	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -78,10 +76,8 @@ func main() {
 		settings.OnClosed(func() { settings = nil })
 	}
 	a.PickFiles = func(o appui.FilePick, done func([]string)) {
-		if rest, ok := strings.CutPrefix(o.DefaultPath, "~/"); ok {
-			if home, e := os.UserHomeDir(); e == nil {
-				o.DefaultPath = filepath.Join(home, rest)
-			}
+		if dir, e := desktop.LocalPath(o.DefaultPath); e == nil {
+			o.DefaultPath = dir
 		}
 		parent := mygo.FocusedWindow()
 		go func() {

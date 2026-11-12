@@ -2,6 +2,9 @@ package appui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -251,7 +254,7 @@ func (a *App) generalSettings(c *ui.Context) {
 	group(c, "文件", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
 		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
-		a.localPath(c, "外部编辑器", "未选择", &v.EditorCommand, FilePick{DefaultPath: "/Applications"}).Description("保存后自动上传")
+		a.localPath(c, "外部编辑器", "未选择", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传")
 	})
 }
 
@@ -330,12 +333,27 @@ func (a *App) sshSettings(c *ui.Context) {
 		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
 	})
 	group(c, "本地终端", func() {
-		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: "/bin", Hidden: true})
+		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: programDir(true), Hidden: true})
 	})
 	a.hostKeySettings(c)
 	if s.err != "" {
 		ui.Text(c, s.err).TextColor(c.Theme().Danger)
 	}
+}
+
+// programDir is where the settings' program pickers open: where this OS keeps shells or applications.
+func programDir(shell bool) string {
+	switch {
+	case runtime.GOOS == "windows" && shell:
+		return filepath.Join(os.Getenv("SystemRoot"), "System32")
+	case runtime.GOOS == "windows":
+		return os.Getenv("ProgramFiles")
+	case shell:
+		return "/bin"
+	case runtime.GOOS == "darwin":
+		return "/Applications"
+	}
+	return "/usr/bin"
 }
 
 func (a *App) aboutSettings(c *ui.Context) {

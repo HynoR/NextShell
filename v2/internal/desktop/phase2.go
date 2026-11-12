@@ -119,13 +119,11 @@ func (p *Platform) FileAction(session, action, from, to string) {
 	})
 }
 func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
-	if req.Local == "~" || strings.HasPrefix(req.Local, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		req.Local = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(req.Local, "~"), "/"))
+	local, err := LocalPath(req.Local)
+	if err != nil {
+		return "", err
 	}
+	req.Local = local
 	if _, e := p.ssh(req.Session); e != nil {
 		return "", e
 	}
@@ -188,6 +186,9 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 						return transfer.DownloadPacked(ctx, s, req.Remote, req.Local, progress)
 					}
 					return c.DownloadTree(ctx, req.Remote, req.Local, progress)
+				}
+				if e = os.MkdirAll(filepath.Dir(req.Local), 0o755); e != nil { // a default folder that does not exist yet
+					return e
 				}
 				transfer.SetTotal(ctx, info.Size())
 				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
