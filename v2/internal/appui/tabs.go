@@ -540,7 +540,12 @@ func (a *App) closeDialog(c *ui.Context) {
 				if cancel.Clicked() {
 					open = false
 				}
-				confirm := ui.PrimaryButton(c, action)
+				var confirm ui.Element
+				if len(k.dirty) > 0 {
+					confirm = dangerButton(c, action)
+				} else {
+					confirm = ui.PrimaryButton(c, action)
+				}
 				if len(k.dirty) == 0 {
 					confirm.AutoFocus()
 				}

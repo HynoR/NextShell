@@ -93,7 +93,7 @@ func (a *App) requestReconnect(s *Session) {
 	if s.Local {
 		title, msg, action = "重新打开 "+a.tabTitle(s)+"？", "终端里正在运行的程序会结束。", "结束并重新打开"
 	}
-	a.confirm(title, msg, action, func() {
+	a.confirmDanger(title, msg, action, func() {
 		if a.tabIndex(s.ID) >= 0 { // the tab may have closed while the question was open
 			a.reconnect(s)
 		}

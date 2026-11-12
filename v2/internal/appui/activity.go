@@ -207,7 +207,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 						if ghost(c, "覆盖远端", "").TextColor(t.Danger).Clicked() {
 							id, host := l.ID, a.sessionTitle(l.Session)
 							a.later(func() {
-								a.confirm("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() { // danger
+								a.confirmDanger("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() {
 									a.P.ResolveLiveEdit(id, true)
 								})
 							})

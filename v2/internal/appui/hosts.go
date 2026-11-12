@@ -442,7 +442,7 @@ func (a *App) folderMenu(e ui.Element, f model.Folder) {
 		m.Separator()
 		if m.Item("删除目录").Danger().Chosen() {
 			a.later(func() {
-				a.confirm("删除目录「"+f.Name+"」", "只能删除空目录。", "删除目录", func() {
+				a.confirmDanger("删除目录「"+f.Name+"」", "只能删除空目录。", "删除目录", func() {
 					a.report(a.P.Delete("folder", f.ID), "已删除目录")
 					a.reload()
 				})
@@ -523,7 +523,7 @@ func (a *App) confirmDiscard(next func()) {
 		return
 	}
 	name := orDefault(strings.TrimSpace(e.edit.Name), "新主机")
-	a.confirmWith("放弃未保存的修改？", "「"+name+"」的修改还没有保存，放弃后无法恢复。", "放弃", "继续编辑", next)
+	a.confirmDangerWith("放弃未保存的修改？", "「"+name+"」的修改还没有保存，放弃后无法恢复。", "放弃", "继续编辑", next)
 	a.dialogs.pendingIn = managerWindow
 }
 
