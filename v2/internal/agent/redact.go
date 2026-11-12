@@ -28,14 +28,15 @@ func StripEscapes(s string) string {
 }
 
 var (
-	pemBlock     = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----`)
-	pemOpen      = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*`) // no END: redact to the end of the text
+	pemBlock     = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*?-----END [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----`) // also PGP PRIVATE KEY BLOCK
+	pemOpen      = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----.*`)                                                // no END: redact to the end of the text
 	authHeader   = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?(?:basic|bearer|token|negotiate|ntlm|apikey)\s+)[^\s"']+`)
 	authDigest   = regexp.MustCompile(`(?i)\b((?:proxy-)?authorization["']?\s*[:=]\s*["']?digest\s+)[^\r\n]+`) // Digest credentials hold quoted parts: redact the line
 	bearer       = regexp.MustCompile(`(?i)\b(bearer\s+)[A-Za-z0-9._~+/=\-]+`)
 	cookie       = regexp.MustCompile(`(?i)\b((?:set-)?cookie["']?\s*:\s*)[^\r\n"']+`)
 	cookieFlag   = regexp.MustCompile(`(?i)(--cookie(?:\s+|=)["']?)[^\s"']+`)
 	userFlag     = regexp.MustCompile(`((?:^|\s)(?:-u|-U|--user|--proxy-user)(?:\s+|=)["']?[^:\s"']*:)("[^"]*|'[^']*|[^\s"']+)`)
+	sshpassFlag  = regexp.MustCompile(`(\bsshpass(?:\s+(?:-[fdP]\s+\S+|-[ev]))*\s+-p\s*)("[^"]*"|'[^']*'|\S+)`)
 	mysqlPass    = regexp.MustCompile(`(?i)(\b(?:mysql|mysqldump|mysqladmin|mysqlshow|mysqlimport|mysqlcheck|mariadb|mariadb-dump)\b[^\n;|&]*?\s-p)([^\s]+)`)
 	flag         = regexp.MustCompile(`(?i)(--(?:password|passwd|pass|pwd|token|secret|passphrase|api-?key|access-?key|private-?key|client-?secret)(?:[=\s]+))("[^"]*"|'[^']*'|[^\s]+)`)
 	uri          = regexp.MustCompile(`([A-Za-z][A-Za-z0-9+.-]*://[^\s:/@]+:)[^\s@/]+(@)`)
@@ -49,7 +50,11 @@ var (
 		regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}`),
 		regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}`),
 		regexp.MustCompile(`\bsk-[A-Za-z0-9_\-]{20,}`), // also sk-ant-… and sk-proj-…
-		regexp.MustCompile(`\bxox[abpr]-[A-Za-z0-9\-]{10,}`),
+		regexp.MustCompile(`\bxox[abprse]-[A-Za-z0-9\-]{10,}`),
+		regexp.MustCompile(`\bxoxe\.xox[a-z]-[A-Za-z0-9\-]{10,}`), // Slack configuration tokens
+		regexp.MustCompile(`\bxapp-[A-Za-z0-9\-]{10,}`),           // Slack app-level tokens
+		regexp.MustCompile(`\bAIza[0-9A-Za-z_\-]{35}`),            // Google API keys
+		regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36}\b`),             // npm access tokens
 		regexp.MustCompile(`\bglpat-[A-Za-z0-9_\-]{16,}`),
 		regexp.MustCompile(`\beyJ[A-Za-z0-9_\-]{5,}\.eyJ[A-Za-z0-9_\-]{5,}\.[A-Za-z0-9_\-]*`),
 	}
@@ -69,6 +74,7 @@ func Redact(s string) string {
 	s = cookie.ReplaceAllString(s, "${1}"+redacted)
 	s = cookieFlag.ReplaceAllString(s, "${1}"+redacted)
 	s = userFlag.ReplaceAllString(s, "${1}"+redacted)
+	s = sshpassFlag.ReplaceAllString(s, "${1}"+redacted)
 	s = mysqlPass.ReplaceAllString(s, "${1}"+redacted)
 	s = flag.ReplaceAllString(s, "${1}"+redacted)
 	s = uri.ReplaceAllString(s, "${1}"+redacted+"${2}")

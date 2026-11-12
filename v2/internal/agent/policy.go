@@ -237,6 +237,9 @@ func resolve(words []string) invocation {
 		case base == "xargs":
 			words = skipFlags(words[1:], "-I", "-n", "-P", "-d", "-E", "-L", "-s", "-a", "-J", "-R", "-S")
 			continue
+		case base == "sshpass":
+			words = skipFlags(words[1:], "-p", "-f", "-d", "-P")
+			continue
 		case base == "nohup" || base == "exec" || base == "busybox" || base == "setsid" || base == "unbuffer":
 			words = skipFlags(words[1:])
 			continue
@@ -253,7 +256,8 @@ func resolve(words []string) invocation {
 // ---- tier 1 and tier 2
 
 var (
-	sensitiveBase   = regexp.MustCompile(`(?i)^(?:\.env.*|\.netrc|_netrc|\.pgpass|\.npmrc|\.pypirc|\.git-credentials|id_(?:rsa|dsa|ecdsa|ed25519)(?:[^.].*)?|id_(?:rsa|dsa|ecdsa|ed25519)\.(?:pem|key))$`)
+	sensitiveBase   = regexp.MustCompile(`(?i)^(?:\.env.*|\.netrc|_netrc|\.pgpass|\.npmrc|\.pypirc|\.git-credentials|\.my\.cnf|\.mylogin\.cnf|\.(?:bash|zsh)_history|id_(?:rsa|dsa|ecdsa|ed25519)(?:[^.].*)?|.*\.(?:pem|key|p12|pfx))$`)
+	procEnviron     = regexp.MustCompile(`^/proc/[^/]+(?:/task/[^/]+)?/environ$`)
 	redirPrefix     = regexp.MustCompile(`^[0-9&]*[<>]+&?`)
 	interpreter     = regexp.MustCompile(`^(?:sh|bash|zsh|dash|ksh|ash|csh|tcsh|fish|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|node|nodejs|php[0-9.]*|lua[0-9.]*|pwsh|powershell)$`)
 	shellName       = regexp.MustCompile(`^(?:sh|bash|zsh|dash|ksh|ash|csh|tcsh|fish)$`)
@@ -281,6 +285,8 @@ func sensitivePath(w string) bool {
 	case strings.HasSuffix(slash, "/.aws/credentials"), strings.HasSuffix(slash, "/.kube/config"), strings.HasSuffix(slash, "/.docker/config.json"):
 		return true
 	case slash == "/etc/shadow" || slash == "/etc/shadow-" || slash == "/etc/gshadow":
+		return true
+	case procEnviron.MatchString(slash), strings.Contains(slash+"/", "/.config/gcloud/"):
 		return true
 	}
 	if i := strings.LastIndex(slash, "/.ssh/"); i >= 0 {
@@ -385,6 +391,17 @@ func checkCommand(inv invocation, seg segment, stdin []string, nextSep, cwd stri
 		v.forbid("kills every process")
 	case (name == "pkill" || name == "killall") && (has(args, "-9", "-KILL", "-SIGKILL") || killsWith(args)) && rootUser(args):
 		v.forbid("kills every root process")
+	case name == "kill" || name == "pkill" || name == "killall":
+		checkKill(name, args, seg.subs, v)
+	case name == "ssh":
+		if remote := sshCommand(args); len(remote) > 0 {
+			v.risk("runs a command on another host")
+			analyze(strings.Join(remote, " "), depth+1, v)
+		}
+	case (name == "nc" || name == "ncat" || name == "netcat" || name == "nc.traditional") && (has(args, "--exec", "--sh-exec") || ncExec(name, args)):
+		v.risk("hands a shell to a network connection")
+	case (name == "docker" || name == "podman" || name == "nerdctl") && has(args, "run", "create") && containerEscape(args):
+		v.risk("starts a container with host access")
 	case name == "shred" || name == "wipefs":
 		for _, t := range targets {
 			if isDevice(norm(t, cwd)) {
@@ -482,6 +499,8 @@ func checkCommand(inv invocation, seg segment, stdin []string, nextSep, cwd stri
 		if seg.procsub {
 			v.risk("sources generated code")
 		}
+	case name == "compgen" && has(args, "-e"):
+		v.sense("dumps the environment")
 	case name == "printenv" && len(args) == 0, name == "set" && len(args) == 0, name == "export" && (len(args) == 0 || (len(args) == 1 && args[0] == "-p")), (name == "declare" || name == "typeset") && (len(targets) == 0):
 		v.sense("dumps the environment")
 	}
@@ -511,6 +530,110 @@ func checkCommand(inv invocation, seg segment, stdin []string, nextSep, cwd stri
 		}
 	}
 	return cwd
+}
+
+// checkKill judges kill, pkill and killall: pid 1 and the sshd that keeps this connection alive are not
+// something to signal in passing.
+func checkKill(name string, args, subs []string, v *Verdict) {
+	if name == "kill" {
+		sig, pids := killArgs(args)
+		for _, pid := range pids {
+			if pid != "1" || sig == "0" {
+				continue
+			}
+			switch strings.TrimPrefix(strings.ToUpper(sig), "SIG") {
+			case "", "TERM", "15", "KILL", "9":
+				v.forbid("kills the init process")
+			default:
+				v.risk("signals the init process")
+			}
+		}
+		for _, sub := range subs {
+			if strings.Contains(sub, "sshd") {
+				v.risk("kills sshd")
+			}
+		}
+		for _, a := range args {
+			if strings.Contains(a, "sshd") {
+				v.risk("kills sshd")
+			}
+		}
+		return
+	}
+	for _, t := range nonFlags(args) {
+		switch {
+		case strings.Contains(t, "sshd"):
+			v.risk("kills sshd")
+		case t == "init" || t == "systemd":
+			v.risk("signals the init process")
+		}
+	}
+}
+
+// killArgs splits kill's arguments into the signal (name or number, "" for the default) and the targets.
+func killArgs(args []string) (sig string, pids []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case (a == "-s" || a == "-n" || a == "--signal") && i+1 < len(args):
+			sig = args[i+1]
+			i++
+		case strings.HasPrefix(a, "--signal="):
+			sig = strings.TrimPrefix(a, "--signal=")
+		case a == "--":
+			return sig, append(pids, args[i+1:]...)
+		case len(a) > 1 && a[0] == '-' && sig == "" && len(pids) == 0:
+			sig = a[1:] // -9, -TERM, -SIGKILL
+		default:
+			pids = append(pids, a)
+		}
+	}
+	return sig, pids
+}
+
+// sshCommand returns the remote command words of an ssh invocation, none for a plain login or a tunnel.
+func sshCommand(args []string) []string {
+	withArg := []string{"-B", "-b", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o", "-p", "-Q", "-R", "-S", "-W", "-w"}
+	rest := skipFlags(args, withArg...)
+	if len(rest) == 0 {
+		return nil
+	}
+	return skipFlags(rest[1:], withArg...) // after the host
+}
+
+// ncExec reports the options that make netcat run a program on the connection.
+func ncExec(name string, args []string) bool {
+	for _, a := range args {
+		if hasShort(a, "e") || (name != "nc" && hasShort(a, "c")) {
+			return true
+		}
+	}
+	return false
+}
+
+var mountsRoot = regexp.MustCompile(`(?:source|src)=/(?:,|$)`)
+
+// containerEscape recognises a container that gets the host: --privileged, the root directory or the
+// Docker socket as a volume.
+func containerEscape(args []string) bool {
+	for i, a := range args {
+		if a == "--privileged" || a == "--privileged=true" {
+			return true
+		}
+		val := ""
+		switch {
+		case (a == "-v" || a == "--volume" || a == "--mount") && i+1 < len(args):
+			val = args[i+1]
+		case strings.HasPrefix(a, "--volume=") || strings.HasPrefix(a, "--mount="):
+			val = a[strings.IndexByte(a, '=')+1:]
+		case strings.HasPrefix(a, "-v") && !strings.HasPrefix(a, "--"):
+			val = strings.TrimPrefix(a[2:], "=") // -v/:/host, -v=/:/host
+		}
+		if strings.HasPrefix(val, "/:") || mountsRoot.MatchString(val) || strings.Contains(val, "docker.sock") {
+			return true
+		}
+	}
+	return false
 }
 
 func sedInPlace(args []string) bool {

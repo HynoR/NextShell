@@ -64,6 +64,19 @@ func TestRedactMasksSecrets(t *testing.T) {
 		{"slack app", "xox" + "a-1234567890-abcdefghij", ""},
 		{"slack user", "xox" + "p-1234567890-abcdefghij", ""},
 		{"slack refresh", "xox" + "r-1234567890-abcdefghij", ""},
+		{"slack legacy user", "xox" + "s-1234567890-abcdefghij", ""},
+		{"slack config token", "xox" + "e-1-My0xLU1ZMDMyQlE5V0Q0S2x", ""},
+		{"slack rotated config", "xoxe.xox" + "p-1-My0xLU1ZMDMyQlE5V0Q0S2x", ""},
+		{"slack app-level", "xa" + "pp-1-A0123456789-1234567890123-abcdef0123456789abcdef", ""},
+		{"google api key", "key=AIza" + strings.Repeat("Sy9", 11) + "ab done", "done"},
+		{"npm", "//registry.npmjs.org/:_authToken=npm_" + strings.Repeat("Qx7", 12), ""},
+		{"npm bare", "use npm_" + strings.Repeat("Qx7", 12) + " here", "use "},
+		{"sshpass", "sshpass -p " + topsecret + " ssh bob@host", "sshpass -p "},
+		{"sshpass quoted", "sshpass -p '" + topsecret + "' ssh bob@host", "sshpass -p "},
+		{"sshpass attached", "sshpass -p" + topsecret + " ssh bob@host", "sshpass -p"},
+		{"sshpass flags first", "sshpass -v -p " + topsecret + " ssh -p 2222 bob@host", " ssh -p 2222 bob@host"},
+		{"pgp", "-----BEGIN PGP PRIVATE KEY BLOCK-----\n" + topsecret + "\n-----END PGP PRIVATE KEY BLOCK-----\nafter", "\nafter"},
+		{"pgp without end", "-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBF" + topsecret, ""},
 		{"gitlab", "glpat-" + strings.Repeat("q7", 10), ""},
 		{"jwt", "token is " + jwt + " ok", "token is "},
 		{"pem", "-----BEGIN OPENSSH PRIVATE KEY-----\n" + topsecret + "\n-----END OPENSSH PRIVATE KEY-----\nafter", "\nafter"},
@@ -73,7 +86,7 @@ func TestRedactMasksSecrets(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := Redact(tc.in)
-			for _, leak := range []string{topsecret, "dXNlcjpwYXNzd29yZA", "AKIA" + "IOSFODNN7EXAMPLE", "ASIA" + "IOSFODNN7EXAMPLE", strings.Repeat("a1", 18), strings.Repeat("b2", 18), strings.Repeat("c3", 18), strings.Repeat("d4", 18), strings.Repeat("e5", 18), strings.Repeat("Ab3", 10), "1234567890-abcdefghij", strings.Repeat("q7", 10), "eyJzdWIi", "SflKxw", "11ABCDEFG0"} {
+			for _, leak := range []string{topsecret, "dXNlcjpwYXNzd29yZA", "AKIA" + "IOSFODNN7EXAMPLE", "ASIA" + "IOSFODNN7EXAMPLE", strings.Repeat("a1", 18), strings.Repeat("b2", 18), strings.Repeat("c3", 18), strings.Repeat("d4", 18), strings.Repeat("e5", 18), strings.Repeat("Ab3", 10), "1234567890-abcdefghij", strings.Repeat("q7", 10), "eyJzdWIi", "SflKxw", "11ABCDEFG0", strings.Repeat("Sy9", 11), strings.Repeat("Qx7", 12), "A0123456789-1234567890123", "My0xLU1ZMDMyQlE5V0Q0S2x", "lQOYBF"} {
 				if strings.Contains(out, leak) {
 					t.Fatalf("leaked %q in %q", leak, out)
 				}
@@ -105,6 +118,11 @@ func TestRedactLeavesOrdinaryText(t *testing.T) {
 		"user@host:~$ ls -la",
 		"error: token expired", // no key/value separator
 		"HEAD is now at 4a5b6c7 fix: auth flow",
+		"npm_package_version=1.2.3 npm_lifecycle_event=build npm_config_cache=/tmp/c",
+		"AIzaShort and xapp-x and xoxe",
+		"sshpass -f /root/.pw ssh -p 22 bob@host",
+		"-----BEGIN PGP PUBLIC KEY BLOCK-----\nmQINBF\n-----END PGP PUBLIC KEY BLOCK-----",
+		"-----BEGIN CERTIFICATE-----\nMIIC\n-----END CERTIFICATE-----",
 	} {
 		if out := Redact(s); out != s {
 			t.Errorf("changed: %q -> %q", s, out)
