@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
 	"nextshell.dev/v2/internal/sftpfs"
 )
@@ -243,12 +244,15 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: light}})
 	tt.Frame()
 	has(t, tt, "CPU", "内存", "交换", "磁盘", "0.42 0.38 0.35", "20%", "59.0G / 80.0G", "↑ 39.1K/s", "Ubuntu 24.04 LTS · 4 核 · 运行 12 天")
-	// 进程管理器 opens the process page, which waits for a full sample instead of showing none.
+	if tt.HasText("缓存数据") {
+		t.Fatal("a fresh sample is not cached data")
+	}
+	// 进程管理器 opens the host's process tab, which waits for a full sample instead of showing none.
 	click(t, tt, "进程管理器")
 	if !p.detailed["one"] {
-		t.Fatal("process page without the full probe")
+		t.Fatal("process tab without the full probe")
 	}
-	has(t, tt, "正在采样…（仅支持 Linux 服务器）")
+	has(t, tt, "进程 · one", "正在采样…（仅支持 Linux 服务器）")
 	if tt.HasText("0 / 0 个进程") {
 		t.Fatal("a light sample showed as no processes")
 	}
@@ -276,22 +280,113 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	tt.RightClick("postgres: checkpointer")
 	tt.ChooseMenuItem("详细信息")
 	has(t, tt, "进程 2201")
+	// The network manager is a tab of its own; both keep the full probe until they close.
 	click(t, tt, "网络管理器")
-	has(t, tt, "tcp LISTEN")
-	click(t, tt, "历史")
-	has(t, tt, "CPU · %")
-	if p.detailed["one"] || !p.watching["one"] {
-		t.Fatal("history keeps the full probe", p.detailed)
+	has(t, tt, "网络 · one", "tcp LISTEN")
+	tt.Key(appMod(), ui.KeyW) // closes the tool tab shown, not the host's session
+	if tt.HasText("网络 · one") || !tt.HasText("进程 · one") || !p.detailed["one"] || len(p.closed) != 0 {
+		t.Fatal("the process tab still needs the full probe", p.detailed, p.closed)
 	}
-	click(t, tt, "进程")
+	click(t, tt, "关闭标签 进程 · one")
+	if p.detailed["one"] || !p.watching["one"] {
+		t.Fatal("closing the tabs stops the full probe, not the left column", p.watching, p.detailed)
+	}
 	session(t, p, tt, "two", "two", remoteHost("two"))
-	if p.watching["one"] || !p.watching["two"] || p.detailed["one"] || !p.detailed["two"] {
+	if p.watching["one"] || !p.watching["two"] || p.detailed["two"] {
 		t.Fatal("watch did not follow the active tab", p.watching, p.detailed)
 	}
 	tt.Key(appMod(), ui.KeyB)
 	click(t, tt, "SFTP")
-	if p.watching["two"] || p.detailed["two"] {
+	if p.watching["two"] {
 		t.Fatal("still sampling with nothing showing it")
+	}
+}
+
+// A host's data outlives its tab and its sampling: switching back shows it at once, labeled, until a fresh sample.
+func TestMonitorKeepsCachedDataPerHost(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	old := monitorSnapshot(time.Now().Add(-time.Minute), 0)
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: old}})
+	tt.Frame()
+	has(t, tt, "缓存数据", "0.42 0.38 0.35")
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: monitorSnapshot(time.Now(), 1)}})
+	tt.Frame()
+	if tt.HasText("缓存数据") {
+		t.Fatal("a fresh sample is live")
+	}
+	session(t, p, tt, "two", "two", remoteHost("two"))
+	if tt.HasText("0.42 0.38 0.35") {
+		t.Fatal("another host showed this host's data")
+	}
+	tt.Key(ui.Cmd, ui.Key1)
+	has(t, tt, "0.42 0.38 0.35") // back on the first host: its last sample, at once
+}
+
+func TestMonitorOffStopsSampling(t *testing.T) {
+	_, p, tt := fixture(t)
+	off := remoteHost("off")
+	off.Monitor = false
+	session(t, p, tt, "off", "off", off)
+	has(t, tt, "此服务器的监控已关闭")
+	if p.watching["off"] {
+		t.Fatal("sampled a host whose monitoring is off")
+	}
+	// The saved record decides, so turning it off in the manager takes effect on a tab already open.
+	on := saveHost(t, p, model.Connection{Name: "saved", Host: "saved.example", User: "u"})
+	session(t, p, tt, "saved", "saved", on)
+	if !p.watching["saved"] {
+		t.Fatal("a new host is not sampled")
+	}
+	on.Monitor = false
+	if e := p.SaveConnection(on, nil); e != nil {
+		t.Fatal(e)
+	}
+	p.events = append(p.events, appui.Event{Message: "saved"}) // a reload
+	tt.Frame()
+	tt.Frame()
+	if p.watching["saved"] {
+		t.Fatal("still sampling after the switch went off")
+	}
+}
+
+func TestMonitorSidebarFoldsAndPicksAnInterface(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	for i := range 4 {
+		snap := monitorSnapshot(time.Now().Add(time.Duration(i-4)*time.Second), i)
+		snap.Interfaces = map[string]monitor.InterfaceRate{"eth0": {RXPerSecond: 2048, TXPerSecond: 1024, HasDelta: true}, "wg0": {RXPerSecond: 512, TXPerSecond: 256, HasDelta: true}}
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: snap, Latency: 18 * time.Millisecond}})
+	}
+	tt.Frame()
+	has(t, tt, "↑ 47.9K/s", "18 ms")
+	click(t, tt, "网卡")
+	click(t, tt, "wg0")
+	has(t, tt, "↑ 256 B/s", "↓ 512 B/s")
+	click(t, tt, "系统监控")
+	tt.Advance(400 * time.Millisecond) // the section closes with an animation
+	if tt.HasText("0.42 0.38 0.35") {
+		t.Fatal("the section did not fold")
+	}
+	if !strings.HasSuffix(p.UIState("layout"), " true") {
+		t.Fatal("the fold is not remembered", p.UIState("layout"))
+	}
+	click(t, tt, "系统监控")
+	tt.Advance(400 * time.Millisecond)
+	has(t, tt, "0.42 0.38 0.35")
+}
+
+func TestConnectingTabAppearsOnFirstConnect(t *testing.T) {
+	p := newPlatform(t)
+	host := saveHost(t, p, model.Connection{Name: "first", Host: "first.example", User: "u"})
+	a, tt := start(p)
+	click(t, tt, "快速连接")
+	tt.Type("first")
+	tt.Key(0, ui.KeyEnter)
+	has(t, tt, "连接中", "正在连接 first…")
+	session(t, p, tt, "one", "first", host)
+	if tt.HasText("正在连接 first…") || len(a.Tabs) != 1 {
+		t.Fatal("the connecting tab stayed after the session arrived")
 	}
 }
 
@@ -497,5 +592,18 @@ func TestEditorReloadAsksThePlatformToReload(t *testing.T) {
 	click(t, ed, "丢弃并重新载入")
 	if len(p.reloaded) != 1 || p.reloaded[0] != "/etc/a.conf" || len(p.opened) != 0 {
 		t.Fatal("reload", p.reloaded, p.opened)
+	}
+}
+
+func TestToolTabsGoWithTheirHost(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: monitorSnapshot(time.Now(), 0)}})
+	tt.Frame()
+	click(t, tt, "进程管理器")
+	has(t, tt, "进程 · one")
+	click(t, tt, "关闭标签 one")
+	if tt.HasText("进程 · one") || p.detailed["one"] {
+		t.Fatal("the process tab outlived its host", p.detailed)
 	}
 }

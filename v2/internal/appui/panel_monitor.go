@@ -14,12 +14,22 @@ import (
 	"nextshell.dev/v2/internal/monitor"
 )
 
+// hostMonitor is what the app knows of one host's server, kept per host (not per tab) so a reconnected or
+// switched-back host shows its last data at once, until a fresh sample replaces it.
+type hostMonitor struct {
+	history    monitor.History
+	snap, full monitor.Snapshot // the last sample, and the last one with processes and connections
+	session    string           // the session that sent snap
+	latency    time.Duration    // 0 when unknown
+	nic        string           // the interface the left column shows
+}
+
 type monitorState struct {
-	histories                     map[string]*monitor.History
-	details                       map[string]monitor.Snapshot // the last full sample per session, for the process and network pages
-	session, watching, detailed   string
-	snap                          monitor.Snapshot
-	page                          int // pageHistory, pageProcesses, pageNetwork
+	hosts                         map[string]*hostMonitor // by hostKey
+	watching, detailed            map[string]bool         // sessions sampled lightly, and with the full probe
+	tools                         []toolTab
+	tool                          string // key of the shown tool tab; "" while a terminal shows
+	trace                         traceState
 	filter, netFilter             string
 	processList, networkList      ui.ListState
 	processRow, networkRow        int
@@ -28,122 +38,177 @@ type monitorState struct {
 	historyDisk, historyInterface string
 }
 
-// The pages of the workbench's 系统信息 tab.
 const (
-	pageHistory = iota
-	pageProcesses
-	pageNetwork
+	allNICs     = "全部网卡"
+	cachedAfter = 6 * time.Second // a sample older than this is shown as 缓存数据
 )
 
 func (s *monitorState) init() {
-	s.histories = map[string]*monitor.History{}
-	s.details = map[string]monitor.Snapshot{}
+	s.hosts = map[string]*hostMonitor{}
+	s.watching, s.detailed = map[string]bool{}, map[string]bool{}
 	s.processRow, s.networkRow = -1, -1
 	s.processSort = ui.SortOrder{Column: "CPU", Descending: true}
 }
+
+// hostKey names the host a session belongs to: its saved connection, or the session when it has none.
+func hostKey(s *Session) string { return orDefault(s.Connection.ID, s.ID) }
+func (a *App) hostKeyOf(session string) string {
+	if i := a.tabIndex(session); i >= 0 {
+		return hostKey(a.Tabs[i])
+	}
+	return session
+}
+
 func (s *monitorState) handle(a *App, e Event) {
+	if d := e.Diagnostic; d != nil && d.ID == s.trace.id {
+		s.trace.busy, s.trace.text = false, d.Text
+	}
 	if e.Monitor == nil {
 		return
 	}
-	s.record(e.Monitor.Session, e.Monitor.Snapshot)
-	s.session = e.Monitor.Session
-	s.snap = e.Monitor.Snapshot
-	if s.snap.Detail {
-		s.details[s.session] = s.snap
-	}
-}
-func (s *monitorState) forget(id string) {
-	delete(s.histories, id)
-	delete(s.details, id)
-}
-
-// watchMonitor samples the active connected SSH session while the left column
-// or the 系统信息 tab shows it, and adds processes and connections while one
-// of their pages shows.
-func (a *App) watchMonitor() {
-	s := &a.monitor
-	id := ""
-	if r := a.remote(); r != nil && !a.P.Exited(r.ID) {
-		id = r.ID
-	}
-	sysinfo := !a.layout.benchHidden && a.layout.bench == benchSysinfo
-	watch, detailed := "", ""
-	if id != "" && (!a.layout.leftHidden || sysinfo) {
-		watch = id
-	}
-	if id != "" && sysinfo && s.page != pageHistory {
-		detailed = id
-	}
-	if detailed != s.detailed {
-		if s.detailed != "" {
-			a.P.WatchMonitorDetail(s.detailed, false)
-		}
-		if detailed != "" {
-			a.P.WatchMonitorDetail(detailed, true)
-		}
-		s.detailed = detailed
-	}
-	if watch != s.watching {
-		if s.watching != "" {
-			a.P.WatchMonitor(s.watching, false)
-		}
-		if watch != "" {
-			a.P.RefreshMonitor(watch)
-			a.P.WatchMonitor(watch, true)
-		}
-		s.watching = watch
+	if h := s.record(a.hostKeyOf(e.Monitor.Session), e.Monitor.Snapshot); h != nil {
+		h.session, h.latency = e.Monitor.Session, e.Monitor.Latency
 	}
 }
 
-// record keeps at most 32 sessions' histories, dropping the stalest.
-func (s *monitorState) record(id string, snap monitor.Snapshot) {
-	h := s.histories[id]
+// record keeps the sample as the host's latest and in its history, for at most 32 hosts, dropping the stalest.
+// It returns nil for a sample older than the last.
+func (s *monitorState) record(key string, snap monitor.Snapshot) *hostMonitor {
+	h := s.hosts[key]
 	if h == nil {
-		if len(s.histories) >= 32 {
+		if len(s.hosts) >= 32 {
 			oldest := ""
 			var at time.Time
-			for key, history := range s.histories {
-				if len(history.Points) == 0 {
+			for key, o := range s.hosts {
+				if len(o.history.Points) == 0 {
 					oldest = key
 					break
 				}
-				last := history.Points[len(history.Points)-1].At
+				last := o.history.Points[len(o.history.Points)-1].At
 				if at.IsZero() || last.Before(at) {
 					at, oldest = last, key
 				}
 			}
-			delete(s.histories, oldest)
+			delete(s.hosts, oldest)
 		}
-		h = &monitor.History{}
-		s.histories[id] = h
+		h = &hostMonitor{}
+		s.hosts[key] = h
 	}
-	h.Append(snap)
+	if !h.history.Append(snap) {
+		return nil
+	}
+	h.snap = snap
+	if snap.Detail {
+		h.full = snap
+	}
+	return h
 }
 
-// sysinfoPanel is the workbench's 系统信息 tab: the history, process and network pages.
-func (a *App) sysinfoPanel(c *ui.Context) {
+// monitorOn is the host's monitoring switch as saved now, so turning it off takes effect on open tabs.
+func (a *App) monitorOn(s *Session) bool {
+	if cc, ok := a.host(s.Connection.ID); ok && s.Connection.ID != "" {
+		return cc.Monitor
+	}
+	return s.Connection.Monitor
+}
+
+// sampling says whether the session's server is being sampled: connected, and its switch on.
+func (a *App) sampling(s *Session) bool { return !s.Local && !a.P.Exited(s.ID) && a.monitorOn(s) }
+
+// cached says whether what the host shows is old: from another session, or not renewed for a while.
+func (a *App) cached(s *Session, h *hostMonitor) bool {
+	return h.session != s.ID || time.Since(h.snap.At) > cachedAfter
+}
+
+// watchMonitor samples the active connected SSH session while the left column or the 系统信息 tab shows it,
+// and every host with a process or network tab open, with the full probe, until the tab closes.
+func (a *App) watchMonitor() {
 	s := &a.monitor
+	light, full := map[string]bool{}, map[string]bool{}
+	sysinfo := !a.layout.benchHidden && a.layout.bench == benchSysinfo
+	if r := a.remote(); r != nil && a.sampling(r) && (!a.layout.leftHidden || sysinfo) {
+		light[r.ID] = true
+	}
+	for _, t := range s.tools {
+		if r := a.toolSession(t); r != nil && a.sampling(r) {
+			light[r.ID], full[r.ID] = true, true
+		}
+	}
+	for id := range s.detailed {
+		if !full[id] {
+			a.P.WatchMonitorDetail(id, false)
+			delete(s.detailed, id)
+		}
+	}
+	for id := range full {
+		if !s.detailed[id] {
+			a.P.WatchMonitorDetail(id, true)
+			s.detailed[id] = true
+		}
+	}
+	for id := range s.watching {
+		if !light[id] {
+			a.P.WatchMonitor(id, false)
+			delete(s.watching, id)
+		}
+	}
+	for id := range light {
+		if !s.watching[id] {
+			a.P.RefreshMonitor(id)
+			a.P.WatchMonitor(id, true)
+			s.watching[id] = true
+		}
+	}
+}
+
+// sysinfoPanel is the workbench's 系统信息 tab: what the server is, and its history.
+func (a *App) sysinfoPanel(c *ui.Context) {
 	sess := a.remote()
 	if sess == nil {
-		emptyState(c, "系统信息用于远程 SSH 会话", "切换到一个远程标签即可查看历史曲线、进程和网络连接。")
+		emptyState(c, "系统信息用于远程 SSH 会话", "切换到一个远程标签即可查看系统信息和历史曲线。")
 		return
 	}
-	id := sess.ID
-	ui.Row(c).FillWidth().Padding(6, 8, 4, 8).Children(func() {
-		ui.Segmented(c, &s.page, "历史", "进程", "网络").FillEqually().Label("系统信息视图").Width(300)
-	})
-	full, ok := s.details[id]
+	h := a.monitor.hosts[hostKey(sess)]
 	switch {
-	case s.page == pageHistory:
-		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() { a.monitorHistory(c, id) })
-		})
-	case !ok: // light samples leave the tables out: nothing yet is not "none"
+	case !a.monitorOn(sess):
+		emptyState(c, "此服务器的监控已关闭", "在连接设置里开启后，这里会显示系统信息和历史曲线。")
+	case h == nil || h.snap.At.IsZero():
 		sampling(c)
-	case s.page == pageProcesses:
-		a.processTable(c, id, full)
 	default:
-		a.networkTable(c, full.Network)
+		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() {
+				a.systemInfo(c, sess, h)
+				a.monitorHistory(c, h)
+			})
+		})
+	}
+}
+
+// systemInfo is the static part: the system, its sizes and its disks.
+func (a *App) systemInfo(c *ui.Context, sess *Session, h *hostMonitor) {
+	t := c.Theme()
+	m := h.snap
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "系统信息").Bold().Grow(1)
+		if a.cached(sess, h) {
+			cachedChip(c)
+		}
+	})
+	rows := [][2]string{{"系统", strings.ReplaceAll(m.Info, "\n", " · ")}, {"负载", m.Load}, {"内存", humanSize(int64(m.MemoryTotal))}}
+	if m.SwapTotal > 0 {
+		rows = append(rows, [2]string{"交换", humanSize(int64(m.SwapTotal))})
+	}
+	for _, d := range m.Disks {
+		rows = append(rows, [2]string{"磁盘 " + d.Mount, fmt.Sprintf("%s / %s（%.0f%%）", humanSize(int64(d.UsedKB)*1024), humanSize(int64(d.TotalKB)*1024), d.UsedPercent)})
+	}
+	for _, kv := range rows {
+		if kv[1] == "" {
+			continue
+		}
+		ui.Row(c).FillWidth().Gap(8).Children(func() {
+			ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(96).SingleLine()
+			ui.Text(c, kv[1]).Font("monospace").FontSize(12).Wrap().Selectable().Grow(1).MinWidth(0)
+		})
 	}
 }
 
@@ -152,6 +217,12 @@ func sampling(c *ui.Context) {
 		ui.Spinner(c)
 		muted(c, "正在采样…（仅支持 Linux 服务器）")
 	})
+}
+
+// cachedChip marks what is shown as old data.
+func cachedChip(c *ui.Context) ui.Element {
+	t := c.Theme()
+	return ui.Text(c, "缓存数据").FontSize(11).TextColor(t.Warning).SingleLine().Padding(1, 6).Radius(4).Background(t.Warning.Alpha(.14)).Label("缓存数据")
 }
 
 // Metric colors: CPU blue, memory green, swap indigo, disk cyan; upload orange, download green.
@@ -164,26 +235,58 @@ func metricColor(t *ui.Theme, name string) ui.Color {
 	return ui.Hex(light[name])
 }
 
-// monitorSidebar is the left column's 系统监控: bars for CPU, memory, swap and
-// disk, load, network rates and a line about the system.
+// monitorSidebar is the left column's 系统监控: a section that folds, with bars for CPU, memory, swap and
+// disk, load, the network of one interface with its graph, and the buttons of the process and network tabs.
 func (a *App) monitorSidebar(c *ui.Context, sess *Session) {
 	t := c.Theme()
-	sectionLabel(c, "系统监控")
-	m := a.monitor.snap
+	h := a.monitor.hosts[hostKey(sess)]
+	has := h != nil && !h.snap.At.IsZero()
+	cached := has && a.cached(sess, h)
+	if has && !cached {
+		c.After(time.Until(h.snap.At.Add(cachedAfter)) + 100*time.Millisecond) // flip to 缓存数据 if samples stop
+	}
+	open := &a.layout.monOpen
+	parts := ui.CollapsibleBase(c, open)
+	parts.Trigger.FillWidth().Padding(2, 0).Gap(4).AlignItems(ui.Center).Label("系统监控")
+	parts.Trigger.Children(func() {
+		icon := "chevron-right"
+		if *open {
+			icon = "chevron-down"
+		}
+		ui.Icon(c, appIcons[icon]).FontSize(12).TextColor(t.TextMuted)
+		sectionLabel(c, "系统监控").Grow(1)
+		if cached {
+			cachedChip(c)
+		}
+	})
+	parts.Panel(func() { a.monitorBody(c, sess, h, has) }).FillWidth().Gap(10)
+}
+
+func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool) {
+	t := c.Theme()
 	switch {
 	case sess.Local:
 		muted(c, "本地终端不采样")
 		return
-	case a.P.Exited(sess.ID):
-		muted(c, "连接断开后不再采样")
-		return
-	case a.monitor.session != sess.ID || m.At.IsZero():
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Spinner(c)
-			muted(c, "正在采样…（仅支持 Linux 服务器）")
-		})
+	case !a.monitorOn(sess):
+		muted(c, "此服务器的监控已关闭")
+		muted(c, "可在连接设置里重新开启。")
 		return
 	}
+	exited := a.P.Exited(sess.ID)
+	if exited {
+		muted(c, "连接断开后不再采样")
+	}
+	if !has {
+		if !exited {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c)
+				muted(c, "正在采样…（仅支持 Linux 服务器）")
+			})
+		}
+		return
+	}
+	m := h.snap
 	if m.Load != "" {
 		ui.Row(c).FillWidth().Gap(8).Padding(6, 8).Radius(6).Background(t.Background).Border(1, t.Border).Children(func() {
 			muted(c, "负载")
@@ -210,22 +313,18 @@ func (a *App) monitorSidebar(c *ui.Context, sess *Session) {
 			break
 		}
 	}
-	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "网络").Label("网络速率").Width(32)
-		ui.Text(c, "↑ "+humanSize(int64(m.TXPerSecond))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "up")).SingleLine().Grow(1).Basis(0)
-		ui.Text(c, "↓ "+humanSize(int64(m.RXPerSecond))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "down")).SingleLine().Grow(1).Basis(0)
-	})
+	a.networkRows(c, h)
 	if m.Info != "" {
 		muted(c, m.Info).FontSize(11).Tooltip(m.Info)
 	}
 	for _, w := range m.Warnings {
 		ui.Text(c, w).FontSize(11).TextColor(t.Warning)
 	}
+	if exited {
+		return
+	}
 	ui.Row(c).FillWidth().Gap(6).Padding(4, 0, 0, 0).Children(func() {
-		for _, v := range []struct {
-			label, icon string
-			page        int
-		}{{"进程管理器", "cpu", pageProcesses}, {"网络管理器", "globe", pageNetwork}} {
+		for _, v := range []struct{ label, icon, kind string }{{"进程管理器", "cpu", toolProcess}, {"网络管理器", "globe", toolNetwork}} {
 			b := ui.ButtonBase(c).Label(v.label).Grow(1).Basis(0).Height(28).Gap(4).Radius(t.Radius).Center().Border(1, t.Border)
 			if b.Hovered() {
 				b.Background(t.SurfaceHover)
@@ -235,11 +334,85 @@ func (a *App) monitorSidebar(c *ui.Context, sess *Session) {
 				ui.Text(c, v.label).FontSize(12).SingleLine()
 			})
 			if b.Clicked() {
-				a.monitor.page = v.page
-				a.showBench(benchSysinfo)
+				a.openTool(v.kind, sess)
 			}
 		}
 	})
+}
+
+// networkRows is the interface choice, its graph and its rates.
+func (a *App) networkRows(c *ui.Context, h *hostMonitor) {
+	t := c.Theme()
+	m := h.snap
+	names := make([]string, 0, len(m.Interfaces))
+	for name := range m.Interfaces {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	rx, tx, suffix := m.RXPerSecond, m.TXPerSecond, ""
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		muted(c, "网络").Width(32)
+		if len(names) == 0 {
+			return
+		}
+		options := append([]string{allNICs}, names...)
+		if !slices.Contains(options, h.nic) {
+			h.nic = allNICs
+		}
+		ui.Select(c, &h.nic, options).Label("网卡").Grow(1).MinWidth(0)
+	})
+	if r, ok := m.Interfaces[h.nic]; ok {
+		rx, tx, suffix = r.RXPerSecond, r.TXPerSecond, ":"+h.nic
+	}
+	netGraph(c, &h.history, suffix)
+	ui.Row(c).FillWidth().Gap(8).Children(func() {
+		ui.Text(c, "↑ "+humanSize(int64(tx))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "up")).SingleLine().Grow(1).Basis(0)
+		ui.Text(c, "↓ "+humanSize(int64(rx))+"/s").Font("monospace").FontSize(11).TextColor(metricColor(t, "down")).SingleLine().Grow(1).Basis(0)
+	})
+}
+
+// netGraph draws the last samples' upload and download of one interface (all when suffix is empty), on a
+// scale that keeps an idle link flat.
+func netGraph(c *ui.Context, h *monitor.History, suffix string) {
+	t := c.Theme()
+	pts := h.Points
+	ui.Box(c).FillWidth().Height(36).Radius(4).Background(t.Background).Border(1, t.Border).Label("网络曲线").Draw(func(p *ui.Painter, r ui.Rect) {
+		if len(pts) < 2 {
+			return
+		}
+		ceiling := 16.0 // KiB/s
+		for _, pt := range pts {
+			ceiling = max(ceiling, nanZero(pt.Value("rx"+suffix)), nanZero(pt.Value("tx"+suffix)))
+		}
+		x, y := chart.NewTime(pts[0].At, pts[len(pts)-1].At), chart.NewLinear(0, ceiling)
+		for _, line := range []struct {
+			key   string
+			color ui.Color
+		}{{"rx" + suffix, metricColor(t, "down")}, {"tx" + suffix, metricColor(t, "up")}} {
+			xs, ys := seriesXY(pts, line.key, x, y)
+			p.StrokePath(chart.Line(ui.Rect{X: r.X + 1, Y: r.Y + 1, W: r.W - 2, H: r.H - 2}, xs, ys, chart.CurveLinear), 1.5, line.color)
+		}
+	})
+}
+
+func nanZero(v float64) float64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	return v
+}
+
+// seriesXY is one series of the history as chart positions, with a gap where samples are far apart.
+func seriesXY(pts []monitor.Point, key string, x chart.Time, y chart.Linear) (xs, ys []float32) {
+	for j, point := range pts {
+		if j > 0 && point.At.Sub(pts[j-1].At) > 10*time.Second {
+			xs = append(xs, x.At(point.At.Add(-time.Nanosecond)))
+			ys = append(ys, float32(math.NaN()))
+		}
+		xs = append(xs, x.At(point.At))
+		ys = append(ys, y.At(point.Value(key)))
+	}
+	return xs, ys
 }
 
 // meterRow is a metric's name and value over its bar, amber from 70% and red from 90%.
@@ -258,10 +431,10 @@ func meterRow(c *ui.Context, name string, percent float64, detail string, color 
 	})
 }
 
-func (a *App) monitorHistory(c *ui.Context, id string) {
+func (a *App) monitorHistory(c *ui.Context, host *hostMonitor) {
 	s := &a.monitor
-	h := s.histories[id]
-	if h == nil || len(h.Points) == 0 {
+	h := &host.history
+	if len(h.Points) == 0 {
 		muted(c, "还没有历史数据")
 		return
 	}
@@ -351,15 +524,7 @@ func (a *App) historyPlot(c *ui.Context, title string, h *monitor.History, serie
 			}
 			var lines []line
 			for i, s := range series {
-				var xs, ys []float32
-				for j, point := range h.Points {
-					if j > 0 && point.At.Sub(h.Points[j-1].At) > 10*time.Second {
-						xs = append(xs, x.At(point.At.Add(-time.Nanosecond)))
-						ys = append(ys, float32(math.NaN()))
-					}
-					xs = append(xs, x.At(point.At))
-					ys = append(ys, y.At(point.Value(s.Key)))
-				}
+				xs, ys := seriesXY(h.Points, s.Key, x, y)
 				lines = append(lines, line{xs, ys, colors[i%len(colors)]})
 			}
 			area.Draw(func(p *ui.Painter, r ui.Rect) {

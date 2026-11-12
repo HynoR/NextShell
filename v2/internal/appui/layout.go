@@ -12,6 +12,7 @@ import (
 // split between the terminal and the bottom workbench, and the activity column.
 type layoutState struct {
 	leftHidden, rightOpen, benchHidden bool
+	monOpen                            bool    // the left column's 系统监控 section shows its content
 	split                              float32 // the terminal's share of the centre column, in percent
 	bench                              int     // benchFiles, benchSnippets, benchSysinfo
 	saved                              string  // the layout as last saved
@@ -35,13 +36,15 @@ const (
 // load reads the layout UIState("layout") saved; what is missing keeps its default.
 func (l *layoutState) load(v string) {
 	l.split = 68
-	fmt.Sscan(v, &l.leftHidden, &l.rightOpen, &l.benchHidden, &l.split, &l.bench)
+	folded := false
+	fmt.Sscan(v, &l.leftHidden, &l.rightOpen, &l.benchHidden, &l.split, &l.bench, &folded)
+	l.monOpen = !folded
 	l.split = min(max(l.split, 20), 90)
 	l.bench = min(max(l.bench, 0), len(benchTabs)-1)
 	l.saved = l.String()
 }
 func (l *layoutState) String() string {
-	return fmt.Sprintf("%t %t %t %.0f %d", l.leftHidden, l.rightOpen, l.benchHidden, l.split, l.bench)
+	return fmt.Sprintf("%t %t %t %.0f %d %t", l.leftHidden, l.rightOpen, l.benchHidden, l.split, l.bench, !l.monOpen)
 }
 
 // saveLayout keeps the layout for the next run once it changed. A drag of the
@@ -73,10 +76,15 @@ func (a *App) mainWindow(c *ui.Context) {
 
 // centreColumn is the tabs above the terminal and the workbench, or the welcome page.
 func (a *App) centreColumn(c *ui.Context) {
-	if len(a.Tabs) > 0 {
+	pending := a.pendingTabs()
+	if len(a.Tabs) > 0 || len(pending) > 0 {
 		a.tabBar(c)
 	}
 	if a.current() == nil { // no tabs, or only background tabs an agent opened
+		if len(a.Tabs) == 0 && len(pending) > 0 {
+			a.connectingView(c, pending)
+			return
+		}
 		ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { a.welcomeView(c) })
 		return
 	}
@@ -89,6 +97,10 @@ func (a *App) centreColumn(c *ui.Context) {
 }
 
 func (a *App) terminalArea(c *ui.Context) {
+	if tool := a.activeTool(); tool != nil {
+		a.toolView(c, *tool)
+		return
+	}
 	s := a.current()
 	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		if a.tabs.mru.Active() {

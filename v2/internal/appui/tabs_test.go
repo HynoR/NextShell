@@ -9,7 +9,7 @@ import (
 )
 
 func remoteHost(name string) model.Connection {
-	return model.Connection{ID: "id-" + name, Name: name, Host: name + ".example", User: "u", Port: 22}
+	return model.Connection{ID: "id-" + name, Name: name, Host: name + ".example", User: "u", Port: 22, Monitor: true}
 }
 
 func TestTabRenameTitlesAndReconnect(t *testing.T) {

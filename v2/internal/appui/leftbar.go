@@ -13,6 +13,7 @@ import (
 func (a *App) leftColumn(c *ui.Context) {
 	t := c.Theme()
 	s := a.current()
+	a.traceDrawer(c)
 	if a.layout.leftHidden {
 		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(10).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 			if iconButton(c, "展开左栏", "panel-left").Tooltip("展开左栏 " + shortcutLabel("B")).Clicked() {
@@ -38,6 +39,7 @@ func (a *App) leftColumn(c *ui.Context) {
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Padding(12).Gap(10).Children(func() { a.monitorSidebar(c, s) })
 		})
+		a.pingCard(c, s)
 	})
 }
 

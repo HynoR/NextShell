@@ -41,6 +41,9 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 	if len(p.connects) != 2 || p.connects[1].ID != saved.ID {
 		t.Fatal("name did not connect the saved host", p.connects)
 	}
+	has(t, tt, "连接中", "正在连接 saved-box…") // the first connect shows its tab at once
+	p.events = append(p.events, appui.Event{Message: "连接被拒绝：服务器没有在这个端口提供 SSH 服务", Failed: saved.ID})
+	tt.Frame()
 	click(t, tt, "打开本地终端")
 	if p.local != 1 {
 		t.Fatal("local terminal")
@@ -59,16 +62,12 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 		t.Fatal("left column not folded, or still sampling")
 	}
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
-	has(t, tt, "历史", "进程", "网络")
-	if !p.watching["s1"] || p.detailed["s1"] {
-		t.Fatal("系统信息 shows history without sampling, or with the full probe")
-	}
-	click(t, tt, "进程")
-	if !p.detailed["s1"] {
-		t.Fatal("process page without the full probe")
+	has(t, tt, "系统信息")
+	if tt.HasText("进程") || !p.watching["s1"] || p.detailed["s1"] {
+		t.Fatal("系统信息 samples lightly and keeps the process and network views out")
 	}
 	tt.Key(appMod(), ui.KeyJ)
-	if tt.HasText("系统信息视图") || p.watching["s1"] || p.detailed["s1"] {
+	if p.watching["s1"] || p.detailed["s1"] {
 		t.Fatal("workbench did not fold or sampling went on", p.watching, p.detailed)
 	}
 	tt.Key(appMod(), ui.KeyO)
@@ -79,7 +78,7 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 	_, bt := start(p)
 	bt.Frame()
 	session(t, p, bt, "s2", "saved-box", saved)
-	if !bt.HasText("展开左栏") || bt.HasText("系统信息视图") || !bt.HasText("展开工作区") {
+	if !bt.HasText("展开左栏") || !bt.HasText("展开工作区") {
 		t.Fatal("layout not restored", bt.Texts())
 	}
 	tt.Key(appMod(), ui.KeyB)
@@ -114,7 +113,7 @@ func TestNoImplementationTermsInVisibleText(t *testing.T) {
 		}
 	}
 	check(tt, "welcome")
-	for _, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
+	for _, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络工具", "关于"} {
 		click(t, st, section)
 		check(st, section)
 	}

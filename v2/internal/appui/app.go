@@ -427,7 +427,11 @@ func (a *App) shortcuts(c *ui.Context) {
 		a.P.Local()
 	}
 	if c.Shortcut(appMod, ui.KeyW) && a.current() != nil {
-		a.closeTab(a.Active)
+		if tool := a.activeTool(); tool != nil {
+			a.closeTool(*tool)
+		} else {
+			a.closeTab(a.Active)
+		}
 	}
 	// The ⌘ letters a shell also uses take Ctrl only outside the terminal, as ⌘K does.
 	key := func(k ui.Key) bool { return c.Shortcut(appMod, k) || (!termFocused && c.Shortcut(ui.Cmd, k)) }

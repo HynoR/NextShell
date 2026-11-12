@@ -95,7 +95,7 @@ func (a *App) paletteItems() []paletteItem {
 		{"代理管理", func() { a.openSettings("代理") }},
 		{"Agent 与 MCP", func() { a.openSettings("Agent") }},
 		{"回收站", func() { a.openSettings("回收站") }},
-		{"网络诊断（Ping / 路由追踪）", func() { a.openSettings("网络诊断") }},
+		{"网络工具（nexttrace 路径）", func() { a.openSettings("网络工具") }},
 		{"发送命令…", func() { a.snippets.commandOpen = true }},
 		{"新建命令片段", func() { a.editSnippet(model.Command{Group: "默认"}) }},
 		{"显示 / 隐藏左栏", func() { a.layout.leftHidden = !a.layout.leftHidden }},

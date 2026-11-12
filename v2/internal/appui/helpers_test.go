@@ -156,6 +156,7 @@ func saveHost(t *testing.T, p *fakePlatform, c model.Connection) model.Connectio
 	t.Helper()
 	if c.ID == "" {
 		c.ID = p.NewID()
+		c.Monitor = true // a new host samples
 	}
 	if c.Port == 0 {
 		c.Port = 22

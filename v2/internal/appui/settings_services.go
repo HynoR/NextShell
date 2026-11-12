@@ -11,7 +11,7 @@ import (
 	"nextshell.dev/v2/internal/model"
 )
 
-// Sync, Agent, import / export and network diagnostics.
+// Sync, Agent, import / export and the network tools.
 
 type cloudState struct {
 	endpoint, workspace, name, joinID, auth, encryption string
@@ -42,10 +42,6 @@ type dataState struct {
 	preview                                *ImportPreview
 	confirmOverwrite, encrypt              bool
 	exportPath, exportPassword             string
-}
-type diagState struct {
-	id, target, text string
-	busy             bool
 }
 
 // hostChecklist chooses hosts into the settings' selection.
@@ -447,34 +443,8 @@ func (a *App) exportButton(c *ui.Context, label string, ids []string) {
 }
 
 func (a *App) diagnosticSettings(c *ui.Context) {
-	s := &a.settings.diag
-	v := &a.settings.draft
-	muted(c, "从本机检测到某个 IP 的连通性。路由追踪使用你自己安装的 nexttrace。")
+	muted(c, "路由追踪使用你自己安装的 nexttrace，在左栏点「PING 延迟」即可对当前服务器追踪。")
 	group(c, "", func() {
-		field(c, "目标 IP", &s.target)
-		actions(c, func() {
-			if ui.Button(c, "Ping").Disabled(s.busy).Clicked() {
-				s.id = a.P.Diagnose("ping", s.target)
-				s.busy = s.id != ""
-				s.text = "正在 Ping…"
-			}
-			if ui.Button(c, "路由追踪").Disabled(s.busy).Clicked() {
-				s.id = a.P.Diagnose("traceroute", s.target)
-				s.busy = s.id != ""
-				s.text = "正在追踪路由…"
-			}
-			if ui.Button(c, "停止").Disabled(!s.busy).Clicked() {
-				a.P.CancelDiagnostic()
-			}
-		})
-		if s.busy {
-			ui.Progress(c, -1).FillWidth()
-		}
-		if s.text != "" {
-			ui.Text(c, s.text).Font("monospace").FontSize(12).Selectable().FillWidth().Padding(8).Radius(6).Background(c.Theme().Background)
-		}
-	})
-	group(c, "设置", func() {
-		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &v.NexttracePath, FilePick{})
+		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &a.settings.draft.NexttracePath, FilePick{})
 	})
 }

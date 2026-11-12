@@ -26,12 +26,11 @@ type settingsState struct {
 	cloud   cloudState
 	agent   agentState
 	data    dataState
-	diag    diagState
 }
 
 var settingsSections = []struct{ id, icon string }{
 	{"通用", "settings"}, {"终端", "terminal"}, {"SSH", "server"}, {"密钥", "keys"}, {"代理", "proxies"},
-	{"同步", "cloud"}, {"Agent", "agent"}, {"导入导出", "data"}, {"回收站", "trash"}, {"网络诊断", "diagnostics"}, {"关于", "info"},
+	{"同步", "cloud"}, {"Agent", "agent"}, {"导入导出", "data"}, {"回收站", "trash"}, {"网络工具", "diagnostics"}, {"关于", "info"},
 }
 
 func (s *settingsState) load(v model.Preferences) {
@@ -51,7 +50,6 @@ func (s *settingsState) load(v model.Preferences) {
 		s.data.policy = "skip"
 		s.data.encrypt = true
 		s.keys.algorithm = "ed25519"
-		s.diag.target = "127.0.0.1"
 	}
 }
 func (s *settingsState) parse() (model.Preferences, error) {
@@ -86,10 +84,6 @@ func (s *settingsState) selectHosts(ids ...string) {
 	}
 }
 func (s *settingsState) handle(a *App, e Event) {
-	if e.Diagnostic != nil && e.Diagnostic.ID == s.diag.id {
-		s.diag.busy = false
-		s.diag.text = e.Diagnostic.Text
-	}
 	if e.Import != nil {
 		s.data.preview = e.Import
 		s.data.confirmOverwrite = false
@@ -209,7 +203,7 @@ func (a *App) settingsSection(c *ui.Context) {
 		a.dataSettings(c)
 	case "回收站":
 		a.trashSettings(c)
-	case "网络诊断":
+	case "网络工具":
 		a.diagnosticSettings(c)
 	default:
 		a.aboutSettings(c)

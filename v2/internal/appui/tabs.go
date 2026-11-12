@@ -2,6 +2,7 @@ package appui
 
 import (
 	"hash/fnv"
+	"slices"
 	"strings"
 	"time"
 
@@ -61,6 +62,7 @@ func (a *App) tabBar(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).FillWidth().Height(38).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
 		a.tabStrip(c)
+		a.pendingStrip(c, a.pendingTabs())
 		plus := iconButton(c, "新建本地终端", "plus")
 		if plus.Clicked() {
 			a.P.Local()
@@ -101,7 +103,11 @@ func (a *App) tabStrip(c *ui.Context) {
 		// The widget keeps a selection inside the strip; a window with tabs but none active (an agent opened
 		// the only one in the background) must stay that way, so it gets a copy and a.Active only follows a click.
 		selected := a.Active
-		tabs := ui.TabsBase(c, &selected, len(a.Tabs))
+		tool := a.activeTool() // a tool tab is selected after the sessions' tabs
+		if tool != nil {
+			selected = len(a.Tabs) + slices.Index(a.monitor.tools, *tool)
+		}
+		tabs := ui.TabsBase(c, &selected, len(a.Tabs)+len(a.monitor.tools))
 		tabs.List.Height(38).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
@@ -117,14 +123,14 @@ func (a *App) tabStrip(c *ui.Context) {
 					a.startRename(s)
 				}
 				switch {
-				case i == a.Active:
+				case i == a.Active && tool == nil:
 					tab.Background(t.Background).Border(1, t.Border)
 				case tab.Hovered():
 					tab.Background(t.SurfaceHover)
 				}
 				tab.Children(func() {
 					color := t.Text
-					if exited || i != a.Active {
+					if exited || i != a.Active || tool != nil {
 						color = t.TextMuted
 					}
 					if !s.Local {
@@ -169,8 +175,13 @@ func (a *App) tabStrip(c *ui.Context) {
 				})
 			}
 		})
+		a.toolTabs(c, tabs, len(a.Tabs))
 		if tabs.List.Changed() {
-			a.activateTab(selected)
+			if selected >= len(a.Tabs) {
+				a.showTool(a.monitor.tools[selected-len(a.Tabs)])
+			} else {
+				a.activateTab(selected)
+			}
 		}
 	})
 }
@@ -270,6 +281,7 @@ func (a *App) selectTabID(id string) {
 func (a *App) activateTab(i int) {
 	if i >= 0 && i < len(a.Tabs) {
 		a.Active = i
+		a.monitor.tool = ""
 		a.tabs.term.Focus()
 	}
 }
@@ -279,7 +291,6 @@ func (a *App) closeTab(i int) {
 		return
 	}
 	id := a.Tabs[i].ID
-	a.monitor.forget(id)
 	delete(a.tabs.started, id)
 	a.P.CloseSession(id)
 	a.Tabs = append(a.Tabs[:i], a.Tabs[i+1:]...)
@@ -291,6 +302,7 @@ func (a *App) closeTab(i int) {
 	case a.Active >= len(a.Tabs):
 		a.Active = len(a.Tabs) - 1
 	}
+	a.dropTools()
 }
 
 // closeWhere closes the tabs for which close reports true, from the right.

@@ -274,7 +274,7 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 			}
 			return false
 		}
-		sections := []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"}
+		sections := []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络工具", "关于"}
 		for _, section := range sections {
 			click(t, st, section)
 			if shows(st) != enabled { // the sidebar lists 同步 when enabled
@@ -303,27 +303,38 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestDiagnosticsRejectStaleResultsAndCancel(t *testing.T) {
-	_, p, tt, st := settingsFixture(t)
-	click(t, st, "网络诊断")
-	click(t, st, "Ping")
-	if p.diagnosed != "ping 127.0.0.1" {
+func TestRouteTraceDrawerFromThePingCard(t *testing.T) {
+	a, p, tt, st := settingsFixture(t)
+	shown := 0
+	a.ShowSettings = func() { shown++ }
+	click(t, st, "网络工具")
+	has(t, st, "nexttrace 程序")
+	if st.HasText("Ping") {
+		t.Fatal("settings keep only the nexttrace path")
+	}
+	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
+	has(t, tt, "PING 延迟")
+	click(t, tt, "PING 延迟 —，点击路由追踪")
+	if p.diagnosed != "traceroute one.example" {
 		t.Fatal(p.diagnosed)
 	}
+	has(t, tt, "路由追踪 · one", "正在追踪路由…")
 	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "stale", Text: "old"}})
 	tt.Frame()
-	st.Frame()
-	if st.HasText("old") {
+	if tt.HasText("old") {
 		t.Fatal("stale result shown")
 	}
-	click(t, st, "停止")
-	if !p.cancelled {
-		t.Fatal("cancel")
-	}
-	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "ping", Text: "permission denied"}})
+	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: "1  10.0.0.1  1.2 ms\n错误：exec: \"nexttrace\": executable file not found in $PATH"}})
 	tt.Frame()
-	st.Frame()
-	has(t, st, "permission denied")
+	has(t, tt, "未找到 nexttrace", "打开设置")
+	click(t, tt, "打开设置")
+	if shown != 1 {
+		t.Fatal("did not open the settings")
+	}
+	click(t, tt, "关闭路由追踪")
+	if tt.HasText("路由追踪 · one") || !p.cancelled {
+		t.Fatal("drawer stayed open, or the trace was not stopped")
+	}
 }
 
 func TestImportPreviewOpensSettingsAndExportUsesChosenHosts(t *testing.T) {
