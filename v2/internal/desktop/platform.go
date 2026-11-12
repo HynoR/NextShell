@@ -39,7 +39,8 @@ type Platform struct {
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
-	tar              map[string]bool // whether each session's server has tar
+	agentConnects    map[string]*attempt // by connection id; see connectForAgent
+	tar              map[string]bool     // whether each session's server has tar
 	queue            *transfer.Queue
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
@@ -198,9 +199,18 @@ func (p *Platform) prompt(ctx context.Context, req *appui.Prompt) ([]string, err
 	defer func() { close(done); p.emit(appui.Event{}) }()
 	req.Done = done
 	req.Answers = make(chan []string, 1)
+	req.ByAgent = fromAgent(ctx)
 	p.emit(appui.Event{Prompt: req})
-	t := time.NewTimer(2 * time.Minute)
-	defer t.Stop()
+	// A dialog an agent caused stays until the user answers or cancels (or the app closes); one the user
+	// asked for gives up after two minutes.
+	var timeout <-chan time.Time
+	if req.ByAgent {
+		askAttention()
+	} else {
+		t := time.NewTimer(2 * time.Minute)
+		defer t.Stop()
+		timeout = t.C
+	}
 	select {
 	case a := <-req.Answers:
 		if a == nil || len(a) != len(req.Questions) {
@@ -209,7 +219,7 @@ func (p *Platform) prompt(ctx context.Context, req *appui.Prompt) ([]string, err
 		return a, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-t.C:
+	case <-timeout:
 		return nil, errors.New("等待输入超时")
 	}
 }

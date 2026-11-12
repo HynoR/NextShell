@@ -114,13 +114,20 @@ func (a *App) detailView(c *ui.Context, w window) {
 	}
 }
 
+// agentOrigin tells the user that a connection dialog is not about something they just did.
+const agentOrigin = "由 Agent 发起"
+
 func (a *App) promptView(c *ui.Context, p *Prompt) {
 	d := &a.dialogs
 	t := c.Theme()
 	switch p.Kind {
 	case PromptHostKey:
 		open := true
-		switch ui.AlertDialog(c, &open, "首次连接，请核对主机指纹", fmt.Sprintf("主机：%s\n指纹：%s\n\n请与服务器管理员提供的指纹核对，确认无误后再信任。", p.Host, p.Fingerprint), "取消", "信任并连接") {
+		message := fmt.Sprintf("主机：%s\n指纹：%s\n\n请与服务器管理员提供的指纹核对，确认无误后再信任。", p.Host, p.Fingerprint)
+		if p.ByAgent {
+			message = agentOrigin + "\n\n" + message
+		}
+		switch ui.AlertDialog(c, &open, "首次连接，请核对主机指纹", message, "取消", "信任并连接") {
 		case 1:
 			d.answer([]string{})
 		case ui.AlertDismissed, 0:
@@ -141,6 +148,9 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 		dialog(c, &open, func() {
 			ui.Column(c).Width(520).Gap(12).Children(func() {
 				ui.Text(c, "主机指纹已变化").FontSize(17).Bold().TextColor(t.Danger)
+				if p.ByAgent {
+					muted(c, agentOrigin)
+				}
 				ui.Text(c, "服务器的身份与上次不同。这可能是服务器重装过，也可能有人在拦截连接。在确认原因之前，请不要继续。").FillWidth()
 				ui.Column(c).FillWidth().Padding(12).Gap(6).Radius(t.Radius).Background(t.Danger.Alpha(.08)).Border(1, t.Danger.Alpha(.4)).Children(func() {
 					muted(c, "主机 "+p.Host)
@@ -170,6 +180,9 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 		dialog(c, &open, func() {
 			ui.Column(c).Width(420).Gap(12).Children(func() {
 				ui.Text(c, p.Title).FontSize(17).Bold()
+				if p.ByAgent {
+					muted(c, agentOrigin)
+				}
 				if p.Host != "" {
 					muted(c, p.Host)
 				}

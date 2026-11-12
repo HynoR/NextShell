@@ -182,3 +182,29 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 		t.Fatal("settings action")
 	}
 }
+
+// A dialog that an agent's session_open raised says so, in every kind of dialog; one the user asked
+// for does not.
+func TestDialogsSayWhenAnAgentStartedTheConnection(t *testing.T) {
+	_, p, tt := fixture(t)
+	for _, pr := range []appui.Prompt{
+		{Kind: appui.PromptHostKey, Host: "h:22", Fingerprint: "SHA256:abc"},
+		{Kind: appui.PromptHostKeyChanged, Host: "h:22", Fingerprint: "SHA256:new", OldFingerprint: "SHA256:old"},
+		{Kind: appui.PromptPassword, Title: "输入密码", Host: "root@h:22", Questions: []string{"密码"}, Echo: []bool{false}},
+		{Title: "服务器验证", Questions: []string{"验证码"}, Echo: []bool{true}},
+	} {
+		own, _ := prompt(p, tt, pr)
+		if tt.HasText("由 Agent 发起") {
+			t.Fatalf("kind %q: a dialog the user asked for says an agent did", pr.Kind)
+		}
+		tt.Key(0, ui.KeyEscape)
+		answer(t, own)
+		pr.ByAgent = true
+		agent, _ := prompt(p, tt, pr)
+		has(t, tt, "由 Agent 发起")
+		tt.Key(0, ui.KeyEscape)
+		if got := answer(t, agent); got != nil {
+			t.Fatal("escape answered", got)
+		}
+	}
+}

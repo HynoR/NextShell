@@ -215,6 +215,15 @@ func TestScreenshots(t *testing.T) {
 	tt.Frame()
 	shot(tt, "13-password")
 	click(t, tt, "取消")
+	// The same dialogs when an agent's session_open raised them.
+	p.events = append(p.events, appui.Event{Prompt: &appui.Prompt{Kind: appui.PromptHostKey, ByAgent: true, Title: "首次连接，请核对主机指纹", Host: "10.0.0.1:22", Fingerprint: "SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8", Answers: make(chan []string, 1), Done: done}})
+	tt.Frame()
+	shot(tt, "11b-host-key-by-agent")
+	click(t, tt, "取消")
+	p.events = append(p.events, appui.Event{Prompt: &appui.Prompt{Kind: appui.PromptPassword, ByAgent: true, Title: "输入密码", Host: "root@10.0.0.1:22", Questions: []string{"密码"}, CanRemember: true, Answers: make(chan []string, 1), Done: done}})
+	tt.Frame()
+	shot(tt, "13b-password-by-agent")
+	click(t, tt, "取消")
 
 	shown := 0
 	a.ShowEditor = func() { shown++ }

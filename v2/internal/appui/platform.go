@@ -30,6 +30,7 @@ type Prompt struct {
 	Kind, Host                  string
 	Fingerprint, OldFingerprint string
 	CanRemember, Remember       bool
+	ByAgent                     bool // an agent's session_open caused it: the dialog says so
 	Title                       string
 	Questions                   []string
 	Echo                        []bool

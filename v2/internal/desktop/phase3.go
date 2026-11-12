@@ -566,7 +566,7 @@ func (b agentBackend) Open(ctx context.Context, id string) (string, error) {
 	if e != nil || connection.Deleted {
 		return "", errors.New("not available")
 	}
-	if e = b.p.connectContext(ctx, connection, ""); e != nil {
+	if e = b.p.connectForAgent(ctx, connection); e != nil {
 		return "", e
 	}
 	for _, s := range b.Sessions() {
