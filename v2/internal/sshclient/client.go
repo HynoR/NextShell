@@ -177,7 +177,6 @@ func Dial(ctx context.Context, o Options) (s *Session, err error) {
 		return func() { resumed = time.Now(); budget.Reset(max(left, time.Millisecond)) }
 	}
 	var auth []ssh.AuthMethod
-	var agentConn net.Conn
 	switch c.Auth {
 	case "password":
 		auth = append(auth, ssh.Password(c.Secret))
@@ -194,15 +193,7 @@ func Dial(ctx context.Context, o Options) (s *Session, err error) {
 		}
 		auth = append(auth, ssh.PublicKeys(signer))
 	case "agent":
-		sock := o.AgentSocket
-		if sock == "" {
-			sock = os.Getenv("SSH_AUTH_SOCK")
-		}
-		if sock == "" {
-			return nil, errors.New("SSH_AUTH_SOCK 未设置")
-		}
-		var e error
-		agentConn, e = (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		agentConn, e := dialAgent(ctx, o.AgentSocket)
 		if e != nil {
 			return nil, e
 		}
