@@ -227,4 +227,11 @@ func TestScreenshots(t *testing.T) {
 		click(t, st, section)
 		shot(st, "20-settings-"+string(rune('a'+i))+"-"+section)
 	}
+
+	// Shell 集成 below the fold of the settings window: 手动 by default, then 自动 with its plain description.
+	tst := ui.NewTester(appui.New(p).SettingsView, 880, 1000)
+	click(t, tst, "终端")
+	shot(tst, "23-settings-terminal-shell-manual")
+	click(t, tst, "自动")
+	shot(tst, "23b-settings-terminal-shell-auto")
 }
