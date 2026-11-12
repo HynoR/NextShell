@@ -366,7 +366,7 @@ func (a *App) hostKeySettings(c *ui.Context) {
 					ui.Text(c, k.Address).Bold().SingleLine()
 					ui.Text(c, k.Fingerprint).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine().Selectable()
 				})
-				if ghost(c, "移除", "").Label("移除 "+k.Address).Clicked() {
+				if ghost(c, "移除", "").Label("移除 " + k.Address).Clicked() {
 					a.confirm("移除主机密钥", k.Address+"\n下次连接时会重新显示指纹并询问是否信任。", "移除密钥", func() {
 						a.report(a.P.ForgetHostKey(k.Address), "已移除 "+k.Address+" 的主机密钥")
 					})

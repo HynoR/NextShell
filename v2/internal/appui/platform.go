@@ -109,6 +109,7 @@ type Platform interface {
 	CopyText(string)
 	SetURLopener(func(string))
 	OpenURL(string) error
+	OpenFolder(dir string) error
 	Quit()
 	ListFiles(session, path string)
 	FileAction(session, action, from, to string)

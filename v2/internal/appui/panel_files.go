@@ -23,6 +23,9 @@ type filesState struct {
 	editingPath              bool
 	crumb                    int
 	sort, sorted             ui.SortOrder
+	all                      []sftpfs.Entry    // entries before hiding dotfiles
+	hidden                   bool              // show dotfiles
+	renaming, renameTo       string            // the path renamed in place
 	paths                    map[string]string // last directory per session
 	entries                  []sftpfs.Entry
 	selection                ui.Selection[string]
@@ -39,10 +42,10 @@ type remoteClipboard struct {
 	Cut     bool
 }
 
-// fileDialog asks what a file operation needs: a name, a local path or a target.
+// fileDialog asks what a file operation needs: a name or a target server.
 type fileDialog struct {
 	open         bool
-	kind         string // upload, download, cross, mkdir, create, rename
+	kind         string // cross, mkdir, create
 	entry        sftpfs.Entry
 	text, target string
 	overwrite    bool
@@ -63,7 +66,16 @@ func (s *filesState) handle(a *App, e Event) {
 	}
 	s.session, s.path, s.pathInput = e.Files.Session, e.Files.Path, e.Files.Path
 	s.paths[s.session] = s.path
-	s.entries = e.Files.Entries
+	s.all = e.Files.Entries
+	s.filterEntries()
+}
+func (s *filesState) filterEntries() {
+	s.entries = s.entries[:0:0]
+	for _, f := range s.all {
+		if s.hidden || !strings.HasPrefix(f.Name, ".") {
+			s.entries = append(s.entries, f)
+		}
+	}
 	s.sortEntries()
 }
 
@@ -151,6 +163,9 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
+		if iconButton(c, "上传", "upload").Clicked() {
+			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
+		}
 		if iconButton(c, "刷新", "refresh").Clicked() {
 			a.listFiles(id, orDefault(s.path, "."))
 		}
@@ -191,6 +206,10 @@ func (a *App) filesPanel(c *ui.Context) {
 			f := s.entries[row]
 			switch col {
 			case 0:
+				if s.renaming == f.Path {
+					a.renameCell(c, id, f)
+					return
+				}
 				icon := "file"
 				if f.Directory {
 					icon = "folder"
@@ -375,6 +394,10 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 		a.later(func() { a.pasteRemoteClipboard(id) })
 	}
 	m.Separator()
+	if m.Item("显示隐藏文件").Checked(s.hidden).Chosen() {
+		s.hidden = !s.hidden
+		s.filterEntries()
+	}
 	if m.Item("跟随终端目录").Checked(s.follow).Chosen() {
 		s.follow = !s.follow
 		if s.follow && a.P.SessionDir(id) == "" {
@@ -384,11 +407,39 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 	if m.Item("在终端中 cd 到此处").Chosen() {
 		a.later(func() { a.cdInTerminal(id, s.path) })
 	}
+	if m.Item("打开默认下载目录").Chosen() {
+		a.report(a.P.OpenFolder(a.Prefs.DownloadDir), "")
+	}
 	if m.Item("前往默认上传目录").Chosen() {
 		a.later(func() { a.listFiles(id, a.Prefs.UploadDir) })
 	}
 	if m.Item("刷新").Chosen() {
 		a.later(func() { a.listFiles(id, s.path) })
+	}
+}
+
+// renameCell edits a name in place: Return renames, Escape or leaving cancels.
+func (a *App) renameCell(c *ui.Context, id string, f sftpfs.Entry) {
+	s := &a.files
+	in := ui.TextInput(c.Key("rename-"+f.Path), &s.renameTo).Label("重命名 " + f.Name).AutoFocus().Grow(1).Height(22).FontSize(12).OnTextKey(func(k ui.TextKey) bool {
+		if k.Key == ui.KeyEscape {
+			s.renaming = ""
+			return true
+		}
+		return false
+	})
+	if in.Submitted() {
+		s.renaming = ""
+		to := strings.TrimSpace(s.renameTo)
+		switch {
+		case to == "" || to == f.Name:
+		case strings.Contains(to, "/"):
+			a.fail(fmt.Errorf("名称不能包含 /"))
+		default:
+			a.P.FileAction(id, "rename", f.Path, path.Join(path.Dir(f.Path), to))
+		}
+	} else if in.FocusLeft() {
+		s.renaming = ""
 	}
 }
 func (a *App) cdInTerminal(id, dir string) {
@@ -450,8 +501,8 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 		a.later(func() { a.pasteRemoteClipboard(id) })
 	}
 	m.Separator()
-	if m.Item("重命名…").Chosen() {
-		a.later(func() { a.openFileDialog("rename", f) })
+	if m.Item("重命名").Chosen() {
+		a.files.renaming, a.files.renameTo = f.Path, f.Name
 	}
 	if m.Item("复制路径").Chosen() {
 		a.P.CopyText(f.Path)
@@ -494,8 +545,6 @@ func (a *App) queue(req TransferRequest) {
 func (a *App) openFileDialog(kind string, f sftpfs.Entry) {
 	d := fileDialog{open: true, kind: kind, entry: f}
 	switch kind {
-	case "rename":
-		d.text = f.Name
 	case "cross":
 		d.target = f.Path
 	}
@@ -508,7 +557,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 		return
 	}
 	id := sess.ID
-	titles := map[string]string{"cross": "发送到其他服务器", "mkdir": "新建文件夹", "create": "新建文件", "rename": "重命名文件"}
+	titles := map[string]string{"cross": "发送到其他服务器", "mkdir": "新建文件夹", "create": "新建文件"}
 	dialog(c, &d.open, func() {
 		ui.Column(c).Width(460).Gap(16).Children(func() {
 			ui.Text(c, titles[d.kind]).FontSize(17).Bold()
@@ -532,7 +581,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 					ok = "发送"
 				default:
 					ui.Field(c, "名称", func() { ui.TextInput(c, &d.text).Label("名称").AutoFocus().Grow(1) }).FillWidth()
-					ok = map[string]string{"mkdir": "创建", "create": "创建", "rename": "重命名"}[d.kind]
+					ok = "创建"
 				}
 			}).FillWidth().Gap(FormGap)
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
@@ -559,12 +608,6 @@ func (a *App) runFileDialog(id string) {
 			return
 		}
 		a.P.FileAction(id, d.kind, path.Join(dir, text), "")
-	case "rename":
-		if strings.Contains(text, "/") {
-			a.fail(fmt.Errorf("名称不能包含 /"))
-			return
-		}
-		a.P.FileAction(id, "rename", d.entry.Path, path.Join(path.Dir(d.entry.Path), text))
 	}
 	d.open = false
 }

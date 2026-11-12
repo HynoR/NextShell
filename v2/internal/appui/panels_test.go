@@ -71,10 +71,13 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 		t.Fatal("delete", p.actions)
 	}
 	tt.RightClick("old.log")
-	tt.ChooseMenuItem("重命名…")
+	if e := tt.ChooseMenuItem("重命名"); e != nil {
+		t.Fatal(e)
+	}
+	has(t, tt, "重命名 old.log")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("new.log")
-	click(t, tt, "重命名")
+	tt.Key(0, ui.KeyEnter)
 	if p.actions[1] != [3]string{"rename", "/dest/old.log", "/dest/new.log"} {
 		t.Fatal("rename", p.actions)
 	}
@@ -123,6 +126,14 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	if last := p.queued[len(p.queued)-1]; last.Kind != "upload" || last.Local != "/tmp/dropped.bin" || last.Remote != "/dest/dropped.bin" {
 		t.Fatal("drop upload", last)
 	}
+	// Dotfiles show on request.
+	listing(p, tt, "two", "/dest", sftpfs.Entry{Name: ".env", Path: "/dest/.env"}, sftpfs.Entry{Name: "app", Path: "/dest/app"})
+	if tt.HasText(".env") {
+		t.Fatal("dotfile shown")
+	}
+	click(t, tt, "更多")
+	click(t, tt, "显示隐藏文件")
+	has(t, tt, ".env", "2 项")
 	// Breadcrumbs jump to a parent; the path stays editable.
 	listing(p, tt, "two", "/var/log/nginx")
 	has(t, tt, "var", "log", "nginx")
