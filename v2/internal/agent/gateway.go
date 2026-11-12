@@ -61,6 +61,7 @@ type Output struct {
 	Cursor    int64  // total bytes received
 	Lost      bool   // the cursor was older than what is kept
 	Supported bool   // false for local shells, which have no output stream
+	Alt       bool   // the program in the session is using the alternate screen (vim, tmux, htop)
 }
 
 // UserAction is the callback Open uses when the connection needs a decision from the user
@@ -606,7 +607,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		g.mu.Lock()
 		state := g.typed[a.Target]
 		g.mu.Unlock()
-		verdict, typedNext = scanTyping(state, data, g.blacklistCopy())
+		verdict, typedNext = scanTyping(state, data, g.blacklistCopy(), g.altScreen(a.Target))
 		if verdict.Forbidden {
 			return blocked(verdict)
 		}
@@ -698,6 +699,12 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		g.tell(Notice{Tool: tool})
 	}
 	return g.run(ctx, tool, a, data, typedNext)
+}
+
+// altScreen reports whether the session shows a full-screen program.
+func (g *Gateway) altScreen(id string) bool {
+	o, _ := g.backend.Output(id, -1)
+	return o.Alt
 }
 
 func (g *Gateway) blacklistCopy() []string {
@@ -1005,21 +1012,22 @@ func (g *Gateway) run(ctx context.Context, tool string, a Arguments, data string
 			return failErr(e)
 		}
 		// Ctrl-C throws away the half-typed line the tracker still holds.
-		g.mu.Lock()
-		state := g.typed[a.Target]
-		_, g.typed[a.Target] = scanTyping(state, controls[a.Signal], nil)
-		g.mu.Unlock()
+		if a.Signal == "interrupt" {
+			g.mu.Lock()
+			g.typed[a.Target] = typedLine{alt: g.typed[a.Target].alt}
+			g.mu.Unlock()
+		}
 		return ok(map[string]any{"sessionId": a.Target, "signal": a.Signal})
 	case "session_send_text":
 		g.mu.Lock()
 		state := g.typed[a.Target]
 		g.mu.Unlock()
 		// The line may have changed since the request was made: judge it again before typing.
-		v, next := scanTyping(state, data, g.blacklistCopy())
+		before, _ := g.backend.Output(a.Target, -1)
+		v, next := scanTyping(state, data, g.blacklistCopy(), before.Alt)
 		if v.Forbidden {
 			return blocked(v)
 		}
-		before, _ := g.backend.Output(a.Target, -1)
 		if e := g.backend.Control(a.Target, data); e != nil {
 			return failErr(e)
 		}

@@ -109,20 +109,30 @@ func Keystrokes(text string, keys []string) (string, error) {
 }
 
 // typedLine follows what has been typed into a session since its last Enter, so that a command typed
-// in several calls is judged as a whole. unknown means the line was edited with history, completion
-// or cursor keys, so the shell holds text this tracker cannot see.
+// in several calls is judged as a whole. unknown means the shell holds text this tracker cannot see: the
+// line was edited with history, completion, cursor or other readline keys.
 type typedLine struct {
 	buf     []rune
 	unknown bool
+	alt     bool // tracked on the alternate screen; a switch between screens starts a fresh line
 }
 
 var historyExpansion = regexp.MustCompile(`(?:^|[\s;&|(])!(?:!|\$|\^|\*|[A-Za-z0-9_-])`)
 
 // scanTyping judges data as typed after state and returns the verdict of every line it completes
 // together with the state after it.
-func scanTyping(state typedLine, data string, blacklist []string) (Verdict, typedLine) {
+//
+// At a shell prompt every control character outside a small allowlist (Enter, Backspace, Ctrl-C/U/W,
+// Ctrl-D on an empty line) marks the line unknown, so the next Enter needs a manual approval; Ctrl-O
+// and Alt-Enter run the line like Enter does. On the alternate screen (alt: vim, tmux, htop) control
+// keys and Esc belong to the program, not to a command line, so they leave the line alone, and the
+// lines ended by Enter are still judged on a best-effort basis.
+func scanTyping(state typedLine, data string, blacklist []string, alt bool) (Verdict, typedLine) {
 	var v Verdict
-	st := typedLine{buf: append([]rune{}, state.buf...), unknown: state.unknown}
+	st := typedLine{buf: append([]rune{}, state.buf...), unknown: state.unknown, alt: alt}
+	if state.alt != alt {
+		st = typedLine{alt: alt} // a full-screen program started or ended: the old line was typed elsewhere
+	}
 	enter := func() {
 		line := string(st.buf)
 		if strings.TrimSpace(line) != "" || st.unknown {
@@ -134,12 +144,12 @@ func scanTyping(state typedLine, data string, blacklist []string) (Verdict, type
 				v.risk("history expansion")
 			}
 		}
-		st = typedLine{}
+		st = typedLine{alt: alt}
 	}
 	for i := 0; i < len(data); {
 		c := data[i]
 		switch {
-		case c == '\r' || c == '\n':
+		case c == '\r' || c == '\n': // Enter, Ctrl-M, Ctrl-J
 			enter()
 			i++
 		case c == 0x7f || c == 0x08:
@@ -147,8 +157,11 @@ func scanTyping(state typedLine, data string, blacklist []string) (Verdict, type
 				st.buf = st.buf[:n-1]
 			}
 			i++
-		case c == 0x03 || c == 0x15 || c == 0x0b: // Ctrl-C, Ctrl-U, Ctrl-K
-			st = typedLine{}
+		case c == 0x03: // Ctrl-C abandons the line
+			st = typedLine{alt: alt}
+			i++
+		case c == 0x15 && !st.unknown: // Ctrl-U kills back to the start; with the cursor unknown it kills only part
+			st = typedLine{alt: alt}
 			i++
 		case c == 0x17: // Ctrl-W
 			s := strings.TrimRight(string(st.buf), " ")
@@ -158,23 +171,35 @@ func scanTyping(state typedLine, data string, blacklist []string) (Verdict, type
 				st.buf = nil
 			}
 			i++
+		case c == 0x04 && !alt: // Ctrl-D ends the shell on an empty line and deletes a character otherwise
+			st.unknown = st.unknown || len(st.buf) > 0
+			i++
+		case c == 0x0f && !alt: // Ctrl-O runs the line and brings back the next one from history
+			enter()
+			st.unknown = true
+			i++
 		case c == 0x1b:
 			i++
-			if i < len(data) && (data[i] == '[' || data[i] == 'O') {
+			switch {
+			case i < len(data) && (data[i] == '[' || data[i] == 'O'): // CSI / SS3: arrows, Home, F-keys, Delete
 				i++
 				for i < len(data) && (data[i] < '@' || data[i] > '~') {
 					i++
 				}
 				i++
-				st.unknown = true // history, cursor movement, Home/End, Delete
-			} else if i < len(data) {
-				st.unknown = true // Alt+key
+				st.unknown = st.unknown || !alt
+			case alt: // Esc leaves a mode in vim; the key that follows is typed on its own
+			case i < len(data) && (data[i] == '\r' || data[i] == '\n'): // Alt-Enter
+				enter()
 				i++
+			default: // Alt+key, or a bare Esc that the next call may turn into Alt+key
+				st.unknown = true
+				if i < len(data) {
+					i++
+				}
 			}
-		case c == '\t' || c == 0x01 || c == 0x02 || c == 0x05 || c == 0x06 || c == 0x0e || c == 0x10 || c == 0x12 || c == 0x19 || c == 0x1d:
-			st.unknown = true // completion, cursor movement, history search, yank
-			i++
 		case c < 0x20:
+			st.unknown = st.unknown || !alt // completion, cursor movement, history, transpose, undo, quoted insert, …
 			i++
 		default:
 			r, n := utf8.DecodeRuneInString(data[i:])
@@ -183,7 +208,7 @@ func scanTyping(state typedLine, data string, blacklist []string) (Verdict, type
 		}
 	}
 	if len(st.buf) > 8<<10 {
-		st = typedLine{unknown: true}
+		st = typedLine{unknown: true, alt: alt}
 	}
 	return v, st
 }

@@ -306,3 +306,30 @@ func TestAgentOpenWithAWrongPasswordFailsWithAuthFailed(t *testing.T) {
 		t.Fatal("want auth_failed (or denied when the re-ask was cancelled), got", last)
 	}
 }
+
+// The recorder knows when a full-screen program has the screen, also when a sequence is split over reads.
+func TestRecorderTracksTheAlternateScreen(t *testing.T) {
+	r := &recorder{}
+	alt := func() bool { r.mu.Lock(); defer r.mu.Unlock(); return r.alt }
+	for _, step := range []struct {
+		chunk string
+		want  bool
+	}{
+		{"user@host:~$ vim x\r\n", false},
+		{"\x1b[?1049h\x1b[22;0;0t\x1b[1;24r", true},
+		{"-- INSERT --", true},
+		{"\x1b[?1049l", false},
+		{"\x1b[?47h", true}, {"\x1b[?47l", false},
+		{"\x1b[?1047h", true}, {"\x1b[?1047l", false},
+		{"\x1b[?25l\x1b[?1049;2004h", true}, // combined parameters
+		{"\x1b[?1049", true}, {"l", false},  // split across reads
+		{"abc\x1b", false}, {"[?10", false}, {"49h", true},
+		{"\x1b[?2004h\x1b[?1h", true}, // other private modes do not matter
+		{"\x1b[?1049l\x1b[?1049h", true},
+	} {
+		r.record([]byte(step.chunk))
+		if alt() != step.want {
+			t.Fatalf("after %q: alt=%v, want %v", step.chunk, alt(), step.want)
+		}
+	}
+}

@@ -26,6 +26,7 @@ type rich struct {
 	open     func(ctx context.Context, host string, ua UserAction) (string, error)
 	opens    atomic.Int32
 	typing   bool
+	alt      atomic.Bool // the session shows a full-screen program
 	gated    atomic.Bool
 }
 
@@ -57,7 +58,7 @@ func (r *rich) Output(id string, since int64) (Output, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	o := Output{Supported: true, Cursor: int64(len(r.out))}
+	o := Output{Supported: true, Cursor: int64(len(r.out)), Alt: r.alt.Load()}
 	if since >= 0 && since <= o.Cursor {
 		o.Data = string(r.out[since:])
 	}

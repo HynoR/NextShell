@@ -1,6 +1,7 @@
 package desktop
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/egoist/mygo/plugins/terminal"
@@ -8,6 +9,7 @@ import (
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/sshclient"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +33,34 @@ type recorder struct {
 	mu    sync.Mutex
 	buf   []byte
 	total int64
+	alt   bool   // a full-screen program is on the alternate screen
+	carry []byte // the start of an escape sequence the last read ended in
+}
+
+var (
+	privateMode = regexp.MustCompile(`\x1b\[\?([0-9;]+)([hl])`)
+	partialCSI  = regexp.MustCompile(`\x1b(?:\[\??[0-9;]*)?$`)
+)
+
+// trackAlt follows the alternate-screen modes (47, 1047, 1049) in what the terminal receives: the
+// terminal plugin does not say whether a program such as vim or tmux has the screen. Called with mu held.
+func (r *recorder) trackAlt(b []byte) {
+	if len(r.carry) == 0 && bytes.IndexByte(b, 0x1b) < 0 {
+		return
+	}
+	data := append(r.carry, b...)
+	for _, m := range privateMode.FindAllSubmatch(data, -1) {
+		for _, mode := range bytes.Split(m[1], []byte(";")) {
+			switch string(mode) {
+			case "47", "1047", "1049":
+				r.alt = m[2][0] == 'h'
+			}
+		}
+	}
+	r.carry = nil
+	if loc := partialCSI.FindIndex(data); loc != nil && len(data)-loc[0] <= 64 {
+		r.carry = append([]byte(nil), data[loc[0]:]...)
+	}
 }
 
 func (r *recorder) Read(b []byte) (int, error) {
@@ -42,6 +72,7 @@ func (r *recorder) Read(b []byte) (int, error) {
 }
 func (r *recorder) record(b []byte) {
 	r.mu.Lock()
+	r.trackAlt(b)
 	r.buf = append(r.buf, b...)
 	r.total += int64(len(b))
 	if len(r.buf) > 2*recordKeep {
@@ -169,10 +200,13 @@ func (b agentBackend) Output(id string, since int64) (agent.Output, error) {
 	if since < 0 {
 		rec.mu.Lock()
 		defer rec.mu.Unlock()
-		return agent.Output{Cursor: rec.total, Supported: true}, nil
+		return agent.Output{Cursor: rec.total, Supported: true, Alt: rec.alt}, nil
 	}
 	data, total, lost := rec.since(since)
-	return agent.Output{Data: data, Cursor: total, Lost: lost, Supported: true}, nil
+	rec.mu.Lock()
+	alt := rec.alt
+	rec.mu.Unlock()
+	return agent.Output{Data: data, Cursor: total, Lost: lost, Supported: true, Alt: alt}, nil
 }
 
 // Control types into the session unless its user is doing so.
