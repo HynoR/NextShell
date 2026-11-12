@@ -5,9 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/transfer"
 )
 
 // shooter renders a screen light and dark into $NEXTSHELL_SHOTS; without it the test skips.
@@ -50,4 +53,24 @@ func TestScreenshotsUX7(t *testing.T) {
 	p.events = append(p.events, appui.Event{FilesFailed: &appui.FileFailure{Session: "s1", Path: ".", Err: `sftp: "permission denied" (SSH_FX_PERMISSION_DENIED)`}})
 	tt.Frame()
 	shot(tt, "ux7-1-listing-error")
+
+	// Deleting a folder: the count it waits for, the confirm that says what goes, and the progress.
+	rp, rt := removalFixture(t)
+	rt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	now := time.Now()
+	listing(rp.fakePlatform, rt, "one", "/srv/app",
+		sftpfs.Entry{Name: "node_modules", Path: "/srv/app/node_modules", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "releases", Path: "/srv/app/releases", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-50 * time.Hour)},
+		sftpfs.Entry{Name: "config.yaml", Path: "/srv/app/config.yaml", Size: 2048, Mode: "-rw-r--r--", Modified: now.Add(-time.Hour)})
+	deleteRow(t, rt, "打开 node_modules")
+	shot(rt, "ux7-2a-delete-counting")
+	rp.events = append(rp.events, appui.Event{Removal: &appui.RemovalCount{Session: "one", Targets: []appui.RemovalTally{{Path: "/srv/app/node_modules", Files: 18423, Dirs: 2160}}}})
+	rt.Frame()
+	shot(rt, "ux7-2b-delete-confirm")
+	click(t, rt, "删除 1 项")
+	rp.jobs = []transfer.Job{{ID: "job", Label: "删除 /srv/app/node_modules", State: "running", Items: true, Bytes: 7210, Total: 20583, Attempt: 1, Started: now}}
+	rt.Frame()
+	shot(rt, "ux7-2c-delete-progress")
+	click(t, rt, "展开活动栏")
+	shot(rt, "ux7-2d-delete-in-queue")
 }

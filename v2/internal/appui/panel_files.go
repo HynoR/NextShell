@@ -2,6 +2,7 @@ package appui
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -36,8 +37,17 @@ type filesState struct {
 	dialog                   fileDialog
 	trees                    map[string]*dirTree // per session
 	failed                   map[string]string   // per session: why its first listing could not be read
+	counting                 *removalCount       // the delete confirm waits for this count
+	removing                 map[string]string   // deletions started here: transfer job -> session
 	treeHidden               bool
 	treeWidth                float32
+}
+
+// removalCount is a delete waiting for its count: what the confirm says it takes.
+type removalCount struct {
+	session string
+	targets []sftpfs.Entry
+	cancel  func()
 }
 
 // dirTree is the SFTP directory tree of a session: what its listings showed, and which folders are open.
@@ -71,6 +81,7 @@ func (s *filesState) init() {
 	s.paths = map[string]string{}
 	s.trees = map[string]*dirTree{}
 	s.failed = map[string]string{}
+	s.removing = map[string]string{}
 	s.treeWidth = 200
 }
 
@@ -132,6 +143,10 @@ func (s *filesState) handle(a *App, e Event) {
 		s.listFailed(a, f)
 		return
 	}
+	if r := e.Removal; r != nil {
+		s.counted(a, r)
+		return
+	}
 	if e.Files == nil {
 		return
 	}
@@ -155,6 +170,114 @@ func (s *filesState) handle(a *App, e Event) {
 	s.paths[s.session] = s.path
 	s.all = e.Files.Entries
 	s.filterEntries()
+}
+
+// counted opens the delete confirm with what the count found.
+func (s *filesState) counted(a *App, r *RemovalCount) {
+	n := s.counting
+	if n == nil || n.session != r.Session || len(n.targets) != len(r.Targets) && r.Err == "" { // given up, or another delete's
+		return
+	}
+	s.counting = nil
+	if r.Err != "" {
+		a.fail(errors.New(r.Err))
+		return
+	}
+	files, dirs := 0, 0
+	for _, v := range r.Targets {
+		files, dirs = files+v.Files, dirs+v.Dirs
+	}
+	a.confirm("删除远程文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs), fmt.Sprintf("删除 %d 项", len(n.targets)), func() {
+		for _, v := range r.Targets {
+			id, e := a.P.QueueTransfer(TransferRequest{Session: r.Session, Kind: "remove", Remote: v.Path, Items: v.Files + v.Dirs})
+			if e != nil {
+				a.fail(e)
+				return
+			}
+			s.removing[id] = r.Session
+		}
+	})
+}
+
+// fileNames lists up to five names for a confirm.
+func fileNames(files []sftpfs.Entry) string {
+	var names []string
+	for _, f := range files[:min(len(files), 5)] {
+		names = append(names, f.Name)
+	}
+	if len(files) > 5 {
+		return strings.Join(names, "、") + fmt.Sprintf(" 等 %d 项", len(files))
+	}
+	return strings.Join(names, "、")
+}
+
+// askRemove confirms deleting targets. A folder takes all inside it, so the server is asked to count first:
+// the confirm says how much goes. Plain files and links need no count.
+func (a *App) askRemove(id string, targets []sftpfs.Entry) {
+	s := &a.files
+	if !slices.ContainsFunc(targets, func(f sftpfs.Entry) bool { return f.Directory && !f.Symlink }) {
+		a.confirm("删除远程文件", fileNames(targets)+"\n删除后无法恢复。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
+			for _, v := range targets {
+				a.P.FileAction(id, "remove", v.Path, "")
+			}
+		})
+		return
+	}
+	s.giveUpCount()
+	paths := make([]string, len(targets))
+	for i, v := range targets {
+		paths[i] = v.Path
+	}
+	s.counting = &removalCount{session: id, targets: targets}
+	s.counting.cancel = a.P.CountRemoval(id, paths)
+}
+func (s *filesState) giveUpCount() {
+	if n := s.counting; n != nil {
+		n.cancel()
+		s.counting = nil
+	}
+}
+
+// removalStatus is the footer's word on a delete: the count it waits for, or its progress, and the way
+// to stop it. A finished delete refreshes the folder shown.
+func (a *App) removalStatus(c *ui.Context, id string) {
+	s := &a.files
+	if n := s.counting; n != nil && n.session == id {
+		muted(c, "正在统计要删除的内容…")
+		if ghost(c, "取消", "").Label("取消统计").Clicked() {
+			s.giveUpCount()
+		}
+		return
+	}
+	var done, total int64
+	var running []string
+	for _, j := range a.P.Transfers() {
+		if s.removing[j.ID] != id {
+			continue
+		}
+		if j.State == "queued" || j.State == "running" {
+			done, total = done+j.Bytes, total+j.Total
+			running = append(running, j.ID)
+		} else {
+			delete(s.removing, j.ID)
+			if s.session == id {
+				a.listFiles(id, s.path)
+			}
+		}
+	}
+	if len(running) == 0 {
+		return
+	}
+	text := fmt.Sprintf("正在删除，已删除 %d 项", done)
+	if total > 0 {
+		text = fmt.Sprintf("正在删除 %d / %d 项", min(done, total), total)
+	}
+	muted(c, text)
+	if ghost(c, "取消", "").Label("取消删除").Clicked() {
+		for _, j := range running {
+			a.P.CancelTransfer(j)
+		}
+	}
 }
 
 // listFailed answers a listing that failed: a folder of the tree shows it in place, a list not shown yet
@@ -362,6 +485,7 @@ func (a *App) filesPanel(c *ui.Context) {
 			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
 		}
 		muted(c, info).Grow(1)
+		a.removalStatus(c, id)
 		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
 			a.pasteRemoteClipboard(id)
 		}
@@ -724,18 +848,7 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 	}
 	m.Separator()
 	if m.Item("删除").Danger().Chosen() {
-		a.later(func() {
-			targets := a.selectedFiles(&f)
-			names := make([]string, len(targets))
-			for i, v := range targets {
-				names[i] = v.Name
-			}
-			a.confirm("删除远程文件", strings.Join(names, "、")+"\n删除后无法恢复；只能删除文件、链接或空目录。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
-				for _, v := range targets {
-					a.P.FileAction(id, "remove", v.Path, "")
-				}
-			})
-		})
+		a.later(func() { a.askRemove(id, a.selectedFiles(&f)) })
 	}
 }
 
@@ -937,20 +1050,7 @@ func (a *App) transferSection(c *ui.Context) {
 				if j.State == "running" {
 					ui.Progress(c, transferFraction(j)).FillWidth()
 				}
-				detail := states[j.State] + " · " + humanSize(j.Bytes)
-				if j.Total > 0 {
-					detail = fmt.Sprintf("%s · %d%% · %s / %s", states[j.State], int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
-				}
-				if elapsed := j.Finished.Sub(j.Started); !j.Started.IsZero() && !j.Finished.IsZero() && elapsed > 0 {
-					detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-				} else if !j.Started.IsZero() && j.Finished.IsZero() {
-					if elapsed := time.Since(j.Started); elapsed > 0 {
-						detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-					}
-				}
-				if j.Attempt > 1 {
-					detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
-				}
+				detail := transferDetail(j, states[j.State])
 				muted(c, detail).FontSize(11)
 				if j.Error != "" {
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
@@ -964,6 +1064,40 @@ func (a *App) transferSection(c *ui.Context) {
 			})
 		}
 	})
+}
+
+// transferDetail is the grey line of a job: its state, how far it is, the speed and the attempt.
+func transferDetail(j transfer.Job, state string) string {
+	detail := state + " · " + humanSize(j.Bytes)
+	switch {
+	case j.Items: // a deletion counts items, and has no speed
+		detail = state
+		if j.Total > 0 && j.State == "running" {
+			detail += fmt.Sprintf(" · 已删除 %d / %d 项 · %d%%", j.Bytes, j.Total, int(transferFraction(j)*100))
+		} else if j.Bytes > 0 {
+			detail += fmt.Sprintf(" · 已删除 %d 项", j.Bytes)
+		}
+	case j.Total > 0:
+		detail = fmt.Sprintf("%s · %d%% · %s / %s", state, int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
+	}
+	if elapsed := transferElapsed(j); !j.Items && elapsed > 0 {
+		detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
+	}
+	if j.Attempt > 1 {
+		detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
+	}
+	return detail
+}
+
+// transferElapsed is how long j ran, or has been running; zero before it starts.
+func transferElapsed(j transfer.Job) time.Duration {
+	switch {
+	case j.Started.IsZero():
+		return 0
+	case j.Finished.IsZero():
+		return time.Since(j.Started)
+	}
+	return j.Finished.Sub(j.Started)
 }
 
 // transferFraction is the share done, or -1 (indeterminate) when the size is unknown.

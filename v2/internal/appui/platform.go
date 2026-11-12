@@ -61,6 +61,7 @@ type Event struct {
 	Agent                *AgentNotice // an agent call changed (or wants to change) something
 	Files                *FileListing
 	FilesFailed          *FileFailure // a listing that could not be read
+	Removal              *RemovalCount
 	Editor               *EditorResult
 	Monitor              *MonitorResult
 	Import               *ImportPreview
@@ -146,6 +147,9 @@ type Platform interface {
 	ListFiles(session, path string)
 	FileAction(session, action, from, to string)
 	QueueTransfer(TransferRequest) (string, error)
+	// CountRemoval counts, as a Removal event, what deleting paths takes (folders with all inside); the
+	// returned func gives it up. A "remove" transfer then deletes one path.
+	CountRemoval(session string, paths []string) (cancel func())
 	Transfers() []transfer.Job
 	CancelTransfer(id string)
 	CancelAllTransfers()
@@ -207,6 +211,17 @@ type FileListing struct {
 
 // FileFailure is a directory listing that failed. Path is what was asked for; Err is the server's own wording.
 type FileFailure struct{ Session, Path, Err string }
+
+// RemovalCount answers Platform.CountRemoval: what deleting each path takes with it, or why that is unknown.
+type RemovalCount struct {
+	Session string
+	Targets []RemovalTally
+	Err     string
+}
+type RemovalTally struct {
+	Path        string
+	Files, Dirs int
+}
 type EditorResult struct {
 	Saved    bool
 	Session  string
@@ -227,6 +242,7 @@ type ImportPreview struct {
 type TransferRequest struct {
 	Session, TargetSession, Kind, Local, Remote, Destination string
 	Overwrite                                                bool
+	Items                                                    int // kind "remove": what was counted, for the progress
 }
 
 type CloudOverview struct {
