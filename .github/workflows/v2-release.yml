@@ -1,0 +1,172 @@
+name: NextShell 2 Release
+
+# Tag v2.* (e.g. v2.0.0-rc1): test, build every platform, then publish a GitHub prerelease.
+# Push to branch v2 that touches this file, v2/mygo.json or v2/packaging/**: build only, the
+# packages stay as artifacts of the run (this is how packaging is tried on the real runners;
+# workflow_dispatch is not usable while this file is not on the default branch).
+# Unsigned on purpose: macOS is ad-hoc signed, Windows has no signature, no notarization,
+# no auto-update keys. See v2/PACKAGING.md.
+run-name: NextShell 2 ${{ github.ref_type == 'tag' && 'release' || 'build' }} (${{ github.ref_name }})
+
+on:
+  push:
+    tags: ["v2.*"]
+    branches: [v2]
+    paths:
+      - ".github/workflows/v2-release.yml"
+      - "v2/mygo.json"
+      - "v2/packaging/**"
+
+concurrency:
+  group: v2-release-${{ github.ref }}
+  # A tag run publishes: never cancel it halfway.
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # On a tag: fails unless the tag is v<version of v2/mygo.json>, before anything is built.
+      - name: Resolve the version
+        id: version
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          version=$(packaging/check-version.sh "$TAG")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: v2/go.mod
+          cache-dependency-path: v2/go.sum
+      # internal/exchange runs the 1.x TypeScript import/export code through Node's type stripping.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: go vet ./...
+      - run: go test ./... -count=1
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Native runners: the macOS app is signed and put in a DMG on macOS only; mygo downloads
+          # NSIS itself on Windows to make the installers. Everything is cross-compiled without cgo.
+          - { name: macos, os: macos-latest, platform: "darwin/universal" }
+          - { name: windows, os: windows-latest, platform: "windows/amd64,windows/arm64" }
+          - { name: linux, os: ubuntu-latest, platform: "linux/amd64" }
+    env:
+      VERSION: ${{ needs.test.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: v2/go.mod
+          # No build cache: a release is built from the tagged source and nothing else.
+          cache: false
+      # mygo.json sets the version, name, icon, ad-hoc signing and the Linux (GTK 3 only) packages.
+      - name: Build
+        run: go tool mygo build -platform "$PLATFORM"
+
+      # Staging gives every asset a plain ASCII name NextShell-<version>-<os>-<arch>[-setup].<ext>
+      # (mygo names a Debian/RPM version 2.0.0~rc1, which GitHub may rewrite). A missing file
+      # fails the step: mygo only warns when it skips a step, e.g. the installer without NSIS.
+      - name: Stage (macOS)
+        if: matrix.name == 'macos'
+        run: |
+          app=dist/darwin-universal/NextShell.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          mkdir -p dist/assets
+          ditto -c -k --keepParent "$app" "dist/assets/NextShell-$VERSION-macos-universal.zip"
+          cp dist/darwin-universal/*.dmg "dist/assets/NextShell-$VERSION-macos-universal.dmg"
+      - name: Stage (Windows)
+        if: matrix.name == 'windows'
+        run: |
+          mkdir -p dist/assets
+          for arch in amd64 arm64; do
+            name="NextShell-$VERSION-windows-$arch"
+            cp "dist/windows-$arch/"*-setup-*.exe "dist/assets/$name-setup.exe"
+            # The app folder: NextShell.exe and the terminal library next to it.
+            mkdir -p "dist/stage/$name"
+            cp "dist/windows-$arch/NextShell.exe" "dist/windows-$arch/"*.dll "dist/stage/$name/"
+            pwsh -NoProfile -Command "\$ErrorActionPreference = 'Stop'; Compress-Archive -Path 'dist/stage/$name' -DestinationPath 'dist/assets/$name.zip'"
+          done
+      - name: Stage (Linux)
+        if: matrix.name == 'linux'
+        run: |
+          name="NextShell-$VERSION-linux-amd64"
+          mkdir -p dist/assets "dist/stage/$name"
+          # mygo's archive has its files at the top level (and its own file list, .mygo-files,
+          # which only install.sh uses): repack them in a folder.
+          tar -xzf dist/linux-amd64/*.tar.gz --exclude=.mygo-files -C "dist/stage/$name"
+          tar -czf "dist/assets/$name.tar.gz" --owner=0 --group=0 -C dist/stage "$name"
+          cp dist/linux-amd64/*.deb "dist/assets/$name.deb"
+          cp dist/linux-amd64/*.rpm "dist/assets/$name.rpm"
+      - run: ls -l dist/assets
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ matrix.name }}
+          path: v2/dist/assets/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish prerelease
+    # Only tags publish; pushes to branch v2 stop after the build.
+    if: github.ref_type == 'tag'
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.test.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: assets
+      - name: Release notes and checksums
+        run: |
+          v2/packaging/release-notes.sh "$VERSION" > notes.md
+          (cd assets && sha256sum -- * > ../SHA256SUMS.txt)
+          mv SHA256SUMS.txt assets/
+          ls -l assets
+          cat assets/SHA256SUMS.txt
+      # --prerelease + --latest=false: 1.x's update check reads the repository's latest release,
+      # which must stay the 1.x one. gh creates the release as a draft while it uploads the
+      # assets and publishes it after, so a failed upload never leaves a public half release.
+      - name: Create the prerelease
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --prerelease --latest=false --title "NextShell $VERSION" --notes-file notes.md \
+            assets/*
