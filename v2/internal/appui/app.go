@@ -43,6 +43,11 @@ type App struct {
 	// Version is the packaged app's version for the About page; empty for a build run from source.
 	// ProfilePath is the profile database the About page shows.
 	Version, ProfilePath string
+	// TrayAvailable says the system can show a tray icon; without it the tray options are left out of the
+	// settings. TrayQuit, TrayLocal and TrayConnect are what the tray's menu does (see tray.go).
+	TrayAvailable bool
+	// PreferencesChanged runs after the preferences were saved, for the host to follow the ones it acts on.
+	PreferencesChanged func()
 	// ShowEditor opens (or raises) the remote editor window, which EditorView builds, for a document
 	// popped out of its tab; HideEditor closes it. Without ShowEditor documents stay in tabs.
 	ShowEditor, HideEditor func()
@@ -58,6 +63,7 @@ type App struct {
 	snippets snippetsState
 	editor   editorState
 	settings settingsState
+	backdrop backdropState
 	dialogs  dialogState
 	agent    agentUI
 	// transfers tells which transfers finished since the last frame, for their toasts.
@@ -689,4 +695,5 @@ type FilePick struct {
 	Title                             string
 	DefaultPath                       string // "~/" means the home directory
 	Save, Directory, Multiple, Hidden bool
+	Images                            bool // only pictures can be chosen
 }

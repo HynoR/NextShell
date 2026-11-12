@@ -11,7 +11,7 @@ import (
 func (a *App) titlebar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
-	ui.Row(c).FillWidth().Height(max(bar.Height, 44)).Padding(0, bar.Right+10, 0, bar.Left+10).Gap(8).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).DragWindow().Children(func() {
+	ui.Row(c).FillWidth().Height(max(bar.Height, 44)).Padding(0, bar.Right+10, 0, bar.Left+10).Gap(8).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).DragWindow().Children(func() {
 		ui.Spacer(c).Grow(1).Basis(0).MinWidth(0)
 		search := ui.ButtonBase(c).Label("快速连接服务器").Width(380).MinWidth(180).Shrink(1).Height(28).Padding(0, 10).Gap(8).Radius(t.Radius).AlignItems(ui.Center).Background(t.Background).Border(1, t.Border)
 		if search.Hovered() {

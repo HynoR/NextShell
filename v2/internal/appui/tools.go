@@ -200,7 +200,7 @@ func (a *App) cancelConnect(id string) {
 
 // connectingView fills the centre column while the first tab is still connecting.
 func (a *App) connectingView(c *ui.Context, pending []model.Connection) {
-	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Center().Gap(10).Children(func() {
+	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Center().Gap(10).Background(a.page(c.Theme())).Children(func() {
 		ui.Spinner(c)
 		ui.Text(c, "正在连接 "+pending[0].Name+"…").Bold()
 		muted(c, a.login(pending[0]))

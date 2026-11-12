@@ -40,6 +40,7 @@ type Platform struct {
 	endpointPort     int
 	agentPort        string // listen port; tests use "0"
 	dbPath           string
+	dataDir          string // the app's own files; the profile's folder unless it is in memory
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
@@ -80,7 +81,7 @@ func Open(path string) (*Platform, error) {
 		return nil, e
 	}
 	ctx, c := context.WithCancel(context.Background())
-	p := &Platform{dbPath: path, agentPort: mcpendpoint.DefaultPort, preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
+	p := &Platform{dbPath: path, dataDir: dataFolder(path), agentPort: mcpendpoint.DefaultPort, preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
 	p.sshSessions = map[string]*sshclient.Session{}
 	p.tar = map[string]bool{}
 	p.imports = map[string]importPlan{}
@@ -95,6 +96,14 @@ func Open(path string) (*Platform, error) {
 	p.queue = transfer.New(2, p.Invalidate)
 	p.edits = newLiveEdits(p)
 	return p, nil
+}
+
+// dataFolder is the folder the profile at path lives in, "" for one in memory.
+func dataFolder(path string) string {
+	if path == "" || path == ":memory:" {
+		return ""
+	}
+	return filepath.Dir(path)
 }
 func DefaultPath() (string, error) {
 	d, e := os.UserConfigDir()

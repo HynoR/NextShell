@@ -42,7 +42,7 @@ func (a *App) activityColumn(c *ui.Context) {
 		editLabel = fmt.Sprintf("实时编辑 %d 个文件", len(edits))
 	}
 	if !a.layout.rightOpen {
-		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(8).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
+		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(8).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
 			open := iconButton(c, "展开活动栏", "panel-right").Clicked()
 			ui.Box(c).Width(20).Height(1).Background(t.Border)
 			// A failure is what to look at: it takes the badge, in red, until it is retried or cleared.
@@ -72,7 +72,7 @@ func (a *App) activityColumn(c *ui.Context) {
 		})
 		return
 	}
-	ui.Column(c).Width(rightWidth).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
+	ui.Column(c).Width(rightWidth).FillHeight().Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
 		ui.Row(c).FillWidth().Padding(8, 8, 4, 12).AlignItems(ui.Center).Children(func() {
 			ui.Spacer(c).Grow(1)
 			if iconButton(c, "收起活动栏", "panel-right").Clicked() {

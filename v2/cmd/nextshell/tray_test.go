@@ -1,0 +1,273 @@
+package main
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/egoist/mygo"
+	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/desktop"
+	"nextshell.dev/v2/internal/model"
+)
+
+// fakeIcon records what the host does to its tray icon.
+type fakeIcon struct {
+	calls     []string
+	menus     []*mygo.Menu
+	click     func()
+	right     func()
+	destroyed bool
+}
+
+func (f *fakeIcon) SetMenu(m *mygo.Menu) {
+	f.menus = append(f.menus, m)
+	if m == nil {
+		f.calls = append(f.calls, "remove menu")
+	} else {
+		f.calls = append(f.calls, "set menu")
+	}
+}
+func (f *fakeIcon) PopUpMenu()                    { f.calls = append(f.calls, "pop up") }
+func (f *fakeIcon) OnClick(fn func()) func()      { f.click = fn; return func() {} }
+func (f *fakeIcon) OnRightClick(fn func()) func() { f.right = fn; return func() {} }
+func (f *fakeIcon) Destroy()                      { f.destroyed = true }
+
+type trayFixture struct {
+	tray  *tray
+	app   *appui.App
+	icons []*fakeIcon
+	shown int
+	quits int
+}
+
+// newTrayFixture is the app on an in-memory profile with the hosts called names.
+func newTrayFixture(t *testing.T, names ...string) *trayFixture {
+	t.Helper()
+	p, e := desktop.Open(":memory:")
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(p.Shutdown)
+	for _, name := range names {
+		c := model.Connection{ID: p.NewID(), Name: name, Host: name + ".example", Port: 22, User: "root", Auth: "password", Encoding: "utf-8", Monitor: true}
+		if e := p.SaveConnection(c, nil); e != nil {
+			t.Fatal(e)
+		}
+	}
+	f := &trayFixture{app: appui.New(p)}
+	f.app.TrayAvailable = true
+	p.SetQuit(func() { f.quits++ })
+	f.tray = &tray{app: f.app, terminating: func() bool { return false }, show: func() { f.shown++ }, create: func() (trayIcon, error) {
+		icon := &fakeIcon{}
+		f.icons = append(f.icons, icon)
+		return icon, nil
+	}}
+	return f
+}
+
+func (f *trayFixture) icon(t *testing.T) *fakeIcon {
+	t.Helper()
+	if len(f.icons) == 0 {
+		t.Fatal("no tray icon was made")
+	}
+	return f.icons[len(f.icons)-1]
+}
+
+func TestTrayExistsOnlyWhilePreferencesNeedIt(t *testing.T) {
+	f := newTrayFixture(t)
+	f.tray.Sync()
+	if len(f.icons) != 0 || f.tray.Hides(true) {
+		t.Fatal("an icon with both options off")
+	}
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	f.tray.Sync()
+	if len(f.icons) != 1 || !f.tray.Hides(true) || f.tray.Hides(false) {
+		t.Fatal("icons made", len(f.icons))
+	}
+	f.app.Prefs.CloseToTray, f.app.Prefs.MinimizeToTray = false, true // either option keeps the same icon
+	f.tray.Sync()
+	if len(f.icons) != 1 || f.icons[0].destroyed {
+		t.Fatal("the icon was replaced")
+	}
+	f.app.Prefs.MinimizeToTray = false
+	f.tray.Sync()
+	if !f.icons[0].destroyed || f.tray.Hides(true) {
+		t.Fatal("the icon stayed with both options off")
+	}
+	f.app.Prefs.MinimizeToTray = true
+	f.tray.Sync()
+	if len(f.icons) != 2 {
+		t.Fatal("not made again", len(f.icons))
+	}
+}
+
+// Where the system has no tray the options go and the window never hides: nothing could bring it back.
+func TestNoTrayMeansNoOptionsAndNoHiding(t *testing.T) {
+	f := newTrayFixture(t)
+	f.tray.create = func() (trayIcon, error) { return nil, errors.New("tray icons need libayatana-appindicator3") }
+	f.app.Prefs.CloseToTray, f.app.Prefs.MinimizeToTray = true, true
+	f.tray.Sync()
+	if f.app.TrayAvailable || f.tray.Hides(true) || f.tray.closeHides() {
+		t.Fatal("hides without an icon")
+	}
+	calls := 0
+	f.tray.create = func() (trayIcon, error) { calls++; return &fakeIcon{}, nil }
+	f.tray.Sync()
+	if calls != 0 {
+		t.Fatal("tried again after the system said no")
+	}
+
+	// macOS and Windows have a tray; elsewhere it is tried once, and the probe leaves nothing behind.
+	g := newTrayFixture(t)
+	g.tray.Probe("darwin")
+	g.tray.Probe("windows")
+	if len(g.icons) != 0 {
+		t.Fatal("probed a system that always has a tray")
+	}
+	g.tray.Probe("linux")
+	if len(g.icons) != 1 || !g.icons[0].destroyed || !g.app.TrayAvailable {
+		t.Fatal("probe", len(g.icons))
+	}
+	h := newTrayFixture(t)
+	h.tray.create = func() (trayIcon, error) { return nil, errors.New("unsupported") }
+	h.tray.Probe("freebsd")
+	if h.app.TrayAvailable {
+		t.Fatal("tray offered where none exists")
+	}
+}
+
+func TestClickingTheIconShowsTheWindow(t *testing.T) {
+	f := newTrayFixture(t)
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	f.icon(t).click()
+	if f.shown != 1 {
+		t.Fatal("shown", f.shown)
+	}
+}
+
+func labels(m *mygo.Menu) []string {
+	var out []string
+	for _, it := range m.Items() {
+		if it.Type == mygo.MenuItemSeparator {
+			out = append(out, "-")
+		} else {
+			out = append(out, it.Label)
+		}
+	}
+	return out
+}
+
+func TestTrayMenuListsWindowRecentHostsTerminalAndQuit(t *testing.T) {
+	want := func(got []string, label ...string) {
+		t.Helper()
+		if len(got) != len(label) {
+			t.Fatalf("menu %q, want %q", got, label)
+		}
+		for i := range got {
+			if got[i] != label[i] {
+				t.Fatalf("menu %q, want %q", got, label)
+			}
+		}
+	}
+	want(labels(newTrayFixture(t).tray.menu()), "显示窗口", "-", "新建本地终端", "-", "退出")
+
+	f := newTrayFixture(t, "alpha", "beta")
+	m := f.tray.menu()
+	want(labels(m), "显示窗口", "-", "最近连接", "alpha", "beta", "-", "新建本地终端", "-", "退出")
+	items := m.Items()
+	if !items[2].Disabled || items[3].Subtitle != "root@alpha.example:22" {
+		t.Fatal("heading or login", items[2].Disabled, items[3].Subtitle)
+	}
+	// Every item brings the window forward first: what it asks for is drawn there.
+	for _, it := range []*mygo.MenuItem{items[0], items[3], items[6]} {
+		before := f.shown
+		it.Click(it, nil)
+		if f.shown != before+1 {
+			t.Fatalf("%q did not show the window", it.Label)
+		}
+	}
+}
+
+// Quitting from the tray shows the window with the question when sessions are open, and quits when none is.
+func TestTrayQuitUsesTheQuitGuard(t *testing.T) {
+	f := newTrayFixture(t)
+	quit := f.tray.menu().Items()[4]
+	quit.Click(quit, nil)
+	if f.quits != 1 || f.shown != 1 {
+		t.Fatal("nothing open: quits", f.quits, "shown", f.shown)
+	}
+	f.app.Tabs = append(f.app.Tabs, &appui.Session{ID: "one", Title: "one"})
+	quit.Click(quit, nil)
+	if f.quits != 1 || f.shown != 2 || !f.app.ConfirmExit {
+		t.Fatal("a session is open: quits", f.quits, "shown", f.shown, "asked", f.app.ConfirmExit)
+	}
+}
+
+func TestMenuOfTheIconIsPoppedUpFreshOrKeptForThePanel(t *testing.T) {
+	defer func(old bool) { menuIsStatic = old }(menuIsStatic)
+
+	menuIsStatic = false
+	f := newTrayFixture(t)
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	icon := f.icon(t)
+	if len(icon.calls) != 0 || icon.right == nil {
+		t.Fatal("a menu is attached, so clicks would never reach the window:", icon.calls)
+	}
+	icon.right()
+	if got := icon.calls; len(got) != 3 || got[0] != "set menu" || got[1] != "pop up" || got[2] != "remove menu" || len(icon.menus) != 2 || icon.menus[0] == nil || icon.menus[1] != nil {
+		t.Fatal("right click", got)
+	}
+
+	menuIsStatic = true
+	g := newTrayFixture(t)
+	g.app.Prefs.CloseToTray = true
+	g.tray.Sync()
+	panel := g.icon(t)
+	if len(panel.calls) != 1 || panel.calls[0] != "set menu" || panel.right != nil {
+		t.Fatal("panel icon", panel.calls)
+	}
+	g.tray.Refresh()
+	if len(panel.calls) != 2 {
+		t.Fatal("the panel was not given the new menu", panel.calls)
+	}
+}
+
+// Closing hides the window only with the option on and an icon to bring it back, never while quitting or
+// when the system is ending the process.
+func TestClosingHidesOnlyWhenNothingIsQuitting(t *testing.T) {
+	f := newTrayFixture(t)
+	terminating := false
+	f.tray.terminating = func() bool { return terminating }
+	if f.tray.closeHides() {
+		t.Fatal("hides with the option off")
+	}
+	f.app.Prefs.CloseToTray = true
+	if f.tray.closeHides() {
+		t.Fatal("hides without an icon")
+	}
+	f.tray.Sync()
+	if !f.tray.closeHides() {
+		t.Fatal("does not hide")
+	}
+	f.tray.quitting.Store(true) // ⌘Q and the tray's 退出 close the windows too
+	if f.tray.closeHides() {
+		t.Fatal("hides while quitting")
+	}
+	f.tray.quitting.Store(false) // the quit was cancelled by the confirmation
+	if !f.tray.closeHides() {
+		t.Fatal("still quitting after the quit was cancelled")
+	}
+	terminating = true
+	if f.tray.closeHides() {
+		t.Fatal("hides while the system ends the process")
+	}
+	// Only minimize to tray on: closing is not affected.
+	terminating = false
+	f.app.Prefs.CloseToTray, f.app.Prefs.MinimizeToTray = false, true
+	if f.tray.closeHides() || !f.tray.Hides(f.app.Prefs.MinimizeToTray) {
+		t.Fatal("the two options mix up")
+	}
+}
