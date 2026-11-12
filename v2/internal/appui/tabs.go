@@ -87,6 +87,7 @@ func (a *App) plusMenu(c *ui.Context) {
 		}
 		if recent := a.hosts.recentHosts(a, 10); len(recent) > 0 {
 			m.Separator()
+			m.Item("最近连接").Disabled(true) // a heading for the hosts below
 			for _, cc := range recent {
 				if m.Item(cc.Name).ID(cc.ID).Subtitle(a.login(cc)).Chosen() {
 					a.later(func() { a.connect(cc) })

@@ -100,7 +100,7 @@ func (c Connection) Validate() error {
 		return errors.New("不支持的编码")
 	}
 	if c.KeepaliveIntervalSec != nil && (*c.KeepaliveIntervalSec < 0 || *c.KeepaliveIntervalSec > 3600 || (*c.KeepaliveIntervalSec == 0 && (c.KeepaliveEnabled == nil || *c.KeepaliveEnabled))) {
-		return errors.New("keepalive interval 须为 1–3600 秒")
+		return errors.New("心跳间隔须为 1–3600 秒")
 	}
 	if c.Keepalive < 0 || c.Keepalive > 3600 {
 		return errors.New("心跳间隔须为 0–3600 秒")

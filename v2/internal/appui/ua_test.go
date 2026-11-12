@@ -214,3 +214,29 @@ func TestPendingAgentRequestToastDoesNotTakeTheFocus(t *testing.T) {
 		t.Fatal("查看 should open the activity column and nothing else", tt.Texts())
 	}
 }
+
+// The 「+」 menu heads its list of hosts, which is a heading and not a choice.
+func TestPlusMenuHeadsTheRecentHosts(t *testing.T) {
+	p := newPlatform(t)
+	saveHost(t, p, model.Connection{Name: "prod-web", Host: "10.0.0.1", User: "root"})
+	_, tt := start(p)
+	session(t, p, tt, "A", "tab-A", remoteHost("A"))
+	click(t, tt, "新建标签")
+	menu := tt.Menu()
+	if !contains(menu, "最近连接") || !contains(menu, "prod-web") {
+		t.Fatal("menu", menu)
+	}
+	if e := tt.ChooseMenuItem("最近连接"); e == nil && len(p.connects) != 0 {
+		t.Fatal("the heading connected", p.connects)
+	}
+}
+
+// exactText reports an element whose whole text is s (HasText finds s inside a longer one).
+func exactText(tt *ui.Tester, s string) bool {
+	for _, v := range tt.Texts() {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

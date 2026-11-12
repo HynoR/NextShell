@@ -146,7 +146,7 @@ func (a *App) endedBanner(c *ui.Context, s *Session) {
 	ui.Row(c).FillWidth().Height(32).Padding(0, 12).Gap(10).AlignItems(ui.Center).Background(t.Warning.Alpha(.12)).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Label(text).Children(func() {
 		ui.Icon(c, appIcons["refresh"]).FontSize(13).TextColor(t.Warning)
 		ui.Text(c, text).FontSize(13).Bold().TextColor(t.Warning).SingleLine()
-		muted(c, "按回车键"+action).SingleLine()
+		muted(c, "按回车"+action).SingleLine()
 		ui.Spacer(c).Grow(1)
 		if ui.Button(c, action).Clicked() {
 			a.later(func() { a.reconnect(s) })
