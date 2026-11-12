@@ -317,7 +317,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	risky := false // risky calls always get a manual prompt, even under auto-approve
 	switch tool {
 	case "session_list":
-		sessions := g.backend.Sessions()
+		sessions := append([]Session{}, g.backend.Sessions()...) // [] not null for clients
 		if len(sessions) > 500 {
 			sessions = sessions[:500]
 		}
@@ -331,7 +331,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if e != nil {
 			return fail("internal")
 		}
-		var out []Host
+		out := []Host{}
 		query := strings.ToLower(a.Query)
 		for _, h := range hosts {
 			if query == "" || strings.Contains(strings.ToLower(h.Name+" "+h.Host+" "+strings.Join(h.Tags, " ")), query) {
@@ -355,7 +355,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if limit <= 0 || limit > 200 {
 			limit = 30
 		}
-		var out []Command
+		out := []Command{}
 		for _, c := range commands {
 			if strings.Contains(strings.ToLower(c.Name+" "+c.Command), strings.ToLower(a.Query)) {
 				c.Command = Redact(c.Command)

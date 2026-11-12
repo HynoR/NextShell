@@ -268,3 +268,19 @@ func TestV1CommandRiskExactVectors(t *testing.T) {
 		})
 	}
 }
+
+type empty struct{ fake }
+
+func (*empty) Hosts() ([]Host, error)       { return nil, nil }
+func (*empty) Sessions() []Session          { return nil }
+func (*empty) Commands() ([]Command, error) { return nil, nil }
+
+func TestEmptyListsSerializeAsArraysNotNull(t *testing.T) {
+	g := New(&empty{}, nil)
+	for tool, key := range map[string]string{"session_list": "sessions", "host_list": "hosts", "command_search": "matches"} {
+		raw, _ := json.Marshal(invoke(g, "owner", tool, Arguments{}))
+		if !strings.Contains(string(raw), `"`+key+`":[]`) {
+			t.Fatal(tool, string(raw))
+		}
+	}
+}
