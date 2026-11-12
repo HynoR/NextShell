@@ -40,8 +40,19 @@ type Entry struct {
 	Delete               string          `json:"deleteMode"`
 	Monitor              bool            `json:"monitorSession"`
 	KeyRef               *KeyRef         `json:"sshKeyRef,omitempty"`
+	Credential           *CredentialRef  `json:"credential,omitempty"` // the shared credential the user and auth above come from
 	NeedsKeyRebind       bool            `json:"-"`
 	PasswordUnavailable  bool            `json:"-"`
+}
+
+// CredentialRef carries a shared credential with each host using it; its password follows the
+// same rule as a host's (encrypted exports only).
+type CredentialRef struct {
+	Name     string  `json:"name"`
+	Username string  `json:"username"`
+	AuthType string  `json:"authType"`
+	Password *string `json:"password,omitempty"`
+	KeyRef   *KeyRef `json:"sshKeyRef,omitempty"`
 }
 type File struct {
 	PlainCredentials    bool    `json:"-"`
@@ -108,6 +119,11 @@ func Encode(entries []Entry, password *string, at time.Time) ([]byte, error) {
 		if password == nil {
 			copyEntries[i].Password = nil
 		}
+		if cr := copyEntries[i].Credential; cr != nil && password == nil {
+			v := *cr
+			v.Password = nil
+			copyEntries[i].Credential = &v
+		}
 		if copyEntries[i].Tags == nil {
 			copyEntries[i].Tags = []string{}
 		}
@@ -150,8 +166,18 @@ func Decode(raw []byte, password *string) (File, error) {
 		return out, errors.New("too many connections")
 	}
 	for i, v := range out.Connections {
-		if !encrypted && v.Password != nil {
+		if !encrypted && (v.Password != nil || v.Credential != nil && v.Credential.Password != nil) {
 			out.PlainCredentials = true
+		}
+		if cr := v.Credential; cr != nil {
+			if cr.Name == "" || cr.Username == "" || out.PasswordsOmitted && cr.Password != nil {
+				return out, errors.New("invalid credential in export")
+			}
+			switch cr.AuthType {
+			case "password", "privateKey", "agent", "interactive":
+			default:
+				return out, errors.New("invalid credential authType")
+			}
 		}
 		if out.PasswordsOmitted && v.Password != nil {
 			return out, errors.New("passwordsOmitted contradicts a supplied password")
@@ -214,13 +240,52 @@ func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
 		e.Password = &pass
 	}
 	if key != nil {
-		ref := &KeyRef{Name: key.Name}
-		if pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.Public)); err == nil {
-			ref.Fingerprint = ssh.FingerprintSHA256(pub)
-		}
-		e.KeyRef = ref
+		e.KeyRef = keyRef(*key)
 	}
 	return e
+}
+func keyRef(key model.Key) *KeyRef {
+	ref := &KeyRef{Name: key.Name}
+	if pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key.Public)); err == nil {
+		ref.Fingerprint = ssh.FingerprintSHA256(pub)
+	}
+	return ref
+}
+
+// ToCredential is cr as an export carries it; key is the key it refers to, if any.
+func ToCredential(cr model.Credential, key *model.Key) *CredentialRef {
+	auth := map[string]string{"key": "privateKey", "keyboard": "interactive"}[cr.Auth]
+	if auth == "" {
+		auth = cr.Auth
+	}
+	out := &CredentialRef{Name: cr.Name, Username: cr.User, AuthType: auth}
+	if auth == "password" || auth == "interactive" {
+		pass := cr.Secret
+		out.Password = &pass
+	}
+	if key != nil {
+		out.KeyRef = keyRef(*key)
+	}
+	return out
+}
+
+// FromCredential is the credential an import creates from r, with the key matched among keys; ok is
+// false when it names a key that is not there.
+func FromCredential(r CredentialRef, keys []model.Key) (cr model.Credential, ok bool) {
+	cr = model.Credential{Name: r.Name, User: r.Username, Auth: r.AuthType}
+	switch cr.Auth {
+	case "privateKey":
+		cr.Auth = "key"
+	case "interactive":
+		cr.Auth = "keyboard"
+	}
+	if r.Password != nil {
+		cr.Secret = *r.Password
+	}
+	if cr.Auth == "key" {
+		cr.KeyID = MatchKey(r.KeyRef, keys)
+	}
+	return cr, cr.Validate() == nil
 }
 func FromEntry(e Entry, keys []model.Key) model.Connection {
 	c := model.Connection{KeepaliveEnabled: e.KeepAliveEnabled, KeepaliveIntervalSec: e.KeepAliveIntervalSec, Name: e.Name, Host: e.Host, Port: e.Port, User: e.Username, Auth: e.AuthType, Tags: e.Tags, Notes: e.Notes, Favorite: e.Favorite, Encoding: e.Encoding, Backspace: e.Backspace, DeleteMode: e.Delete, Monitor: e.Monitor, NeedsKeyRebind: e.NeedsKeyRebind}
@@ -242,7 +307,8 @@ func FromEntry(e Entry, keys []model.Key) model.Connection {
 	if c.Auth == "key" || e.KeyRef != nil {
 		c.KeyID = MatchKey(e.KeyRef, keys)
 		if c.KeyID == "" {
-			c.Auth = "keyboard"
+			// Stays key auth, marked as missing its key, until a key is imported or chosen.
+			c.Auth = "key"
 			c.NeedsKeyRebind = true
 			c.OriginalAuth = "key"
 			if e.KeyRef != nil {

@@ -189,7 +189,7 @@ func (s *Store) putTx(tx *sql.Tx, kind, id string, value any, secret *string, re
 		}
 	}
 	if !remote {
-		for field, target := range map[string]string{"folderId": "folder", "parentId": "folder", "keyId": "key", "proxyId": "proxy"} {
+		for field, target := range map[string]string{"folderId": "folder", "parentId": "folder", "keyId": "key", "proxyId": "proxy", "credentialId": "credential"} {
 			if ref, ok := v[field].(string); ok && ref != "" {
 				var scope string
 				if e = tx.QueryRow("SELECT scope FROM resources WHERE kind=? AND id=?", target, ref).Scan(&scope); e != nil {

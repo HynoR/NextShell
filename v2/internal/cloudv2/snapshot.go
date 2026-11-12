@@ -56,7 +56,7 @@ func (s Snapshot) Validate() error {
 			}
 		}
 		switch r.Kind {
-		case "folder", "connection", "key", "proxy", "command":
+		case "folder", "connection", "key", "proxy", "command", "credential":
 		default:
 			return errors.New("unknown resource kind")
 		}
@@ -87,7 +87,7 @@ func (s Snapshot) Validate() error {
 		if r.Kind != "connection" && r.Meta.DeletedAt != "" {
 			return errors.New("active non-connection has deletion timestamp")
 		}
-		if r.Kind == "connection" || r.Kind == "key" || r.Kind == "proxy" {
+		if r.Kind == "connection" || r.Kind == "key" || r.Kind == "proxy" || r.Kind == "credential" {
 			if r.Secret == nil || len(*r.Secret) > 4<<20 {
 				return errors.New("missing encrypted-record secret")
 			}
@@ -111,6 +111,11 @@ func (s Snapshot) Validate() error {
 				if e == nil && normalized != f.Name {
 					e = errors.New("folder name must be canonical")
 				}
+			}
+		case "credential":
+			var cr model.Credential
+			if e = strictJSON(r.Data, &cr); e == nil {
+				e = cr.Validate()
 			}
 		case "proxy":
 			var p model.Proxy
@@ -148,9 +153,10 @@ func (s Snapshot) Validate() error {
 			ParentID string `json:"parentId"`
 			KeyID    string `json:"keyId"`
 			ProxyID  string `json:"proxyId"`
+			CredID   string `json:"credentialId"`
 		}
 		json.Unmarshal(r.Data, &refs)
-		for _, ref := range []struct{ kind, id string }{{"folder", refs.FolderID}, {"folder", refs.ParentID}, {"key", refs.KeyID}, {"proxy", refs.ProxyID}} {
+		for _, ref := range []struct{ kind, id string }{{"folder", refs.FolderID}, {"folder", refs.ParentID}, {"key", refs.KeyID}, {"proxy", refs.ProxyID}, {"credential", refs.CredID}} {
 			if ref.id != "" {
 				target, ok := seen[ref.kind+":"+ref.id]
 				if !ok || target.Tombstone {

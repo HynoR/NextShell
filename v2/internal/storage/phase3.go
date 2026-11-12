@@ -135,6 +135,7 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 	var folders []model.Folder
 	var keys []model.Key
 	var proxies []model.Proxy
+	var credentials []model.Credential
 	existingFolders, e := s.Folders()
 	if e != nil {
 		return e
@@ -145,7 +146,23 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 			names[f.ParentID+"\x00"+f.Name] = true
 		}
 	}
-	folderIDs, keyIDs, proxyIDs := map[string]string{}, map[string]string{}, map[string]string{}
+	folderIDs, keyIDs, proxyIDs, credentialIDs := map[string]string{}, map[string]string{}, map[string]string{}, map[string]string{}
+	copyKey := func(old string) (string, error) {
+		if keyIDs[old] == "" {
+			k, e := s.keyUnlocked(old)
+			if e != nil {
+				return "", e
+			}
+			if k.ScopeID() != model.LocalScope {
+				return "", errors.New("not a local key")
+			}
+			k.ID = ID()
+			k.Meta = model.Meta{Scope: workspace}
+			keyIDs[old] = k.ID
+			keys = append(keys, k)
+		}
+		return keyIDs[old], nil
+	}
 	var folder func(string, int) (string, error)
 	folder = func(old string, depth int) (string, error) {
 		if old == "" {
@@ -201,21 +218,30 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 			return e
 		}
 		if c.KeyID != "" {
-			old := c.KeyID
-			if keyIDs[old] == "" {
-				k, e := s.keyUnlocked(old)
+			if c.KeyID, e = copyKey(c.KeyID); e != nil {
+				return e
+			}
+		}
+		if old := c.CredentialID; old != "" {
+			if credentialIDs[old] == "" {
+				cr, e := s.credentialUnlocked(old)
 				if e != nil {
 					return e
 				}
-				if k.ScopeID() != model.LocalScope {
-					return errors.New("not a local key")
+				if cr.ScopeID() != model.LocalScope {
+					return errors.New("not a local credential")
 				}
-				k.ID = ID()
-				k.Meta = model.Meta{Scope: workspace}
-				keyIDs[old] = k.ID
-				keys = append(keys, k)
+				if cr.KeyID != "" {
+					if cr.KeyID, e = copyKey(cr.KeyID); e != nil {
+						return e
+					}
+				}
+				cr.ID = ID()
+				cr.Meta = model.Meta{Scope: workspace}
+				credentialIDs[old] = cr.ID
+				credentials = append(credentials, cr)
 			}
-			c.KeyID = keyIDs[old]
+			c.CredentialID = credentialIDs[old]
 		}
 		if c.ProxyID != "" {
 			old := c.ProxyID
@@ -259,6 +285,12 @@ func (s *Store) CopyLocalToWorkspace(workspace string, ids []string) error {
 	for _, p := range proxies {
 		sec := p.Password
 		if e = s.putTx(tx, "proxy", p.ID, p, &sec, false); e != nil {
+			return e
+		}
+	}
+	for _, cr := range credentials {
+		sec := cr.Secret
+		if e = s.putTx(tx, "credential", cr.ID, cr, &sec, false); e != nil {
 			return e
 		}
 	}

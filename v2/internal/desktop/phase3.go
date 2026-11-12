@@ -412,8 +412,19 @@ func (b agentBackend) Hosts() ([]agent.Host, error) {
 	if e != nil {
 		return nil, e
 	}
+	credentials, e := b.p.store.Credentials()
+	if e != nil {
+		return nil, e
+	}
+	users := map[string]string{}
+	for _, cr := range credentials {
+		users[cr.ID] = cr.User
+	}
 	var out []agent.Host
 	for _, c := range connections {
+		if c.CredentialID != "" {
+			c.User = users[c.CredentialID]
+		}
 		if !c.Deleted {
 			out = append(out, agent.Host{ID: c.ID, Name: c.Name, Host: c.Host, Port: c.Port, Username: c.User, Tags: append([]string{}, c.Tags...)})
 		}

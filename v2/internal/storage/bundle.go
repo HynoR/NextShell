@@ -16,6 +16,7 @@ type Bundle struct {
 	Keys               []model.Key
 	Proxies            []model.Proxy
 	Commands           []model.Command
+	Credentials        []model.Credential
 }
 
 func (s *Store) Commands() ([]model.Command, error) { return list[model.Command](s, "command") }
@@ -44,8 +45,15 @@ func (s *Store) ApplyBundle(b Bundle) error {
 	if e != nil {
 		return e
 	}
+	existingCredentials, e := s.Credentials()
+	if e != nil {
+		return e
+	}
 	folders := map[string]model.Folder{}
-	keys, proxies := map[string]bool{}, map[string]bool{}
+	keys, proxies, credentials := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, cr := range existingCredentials {
+		credentials[cr.ID] = true
+	}
 	for _, f := range existingFolders {
 		folders[f.ID] = f
 	}
@@ -119,9 +127,27 @@ func (s *Store) ApplyBundle(b Bundle) error {
 		}
 		proxies[p.ID] = true
 	}
+	for _, cr := range b.Credentials {
+		if cr.ScopeID() != model.LocalScope {
+			return errors.New("file imports only target local scope")
+		}
+		if cr.ID == "" || credentials[cr.ID] {
+			return errors.New("import credential id collision")
+		}
+		if e = cr.Validate(); e != nil {
+			return e
+		}
+		if cr.KeyID != "" && !keys[cr.KeyID] {
+			return errors.New("missing imported key")
+		}
+		credentials[cr.ID] = true
+	}
 	for _, c := range b.Connections {
 		if c.ScopeID() != model.LocalScope {
 			return errors.New("file imports only target local scope")
+		}
+		if c.CredentialID != "" && !credentials[c.CredentialID] {
+			return errors.New("missing imported credential")
 		}
 		if e = c.Validate(); e != nil {
 			return fmt.Errorf("%s: %w", c.Name, e)
@@ -185,6 +211,12 @@ func (s *Store) ApplyBundle(b Bundle) error {
 		}
 		v := p.Password
 		if e = s.putTx(tx, "proxy", p.ID, p, &v, false); e != nil {
+			return e
+		}
+	}
+	for _, cr := range b.Credentials {
+		v := cr.Secret
+		if e = s.putTx(tx, "credential", cr.ID, cr, &v, false); e != nil {
 			return e
 		}
 	}

@@ -259,7 +259,7 @@ func TestPhase2FinalShellDirectoryPreviewAndImport(t *testing.T) {
 		if e != nil || c.Secret != vectors.Finals[0].Plaintext {
 			t.Fatal("FinalShell decrypted password not restored", e)
 		}
-		if c.Name == "legacy-1" && (!c.NeedsKeyRebind || c.Auth != "keyboard") {
+		if c.Name == "legacy-1" && (!c.NeedsKeyRebind || c.Auth != "key") {
 			t.Fatal(c)
 		}
 	}
