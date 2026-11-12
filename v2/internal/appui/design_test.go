@@ -69,6 +69,23 @@ func TestSelectedTextContrastInBothThemes(t *testing.T) {
 	}
 }
 
+// Status text (已连接, 自动批准中, 缓存数据, the missing-key banner) on the surfaces it sits on and on
+// its own tint, as the pills and banners draw it, in the light theme.
+func TestStatusTextContrast(t *testing.T) {
+	{
+		th := designTheme(ui.LightTheme(), "浅色", "", false)
+		for name, fg := range map[string]ui.Color{"warning": th.Warning, "success": th.Success, "danger": th.Danger} {
+			for bgName, bg := range map[string]ui.Color{"white": ui.Hex("#ffffff"), "surface": th.Surface, "background": th.Background} {
+				for _, alpha := range []float32{0, .1, .14, .18} {
+					if r := contrast(fg, fg.Alpha(alpha).Over(bg)); r < 4.5 {
+						t.Errorf("%s on its %.2f tint over %s: %.2f:1, want at least 4.5:1", name, alpha, bgName, r)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestDesignThemesAndSystemPreferences(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		for _, mode := range []string{"跟随系统", "浅色", "深色"} {

@@ -48,6 +48,10 @@ func designTheme(base *ui.Theme, mode, accent string, highContrast bool) *ui.The
 		t.Border = ui.Hex("#dce5ee")
 		t.Text = ui.Hex("#203249")
 		t.TextMuted = ui.Hex("#5d7087")
+		// Deeper than mygo's, so status text reads at 4.5:1 or better on white and on its own tint.
+		t.Warning = ui.Hex("#924606")
+		t.Success = ui.Hex("#166534")
+		t.Danger = ui.Hex("#ac1c1c")
 	}
 	v := accentFor(accent).light
 	if t.Dark {
