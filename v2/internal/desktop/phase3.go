@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 func (p *Platform) CloudOverview() appui.CloudOverview {
@@ -427,6 +428,9 @@ func (b agentBackend) Hosts() ([]agent.Host, error) {
 	}
 	return out, nil
 }
+
+// Sessions lists the open sessions in creation order (a reconnect keeps its predecessor's place), so the
+// order is stable between calls; the window's drag-reordered tab order is not known to the platform.
 func (b agentBackend) Sessions() []agent.Session {
 	b.p.mu.Lock()
 	type item struct {
@@ -436,8 +440,10 @@ func (b agentBackend) Sessions() []agent.Session {
 		remote bool
 	}
 	var items []item
-	for id, t := range b.p.sessions {
-		items = append(items, item{id, t, b.p.credentials[id], b.p.sshSessions[id] != nil})
+	for _, id := range b.p.order {
+		if t := b.p.sessions[id]; t != nil {
+			items = append(items, item{id, t, b.p.credentials[id], b.p.sshSessions[id] != nil})
+		}
 	}
 	b.p.mu.Unlock()
 	var out []agent.Session
@@ -452,7 +458,15 @@ func (b agentBackend) Sessions() []agent.Session {
 		if title == "" {
 			title = i.c.Name
 		}
-		out = append(out, agent.Session{ID: i.id, ConnectionID: i.c.ID, Title: title, Local: !i.remote, CWD: i.t.Dir(), Connected: connected})
+		s := agent.Session{ID: i.id, ConnectionID: i.c.ID, Title: title, Local: !i.remote, CWD: i.t.Dir(), Connected: connected}
+		s.Cols, s.Rows = i.t.Size()
+		if i.remote {
+			s.Name, s.Host, s.Encoding = i.c.Name, i.c.Host, strings.ToLower(i.c.Encoding)
+			if s.Encoding == "" {
+				s.Encoding = "utf-8"
+			}
+		}
+		out = append(out, s)
 	}
 	return out
 }
@@ -503,9 +517,10 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	}
 	result.ActualCWD = cwd
 	out, stderr := &boundedOutput{limit: 512 << 10}, &boundedOutput{limit: 512 << 10}
-	e = session.Run(ctx, command, nil, out, stderr)
+	e = session.RunText(ctx, command, out, stderr)
 	result.Output = out.String()
 	result.Stderr = stderr.String()
+	result.Truncated = out.truncated || stderr.truncated
 	var exit *ssh.ExitError
 	if errors.As(e, &exit) {
 		result.ExitCode = exit.ExitStatus()
@@ -514,17 +529,28 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	return result, e
 }
 
+// boundedOutput keeps the first limit bytes (cut at a character boundary) and swallows the rest, so a
+// chatty command still runs to its end instead of failing at the limit.
 type boundedOutput struct {
-	limit int
-	data  []byte
+	limit     int
+	data      []byte
+	truncated bool
 }
 
 func (b *boundedOutput) Write(p []byte) (int, error) {
-	if len(p) > b.limit-len(b.data) {
-		return 0, errors.New("output limit")
+	n := len(p)
+	if b.truncated {
+		return n, nil
+	}
+	if room := b.limit - len(b.data); n > room {
+		b.truncated = true
+		for room > 0 && !utf8.RuneStart(p[room]) {
+			room--
+		}
+		p = p[:room]
 	}
 	b.data = append(b.data, p...)
-	return len(p), nil
+	return n, nil
 }
 func (b *boundedOutput) String() string              { return string(b.data) }
 func (b agentBackend) Control(id, data string) error { return b.p.Send(id, data) }

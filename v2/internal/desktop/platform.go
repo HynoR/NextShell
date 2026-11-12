@@ -17,6 +17,7 @@ import (
 	"nextshell.dev/v2/internal/transfer"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,7 @@ type Platform struct {
 	mu               sync.Mutex
 	events           []appui.Event
 	sessions         map[string]*terminal.Terminal
+	order            []string // session ids in creation order; see agentBackend.Sessions
 	wake             func()
 	closed           bool
 	wg               sync.WaitGroup
@@ -367,6 +369,11 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 		return
 	}
 	p.sessions[id] = t
+	if i := slices.Index(p.order, replace); i >= 0 {
+		p.order[i] = id
+	} else {
+		p.order = append(p.order, id)
+	}
 	if len(sshConn) > 0 {
 		p.sshSessions[id] = sshConn[0]
 	}
@@ -393,6 +400,7 @@ func (p *Platform) CloseSession(id string) {
 	p.mu.Lock()
 	t := p.sessions[id]
 	delete(p.sessions, id)
+	p.order = slices.DeleteFunc(p.order, func(o string) bool { return o == id })
 	delete(p.sshSessions, id)
 	delete(p.tar, id)
 	if cancel := p.monitorWatches[id]; cancel != nil {
@@ -417,6 +425,7 @@ func (p *Platform) Shutdown() {
 	p.cancel()
 	ts := p.sessions
 	p.sessions = map[string]*terminal.Terminal{}
+	p.order = nil
 	p.credentials = map[string]model.Connection{}
 	p.mu.Unlock()
 	for _, t := range ts {
