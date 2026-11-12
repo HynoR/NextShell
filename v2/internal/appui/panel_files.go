@@ -352,7 +352,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 	}
 	id := sess.ID
 	titles := map[string]string{"upload": "上传文件", "download": "下载到…", "cross": "发送到其他服务器", "mkdir": "新建文件夹", "create": "新建文件", "rename": "重命名文件"}
-	ui.Modal(c, &d.open, func() {
+	dialog(c, &d.open, func() {
 		ui.Column(c).Width(460).Gap(16).Children(func() {
 			ui.Text(c, titles[d.kind]).FontSize(17).Bold()
 			if d.entry.Name != "" {

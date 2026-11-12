@@ -61,7 +61,7 @@ func main() {
 		settings.OnClosed(func() { settings = nil })
 	}
 	mygo.App.WhenReady(func() {
-		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
+		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		w.OnClose(func(e *mygo.CloseEvent) {
 			if (len(a.Tabs) > 0 || a.DirtyDocumentCount() > 0) && !a.ExitConfirmed {
 				e.PreventDefault()

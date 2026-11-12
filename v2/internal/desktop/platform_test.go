@@ -331,3 +331,27 @@ func awaitEventOrMessage(t *testing.T, p *Platform) appui.Event {
 	t.Fatal("event timeout")
 	return appui.Event{}
 }
+func TestDesktopSSHWrongPasswordAsksAgainAtMostThreeTimes(t *testing.T) {
+	c, _ := desktopSSH(t)
+	p := desktopFixture(t)
+	c.Secret = "wrong"
+	p.Connect(c)
+	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	e.Prompt.Answers <- []string{} // trust the host key
+	e = awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	if e.Prompt.Kind != appui.PromptPassword || !strings.Contains(e.Prompt.Title, "密码错误") {
+		t.Fatal("no retry prompt", e.Prompt)
+	}
+	e.Prompt.Answers <- []string{"secret"}
+	s := awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil }).Session
+	p.CloseSession(s.ID)
+
+	p.Connect(c)
+	for range 2 {
+		e = awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+		e.Prompt.Answers <- []string{"still wrong"}
+	}
+	if ev := awaitEventOrMessage(t, p); ev.Message == "" || !strings.Contains(ev.Message, "unable to authenticate") {
+		t.Fatal("third failure did not end the attempt", ev)
+	}
+}

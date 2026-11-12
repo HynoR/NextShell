@@ -137,7 +137,7 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 			return
 		}
 		open := true
-		ui.Modal(c, &open, func() {
+		dialog(c, &open, func() {
 			ui.Column(c).Width(520).Gap(12).Children(func() {
 				ui.Text(c, "主机指纹已变化").FontSize(17).Bold().TextColor(t.Danger)
 				ui.Text(c, "服务器的身份与上次不同。这可能是服务器重装过，也可能有人在拦截连接。在确认原因之前，请不要继续。").FillWidth()
@@ -166,7 +166,7 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 			d.answers = make([]string, len(p.Questions))
 		}
 		open := true
-		ui.Modal(c, &open, func() {
+		dialog(c, &open, func() {
 			ui.Column(c).Width(420).Gap(12).Children(func() {
 				ui.Text(c, p.Title).FontSize(17).Bold()
 				if p.Host != "" {
@@ -208,4 +208,19 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 			d.answer(nil)
 		}
 	}
+}
+
+// dialog is ui.Modal with the app's look: a dimming scrim, and a panel one
+// step lighter than the window with a border, so it stands out in dark mode too.
+func dialog(c *ui.Context, open *bool, fn func()) ui.Element {
+	t := c.Theme()
+	scrim := ui.RGBA(0, 0, 0, .35)
+	if t.Dark {
+		scrim = ui.RGBA(0, 0, 0, .6)
+	}
+	return ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
+		backdrop.Background(scrim)
+		panel.Padding(20).Radius(12).Background(t.Surface).Border(1, t.Border).Shadow(0, 16, 48, 0, ui.RGBA(0, 0, 0, .35))
+		fn()
+	})
 }

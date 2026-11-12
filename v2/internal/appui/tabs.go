@@ -19,12 +19,12 @@ type tabDrag string
 
 func (a *App) tabStrip(c *ui.Context) {
 	t := c.Theme()
-	ui.ScrollHorizontal(c).Height(38).MinWidth(0).Shrink(1).Children(func() {
+	ui.ScrollHorizontal(c).Height(40).MinWidth(0).Shrink(1).Children(func() {
 		if len(a.Tabs) == 0 {
 			return
 		}
 		tabs := ui.TabsBase(c, &a.Active, len(a.Tabs))
-		tabs.List.Height(38).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
+		tabs.List.Height(40).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
 				tab := tabs.Tab(i).Label(s.Title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Drag(tabDrag(s.ID)).Tooltip(a.tabTooltip(s))

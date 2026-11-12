@@ -238,7 +238,10 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	// A failed connect turns the dot red; Failed carries the host's ID.
 	p.events = append(p.events, appui.Event{Failed: p.connects[0].ID, Message: "connection refused"})
 	tt.Frame()
+	has(t, tt, "连接被拒绝：服务器没有在这个端口提供 SSH 服务")
+	click(t, tt, "详情")
 	has(t, tt, "connection refused")
+	click(t, tt, "关闭")
 
 	if e := tt.RightClick("子目录  1"); e != nil {
 		t.Fatal(e)

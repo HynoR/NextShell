@@ -234,16 +234,8 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		}
 	}
 	if c.Auth == "password" && c.Secret == "" {
-		req := &appui.Prompt{Kind: appui.PromptPassword, Title: "输入密码", Host: c.User + "@" + c.Address(), Questions: []string{"密码"}, Echo: []bool{false}, CanRemember: c.ID != ""}
-		a, e := p.prompt(ctx, req)
-		if e != nil {
+		if e := p.askPassword(ctx, &c, stored, "输入密码"); e != nil {
 			return e
-		}
-		c.Secret = a[0]
-		if req.Remember && c.ID != "" {
-			if e := p.store.SaveConnection(stored, &c.Secret); e != nil {
-				return e
-			}
 		}
 	}
 	var k model.Key
@@ -317,6 +309,14 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		o.Connection.Fingerprint = changed.Fingerprint
 		s, e = sshclient.Dial(ctx, o)
 	}
+	// A rejected password asks again, at most three times in all.
+	for tries := 1; tries < 3 && c.Auth == "password" && isAuthFailure(e); tries++ {
+		if err := p.askPassword(ctx, &c, stored, "密码错误，请重新输入"); err != nil {
+			return err
+		}
+		o.Connection.Secret = c.Secret
+		s, e = sshclient.Dial(ctx, o)
+	}
 	if e != nil {
 		return e
 	}
@@ -330,6 +330,23 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		return e
 	}
 	p.register(t, c, false, replace, s)
+	return nil
+}
+func isAuthFailure(e error) bool {
+	return e != nil && strings.Contains(e.Error(), "unable to authenticate")
+}
+
+// askPassword asks for c's password; a remembered one replaces the saved secret.
+func (p *Platform) askPassword(ctx context.Context, c *model.Connection, stored model.Connection, title string) error {
+	req := &appui.Prompt{Kind: appui.PromptPassword, Title: title, Host: c.User + "@" + c.Address(), Questions: []string{"密码"}, Echo: []bool{false}, CanRemember: c.ID != ""}
+	a, e := p.prompt(ctx, req)
+	if e != nil {
+		return e
+	}
+	c.Secret = a[0]
+	if req.Remember && c.ID != "" {
+		return p.store.SaveConnection(stored, &c.Secret)
+	}
 	return nil
 }
 func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool, replace string, sshConn ...*sshclient.Session) {

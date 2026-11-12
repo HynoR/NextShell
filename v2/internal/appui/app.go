@@ -100,11 +100,39 @@ func (a *App) fail(e error) {
 	}
 	msg := e.Error()
 	a.log(msg)
-	title := msg
+	title, _ := humanize(msg)
 	if r := []rune(title); len(r) > 60 {
 		title = string(r[:60]) + "…"
 	}
 	a.toasts = append(a.toasts, ui.Toast{Title: title, Type: "error", Timeout: 6 * time.Second, Action: "详情", OnAction: func() { a.dialogs.detail = msg }})
+}
+
+// humanize turns the common network, SSH and file errors into Chinese; the
+// original stays in the toast's details. ok reports a known error.
+func humanize(msg string) (string, bool) {
+	m := strings.ToLower(msg)
+	for _, v := range []struct{ match, text string }{
+		{"unable to authenticate", "认证失败：用户名、密码或密钥不正确"},
+		{"connection refused", "连接被拒绝：服务器没有在这个端口提供 SSH 服务"},
+		{"no route to host", "无法访问主机"},
+		{"network is unreachable", "网络不可达"},
+		{"host is down", "无法访问主机"},
+		{"no such host", "找不到主机：域名无法解析"},
+		{"i/o timeout", "连接超时"},
+		{"deadline exceeded", "操作超时"},
+		{"timed out", "连接超时"},
+		{"connection reset", "连接被服务器重置"},
+		{"permission denied", "权限不足"},
+		{"no such file", "文件或目录不存在"},
+		{"file does not exist", "文件或目录不存在"},
+		{"file exists", "目标已存在"},
+		{"knownhosts: key mismatch", "known_hosts 里的主机密钥与服务器不一致"},
+	} {
+		if strings.Contains(m, v.match) {
+			return v.text, true
+		}
+	}
+	return msg, false
 }
 
 // report shows e, or ok when e is nil and ok is not empty.
@@ -242,7 +270,7 @@ func (a *App) poll() bool {
 		}
 		if e.Message != "" {
 			a.reload()
-			if e.Failed != "" {
+			if _, known := humanize(e.Message); e.Failed != "" || known {
 				a.fail(fmt.Errorf("%s", e.Message))
 			} else {
 				a.toast(e.Message)
@@ -422,7 +450,7 @@ func (a *App) panelView(c *ui.Context) {
 func (a *App) titlebar(c *ui.Context) {
 	t := c.Theme()
 	bar := c.TitleBar()
-	ui.Row(c).FillWidth().Height(max(bar.Height, 38)).Padding(0, bar.Right+8, 0, bar.Left+8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).DragWindow().Children(func() {
+	ui.Row(c).FillWidth().Height(max(bar.Height, 40)).Padding(0, bar.Right+8, 0, bar.Left+8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).DragWindow().Children(func() {
 		a.tabStrip(c)
 		plus := iconButton(c, "新建本地终端", "plus")
 		if plus.Clicked() {

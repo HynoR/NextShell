@@ -20,7 +20,8 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 	t.Helper()
 	prod := model.Folder{ID: p.NewID(), Name: "生产"}
 	test := model.Folder{ID: p.NewID(), Name: "测试"}
-	for _, f := range []model.Folder{prod, test} {
+	cache := model.Folder{ID: p.NewID(), Name: "缓存", ParentID: prod.ID}
+	for _, f := range []model.Folder{prod, test, cache} {
 		if e := p.SaveFolder(f); e != nil {
 			t.Fatal(e)
 		}
@@ -29,6 +30,7 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 	saveHost(t, p, model.Connection{Name: "prod-web-02", Host: "10.0.0.2", User: "root", FolderID: prod.ID})
 	db = saveHost(t, p, model.Connection{Name: "db-master", Host: "10.0.2.10", User: "postgres", FolderID: prod.ID})
 	saveHost(t, p, model.Connection{Name: "test-01", Host: "10.1.0.5", User: "dev", FolderID: test.ID})
+	saveHost(t, p, model.Connection{Name: "redis-01", Host: "10.0.3.1", User: "root", FolderID: cache.ID})
 	saveHost(t, p, model.Connection{Name: "bastion", Host: "jump.example.com", User: "ops"})
 	for _, c := range []model.Command{
 		{Name: "重启 nginx", Group: "Web", Text: "sudo systemctl restart nginx"},

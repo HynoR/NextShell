@@ -181,7 +181,7 @@ func (a *App) editSnippet(v model.Command) {
 func (a *App) snippetDialogs(c *ui.Context) {
 	s := &a.snippets
 	if s.editing {
-		ui.Modal(c, &s.editing, func() {
+		dialog(c, &s.editing, func() {
 			ui.Column(c).Width(520).Gap(16).Children(func() {
 				title := "新建片段"
 				if s.draft.ID != "" {
@@ -218,7 +218,7 @@ func (a *App) snippetDialogs(c *ui.Context) {
 		})
 	}
 	if s.paramsOpen {
-		ui.Modal(c, &s.paramsOpen, func() {
+		dialog(c, &s.paramsOpen, func() {
 			ui.Column(c).Width(460).Gap(16).Children(func() {
 				ui.Text(c, s.paramsFor.Name).FontSize(17).Bold()
 				ui.Form(c, func() {
@@ -264,7 +264,7 @@ func (s *snippetsState) render() string {
 func (a *App) commandDialog(c *ui.Context) {
 	s := &a.snippets
 	t := c.Theme()
-	ui.Modal(c, &s.commandOpen, func() {
+	dialog(c, &s.commandOpen, func() {
 		ui.Column(c).Width(560).Gap(12).Children(func() {
 			ui.Text(c, "发送命令").FontSize(17).Bold()
 			ui.TextInput(c, &s.command).Label("命令输入").Placeholder("回车发送到当前会话").Font("monospace").FillWidth().AutoFocus().OnTextKey(func(k ui.TextKey) bool {

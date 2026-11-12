@@ -233,6 +233,9 @@ func (a *App) hostTree(c *ui.Context, parent string, depth int) {
 		}
 		open := !a.hosts.collapsed[f.ID]
 		section := ui.SidebarSection(c.Key(f.ID+"folder"), fmt.Sprintf("%s  %d", f.Name, a.folderCount(f.ID)), &open, func() { a.hostTree(c, f.ID, depth+1) })
+		if depth > 0 {
+			section.PaddingStart(12) // nests inside the parent's section, so it adds up per depth
+		}
 		a.folderMenu(section, f)
 		a.hosts.collapsed[f.ID] = !open
 	}
@@ -477,7 +480,7 @@ func (a *App) hostDialog(c *ui.Context) {
 		return
 	}
 	t := c.Theme()
-	ui.Modal(c, &e.open, func() {
+	dialog(c, &e.open, func() {
 		ui.Column(c).Width(560).Gap(16).Children(func() {
 			title := "新建主机"
 			if e.edit.ID != "" {
@@ -634,7 +637,7 @@ func (a *App) folderDialog(c *ui.Context) {
 	if !e.open {
 		return
 	}
-	ui.Modal(c, &e.open, func() {
+	dialog(c, &e.open, func() {
 		ui.Column(c).Width(400).Gap(16).Children(func() {
 			title := "新建目录"
 			if e.folder.ID != "" {
@@ -690,7 +693,7 @@ func (a *App) batchDialog(c *ui.Context) {
 		return
 	}
 	targets := a.folderHosts(b.folder)
-	ui.Modal(c, &b.open, func() {
+	dialog(c, &b.open, func() {
 		ui.Column(c).Width(460).Gap(16).Children(func() {
 			ui.Text(c, "批量设置认证").FontSize(17).Bold()
 			muted(c, fmt.Sprintf("将应用到「%s」及子目录中的 %d 个主机", a.folderPath(b.folder), len(targets)))

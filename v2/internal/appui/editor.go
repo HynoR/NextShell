@@ -231,7 +231,7 @@ func (a *App) editorDialog(c *ui.Context) {
 	}
 	t := c.Theme()
 	w, h := c.Size()
-	ui.Modal(c, &s.open, func() {
+	dialog(c, &s.open, func() {
 		ui.Column(c).Width(max(w-120, 480)).Height(max(h-120, 360)).Gap(8).Children(func() {
 			a.documentTabs(c)
 			if s.reloadPath != "" {
