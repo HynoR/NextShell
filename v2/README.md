@@ -12,7 +12,7 @@ cd v2
 go run ./cmd/nextshell                     # 默认 profile:<系统配置目录>/NextShell-v2/nextshell.db
 go run ./cmd/nextshell --db :memory:       # 一次性 profile
 go vet ./... && go test ./... && go test -race ./...
-# macOS / Windows 上会跳过把本机当 Linux 远端的测试(打包传输、监控探针等),合并前用 Docker 在 Linux 里补跑全套:
+# macOS 上会跳过把本机当 Linux 远端的测试(打包传输、监控探针等),Windows 上还会跳过所有把本机当 POSIX 远端的测试(远端 exec、SFTP 目录树、shell 钩子),合并前用 Docker 在 Linux 里补跑全套:
 docker run --rm -v "$PWD":/src -w /src -v nextshell-gomod:/go/pkg/mod -e GOTOOLCHAIN=auto golang:1.27 go test ./... -count=1
 # 真实 OpenSSH 互操作测试(Docker):
 go test -tags interop ./internal/interop/ -count=1 -timeout 30m
@@ -45,3 +45,4 @@ Agent 测试:`go run -tags nextshell_devtools ./cmd/nextshell --agent-test --db 
 - OSC 133 依赖 mygo 上游开放 prompt 事件,暂未实现。
 - 云同步只有测试用参考服务端。
 - SSH agent 只支持 Unix socket(暂不支持 Windows Pageant / 命名管道)。
+- Windows 没有 POSIX 权限位:导出文件、数据库、`mcp.json` 的 0600 只在 macOS/Linux 上由权限位保证,Windows 上靠所在目录(用户配置目录)继承的 ACL,应用不另设 ACL。

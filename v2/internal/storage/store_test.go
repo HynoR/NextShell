@@ -7,6 +7,7 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -59,7 +60,9 @@ func TestDeviceKeyDatabase(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if stat.Mode().Perm() != 0600 {
+	// Windows has no POSIX modes (Perm() is 0666 there): the profile directory's inherited ACL is what keeps
+	// the database private, so only the plaintext check below applies.
+	if runtime.GOOS != "windows" && stat.Mode().Perm() != 0600 {
 		t.Fatalf("mode=%o", stat.Mode().Perm())
 	}
 	raw, e := os.ReadFile(path)
