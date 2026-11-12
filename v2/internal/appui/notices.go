@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -60,16 +61,32 @@ func (w *transferWatch) finished(jobs []transfer.Job) (done, failed []transfer.J
 	return
 }
 
-// transferName splits a job's label "上传 name → folder" into its verb and the name.
+// transferName splits a job's label into its verb and what a toast calls it: the file, with the server
+// in brackets. A label reads "上传 f → host:/dir", "下载 f ← host:/dir", "复制 f ← a:/x → b:/y" or, for a
+// deletion, "删除 host:/path"; one without servers (older labels) gives the file alone.
 func transferName(label string) (verb, name string) {
 	verb, rest, ok := strings.Cut(label, " ")
 	if !ok {
 		return "传输", label
 	}
-	if i := strings.LastIndex(rest, " → "); i >= 0 {
-		rest = rest[:i]
+	file, to, _ := strings.Cut(rest, " → ")
+	file, from, _ := strings.Cut(file, " ← ")
+	host, p, remote := strings.Cut(file, ":/") // a deletion names the server before the path
+	if remote {
+		file = path.Base("/" + p)
+	} else {
+		host = ""
 	}
-	return verb, clip(rest, 30)
+	for _, end := range []string{to, from} { // the server it ends on, else the one it came from
+		if h, _, ok := strings.Cut(end, ":/"); ok && host == "" {
+			host = h
+		}
+	}
+	name = clip(file, 30)
+	if host != "" {
+		name += "（" + clip(host, 20) + "）"
+	}
+	return verb, name
 }
 
 // transferDoneID is the one slot the 完成 toast takes, so a batch of uploads replaces it instead of stacking.

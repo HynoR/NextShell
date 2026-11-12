@@ -158,7 +158,7 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 	if req.Kind == "remove" {
 		add = p.queue.AddItems
 	}
-	id, e := add(transferLabel(req), func(ctx context.Context, progress func(int64)) error {
+	id, e := add(p.transferLabel(req), func(ctx context.Context, progress func(int64)) error {
 		if req.Kind == "upload-packed" || req.Kind == "download-packed" {
 			s, e := p.ssh(req.Session)
 			if e != nil {
@@ -187,21 +187,23 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 				transfer.SetTotal(ctx, info.Size())
 				return c.Upload(ctx, req.Local, req.Remote, req.Overwrite, progress)
 			case "download":
-				info, e := c.Stat(req.Remote)
+				// A link the user chose gives what it points to: a folder is packed by its real path (tar
+				// would take the link itself), and a link inside a folder is still skipped.
+				remote, info, e := c.Resolve(req.Remote)
 				if e != nil {
 					return e
 				}
 				if info.IsDir() {
 					if s, e := p.ssh(req.Session); e == nil && p.canPack(ctx, req.Session, s) {
-						return transfer.DownloadPacked(ctx, s, req.Remote, req.Local, progress)
+						return transfer.DownloadPacked(ctx, s, remote, req.Local, progress)
 					}
-					return c.DownloadTree(ctx, req.Remote, req.Local, progress)
+					return c.DownloadTree(ctx, remote, req.Local, progress)
 				}
 				if e = os.MkdirAll(filepath.Dir(req.Local), 0o755); e != nil { // a default folder that does not exist yet
 					return e
 				}
 				transfer.SetTotal(ctx, info.Size())
-				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
+				return c.Download(ctx, remote, req.Local, req.Overwrite, progress)
 			case "move":
 				return c.RenamePath(req.Remote, req.Destination)
 			case "remove":
@@ -257,19 +259,42 @@ func localSize(dir string) int64 {
 	})
 	return n
 }
-func transferLabel(r appui.TransferRequest) string {
+
+// hostName is what a transfer's label calls the server of session: the connection's name.
+func (p *Platform) hostName(session string) string {
+	p.mu.Lock()
+	c := p.credentials[session]
+	p.mu.Unlock()
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Host
+}
+
+// transferLabel is the line of a transfer in the list: what moves, and the servers it touches, written
+// "host:/path" (a failed row says which server it was, among a hundred alike). ← names the source.
+func (p *Platform) transferLabel(r appui.TransferRequest) string {
+	at := func(session, dir string) string {
+		if host := p.hostName(session); host != "" {
+			return host + ":" + dir
+		}
+		return dir
+	}
 	switch r.Kind {
 	case "upload", "upload-packed":
-		return "上传 " + filepath.Base(r.Local) + " → " + path.Dir(r.Remote)
+		return "上传 " + filepath.Base(r.Local) + " → " + at(r.Session, path.Dir(r.Remote))
 	case "download", "download-packed":
-		return "下载 " + path.Base(r.Remote) + " → " + filepath.Dir(r.Local)
+		return "下载 " + path.Base(r.Remote) + " ← " + at(r.Session, path.Dir(r.Remote))
 	case "remove":
-		return "删除 " + r.Remote
+		return "删除 " + at(r.Session, r.Remote)
 	case "move":
-		return "移动 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
-	default:
-		return "复制 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
+		return "移动 " + path.Base(r.Remote) + " → " + at(r.TargetSession, path.Dir(r.Destination))
 	}
+	label := "复制 " + path.Base(r.Remote)
+	if r.TargetSession != r.Session { // from one server to another: the source too
+		label += " ← " + at(r.Session, path.Dir(r.Remote))
+	}
+	return label + " → " + at(r.TargetSession, path.Dir(r.Destination))
 }
 
 // CountRemoval tells, by a Removal event, what deleting paths takes. A big tree takes a while, so it runs
@@ -302,6 +327,7 @@ func (p *Platform) CountRemoval(session string, paths []string) func() {
 func (p *Platform) Transfers() []transfer.Job           { return p.queue.List() }
 func (p *Platform) CancelTransfer(id string)            { p.queue.Cancel(id) }
 func (p *Platform) RetryTransfer(id string) error       { return p.queue.Retry(id) }
+func (p *Platform) DismissTransfer(id string)           { p.queue.Dismiss(id) }
 func (p *Platform) OpenRemote(session, remote string)   { p.openRemote(session, remote, false) }
 func (p *Platform) ReloadRemote(session, remote string) { p.openRemote(session, remote, true) }
 func (p *Platform) openRemote(session, remote string, forEditor bool) {

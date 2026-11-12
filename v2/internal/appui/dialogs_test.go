@@ -165,7 +165,7 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	tt.Key(ui.Alt, ui.KeyEnter)
 	has(t, tt, "发送到全部会话", "发送到 2 个会话")
 	click(t, tt, "发送到 2 个会话")
-	if len(p.sent) != 2 {
+	if len(p.sent) != 3 { // one before, then one per session
 		t.Fatal("broadcast", p.sent)
 	}
 	tt.Key(appMod(), ui.KeyK)

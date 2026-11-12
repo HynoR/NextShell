@@ -194,9 +194,6 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 				case remoteedit.Conflict:
 					ui.Text(c, "服务器上的文件已被别处修改，本次保存未上传").FontSize(12).TextColor(t.Warning)
 					ui.Row(c).FillWidth().Gap(4).Children(func() {
-						if ghost(c, "覆盖远端", "").Clicked() {
-							a.P.ResolveLiveEdit(l.ID, true)
-						}
 						if ghost(c, "重新载入", "").Clicked() {
 							a.P.ResolveLiveEdit(l.ID, false)
 						}
@@ -204,6 +201,15 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 							id := l.ID
 							a.pick(FilePick{Title: "另存本地", DefaultPath: filepath.Join(a.Prefs.DownloadDir, path.Base(l.Path)), Save: true}, func(p []string) {
 								a.report(a.P.SaveLiveEditCopy(id, p[0]), "已另存到 "+p[0])
+							})
+						}
+						// The one way out that loses what someone else wrote: red, and asked first.
+						if ghost(c, "覆盖远端", "").TextColor(t.Danger).Clicked() {
+							id, host := l.ID, a.sessionTitle(l.Session)
+							a.later(func() {
+								a.confirm("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() { // danger
+									a.P.ResolveLiveEdit(id, true)
+								})
 							})
 						}
 					})
@@ -224,7 +230,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 // sessionTitle is the tab title of session id, for lists that name a host.
 func (a *App) sessionTitle(id string) string {
 	if i := a.tabIndex(id); i >= 0 {
-		return a.Tabs[i].Title
+		return a.tabTitle(a.Tabs[i])
 	}
 	return "已关闭的会话"
 }

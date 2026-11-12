@@ -65,9 +65,7 @@ func (a *App) runSnippet(v model.Command, all bool) {
 // sendText sends text to the active session or, after a confirmation, to all of them.
 func (a *App) sendText(text string, all, cr bool) {
 	if all {
-		a.confirm("发送到全部会话", fmt.Sprintf("将向 %d 个会话发送：\n%s", len(a.Tabs), text), fmt.Sprintf("发送到 %d 个会话", len(a.Tabs)), func() {
-			a.report(a.P.ExecuteCommand(a.activeID(), text, true, cr), "已发送到全部会话")
-		})
+		a.sendToAll(text, cr)
 		return
 	}
 	if a.current() == nil {
@@ -79,6 +77,57 @@ func (a *App) sendText(text string, all, cr bool) {
 		return
 	}
 	a.tabs.term.Focus()
+}
+
+// sendToAll asks, naming every tab the text goes to, then sends it to those tabs alone: a tab opened
+// meanwhile is not one the user agreed to. Disconnected tabs are left out and counted.
+func (a *App) sendToAll(text string, cr bool) {
+	var targets []*Session
+	var names []string
+	for _, s := range a.Tabs {
+		if a.P.Exited(s.ID) {
+			continue
+		}
+		name := a.tabTitle(s)
+		if s.ByAgent {
+			name += "（Agent 打开）"
+		}
+		targets, names = append(targets, s), append(names, name)
+	}
+	if len(targets) == 0 {
+		a.toast("没有可发送的会话：所有会话都已断开")
+		return
+	}
+	msg := fmt.Sprintf("将向以下 %d 个会话发送：\n%s\n\n命令：\n%s", len(targets), listNames(names, 10), text)
+	if skipped := len(a.Tabs) - len(targets); skipped > 0 {
+		msg += fmt.Sprintf("\n\n已跳过 %d 个已断开的会话。", skipped)
+	}
+	titles := make([]string, len(targets))
+	for i, s := range targets {
+		titles[i] = a.tabTitle(s)
+	}
+	a.confirm("发送到全部会话", msg, fmt.Sprintf("发送到 %d 个会话", len(targets)), func() { // danger
+		var failed, detail []string
+		for i, s := range targets {
+			if e := a.P.ExecuteCommand(s.ID, text, false, cr); e != nil {
+				failed, detail = append(failed, titles[i]), append(detail, titles[i]+"："+e.Error())
+			}
+		}
+		if len(failed) == 0 {
+			a.toast(fmt.Sprintf("已发送到 %d 个会话", len(targets)))
+			return
+		}
+		a.failAs(fmt.Sprintf("%d 个会话没有收到：%s", len(failed), strings.Join(failed, "、")), strings.Join(detail, "\n"))
+	})
+}
+
+// listNames puts one name to a line, the first max of them.
+func listNames(names []string, max int) string {
+	shown := "· " + strings.Join(names[:min(len(names), max)], "\n· ")
+	if len(names) > max {
+		shown += fmt.Sprintf("\n… 另有 %d 个", len(names)-max)
+	}
+	return shown
 }
 
 func (a *App) snippetsPanel(c *ui.Context) {
@@ -155,7 +204,7 @@ func (a *App) snippetRow(c *ui.Context, v model.Command) {
 		if selected || row.Hovered() {
 			tip := "请先打开一个会话"
 			if cur := a.current(); cur != nil {
-				tip = "发送到 " + cur.Title
+				tip = "发送到 " + a.tabTitle(cur)
 			}
 			send = ui.ButtonBase(c.Key("send-"+v.ID)).Label("发送 "+v.Name).Tooltip(tip).Size(26, 26).Radius(t.Radius).Center().TextColor(accentInk(t)).Disabled(a.current() == nil)
 			if send.Hovered() {
@@ -216,7 +265,7 @@ func (a *App) snippetMenu(e ui.Element, v model.Command) {
 		m.Separator()
 		if m.Item("删除").Danger().Chosen() {
 			a.later(func() {
-				a.confirm("删除片段「"+v.Name+"」", "删除后无法恢复。", "删除片段", func() {
+				a.confirm("删除片段「"+v.Name+"」", "删除后无法恢复。", "删除片段", func() { // danger
 					a.report(a.P.Delete("command", v.ID), "已删除片段")
 					a.reload()
 				})
@@ -331,7 +380,7 @@ func (a *App) commandDialog(c *ui.Context) {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 					muted(c, "最近发送").Grow(1)
 					if ghost(c, "清空历史", "").Clicked() {
-						a.confirm("清空命令历史", "删除全部本地历史，无法恢复。", "清空历史", func() {
+						a.confirm("清空命令历史", "删除全部本地历史，无法恢复。", "清空历史", func() { // danger
 							a.report(a.P.SaveHistory(nil), "")
 							a.reload()
 						})
@@ -428,7 +477,7 @@ func (a *App) snippetGroupHeader(c *ui.Context, group string) {
 		}
 		if m.Item("删除分组…").Danger().Chosen() {
 			a.later(func() {
-				a.confirm(fmt.Sprintf("删除分组「%s」", group), fmt.Sprintf("分组里的 %d 个片段会一起删除，无法恢复。", n), fmt.Sprintf("删除 %d 个片段", n), func() {
+				a.confirm(fmt.Sprintf("删除分组「%s」", group), fmt.Sprintf("分组里的 %d 个片段会一起删除，无法恢复。", n), fmt.Sprintf("删除 %d 个片段", n), func() { // danger
 					for _, v := range a.Data.Commands {
 						if v.Group == group {
 							if e := a.P.Delete("command", v.ID); e != nil {

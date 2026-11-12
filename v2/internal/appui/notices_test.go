@@ -139,3 +139,29 @@ func TestTransferToastsNameTheFileAndOfferRetry(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestTransferNamesKeepTheServer(t *testing.T) {
+	for _, v := range []struct{ label, verb, name string }{
+		{"上传 config.yaml → prod-web-01:/etc/app", "上传", "config.yaml（prod-web-01）"},
+		{"下载 syslog ← db-master:/var/log", "下载", "syslog（db-master）"},
+		{"删除 prod-web-01:/srv/app/old release", "删除", "old release（prod-web-01）"},
+		{"移动 a.log → prod-web-01:/srv/old", "移动", "a.log（prod-web-01）"},
+		{"复制 a.log → prod-web-01:/srv/old", "复制", "a.log（prod-web-01）"},
+		{"复制 a.log ← build-01:/out → prod-web-01:/srv", "复制", "a.log（prod-web-01）"}, // it ends on the second server
+		{"上传 报告.pdf → /srv/www", "上传", "报告.pdf"},                                    // a label from before: no server
+		{"删除 /srv/app", "删除", "/srv/app"},
+	} {
+		if verb, name := transferName(v.label); verb != v.verb || name != v.name {
+			t.Errorf("%q: %q %q, want %q %q", v.label, verb, name, v.verb, v.name)
+		}
+	}
+}
+
+func TestFailedTransferToastsOfTwoServersDiffer(t *testing.T) {
+	a := transfer.Job{ID: "1", Label: "上传 config.yaml → prod-web-01:/etc/app", State: "failed", Error: "permission denied"}
+	b := transfer.Job{ID: "2", Label: "上传 config.yaml → db-master:/etc/app", State: "failed", Error: "permission denied"}
+	ta, tb := transferToasts(nil, []transfer.Job{a}, nil, nil), transferToasts(nil, []transfer.Job{b}, nil, nil)
+	if ta[0].Title != "config.yaml（prod-web-01） 上传失败：权限不足" || ta[0].Title == tb[0].Title {
+		t.Fatal(ta[0].Title, tb[0].Title)
+	}
+}

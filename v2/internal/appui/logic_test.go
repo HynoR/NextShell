@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
+	"nextshell.dev/v2/internal/transfer"
 )
 
 func TestMonitorFilteringAndSorting(t *testing.T) {
@@ -157,5 +158,23 @@ func TestHumanizeInteropErrorsAndNaturalOrder(t *testing.T) {
 	}
 	if naturalCompare("file2", "File10") >= 0 || naturalCompare("a01", "a1") != 0 && naturalCompare("a01", "a2") >= 0 || naturalCompare("b", "a") <= 0 {
 		t.Fatal("natural order")
+	}
+}
+
+func TestTransferDetailLeavesOutASizeNothingMovedFor(t *testing.T) {
+	for _, v := range []struct {
+		job   transfer.Job
+		state string
+		want  string
+	}{
+		{transfer.Job{State: "queued", Attempt: 1}, "等待", "等待"},
+		{transfer.Job{State: "failed", Attempt: 1}, "失败", "失败"},
+		{transfer.Job{State: "cancelled", Attempt: 2}, "已取消", "已取消 · 第 2 次"},
+		{transfer.Job{State: "done", Bytes: 2200000, Attempt: 1}, "完成", "完成 · 2.1M"},
+		{transfer.Job{State: "failed", Bytes: 5 << 20, Total: 20 << 20, Attempt: 1}, "失败", "失败 · 25% · 5.0M / 20.0M"},
+	} {
+		if got := transferDetail(v.job, v.state); got != v.want {
+			t.Errorf("%+v: %q, want %q", v.job, got, v.want)
+		}
 	}
 }

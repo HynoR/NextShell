@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -22,6 +23,10 @@ func (p *transferPlatform) ClearFailedTransfers() int {
 	n := len(p.jobs) - len(kept)
 	p.jobs = kept
 	return n
+}
+
+func (p *transferPlatform) DismissTransfer(id string) {
+	p.jobs = slices.DeleteFunc(p.jobs, func(j transfer.Job) bool { return j.ID == id })
 }
 
 func TestFailedTransfersTakeTheStripBadgeAndLeadTheList(t *testing.T) {
@@ -65,4 +70,32 @@ func TestFailedTransfersTakeTheStripBadgeAndLeadTheList(t *testing.T) {
 	p.jobs = []transfer.Job{{ID: "3", Label: "下载 x", State: "failed", Error: "boom", Attempt: 1}, {ID: "5", Label: "下载 y", State: "failed", Error: "boom", Attempt: 1}}
 	tt.Frame()
 	has(t, tt, "2 个传输失败")
+}
+
+func TestOneFailedTransferCanBeDismissedAlone(t *testing.T) {
+	p := &transferPlatform{fakePlatform: newPlatform(t)}
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 1000)
+	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
+	p.jobs = []transfer.Job{
+		{ID: "1", Label: "上传 config.yaml → prod-web-01:/etc/app", State: "failed", Error: "boom", Attempt: 1},
+		{ID: "2", Label: "上传 config.yaml → db-master:/etc/app", State: "failed", Error: "boom", Attempt: 1},
+		{ID: "3", Label: "上传 old.bin → db-master:/srv", State: "cancelled", Attempt: 1},
+		{ID: "4", Label: "下载 syslog ← db-master:/var/log", State: "queued", Attempt: 1},
+	}
+	tt.Frame()
+	click(t, tt, "2 个传输失败，1 个进行中") // 1 queued counts as active: open the column
+	if tt.HasText("移除 下载 syslog ← db-master:/var/log") {
+		t.Fatal("a job that has not ended can be removed")
+	}
+	click(t, tt, "移除 上传 config.yaml → db-master:/etc/app")
+	tt.Frame()
+	if len(p.jobs) != 3 || tt.HasText("移除 上传 config.yaml → db-master:/etc/app") {
+		t.Fatal("the other failures and the cancelled job stay", p.jobs)
+	}
+	has(t, tt, "上传 config.yaml → prod-web-01:/etc/app", "上传 old.bin → db-master:/srv")
+	click(t, tt, "移除 上传 old.bin → db-master:/srv")
+	if len(p.jobs) != 2 {
+		t.Fatal(p.jobs)
+	}
 }

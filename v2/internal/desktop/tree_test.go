@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
@@ -87,7 +88,7 @@ func TestRemovalIsCountedThenQueuedAndNeverFollowsLinks(t *testing.T) {
 	}
 	waitQueue(t, p, id)
 	for _, j := range p.Transfers() {
-		if j.ID == id && (!j.Items || j.Bytes != 6 || j.Total != 6 || j.Label != "删除 "+dir) {
+		if j.ID == id && (!j.Items || j.Bytes != 6 || j.Total != 6 || j.Label != "删除 test:"+dir) {
 			t.Fatal("a deletion's job counts items:", j)
 		}
 	}
@@ -119,4 +120,94 @@ func TestRemovalIsCountedThenQueuedAndNeverFollowsLinks(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("the root was not refused")
+}
+
+func TestTransferLabelsNameTheServers(t *testing.T) {
+	p := desktopFixture(t)
+	p.credentials = map[string]model.Connection{"web": {Name: "prod-web-01", Host: "10.0.0.1"}, "db": {Name: "db-master"}, "quick": {Host: "10.9.9.9"}}
+	for _, v := range []struct {
+		r    appui.TransferRequest
+		want string
+	}{
+		{appui.TransferRequest{Session: "web", Kind: "upload", Local: "/home/me/config.yaml", Remote: "/etc/app/config.yaml"}, "上传 config.yaml → prod-web-01:/etc/app"},
+		{appui.TransferRequest{Session: "db", Kind: "download", Remote: "/var/log/syslog", Local: "/tmp/x/syslog"}, "下载 syslog ← db-master:/var/log"},
+		{appui.TransferRequest{Session: "web", Kind: "remove", Remote: "/srv/old"}, "删除 prod-web-01:/srv/old"},
+		{appui.TransferRequest{Session: "web", TargetSession: "web", Kind: "move", Remote: "/a/f", Destination: "/b/f"}, "移动 f → prod-web-01:/b"},
+		{appui.TransferRequest{Session: "web", TargetSession: "web", Kind: "copy", Remote: "/a/f", Destination: "/b/f"}, "复制 f → prod-web-01:/b"},
+		{appui.TransferRequest{Session: "web", TargetSession: "db", Kind: "cross", Remote: "/a/f", Destination: "/b/f"}, "复制 f ← prod-web-01:/a → db-master:/b"},
+		{appui.TransferRequest{Session: "quick", Kind: "upload", Local: "/x/f", Remote: "/srv/f"}, "上传 f → 10.9.9.9:/srv"}, // no name: the address
+		{appui.TransferRequest{Session: "gone", Kind: "remove", Remote: "/srv/old"}, "删除 /srv/old"},
+	} {
+		if got := p.transferLabel(v.r); got != v.want {
+			t.Errorf("%s %s: %q, want %q", v.r.Kind, v.r.Remote, got, v.want)
+		}
+	}
+}
+
+// A link the user chose to download gives what it points to; a link to nothing fails with a reason.
+func TestDownloadThroughLinks(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
+	p := desktopFixture(t)
+	session, root := phase2SSH(t, p)
+	real := filepath.Join(root, "logs-real")
+	os.MkdirAll(filepath.Join(real, "sub"), 0700)
+	os.WriteFile(filepath.Join(real, "a.log"), []byte("alpha"), 0600)
+	os.WriteFile(filepath.Join(real, "sub", "b.log"), []byte("beta"), 0600)
+	os.Symlink(filepath.Join(real, "a.log"), filepath.Join(root, "link-file"))
+	os.Symlink(real, filepath.Join(root, "link-dir"))
+	os.Symlink(filepath.Join(root, "nowhere"), filepath.Join(root, "broken"))
+	out := t.TempDir()
+	id, err := p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "link-file"), Local: filepath.Join(out, "a.log")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueue(t, p, id)
+	if b, err := os.ReadFile(filepath.Join(out, "a.log")); err != nil || string(b) != "alpha" {
+		t.Fatal("link to a file:", err, string(b))
+	}
+	id, err = p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "link-dir"), Local: filepath.Join(out, "logs")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueue(t, p, id)
+	if b, err := os.ReadFile(filepath.Join(out, "logs", "sub", "b.log")); err != nil || string(b) != "beta" {
+		t.Fatal("link to a folder:", err, string(b))
+	}
+	id, err = p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "broken"), Local: filepath.Join(out, "broken")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	for failed := false; !failed; {
+		for _, j := range p.Transfers() {
+			failed = failed || j.ID == id && j.State == "failed" && j.Error != ""
+		}
+		select {
+		case <-deadline:
+			t.Fatal("a link to nothing did not fail")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if _, err = os.Lstat(filepath.Join(out, "broken")); err == nil {
+		t.Fatal("a file came out of a broken link")
+	}
+	// The list shows the three links as what they are.
+	p.ListFiles(session, root)
+	listed := awaitEvent(t, p, func(e appui.Event) bool { return e.Files != nil }).Files
+	for _, f := range listed.Entries {
+		switch f.Name {
+		case "link-file":
+			if !f.Symlink || f.Directory || f.Broken || f.Size != 5 {
+				t.Fatal(f)
+			}
+		case "link-dir":
+			if !f.Symlink || !f.Directory || f.Broken {
+				t.Fatal(f)
+			}
+		case "broken":
+			if !f.Symlink || !f.Broken {
+				t.Fatal(f)
+			}
+		}
+	}
 }

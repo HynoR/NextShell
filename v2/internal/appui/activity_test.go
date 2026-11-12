@@ -61,7 +61,18 @@ func TestActivityBarAgentFeedAndLiveEdits(t *testing.T) {
 	click(t, tt, "实时编辑 5 个文件")
 	tt.SetSize(1280, 1300)
 	has(t, tt, "监听中", "同步中", "已同步", "冲突", "出错", "权限不足", "df -h", "完成", "已自动批准", "失败", "sudo systemctl restart nginx")
+	// Overwriting the server's file asks first, naming the server and the file; backing out changes nothing.
 	click(t, tt, "覆盖远端")
+	has(t, tt, "覆盖 prod-web-01 上的 hosts", "/etc/hosts")
+	if len(p.resolved) != 0 {
+		t.Fatal("overwrote on one click", p.resolved)
+	}
+	click(t, tt, "取消")
+	if len(p.resolved) != 0 || tt.HasText("覆盖 prod-web-01 上的 hosts") {
+		t.Fatal("cancel", p.resolved)
+	}
+	click(t, tt, "覆盖远端")
+	click(t, tt, "覆盖")
 	click(t, tt, "重新载入")
 	click(t, tt, "断开 hosts")
 	click(t, tt, "全部断开")

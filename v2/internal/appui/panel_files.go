@@ -58,6 +58,7 @@ type dirTree struct {
 	peeks  map[string]bool   // listings asked for the tree alone, not to show in the list
 	failed map[string]string // a folder whose listing failed, and why
 	shown  string            // the folder the list shows, which the tree follows
+	seen   string            // the folder shown that the tree last scrolled to: it scrolls once per change, then the user's
 	hidden bool              // dotfolders were kept, as the list shows them
 }
 
@@ -153,6 +154,9 @@ func (s *filesState) handle(a *App, e Event) {
 	if tree := s.trees[e.Files.Session]; tree != nil && tree.peeks[e.Files.Path] {
 		delete(tree.peeks, e.Files.Path)
 		tree.learn(e.Files)
+		if pathBelow(e.Files.Path, tree.shown) != "" { // a folder above the one shown arrived: its rows moved the folder
+			tree.seen = ""
+		}
 		return
 	}
 	if e.Files.Session != a.activeID() {
@@ -187,7 +191,8 @@ func (s *filesState) counted(a *App, r *RemovalCount) {
 	for _, v := range r.Targets {
 		files, dirs = files+v.Files, dirs+v.Dirs
 	}
-	a.confirm("删除远程文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs), fmt.Sprintf("删除 %d 项", len(n.targets)), func() {
+	// The count may end after the tab was switched: the title names the server the files are on.
+	a.confirm("删除 "+a.sessionTitle(r.Session)+" 上的文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs)+linksNote(n.targets), fmt.Sprintf("删除 %d 项", len(n.targets)), func() { // danger
 		for _, v := range r.Targets {
 			id, e := a.P.QueueTransfer(TransferRequest{Session: r.Session, Kind: "remove", Remote: v.Path, Items: v.Files + v.Dirs})
 			if e != nil {
@@ -197,6 +202,14 @@ func (s *filesState) counted(a *App, r *RemovalCount) {
 			s.removing[id] = r.Session
 		}
 	})
+}
+
+// linksNote is what a delete confirm adds when links are among the targets: they go, what they lead to stays.
+func linksNote(files []sftpfs.Entry) string {
+	if slices.ContainsFunc(files, func(f sftpfs.Entry) bool { return f.Symlink }) {
+		return "\n链接只会删除链接本身，不会动它指向的内容。"
+	}
+	return ""
 }
 
 // fileNames lists up to five names for a confirm.
@@ -216,7 +229,7 @@ func fileNames(files []sftpfs.Entry) string {
 func (a *App) askRemove(id string, targets []sftpfs.Entry) {
 	s := &a.files
 	if !slices.ContainsFunc(targets, func(f sftpfs.Entry) bool { return f.Directory && !f.Symlink }) {
-		a.confirm("删除远程文件", fileNames(targets)+"\n删除后无法恢复。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
+		a.confirm("删除 "+a.sessionTitle(id)+" 上的文件", fileNames(targets)+"\n删除后无法恢复。"+linksNote(targets), fmt.Sprintf("删除 %d 项", len(targets)), func() { // danger
 			for _, v := range targets {
 				a.P.FileAction(id, "remove", v.Path, "")
 			}
@@ -418,11 +431,15 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 			}
 		}
 		item := ui.TreeItem(c.Key("dir-"+dir), name, tree.flag(dir), children).Label("目录 " + dir).Selected(dir == tree.shown).Tooltip(dir)
+		if dir == tree.shown && tree.seen != dir {
+			item.ScrollIntoView()
+			tree.seen = dir
+		}
 		if item.Clicked() {
 			a.later(func() { a.listFiles(id, dir) })
 		}
 	}
-	ui.Scroll(c).Fill().Children(func() {
+	ui.Scroll(c.Key("tree-" + id)).Fill().Children(func() {
 		ui.Tree(c, func() { node("/") }).FillWidth().Padding(4)
 	})
 }
@@ -445,6 +462,7 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, cwd)
 		}
 	}
+	exited := a.P.Exited(id) // the list is what it was when the connection ended
 	ui.Row(c).FillWidth().Padding(6, 8).Gap(2).AlignItems(ui.Center).Children(func() {
 		treeLabel := "隐藏目录树"
 		if s.treeHidden {
@@ -454,7 +472,7 @@ func (a *App) filesPanel(c *ui.Context) {
 			s.treeHidden = !s.treeHidden
 			a.report(a.P.SaveUIState("sftp-tree", fmt.Sprint(s.treeHidden)), "")
 		}
-		if iconButton(c, "上级目录", "up").Clicked() && s.session == id {
+		if iconButton(c, "上级目录", "up").Disabled(exited).Clicked() && s.session == id {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
@@ -465,15 +483,20 @@ func (a *App) filesPanel(c *ui.Context) {
 		if follow.Clicked() {
 			s.follow, s.followed = !s.follow, ""
 		}
-		if iconButton(c, "上传", "upload").Clicked() {
+		if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
 			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
 		}
-		if iconButton(c, "刷新", "refresh").Clicked() {
+		if iconButton(c, "刷新", "refresh").Disabled(exited).Clicked() {
 			a.listFiles(id, orDefault(s.path, "."))
 		}
-		iconButton(c, "更多", "more").PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
+		iconButton(c, "更多", "more").Disabled(exited).PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
-	if s.follow && a.P.SessionDir(id) == "" {
+	if exited {
+		ui.Row(c).FillWidth().Padding(5, 10).Gap(8).AlignItems(ui.Center).Label("连接已断开的提示").Children(func() {
+			ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.TextMuted)
+			muted(c, "连接已断开，文件操作不可用").FontSize(12).Grow(1).MinWidth(0)
+		})
+	} else if s.follow && a.P.SessionDir(id) == "" {
 		a.followHint(c)
 	}
 	if s.session != id {
@@ -485,6 +508,7 @@ func (a *App) filesPanel(c *ui.Context) {
 		return
 	}
 	if s.treeHidden {
+		s.tree(id).seen = "" // shown again, it scrolls to the folder again
 		a.fileList(c, id)
 	} else {
 		ui.Split(c, &s.treeWidth, func() { a.dirTreeView(c, id) }, func() { a.fileList(c, id) }).SplitReset(200).Grow(1).FillWidth().MinHeight(0)
@@ -505,7 +529,7 @@ func (a *App) filesPanel(c *ui.Context) {
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
 func (a *App) followHint(c *ui.Context) {
 	t := c.Theme()
-	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + shortcutLabel("K") + "，选「插入目录跟踪脚本」，检查后回车执行即可。"
+	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + appShortcutLabel("K") + "，选「让文件面板跟随终端目录」，检查后回车执行即可。"
 	if a.Prefs.ShellIntegration == "off" {
 		text = "目录跟踪在设置里是关闭的。到设置的「Shell 集成」打开后，文件面板才能跟随终端目录。"
 	}
@@ -540,10 +564,13 @@ func (a *App) listError(c *ui.Context, id, why string) {
 func (a *App) fileList(c *ui.Context, id string) {
 	t := c.Theme()
 	s := &a.files
+	dead := a.P.Exited(id) // nothing can be done to a connection that ended: no menus, no drops
 	zone := ui.Column(c).Grow(1).FillWidth().FillHeight().MinWidth(0).MinHeight(0)
-	zone.ContextMenu(func(m *ui.Menu) { a.filesMenuItems(m, id) })
-	if dropped := zone.DroppedFiles(); dropped != nil {
-		a.upload(id, dropped)
+	if !dead {
+		zone.ContextMenu(func(m *ui.Menu) { a.filesMenuItems(m, id) })
+		if dropped := zone.DroppedFiles(); dropped != nil {
+			a.upload(id, dropped)
+		}
 	}
 	if zone.FileDragOver() {
 		zone.Border(2, t.Accent)
@@ -561,9 +588,12 @@ func (a *App) fileList(c *ui.Context, id string) {
 		s.list.Selection = &s.selection
 		s.list.Key = func(i int) any { return s.entries[i].Path }
 		s.list.Label = func(i int) string { return s.entries[i].Name }
-		s.list.CellMenu = func(m *ui.Menu, row, col int) {
-			if row >= 0 && row < len(s.entries) {
-				a.fileMenuItems(m, id, s.entries[row])
+		s.list.CellMenu = nil
+		if !dead {
+			s.list.CellMenu = func(m *ui.Menu, row, col int) {
+				if row >= 0 && row < len(s.entries) {
+					a.fileMenuItems(m, id, s.entries[row])
+				}
 			}
 		}
 		cols := []ui.TableColumn{{Title: "名称", ID: "name", Sortable: true}, {Title: "大小", ID: "size", Width: 64, Align: ui.End, Sortable: true}, {Title: "修改时间", ID: "modified", Width: 100, Sortable: true}}
@@ -577,24 +607,26 @@ func (a *App) fileList(c *ui.Context, id string) {
 					return
 				}
 				icon := "file"
-				if f.Directory {
+				switch {
+				case f.Broken:
+					icon = "link"
+				case f.Directory:
 					icon = "folder"
 				}
 				label := "选择 " + f.Name
 				if f.Directory {
 					label = "打开 " + f.Name
 				}
-				ui.Row(c).Label(label).Gap(6).AlignItems(ui.Center).Tooltip(f.Mode).Children(func() {
+				ui.Row(c).Label(label).Gap(6).AlignItems(ui.Center).Tooltip(linkTooltip(f)).Children(func() {
 					ui.Icon(c, appIcons[icon]).FontSize(15).TextColor(faint)
-					name := f.Name
-					if f.Symlink {
-						name += " →"
+					ui.Text(c, f.Name).SingleLine()
+					if f.Symlink { // where it leads, as the folder or file it is
+						ui.Text(c, linkTail(f)).FontSize(12).TextColor(faint).SingleLine()
 					}
-					ui.Text(c, name).SingleLine()
 				})
 			case 1:
 				size := "—"
-				if !f.Directory {
+				if !f.Directory && !f.Broken {
 					size = humanSize(f.Size)
 				}
 				ui.Text(c, size).FontSize(12).TextColor(faint)
@@ -602,17 +634,46 @@ func (a *App) fileList(c *ui.Context, id string) {
 				ui.Text(c, shortTime(f.Modified)).FontSize(12).TextColor(faint).SingleLine()
 			}
 		}).Grow(1).FillWidth()
-		a.fileClipboardKeys(table, id)
-		a.fileKeys(table, id)
-		if table.Submitted() && s.row >= 0 && s.row < len(s.entries) {
+		if !dead {
+			a.fileClipboardKeys(table, id)
+			a.fileKeys(table, id)
+		}
+		if table.Submitted() && !dead && s.row >= 0 && s.row < len(s.entries) {
 			f := s.entries[s.row]
-			if f.Directory {
+			switch {
+			case f.Broken:
+				a.toast("「" + f.Name + "」是失效的链接：它指向的位置不存在或无法访问")
+			case f.Directory:
 				a.listFiles(id, f.Path)
-			} else if !f.Symlink {
+			default:
 				a.openEditor(id, f.Path)
 			}
 		}
 	})
+}
+
+// linkTail is what follows a link's name in its row: where it points, and 失效 when nothing is there.
+func linkTail(f sftpfs.Entry) string {
+	tail := "→"
+	if f.Target != "" {
+		tail += " " + f.Target
+	}
+	if f.Broken {
+		tail += "（失效）"
+	}
+	return tail
+}
+
+// linkTooltip is the tooltip of a row: its permissions, and for a link where it leads.
+func linkTooltip(f sftpfs.Entry) string {
+	if !f.Symlink {
+		return f.Mode
+	}
+	tip := f.Mode + "\n链接指向 " + orDefault(f.Target, "未知位置")
+	if f.Broken {
+		tip += "，但那里不存在或无法访问"
+	}
+	return tip
 }
 
 // pathBar shows the directory as breadcrumbs; a click jumps to a parent,
@@ -678,22 +739,24 @@ func (a *App) pick(o FilePick, done func([]string)) {
 	})
 }
 func (a *App) upload(id string, locals []string) {
+	var reqs []TransferRequest
 	for _, local := range locals {
-		a.queue(TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(a.files.path, filepath.Base(local))})
+		reqs = append(reqs, TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(a.files.path, filepath.Base(local))})
 	}
+	a.queue(reqs...)
 }
 
 // downloadTo asks where to put files: a save panel for one file, a folder otherwise.
 func (a *App) downloadTo(id string, files []sftpfs.Entry) {
 	if len(files) == 1 && !files[0].Directory {
 		f := files[0]
-		a.pick(FilePick{Title: "下载到", DefaultPath: filepath.Join(a.Prefs.DownloadDir, f.Name), Save: true}, func(p []string) { a.download(id, f, p[0], true) })
+		a.pick(FilePick{Title: "下载到", DefaultPath: filepath.Join(a.Prefs.DownloadDir, f.Name), Save: true}, func(p []string) {
+			a.download(id, files, func(sftpfs.Entry) string { return p[0] }, true)
+		})
 		return
 	}
 	a.pick(FilePick{Title: "下载到文件夹", DefaultPath: a.Prefs.DownloadDir, Directory: true}, func(p []string) {
-		for _, f := range files {
-			a.download(id, f, filepath.Join(p[0], f.Name), false)
-		}
+		a.download(id, files, func(f sftpfs.Entry) string { return filepath.Join(p[0], f.Name) }, false)
 	})
 }
 
@@ -812,11 +875,13 @@ func safeTerminalPath(s string) error {
 }
 
 func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
-	if f.Directory {
+	switch {
+	case f.Broken: // nothing to open or download: it can still be renamed and deleted
+	case f.Directory:
 		if m.Item("打开").Chosen() {
 			a.later(func() { a.listFiles(id, f.Path) })
 		}
-	} else if !f.Symlink {
+	default:
 		if m.Item("编辑").Chosen() {
 			a.later(func() { a.openEditor(id, f.Path) })
 		}
@@ -824,7 +889,7 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 			a.later(func() { a.externalEdit(id, f.Path) })
 		}
 	}
-	if !f.Symlink {
+	if !f.Broken {
 		targets := a.selectedFiles(&f)
 		label := ""
 		if len(targets) > 1 {
@@ -832,9 +897,7 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 		}
 		if m.Item("下载到默认目录" + label).Chosen() {
 			a.later(func() {
-				for _, v := range targets {
-					a.download(id, v, filepath.Join(a.Prefs.DownloadDir, v.Name), false)
-				}
+				a.download(id, targets, func(f sftpfs.Entry) string { return filepath.Join(a.Prefs.DownloadDir, f.Name) }, false)
 			})
 		}
 		if m.Item("下载到…" + label).Chosen() {
@@ -870,16 +933,44 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 	}
 }
 
-func (a *App) download(id string, f sftpfs.Entry, local string, overwrite bool) {
-	if err := model.ValidateDownloadName(f.Name); err != nil {
-		a.fail(err)
-		return
+// download queues files to the local path to gives each; a name that is not safe to write, and a link that
+// leads nowhere, are skipped with a word.
+func (a *App) download(id string, files []sftpfs.Entry, to func(sftpfs.Entry) string, overwrite bool) {
+	var reqs []TransferRequest
+	for _, f := range files {
+		if err := model.ValidateDownloadName(f.Name); err != nil {
+			a.fail(err)
+			continue
+		}
+		if f.Broken {
+			a.toast("「" + f.Name + "」是失效的链接，没有可下载的内容")
+			continue
+		}
+		reqs = append(reqs, TransferRequest{Session: id, Kind: "download", Remote: f.Path, Local: to(f), Overwrite: overwrite})
 	}
-	a.queue(TransferRequest{Session: id, Kind: "download", Remote: f.Path, Local: local, Overwrite: overwrite})
+	a.queue(reqs...)
 }
-func (a *App) queue(req TransferRequest) {
-	_, e := a.P.QueueTransfer(req)
-	a.report(e, "已加入传输队列")
+
+// transferQueuedID is the one slot of the 已加入 toast: another batch replaces it.
+const transferQueuedID = "transfer-queued"
+
+// queue queues the transfers and says so once: a hundred files are one toast, not a hundred. A failure is
+// shown once however many requests met it.
+func (a *App) queue(reqs ...TransferRequest) {
+	n, failed := 0, map[string]bool{}
+	for _, req := range reqs {
+		if _, e := a.P.QueueTransfer(req); e == nil {
+			n++
+		} else if !failed[e.Error()] {
+			failed[e.Error()] = true
+			a.fail(e)
+		}
+	}
+	if n > 0 {
+		msg := fmt.Sprintf("已加入 %d 个传输", n)
+		a.log(msg)
+		a.addToast(ui.Toast{ID: transferQueuedID, Title: msg, Timeout: 3 * time.Second})
+	}
 }
 
 func (a *App) openFileDialog(kind string, f sftpfs.Entry) {
@@ -912,7 +1003,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 					for _, t := range a.Tabs {
 						if !t.Local && t.ID != id {
 							ids = append(ids, t.ID)
-							names = append(names, t.Title)
+							names = append(names, a.tabTitle(t))
 						}
 					}
 					pick(c, "目标会话", "（选择会话）", &d.text, ids, names)
@@ -1000,13 +1091,15 @@ func (a *App) pasteRemoteClipboard(id string) {
 		a.toast("剪贴板为空")
 		return
 	}
-	for _, src := range clip.Paths {
-		kind := "copy"
-		if clip.Cut {
-			kind = "move"
-		}
-		a.queue(TransferRequest{Session: clip.Session, TargetSession: id, Kind: kind, Remote: src, Destination: path.Join(a.files.path, path.Base(src))})
+	kind := "copy"
+	if clip.Cut {
+		kind = "move"
 	}
+	var reqs []TransferRequest
+	for _, src := range clip.Paths {
+		reqs = append(reqs, TransferRequest{Session: clip.Session, TargetSession: id, Kind: kind, Remote: src, Destination: path.Join(a.files.path, path.Base(src))})
+	}
+	a.queue(reqs...)
 	// Keep the clipboard on failures; a completed cut then fails safely (source absent).
 }
 
@@ -1117,7 +1210,7 @@ func (a *App) transferSection(c *ui.Context) {
 			}
 			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, border).Children(func() {
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, j.Label).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(j.Label)
+					ui.Text(c, j.Label).FontSize(12).Grow(1).MinWidth(0).Tooltip(j.Label) // wraps: the server is the end of it
 					switch j.State {
 					case "queued", "running":
 						if ghost(c, "取消", "").Clicked() {
@@ -1126,6 +1219,10 @@ func (a *App) transferSection(c *ui.Context) {
 					case "failed", "cancelled":
 						if ghost(c, "重试", "").Clicked() {
 							a.report(a.P.RetryTransfer(j.ID), "")
+						}
+						if iconButton(c, "移除 "+j.Label, "close").Clicked() { // one row, not all the failed ones
+							id := j.ID
+							a.later(func() { a.P.DismissTransfer(id) })
 						}
 					}
 				})
@@ -1150,7 +1247,10 @@ func (a *App) transferSection(c *ui.Context) {
 
 // transferDetail is the grey line of a job: its state, how far it is, the speed and the attempt.
 func transferDetail(j transfer.Job, state string) string {
-	detail := state + " · " + humanSize(j.Bytes)
+	detail := state
+	if j.Bytes > 0 { // nothing moved yet: 「失败 · 0 B」 says nothing
+		detail += " · " + humanSize(j.Bytes)
+	}
 	switch {
 	case j.Items: // a deletion counts items, and has no speed
 		detail = state
