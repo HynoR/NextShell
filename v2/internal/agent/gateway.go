@@ -26,9 +26,14 @@ type Host struct {
 type Session struct {
 	ID           string `json:"id"`
 	ConnectionID string `json:"connectionId"`
+	Name         string `json:"name"`     // the connection's name; empty for a local terminal
+	Host         string `json:"host"`     // empty for a local terminal
+	Encoding     string `json:"encoding"` // the host's text encoding; empty for a local terminal
 	Title        string `json:"title"`
 	Local        bool   `json:"local"`
 	CWD          string `json:"cwd"`
+	Cols         int    `json:"cols"`
+	Rows         int    `json:"rows"`
 	Connected    bool   `json:"connected"`
 }
 type Command struct {
@@ -46,6 +51,7 @@ type ExecResult struct {
 	Stderr    string `json:"stderr"`
 	ExitCode  int    `json:"exitCode"`
 	ActualCWD string `json:"actualCwd"`
+	Truncated bool   `json:"truncated"` // output or stderr passed the size cap; the first part is kept
 }
 type Backend interface {
 	Hosts() ([]Host, error)
