@@ -1,0 +1,70 @@
+name: NextShell 2
+
+on:
+  push:
+    paths:
+      - "v2/**"
+      - "packages/mcp/**"
+      - "packages/shared/src/mcp-config.ts"
+      - "nextshell-plugin/**"
+      - ".github/workflows/v2.yml"
+  pull_request:
+    paths:
+      - "v2/**"
+      - "packages/mcp/**"
+      - "packages/shared/src/mcp-config.ts"
+      - "nextshell-plugin/**"
+      - ".github/workflows/v2.yml"
+
+concurrency:
+  group: v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: v2
+    steps:
+      - uses: actions/checkout@v4
+      # mygo needs no cgo and no system packages to build; native UI tests run headless (ui.Tester).
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: v2/go.mod
+          cache-dependency-path: v2/go.sum
+      # internal/exchange runs the 1.x TypeScript import/export code through Node's type stripping.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: go vet ./...
+      - run: go test ./... -count=1
+      - name: Race detector
+        if: runner.os == 'Linux'
+        run: go test -race ./... -count=1
+      - name: Development build (--agent-test and inspector)
+        run: go test -tags nextshell_devtools ./cmd/... -count=1
+
+  mcp:
+    name: "@nextshell/mcp"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # Native add-ons of the 1.x desktop app are not needed to test the bridge.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm --filter @nextshell/mcp run typecheck
+      - run: pnpm exec vitest run packages/mcp/src
+      - name: Packed install smoke test
+        run: pnpm --filter @nextshell/mcp run smoke:pack
