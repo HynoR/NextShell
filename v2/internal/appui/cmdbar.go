@@ -177,7 +177,7 @@ func (a *App) sendLine(s *Session, text string) {
 			return
 		}
 	}
-	if e := a.P.ExecuteCommand(s.ID, text, false, true); e != nil {
+	if e := a.P.ExecuteCommand(s.ID, text, true); e != nil {
 		a.fail(e)
 		return
 	}

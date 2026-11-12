@@ -72,7 +72,7 @@ func (a *App) sendText(text string, all, cr bool) {
 		a.toast("请先打开一个会话")
 		return
 	}
-	if e := a.P.ExecuteCommand(a.activeID(), text, false, cr); e != nil {
+	if e := a.P.ExecuteCommand(a.activeID(), text, cr); e != nil {
 		a.fail(e)
 		return
 	}
@@ -109,7 +109,7 @@ func (a *App) sendToAll(text string, cr bool) {
 	a.confirmDanger("发送到全部会话", msg, fmt.Sprintf("发送到 %d 个会话", len(targets)), func() {
 		var failed, detail []string
 		for i, s := range targets {
-			if e := a.P.ExecuteCommand(s.ID, text, false, cr); e != nil {
+			if e := a.P.ExecuteCommand(s.ID, text, cr); e != nil {
 				failed, detail = append(failed, titles[i]), append(detail, titles[i]+"："+e.Error())
 			}
 		}

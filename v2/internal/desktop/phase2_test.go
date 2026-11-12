@@ -133,13 +133,13 @@ func TestPhase2PlatformRealSSHWorkflow(t *testing.T) {
 	if e = p.SaveCommand(command); e != nil {
 		t.Fatal(e)
 	}
-	if e = p.ExecuteCommand(session, command.Text, true); e != nil {
+	if e = p.ExecuteCommand(target, command.Text); e != nil {
 		t.Fatal(e)
 	}
 	deadline := time.Now().Add(time.Second)
 	for !strings.Contains(p.ScreenText(target), "hello-command") {
 		if time.Now().After(deadline) {
-			t.Fatal("all-session command not delivered")
+			t.Fatal("command not delivered")
 		}
 		time.Sleep(time.Millisecond)
 	}
@@ -222,7 +222,7 @@ func TestPhase2PlatformImportPreviewExportAndFolderSpecs(t *testing.T) {
 }
 func TestPhase2InvalidCallsAndShutdown(t *testing.T) {
 	p := desktopFixture(t)
-	if p.ExecuteCommand("missing", "pwd", false) == nil {
+	if p.ExecuteCommand("missing", "pwd") == nil {
 		t.Fatal("missing command target accepted")
 	}
 	if p.SaveCommand(model.Command{}) == nil {

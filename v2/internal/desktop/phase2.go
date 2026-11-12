@@ -459,7 +459,10 @@ func (p *Platform) SignalProcess(session string, pid int, signal string) {
 	})
 }
 func (p *Platform) SaveCommand(c model.Command) error { return p.store.SaveCommand(c) }
-func (p *Platform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
+
+// ExecuteCommand sends text, and a carriage return unless appendCR says no, to one session. Sending to
+// several is the caller's loop over the sessions it showed the user.
+func (p *Platform) ExecuteCommand(session, text string, appendCR ...bool) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("命令为空")
 	}
@@ -467,28 +470,7 @@ func (p *Platform) ExecuteCommand(session, text string, all bool, appendCR ...bo
 	if len(appendCR) > 0 && !appendCR[0] {
 		suffix = ""
 	}
-	if !all {
-		return p.Send(session, text+suffix)
-	}
-	p.mu.Lock()
-	ids := make([]string, 0, len(p.sessions))
-	for id := range p.sessions {
-		ids = append(ids, id)
-	}
-	p.mu.Unlock()
-	if len(ids) == 0 {
-		return errors.New("没有打开的会话")
-	}
-	var errs []string
-	for _, id := range ids {
-		if e := p.Send(id, text+suffix); e != nil {
-			errs = append(errs, id+": "+e.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
-	}
-	return nil
+	return p.Send(session, text+suffix)
 }
 func readImportFile(file string) ([]byte, error) {
 	info, e := os.Lstat(file)

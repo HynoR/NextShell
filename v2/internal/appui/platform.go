@@ -184,7 +184,7 @@ type Platform interface {
 	WatchMonitorDetail(session string, on bool)
 	SignalProcess(session string, pid int, signal string)
 	SaveCommand(model.Command) error
-	ExecuteCommand(session, text string, all bool, appendCR ...bool) error
+	ExecuteCommand(session, text string, appendCR ...bool) error
 	PreviewImport(path, password, format string)
 	CommitImport(token, folder, policy string)
 	ExportConnections(path string, password *string, ids []string)

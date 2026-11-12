@@ -67,7 +67,7 @@ func (p *fakePlatform) ReloadRemote(session, path string) {
 }
 func (p *fakePlatform) OpenURL(s string) error      { p.opened = append(p.opened, s); return nil }
 func (p *fakePlatform) SessionDir(id string) string { return "" }
-func (p *fakePlatform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
+func (p *fakePlatform) ExecuteCommand(session, text string, appendCR ...bool) error {
 	p.sent = append(p.sent, text)
 	return nil
 }
