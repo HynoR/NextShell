@@ -5,6 +5,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -36,12 +37,17 @@ func TestTerminalClipboardKeysAndOrderedBurst(t *testing.T) {
 	term.Feed([]byte("COPY_ME"))
 	tt := ui.NewTester(func(c *ui.Context) { terminal.View(c, term).Fill().AutoFocus() }, 800, 200)
 	tt.Command("selectAll")
-	tt.Key(ui.Ctrl|ui.Shift, ui.KeyC)
+	// The terminal plugin's copy/paste chords: Cmd on macOS, Ctrl+Shift elsewhere.
+	chord := ui.Ctrl | ui.Shift
+	if runtime.GOOS == "darwin" {
+		chord = ui.Super
+	}
+	tt.Key(chord, ui.KeyC)
 	if !strings.Contains(tt.Clipboard(), "COPY_ME") {
 		t.Fatal("terminal copy intercepted", tt.Clipboard())
 	}
 	tt.SetClipboard("PASTE_ME")
-	tt.Key(ui.Ctrl|ui.Shift, ui.KeyV)
+	tt.Key(chord, ui.KeyV)
 	want := "PASTE_ME" + strings.Repeat("abc0123", 100) + "\r"
 	for _, r := range strings.Repeat("abc0123", 100) {
 		tt.Type(string(r))

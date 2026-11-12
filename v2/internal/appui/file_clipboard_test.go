@@ -19,16 +19,16 @@ func TestOfficialFileMultiselectionAndClipboardAcrossSessions(t *testing.T) {
 	a.Phase2.RemotePath = "/src"
 	a.Phase2.Files = []sftpfs.Entry{{Name: "a", Path: "/src/a"}, {Name: "folder", Path: "/src/folder", Directory: true}}
 	tt.Frame()
-	if err := tt.ClickWith(ui.Ctrl, "选择 a"); err != nil {
+	if err := tt.ClickWith(ui.Cmd, "选择 a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ClickWith(ui.Ctrl, "打开 folder"); err != nil {
+	if err := tt.ClickWith(ui.Cmd, "打开 folder"); err != nil {
 		t.Fatal(err)
 	}
 	if a.Phase2.FileSelection.Len() != 2 {
 		t.Fatal("official multiselect", a.Phase2.FileSelection.Len())
 	}
-	tt.Key(ui.Ctrl, ui.KeyC)
+	tt.Key(ui.Cmd, ui.KeyC)
 	p.events = []appui.Event{{Session: &appui.Session{ID: "two", Title: "two", Terminal: newTerminal(t, "")}}}
 	tt.Frame()
 	a.Page = "files"

@@ -347,7 +347,7 @@ func TestRealLocalWorkbenchAndHistory(t *testing.T) {
 		t.Fatal("command accessibility missing")
 	}
 	tt.ClickAt(info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2)
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("printf '\\nnextshell-enter-ok\\n'")
 	tt.Key(0, ui.KeyEnter)
 	until = time.Now().Add(3 * time.Second)

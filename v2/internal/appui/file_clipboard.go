@@ -6,7 +6,6 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sftpfs"
 	"path"
-	"runtime"
 )
 
 type remoteClipboard struct {
@@ -83,10 +82,7 @@ func (a *App) fileClipboardToolbar(c *ui.Context, id string) {
 	})
 }
 func (a *App) fileClipboardKeys(e ui.Element, id string) {
-	mod := ui.Ctrl
-	if runtime.GOOS == "darwin" {
-		mod = ui.Super
-	}
+	mod := ui.Cmd
 	if e.Shortcut(mod, ui.KeyC) {
 		a.setRemoteClipboard(id, nil, false)
 	}

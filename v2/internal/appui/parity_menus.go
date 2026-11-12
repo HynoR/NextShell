@@ -186,10 +186,7 @@ func (a *App) tabMenu(item ui.Element, s *Session, i int) {
 
 // Shortcuts belong only to the terminal element: never steal Ctrl+W, input/composition keys.
 func (a *App) terminalShortcuts(e ui.Element) {
-	mod := ui.Ctrl
-	if runtime.GOOS == "darwin" {
-		mod = ui.Super
-	}
+	mod := ui.Cmd
 	for n, k := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
 		if e.Shortcut(mod, k) {
 			index := n

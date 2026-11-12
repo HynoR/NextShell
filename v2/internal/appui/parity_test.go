@@ -25,7 +25,7 @@ func TestParitySettingsSaveAndReload(t *testing.T) {
 	a.ShowWorkbench = false
 	tt.Frame()
 	click(t, tt, "终端字号（10..24）")
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("18")
 	click(t, tt, "保存设置")
 	if p.Preferences().FontSize != 18 || a.Prefs.FontSize != 18 {
@@ -36,7 +36,7 @@ func TestParitySettingsSaveAndReload(t *testing.T) {
 		t.Fatal("not restored")
 	}
 	click(t, tt, "终端字号（10..24）")
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("99")
 	click(t, tt, "保存设置")
 	if p.Preferences().FontSize != 18 || !strings.Contains(a.Message, "10..24") {
@@ -67,7 +67,7 @@ func TestParityConnectionContextScopeRenameAndTrash(t *testing.T) {
 	tt.Frame()
 	chooseMenu(t, tt, "alpha", "重命名连接")
 	click(t, tt, "连接新名称")
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("renamed")
 	click(t, tt, "确认重命名")
 	s, _ := p.Snapshot()
@@ -96,17 +96,17 @@ func TestParityTerminalScopedTabShortcuts(t *testing.T) {
 	a, p, tt := fixture(t)
 	p.events = []appui.Event{{Session: &appui.Session{ID: "a", Title: "one", Terminal: newTerminal(t, "one")}}, {Session: &appui.Session{ID: "b", Title: "two", Terminal: newTerminal(t, "two")}}}
 	tt.Frame()
-	tt.Key(ui.Ctrl, ui.Key1)
+	tt.Key(ui.Cmd, ui.Key1)
 	tt.Frame()
 	if a.Active != 0 {
-		t.Fatal("Ctrl1", a.Active)
+		t.Fatal("Cmd1", a.Active)
 	}
 	tt.Key(ui.Ctrl, ui.KeyPageDown)
 	tt.Frame()
 	if a.Active != 1 {
 		t.Fatal("next", a.Active)
 	}
-	tt.Key(ui.Ctrl|ui.Shift, ui.KeyD)
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyD)
 	tt.Frame()
 	if p.cloned != 1 {
 		t.Fatal("duplicate", p.cloned)
@@ -117,7 +117,7 @@ func TestParityTerminalScopedTabShortcuts(t *testing.T) {
 		t.Fatal("shell CtrlW intercepted")
 	}
 	click(t, tt, "标签名称")
-	tt.Key(ui.Ctrl, ui.Key1)
+	tt.Key(ui.Cmd, ui.Key1)
 	tt.Frame()
 	if a.Active != 1 {
 		t.Fatal("input shortcut stolen")

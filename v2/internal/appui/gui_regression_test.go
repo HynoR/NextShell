@@ -13,7 +13,7 @@ func TestGUIRealTypingRename(t *testing.T) {
 	p.events = []appui.Event{{Session: s}}
 	tt.Frame()
 	click(t, tt, "标签名称")
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	for _, r := range "typed-name" {
 		tt.Type(string(r))
 	}
@@ -69,7 +69,7 @@ func TestGUITitleOSCManualPriorityAndReconnect(t *testing.T) {
 		t.Fatal("OSC title not displayed", s.Title)
 	}
 	click(t, tt, "标签名称")
-	tt.Key(ui.Ctrl, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("manual-title")
 	click(t, tt, "重命名")
 	s.Terminal.Feed([]byte("\x1b]2;later-remote-title\x07"))
