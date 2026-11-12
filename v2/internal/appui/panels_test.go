@@ -176,15 +176,16 @@ func TestRemoteEditorOpensFromFilesAndGuardsDirtyClose(t *testing.T) {
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("typing not tracked")
 	}
-	click(t, tt, "关闭文档 /etc/app.conf")
+	has(t, tt, "app.conf", "未保存") // the tab: the file's name and the unsaved dot
+	click(t, tt, "关闭标签 app.conf")
 	has(t, tt, "关闭未保存的文件")
 	click(t, tt, "取消")
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("cancel closed")
 	}
-	click(t, tt, "关闭文档 /etc/app.conf")
+	click(t, tt, "关闭标签 app.conf")
 	click(t, tt, "不保存")
-	if a.DirtyDocumentCount() != 0 || tt.HasText("重新载入") {
+	if a.DirtyDocumentCount() != 0 || tt.HasText("重新载入") || tt.HasText("关闭标签 app.conf") {
 		t.Fatal("discard")
 	}
 }
@@ -649,8 +650,12 @@ func TestRemoteEditorWindowGuardsCloseAndHidesWhenEmpty(t *testing.T) {
 	session(t, p, tt, "one", "one", remoteHost("one"))
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
 	tt.Frame()
-	if shown != 1 || tt.HasText("重新载入") {
-		t.Fatal("editor should open in its own window", shown)
+	if shown != 0 || !tt.HasText("重新载入") {
+		t.Fatal("the editor opens as a tab of the main window", shown)
+	}
+	click(t, tt, "在新窗口打开")
+	if shown != 1 || tt.HasText("重新载入") || tt.HasText("关闭标签 a.conf") {
+		t.Fatal("pop out", shown)
 	}
 	ed.Frame()
 	has(t, ed, "/etc/a.conf", "保存", "重新载入")
@@ -691,6 +696,7 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
 	tt.Frame()
+	click(t, tt, "在新窗口打开")
 	ed.Frame()
 	// where says which windows show text. The editor window builds first, as a focused
 	// one does, and again after the main window polled the events (the app wakes it).
@@ -710,6 +716,7 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	}
 
 	// The editor's save arrives as an event the main window polls.
+	click(t, ed, "保存")
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}, Saved: true}, Message: "已保存远程文件", ForEditor: true})
 	expect("save result", "已保存远程文件", false, true, false)
 	// Everything else, whichever window builds first.
@@ -717,9 +724,9 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	expect("other event", "外部编辑器已关闭", true, false, false)
 	// A toast raised while the editor window builds.
 	click(t, ed, "外部编辑器参数")
-	ed.Type("--wait")
+	ed.Type(`--wait "x`)
 	click(t, ed, "用外部编辑器打开")
-	expect("editor action", "编辑器参数须为 JSON 字符串数组，如 [\"--wait\"]", false, true, false)
+	expect("editor action", "外部编辑器参数里有没有闭合的引号", false, true, false)
 	ed.Advance(7 * time.Second) // the toast times out
 	// An error's details open in the window that showed the error.
 	p.events = append(p.events, appui.Event{Message: "dial tcp: connection refused", ForEditor: true})
@@ -750,6 +757,7 @@ func TestEditorReloadAsksThePlatformToReload(t *testing.T) {
 	session(t, p, tt, "one", "one", remoteHost("one"))
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
 	tt.Frame()
+	click(t, tt, "在新窗口打开")
 	ed.Frame()
 	click(t, ed, "重新载入")
 	click(t, ed, "丢弃并重新载入")

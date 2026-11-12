@@ -21,11 +21,12 @@ type tabsState struct {
 	middle, held         string    // the tab the middle button was held on in the last frame, and in this one
 }
 
-// closeAsk is a close of session tabs that asks first, because some are connected.
+// closeAsk is a close of session tabs that asks first: some are connected, or leave unsaved files.
 type closeAsk struct {
 	ids   []string
-	live  int  // connected SSH tabs among them
-	never bool // 不再询问 ticked
+	live  int               // connected SSH tabs among them
+	dirty []*remoteDocument // the unsaved files that go with them
+	never bool              // 不再询问 ticked
 }
 
 // ExitNeedsConfirm says whether closing the main window should ask first.
@@ -102,22 +103,28 @@ func (a *App) plusMenu(c *ui.Context) {
 func (a *App) tabStrip(c *ui.Context) {
 	t := c.Theme()
 	ui.ScrollHorizontal(c).Height(38).MinWidth(0).Shrink(1).Children(func() {
-		if len(a.Tabs) == 0 {
+		docs := a.documentsIn(false)
+		if len(a.Tabs) == 0 && len(docs) == 0 {
 			return
 		}
 		// The widget keeps a selection inside the strip; a window with tabs but none active (an agent opened
 		// the only one in the background) must stay that way, so it gets a copy and a.Active only follows a click.
 		selected := a.Active
-		tool := a.activeTool() // a tool tab is selected after the sessions' tabs
-		if tool != nil {
+		tool := a.activeTool() // the tool tabs follow the sessions' tabs, and the documents' the tools'
+		doc := a.activeEditor()
+		switch {
+		case doc != nil:
+			selected = len(a.Tabs) + len(a.monitor.tools) + slices.Index(docs, doc)
+		case tool != nil:
 			selected = len(a.Tabs) + slices.Index(a.monitor.tools, *tool)
 		}
+		other := tool != nil || doc != nil
 		a.tabs.reveal = ""
 		if key := a.activeTabKey(); key != a.tabs.shown { // scrolled to once, when it changes: not again, to leave the scrolling to the user
 			a.tabs.reveal, a.tabs.shown = key, key
 		}
 		defer func() { a.tabs.middle, a.tabs.held = a.tabs.held, "" }()
-		tabs := ui.TabsBase(c, &selected, len(a.Tabs)+len(a.monitor.tools))
+		tabs := ui.TabsBase(c, &selected, len(a.Tabs)+len(a.monitor.tools)+len(docs))
 		tabs.List.Height(38).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
@@ -140,14 +147,14 @@ func (a *App) tabStrip(c *ui.Context) {
 					a.startRename(s)
 				}
 				switch {
-				case i == a.Active && tool == nil:
+				case i == a.Active && !other:
 					tab.Background(t.Background).Border(1, t.Border)
 				case tab.Hovered():
 					tab.Background(t.SurfaceHover)
 				}
 				tab.Children(func() {
 					color := t.Text
-					if exited || i != a.Active || tool != nil {
+					if exited || i != a.Active || other {
 						color = t.TextMuted
 					}
 					if !s.Local {
@@ -192,10 +199,14 @@ func (a *App) tabStrip(c *ui.Context) {
 			}
 		})
 		a.toolTabs(c, tabs, len(a.Tabs))
+		a.editorTabs(c, tabs, len(a.Tabs)+len(a.monitor.tools))
 		if tabs.List.Changed() {
-			if selected >= len(a.Tabs) {
+			switch tools := len(a.Tabs) + len(a.monitor.tools); {
+			case selected >= tools:
+				a.showDocument(docs[selected-tools])
+			case selected >= len(a.Tabs):
 				a.showTool(a.monitor.tools[selected-len(a.Tabs)])
-			} else {
+			default:
 				a.activateTab(selected)
 			}
 		}
@@ -204,6 +215,9 @@ func (a *App) tabStrip(c *ui.Context) {
 
 // activeTabKey names the tab that shows, to scroll it into view when it changes.
 func (a *App) activeTabKey() string {
+	if doc := a.activeEditor(); doc != nil {
+		return "doc:" + doc.Key
+	}
 	if tool := a.activeTool(); tool != nil {
 		return "tool:" + tool.key()
 	}
@@ -334,14 +348,15 @@ func (a *App) selectTabID(id string) {
 func (a *App) activateTab(i int) {
 	if i >= 0 && i < len(a.Tabs) {
 		a.Active = i
-		a.monitor.tool = ""
+		a.monitor.tool, a.editor.shown = "", ""
 		a.tabs.term.Focus()
 	}
 }
 func (a *App) closeTabID(id string) { a.closeTab(a.tabIndex(id)) }
 
-// requestClose is the user closing session tabs: it asks first when one is connected. An agent's
-// close, and what the user confirmed, go straight to closeTab.
+// requestClose is the user closing session tabs: it asks first when one is connected, or when the
+// host's last session goes with unsaved files. An agent's close, and what the user confirmed, go
+// straight to closeTab.
 func (a *App) requestClose(ids ...string) {
 	ask := &closeAsk{ids: ids}
 	for _, id := range ids {
@@ -349,7 +364,8 @@ func (a *App) requestClose(ids ...string) {
 			ask.live++
 		}
 	}
-	if ask.live == 0 {
+	ask.dirty = a.dirtyWith(ids)
+	if ask.live == 0 && len(ask.dirty) == 0 {
 		a.closeTabs(ids)
 		return
 	}
@@ -380,6 +396,7 @@ func (a *App) closeTab(i int) {
 		a.Active = len(a.Tabs) - 1
 	}
 	a.dropTools()
+	a.dropDocuments()
 }
 
 // closeWhere closes the tabs for which close reports true, from the right.
@@ -484,26 +501,42 @@ func (a *App) closeDialog(c *ui.Context) {
 	if k == nil {
 		return
 	}
-	title, msg := "关闭标签？", "这个连接还在使用。关闭后，正在运行的命令会中断。"
+	title, msg, action := "关闭标签？", "这个连接还在使用。关闭后，正在运行的命令会中断。", "断开并关闭"
 	if i := a.tabIndex(k.ids[0]); len(k.ids) == 1 && i >= 0 {
 		title = "关闭 " + a.tabTitle(a.Tabs[i]) + "？"
 	} else if len(k.ids) > 1 {
 		title, msg = fmt.Sprintf("关闭 %d 个标签？", len(k.ids)), fmt.Sprintf("其中 %d 个连接还在使用。关闭后，正在运行的命令会中断。", k.live)
+	}
+	if len(k.dirty) > 0 { // unsaved files are asked about whatever 不再询问 says
+		action = "不保存并关闭"
+		var names []string
+		for _, d := range k.dirty[:min(len(k.dirty), 6)] {
+			names = append(names, d.Document.Path)
+		}
+		msg = "这些文件的修改还没有保存，关闭后会丢失：\n" + strings.Join(names, "\n")
+		if len(k.dirty) > 6 {
+			msg += fmt.Sprintf("\n……共 %d 个", len(k.dirty))
+		}
+		if k.live > 0 {
+			msg += "\n\n连接也会断开，正在运行的命令会中断。"
+		}
 	}
 	open := true
 	dialog(c, &open, func() {
 		ui.Column(c).Width(420).Gap(12).Children(func() {
 			ui.Text(c, title).FontSize(17).Bold()
 			ui.Text(c, msg).FillWidth()
-			ui.Checkbox(c, &k.never, "不再询问")
+			if len(k.dirty) == 0 {
+				ui.Checkbox(c, &k.never, "不再询问")
+			}
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
 				if ui.Button(c, "取消").Clicked() {
 					open = false
 				}
-				if ui.PrimaryButton(c, "断开并关闭").AutoFocus().Clicked() {
+				if ui.PrimaryButton(c, action).AutoFocus().Clicked() {
 					open = false
 					a.later(func() {
-						if k.never {
+						if k.never && len(k.dirty) == 0 {
 							p := a.Prefs
 							p.NoTabConfirm = true
 							if e := a.P.SavePreferences(p); e != nil {
@@ -511,6 +544,9 @@ func (a *App) closeDialog(c *ui.Context) {
 							} else {
 								a.Prefs, a.settings.draft.NoTabConfirm = p, true
 							}
+						}
+						for _, d := range k.dirty {
+							a.editor.removeDocument(d.Key)
 						}
 						a.closeTabs(k.ids)
 					})

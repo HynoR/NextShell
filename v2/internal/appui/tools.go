@@ -26,20 +26,7 @@ func (t toolTab) icon() string {
 }
 
 // toolSession is the session a tool tab samples: its host's connected session, else any of them.
-func (a *App) toolSession(t toolTab) *Session {
-	var found *Session
-	for _, s := range a.Tabs {
-		if !s.Local && hostKey(s) == t.host {
-			if !a.P.Exited(s.ID) {
-				return s
-			}
-			if found == nil {
-				found = s
-			}
-		}
-	}
-	return found
-}
+func (a *App) toolSession(t toolTab) *Session { return a.hostSession(t.host) }
 
 func (a *App) toolTitle(t toolTab) string {
 	name := t.host
@@ -64,6 +51,7 @@ func (a *App) showTool(t toolTab) {
 	if s := a.toolSession(t); s != nil {
 		a.Active = a.tabIndex(s.ID)
 		a.monitor.tool = t.key()
+		a.editor.shown = ""
 	}
 }
 func (a *App) closeTool(t toolTab) {

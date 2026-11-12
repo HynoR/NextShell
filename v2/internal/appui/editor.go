@@ -2,250 +2,394 @@ package appui
 
 import (
 	"bytes"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
+	"slices"
+	"strings"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/editor"
+	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/remoteedit"
 )
 
-// editorState holds the remote documents shown in the editor dialog. Each
-// document owns an official editor State (undo, selections, folds, scroll);
-// the active one is projected into the fields below for saving.
+// editorState holds the open remote documents. A document is a tab of the main window; popped out,
+// it shows in the editor window instead. Each owns an official editor State (undo, selections, folds, scroll).
 type editorState struct {
-	open          bool
-	documents     []*remoteDocument
-	active        int
-	closeKey      string
-	code          *editor.State
-	codeSource    string
-	codePath      string
-	codeVersion   uint64
-	session       string
-	document      remoteedit.Document
-	text          string
-	externalArgs  string
-	reloadSession string
-	reloadPath    string
-	windowed      bool // the editor window is showing
-	closeAll      bool // the window's close asks about unsaved documents
+	documents    []*remoteDocument
+	shown        string          // the document the main window's tab shows; "" while a terminal or a tool does
+	win          string          // the document the editor window shows
+	closeKey     string          // asking before this one closes
+	closeSave    map[string]bool // closes when its save is acknowledged
+	reloadKey    string          // asking before this one is reloaded
+	externalArgs string
+	popOut       bool // the editor window is to open, or come forward
+	windowed     bool // the editor window is showing
+	closeAll     bool // closing the editor window asks about unsaved documents
+	fromWindow   bool // the last save or reload was asked for in the window: its result shows there
 }
 
+// remoteDocument follows its host, as a tool tab does: Host is the host's key, and it saves through
+// whichever session of the host is connected (see docSession).
 type remoteDocument struct {
-	Key, Session, Text, Source string
-	Document                   remoteedit.Document
-	Code                       *editor.State
-	Version                    uint64
+	Key, Host, Session, Text, Source string
+	Conn                             model.Connection // the host as opened, for its colour
+	Document                         remoteedit.Document
+	Code                             *editor.State
+	Version                          uint64
+	Popped                           bool
 }
 
-func documentKey(session, path string) string { return session + "\x00" + path }
+func documentKey(host, path string) string { return host + "\x00" + path }
 
-func (a *App) openEditor(session, remote string) {
-	s := &a.editor
-	s.storeActive()
-	key := documentKey(session, remote)
-	for i, d := range s.documents {
+func (s *editorState) document(key string) *remoteDocument {
+	for _, d := range s.documents {
 		if d.Key == key {
-			s.selectDocument(i)
-			s.open = true
-			return
+			return d
 		}
+	}
+	return nil
+}
+
+// sync reads the buffer back; WriteTo (not String) keeps the buffer's CRLF.
+func (d *remoteDocument) sync() {
+	if d.Code == nil || d.Code.Buffer == nil || d.Code.Buffer.Version() == d.Version {
+		return
+	}
+	var out bytes.Buffer
+	d.Code.Buffer.WriteTo(&out)
+	d.Text = out.String()
+	d.Source = d.Text
+	d.Version = d.Code.Buffer.Version()
+}
+
+// prepare makes the buffer match Text: a new one when Text changed behind it.
+func (d *remoteDocument) prepare() {
+	if d.Code == nil || d.Code.Buffer == nil || d.Source != d.Text {
+		d.Code = &editor.State{Buffer: editor.NewBuffer(d.Text), Label: "远程文本"}
+		d.Code.Buffer.SetLanguage(editor.LanguageFor(d.Document.Path))
+		d.Source = d.Text
+		d.Version = d.Code.Buffer.Version()
+	}
+}
+func (d *remoteDocument) dirty() bool {
+	d.sync()
+	return d.Text != d.Document.Text
+}
+
+// openEditor shows the document if it is open, else asks for it; receiveDocument shows it then.
+func (a *App) openEditor(session, remote string) {
+	if d := a.editor.document(documentKey(a.hostKeyOf(session), remote)); d != nil {
+		a.showDocument(d)
+		return
 	}
 	a.P.OpenRemote(session, remote)
 }
 
 // externalEdit opens remote in the chosen editor, or the system's text editor, and lists it under 实时编辑.
 func (a *App) externalEdit(session, remote string) {
-	var args []string
-	if s := a.editor.externalArgs; s != "" {
-		if err := json.Unmarshal([]byte(s), &args); err != nil {
-			a.fail(fmt.Errorf("编辑器参数须为 JSON 字符串数组，如 [\"--wait\"]"))
-			return
-		}
+	args, err := splitArgs(a.editor.externalArgs)
+	if err != nil {
+		a.fail(err)
+		return
 	}
 	a.P.ExternalEdit(session, remote, a.Prefs.EditorCommand, args)
 	a.layout.rightOpen = true // its state shows in the activity bar
 }
 
-// syncText reads the buffer back; WriteTo (not String) keeps the buffer's CRLF.
-func (s *editorState) syncText() {
-	if s.code == nil || s.code.Buffer == nil || s.code.Buffer.Version() == s.codeVersion {
-		return
-	}
-	var out bytes.Buffer
-	s.code.Buffer.WriteTo(&out)
-	s.text = out.String()
-	s.codeSource = s.text
-	s.codeVersion = s.code.Buffer.Version()
-}
-func (s *editorState) prepareBuffer() {
-	key := documentKey(s.session, s.document.Path)
-	if s.code == nil || s.code.Buffer == nil || s.codePath != key || s.codeSource != s.text {
-		s.code = &editor.State{Buffer: editor.NewBuffer(s.text), Label: "远程文本"}
-		s.code.Buffer.SetLanguage(editor.LanguageFor(s.document.Path))
-		s.codePath = key
-		s.codeSource = s.text
-		s.codeVersion = s.code.Buffer.Version()
-	}
-}
-func (s *editorState) storeActive() {
-	if s.document.Path == "" {
-		return
-	}
-	s.syncText()
-	s.prepareBuffer()
-	key := documentKey(s.session, s.document.Path)
-	var d *remoteDocument
-	for _, v := range s.documents {
-		if v.Key == key {
-			d = v
-			break
+// splitArgs splits the arguments typed for the external editor at spaces. Single or double quotes
+// keep spaces inside one argument; a backslash is no escape, so Windows paths stay as typed.
+func splitArgs(s string) ([]string, error) {
+	var args []string
+	var cur strings.Builder
+	var quote rune
+	started := false
+	for _, r := range s {
+		switch {
+		case quote != 0:
+			if r == quote {
+				quote = 0
+			} else {
+				cur.WriteRune(r)
+			}
+		case r == '"' || r == '\'':
+			quote, started = r, true
+		case unicode.IsSpace(r):
+			if started {
+				args, started = append(args, cur.String()), false
+				cur.Reset()
+			}
+		default:
+			cur.WriteRune(r)
+			started = true
 		}
 	}
-	if d == nil {
-		d = &remoteDocument{Key: key}
-		s.documents = append(s.documents, d)
+	if quote != 0 {
+		return nil, errors.New("外部编辑器参数里有没有闭合的引号")
 	}
-	d.Session, d.Document, d.Text, d.Source, d.Code, d.Version = s.session, s.document, s.text, s.codeSource, s.code, s.codeVersion
+	if started {
+		args = append(args, cur.String())
+	}
+	return args, nil
 }
-func (s *editorState) selectDocument(i int) {
-	if i < 0 || i >= len(s.documents) {
+
+// hostSession is the host's connected session, else any session of it.
+func (a *App) hostSession(host string) *Session {
+	var found *Session
+	for _, s := range a.Tabs {
+		if !s.Local && hostKey(s) == host {
+			if !a.P.Exited(s.ID) {
+				return s
+			}
+			if found == nil {
+				found = s
+			}
+		}
+	}
+	return found
+}
+
+// docSession is the session d saves and reloads through: its host's, which a reconnect replaced.
+func (a *App) docSession(d *remoteDocument) string {
+	if s := a.hostSession(d.Host); s != nil {
+		d.Session = s.ID
+	}
+	return d.Session
+}
+
+// activeEditor is the document the main window's tab shows, or nil while a terminal or a tool shows.
+// Like a tool tab it shows with its host's session active; a document whose host has none is shown anyway.
+func (a *App) activeEditor() *remoteDocument {
+	s := &a.editor
+	if d := s.document(s.shown); d != nil && !d.Popped {
+		if cur := a.current(); cur == nil || hostKey(cur) == d.Host || a.hostSession(d.Host) == nil {
+			return d
+		}
+	}
+	s.shown = ""
+	return nil
+}
+
+// documentsIn are the documents of the main window's strip, or of the editor window when popped.
+func (a *App) documentsIn(popped bool) []*remoteDocument {
+	var out []*remoteDocument
+	for _, d := range a.editor.documents {
+		if d.Popped == popped {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// showDocument brings d forward: its tab, with its host's session, or the editor window.
+func (a *App) showDocument(d *remoteDocument) {
+	s := &a.editor
+	if d.Popped {
+		s.win, s.popOut = d.Key, true
 		return
 	}
-	s.storeActive()
-	s.project(i)
+	if cur := a.current(); cur == nil || hostKey(cur) != d.Host {
+		if sess := a.hostSession(d.Host); sess != nil {
+			a.Active = a.tabIndex(sess.ID)
+		}
+	}
+	a.monitor.tool = ""
+	s.shown = d.Key
 }
-func (s *editorState) project(i int) {
-	d := s.documents[i]
-	s.active = i
-	s.session, s.document, s.text = d.Session, d.Document, d.Text
-	s.code, s.codeVersion, s.codeSource, s.codePath = d.Code, d.Version, d.Source, d.Key
-	s.prepareBuffer()
+
+// focusEditor is the palette's 远程编辑器: the first document's tab, or the window when all are popped out.
+func (a *App) focusEditor() {
+	for _, popped := range []bool{false, true} {
+		if docs := a.documentsIn(popped); len(docs) > 0 {
+			a.showDocument(docs[0])
+			return
+		}
+	}
+}
+
+// popOutDocument moves d to the editor window, keeping its state; the main window goes back to its terminal.
+func (a *App) popOutDocument(d *remoteDocument) {
+	d.Popped = true
+	if a.editor.shown == d.Key {
+		a.editor.shown = ""
+	}
+	a.showDocument(d)
+}
+
+// popBackDocument moves d from the editor window back to a tab.
+func (a *App) popBackDocument(d *remoteDocument) {
+	d.Popped = false
+	if a.editor.win == d.Key {
+		a.editor.win = ""
+	}
+	a.showDocument(d)
+	a.raiseMain()
+}
+
+// inEditor runs fn as if the editor window were building, when popped and showing: what it toasts
+// belongs to that window.
+func (a *App) inEditor(popped bool, fn func()) {
+	if popped && a.editor.windowed {
+		a.inWindow(editorWindow, fn)
+		return
+	}
+	fn()
 }
 
 func (a *App) receiveDocument(r *EditorResult) {
 	s := &a.editor
-	s.storeActive()
-	key := documentKey(r.Session, r.Document.Path)
-	index := -1
-	for i, d := range s.documents {
-		if d.Key == key {
-			index = i
-			break
-		}
-	}
-	fresh := index < 0
+	host := a.hostKeyOf(r.Session)
+	key := documentKey(host, r.Document.Path)
+	d := s.document(key)
+	fresh := d == nil
 	if fresh {
 		if len(s.documents) >= 32 {
 			a.toast("最多同时打开 32 个远程文件，请先关闭一些")
 			return
 		}
-		s.documents = append(s.documents, &remoteDocument{Key: key, Session: r.Session, Document: r.Document, Text: r.Document.Text})
-		index = len(s.documents) - 1
+		d = &remoteDocument{Key: key, Host: host, Session: r.Session, Document: r.Document, Text: r.Document.Text}
+		if i := a.tabIndex(r.Session); i >= 0 {
+			d.Conn = a.Tabs[i].Connection
+		}
+		d.prepare()
+		s.documents = append(s.documents, d)
 	} else {
-		d := s.documents[index]
-		dirty := d.Text != d.Document.Text
-		if r.Saved {
+		d.Session = r.Session
+		dirty := d.dirty()
+		switch {
+		case r.Saved:
 			d.Document = r.Document
 			if d.Text == r.Document.Text && d.Code != nil {
 				d.Code.Buffer.MarkSaved()
 			}
-		} else if dirty {
-			a.inEditorWindow(func() { a.toast("远程文件有更新，已保留未保存的修改；保存时会检查冲突") })
-		} else {
+		case dirty:
+			a.inEditor(d.Popped, func() { a.toast("远程文件有更新，已保留未保存的修改；保存时会检查冲突") })
+		default:
 			d.Document = r.Document
 			d.Text = r.Document.Text
-			if d.Source != d.Text {
-				d.Code = nil
-			}
+		}
+	}
+	if r.Saved && s.closeSave[key] {
+		delete(s.closeSave, key)
+		if !d.dirty() { // typing since the save asked keeps it open
+			s.removeDocument(key)
+			return
 		}
 	}
 	// Save acknowledgements never steal focus from another document.
 	if fresh || !r.Saved {
-		s.project(index)
-		s.open = true
-	} else if documentKey(s.session, s.document.Path) == key {
-		s.project(index)
+		a.showDocument(d)
 	}
-	s.storeActive()
 }
 
 func (a *App) requestDocumentClose(key string) {
 	s := &a.editor
-	s.storeActive()
-	for _, d := range s.documents {
-		if d.Key == key {
-			if d.Text != d.Document.Text {
-				s.closeKey = key
-			} else {
-				s.removeDocument(key)
-			}
-			return
+	if d := s.document(key); d != nil {
+		if d.dirty() {
+			s.closeKey = key
+		} else {
+			s.removeDocument(key)
 		}
 	}
 }
 func (s *editorState) removeDocument(key string) {
-	s.storeActive()
-	activeKey := documentKey(s.session, s.document.Path)
-	for i, d := range s.documents {
-		if d.Key == key {
-			s.documents = append(s.documents[:i], s.documents[i+1:]...)
-			break
+	s.documents = slices.DeleteFunc(s.documents, func(d *remoteDocument) bool { return d.Key == key })
+	delete(s.closeSave, key)
+	for _, k := range []*string{&s.shown, &s.win, &s.closeKey, &s.reloadKey} {
+		if *k == key {
+			*k = ""
 		}
 	}
-	s.document, s.text, s.code, s.codePath, s.codeSource, s.session = remoteedit.Document{}, "", nil, "", "", ""
-	if len(s.documents) == 0 {
-		s.open = false
-		return
-	}
-	next := min(s.active, len(s.documents)-1)
-	for i, d := range s.documents {
-		if d.Key == activeKey {
-			next = i
-			break
+}
+
+// dropDocuments closes the documents whose host has no session left, as the tool tabs go; unsaved ones
+// stay, so an agent closing a session never costs the user an edit.
+func (a *App) dropDocuments() {
+	for _, d := range slices.Clone(a.editor.documents) {
+		if a.hostSession(d.Host) == nil && !d.dirty() {
+			a.editor.removeDocument(d.Key)
 		}
 	}
-	s.project(next)
+}
+
+// dirtyWith lists the unsaved documents that closing the session tabs ids leaves without a session.
+func (a *App) dirtyWith(ids []string) []*remoteDocument {
+	gone := map[string]bool{}
+	for _, id := range ids {
+		if i := a.tabIndex(id); i >= 0 && !a.Tabs[i].Local {
+			gone[hostKey(a.Tabs[i])] = true
+		}
+	}
+	for _, s := range a.Tabs {
+		if !s.Local && !slices.Contains(ids, s.ID) {
+			delete(gone, hostKey(s))
+		}
+	}
+	var out []*remoteDocument
+	for _, d := range a.editor.documents {
+		if gone[d.Host] && d.dirty() {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// rehome gives the documents of the session old to its replacement next: a reconnect of a host with
+// no saved connection is a session with a new ID, hence a new host key.
+func (a *App) rehome(old, next *Session) {
+	s := &a.editor
+	for _, d := range s.documents {
+		if d.Host != hostKey(old) {
+			continue
+		}
+		from := d.Key
+		d.Session, d.Host = next.ID, hostKey(next)
+		d.Key = documentKey(d.Host, d.Document.Path)
+		for _, k := range []*string{&s.shown, &s.win, &s.closeKey, &s.reloadKey} {
+			if *k == from {
+				*k = d.Key
+			}
+		}
+	}
 }
 
 // DirtyDocumentCount is the number of remote documents with unsaved changes.
 func (a *App) DirtyDocumentCount() int {
-	s := &a.editor
-	s.storeActive()
 	n := 0
-	for _, d := range s.documents {
-		if d.Text != d.Document.Text {
+	for _, d := range a.editor.documents {
+		if d.dirty() {
 			n++
 		}
 	}
 	return n
 }
 
-// editorDialog shows the open remote documents: in their own window when
-// the host has one, else over the main window.
-func (a *App) editorDialog(c *ui.Context) {
-	s := &a.editor
-	if a.ShowEditor != nil {
-		if s.open {
-			s.open = false
-			s.windowed = true
-			a.ShowEditor()
-		}
+// saveDocument uploads d, which checks that the remote file did not change since it was opened.
+func (a *App) saveDocument(d *remoteDocument) {
+	d.sync()
+	session := a.docSession(d)
+	if a.tabIndex(session) < 0 {
+		a.toast("这个服务器的连接已关闭，重新连接后才能保存")
 		return
 	}
-	if !s.open || len(s.documents) == 0 {
-		return
-	}
-	w, h := c.Size()
-	dialog(c, &s.open, func() {
-		ui.Column(c).Width(max(w-120, 480)).Height(max(h-120, 360)).Gap(8).Children(func() { a.editorBody(c) })
-	})
-	a.documentCloseDialog(c)
+	a.editor.fromWindow = d.Popped
+	a.P.SaveRemote(session, d.Document, d.Text)
 }
 
-// EditorView builds the remote editor window.
+// editorDialogs opens the editor window when a document was popped out, and asks before a document
+// of the main window closes.
+func (a *App) editorDialogs(c *ui.Context) {
+	s := &a.editor
+	if s.popOut && a.ShowEditor != nil {
+		s.popOut, s.windowed = false, true
+		a.ShowEditor()
+	}
+	a.documentCloseDialog(c, mainWindow)
+}
+
+// EditorView builds the remote editor window: the documents popped out of the main window.
 func (a *App) EditorView(c *ui.Context) {
 	s := &a.editor
 	a.view = editorWindow
@@ -253,24 +397,38 @@ func (a *App) EditorView(c *ui.Context) {
 	a.theme(c)
 	a.wakeEditor = c.Services().Invalidate
 	t := c.Theme()
+	docs := a.documentsIn(true)
+	var shown *remoteDocument
+	if len(docs) > 0 {
+		shown = docs[0]
+		if d := s.document(s.win); d != nil && d.Popped {
+			shown = d
+		}
+	}
 	ui.Column(c).Fill().Padding(8, 12, 12, 12).Gap(8).Background(t.Background).Children(func() {
-		if len(s.documents) == 0 {
+		if shown == nil {
 			emptyState(c, "没有打开的远程文件", "在 SFTP 里双击文件即可编辑。")
 			return
 		}
-		a.editorBody(c)
+		a.documentTabs(c, docs, shown)
+		a.editorBody(c, shown)
 	})
-	if len(s.documents) == 0 && s.windowed && a.HideEditor != nil {
+	if shown == nil && s.windowed && a.HideEditor != nil {
 		s.windowed = false
 		a.HideEditor()
 	}
-	a.documentCloseDialog(c)
+	a.documentCloseDialog(c, editorWindow)
 	if s.closeAll {
 		open := true
-		n := a.DirtyDocumentCount()
+		n := 0
+		for _, d := range docs {
+			if d.dirty() {
+				n++
+			}
+		}
 		switch ui.AlertDialog(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存。", n), "取消", "全部不保存") {
 		case 1:
-			s.discardAll()
+			s.discardPopped()
 		}
 		if !open {
 			s.closeAll = false
@@ -284,115 +442,201 @@ func (a *App) EditorView(c *ui.Context) {
 	}
 }
 
-// EditorMayClose guards closing the editor window: with unsaved documents
-// it asks in the window and returns false; otherwise it lets the documents go.
+// EditorMayClose guards closing the editor window: with unsaved documents in it, it asks in the
+// window and returns false; otherwise it lets them go. The documents in tabs stay.
 func (a *App) EditorMayClose() bool {
 	s := &a.editor
-	if a.DirtyDocumentCount() > 0 {
-		s.closeAll = true
-		return false
+	for _, d := range a.documentsIn(true) {
+		if d.dirty() {
+			s.closeAll = true
+			return false
+		}
 	}
-	s.discardAll()
+	s.discardPopped()
 	s.windowed = false
 	return true
 }
-func (s *editorState) discardAll() {
-	s.documents, s.document, s.text, s.code, s.codePath, s.codeSource, s.session, s.open = nil, remoteedit.Document{}, "", nil, "", "", "", false
+func (s *editorState) discardPopped() {
+	for _, d := range slices.Clone(s.documents) {
+		if d.Popped {
+			s.removeDocument(d.Key)
+		}
+	}
+	s.closeAll = false
 }
 
-func (a *App) editorBody(c *ui.Context) {
+// editorTab is the main window's centre while a document's tab shows.
+func (a *App) editorTab(c *ui.Context, d *remoteDocument) {
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(8, 12, 12, 12).Gap(8).Background(c.Theme().Background).Children(func() { a.editorBody(c, d) })
+}
+
+func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	s := &a.editor
 	t := c.Theme()
-	a.documentTabs(c)
-	if s.reloadPath != "" {
+	if s.reloadKey == d.Key {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1)
 			if ui.Button(c, "取消").Clicked() {
-				s.reloadPath = ""
+				s.reloadKey = ""
 			}
 			if ui.Button(c, "丢弃并重新载入").Clicked() {
-				s.text = s.document.Text
-				a.P.ReloadRemote(s.reloadSession, s.reloadPath)
-				s.reloadPath = ""
+				d.Text, d.Code = d.Document.Text, nil
+				s.fromWindow = d.Popped
+				a.P.ReloadRemote(a.docSession(d), d.Document.Path)
+				s.reloadKey = ""
 			}
 		})
 	}
-	if s.document.Path == "" {
-		return
-	}
 	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		label := s.document.Path
-		if s.text != s.document.Text {
+		label := d.Document.Path
+		if d.dirty() {
 			label = "● " + label
 		}
 		ui.Text(c, label).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
 		if ui.Button(c, "重新载入").Clicked() {
-			s.reloadSession, s.reloadPath = s.session, s.document.Path
+			s.reloadKey = d.Key
 		}
 		if ui.Button(c, "用外部编辑器打开").Clicked() {
-			if s.text != s.document.Text {
+			if d.dirty() {
 				a.toast("请先保存或放弃修改")
 			} else {
-				a.externalEdit(s.session, s.document.Path)
+				a.externalEdit(a.docSession(d), d.Document.Path)
+			}
+		}
+		switch {
+		case d.Popped:
+			if ui.Button(c, "回到主窗口").Clicked() {
+				a.later(func() { a.popBackDocument(d) })
+			}
+		case a.ShowEditor != nil:
+			if ui.Button(c, "在新窗口打开").Clicked() {
+				a.later(func() { a.popOutDocument(d) })
 			}
 		}
 		if ui.PrimaryButton(c, "保存").KeyShortcuts(ui.Cmd, ui.KeyS).Clicked() || c.Shortcut(ui.Cmd, ui.KeyS) {
-			a.P.SaveRemote(s.session, s.document, s.text)
+			a.saveDocument(d)
 		}
 	})
-	s.prepareBuffer()
-	editor.View(c.Key(documentKey(s.session, s.document.Path)), s.code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
-	s.syncText()
+	d.prepare()
+	editor.View(c.Key(d.Key), d.Code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
+	d.sync()
 	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "UTF-8 文本，最大 8 MiB · 外部编辑器参数").SingleLine()
-		ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder(`["--wait"]`).Width(200)
+		muted(c, "UTF-8 文本，最大 8 MiB").SingleLine().Grow(1)
+		muted(c, "用外部编辑器打开时的参数，空格分隔").SingleLine()
+		ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder("例如 --wait").Width(200)
 	})
 }
 
-func (a *App) documentTabs(c *ui.Context) {
-	s := &a.editor
+// docTitle is the name on a document's tab: the file's, with its folder when another tab has the same name.
+func (a *App) docTitle(d *remoteDocument) string {
+	name := path.Base(d.Document.Path)
+	for _, o := range a.editor.documents {
+		if o != d && path.Base(o.Document.Path) == name {
+			return path.Base(path.Dir(d.Document.Path)) + "/" + name
+		}
+	}
+	return name
+}
+
+// editorTabs are the document tabs of the strip, after the sessions' and the tools'; first is the index of the first.
+func (a *App) editorTabs(c *ui.Context, tabs ui.TabsParts, first int) {
 	t := c.Theme()
-	s.storeActive()
-	selected := s.active
+	shown := a.activeEditor()
+	for n, d := range a.documentsIn(false) {
+		on := d == shown
+		title := a.docTitle(d)
+		dirty := d.dirty()
+		tab := tabs.Tab(first+n).Label(title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Tooltip(d.Document.Path + "\n" + orDefault(d.Conn.Name, d.Host))
+		if a.tabs.reveal == "doc:"+d.Key {
+			tab.ScrollIntoView()
+		}
+		if a.middleClicked(tab, "doc:"+d.Key) {
+			a.later(func() { a.requestDocumentClose(d.Key) })
+		}
+		tab.ContextMenu(func(m *ui.Menu) {
+			if m.Item("保存").Disabled(!dirty).Chosen() {
+				a.later(func() { a.saveDocument(d) })
+			}
+			if a.ShowEditor != nil && m.Item("在新窗口打开").Chosen() {
+				a.later(func() { a.popOutDocument(d) })
+			}
+			m.Separator()
+			if m.Item("关闭").Chosen() {
+				a.later(func() { a.requestDocumentClose(d.Key) })
+			}
+		})
+		switch {
+		case on:
+			tab.Background(t.Background).Border(1, t.Border)
+		case tab.Hovered():
+			tab.Background(t.SurfaceHover)
+		}
+		tab.Children(func() {
+			color := t.TextMuted
+			if on {
+				color = t.Text
+			}
+			ui.Box(c).Size(3, 14).Radius(1.5).Background(a.hostColor(d.Conn))
+			ui.Icon(c, appIcons["file"]).FontSize(13).TextColor(color)
+			ui.Text(c, title).SingleLine().MaxWidth(180).FontSize(13).TextColor(color)
+			x := ui.ButtonBase(c).Label("关闭标签 "+title).Tooltip("关闭标签").Size(18, 18).Radius(4).Center()
+			hover := tab.Hovered() || x.Hovered()
+			if x.Hovered() {
+				x.Background(t.SurfacePressed)
+			}
+			x.Children(func() {
+				if dirty && !hover { // the unsaved dot gives way to the × the pointer is after
+					ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning).Label("未保存")
+				} else {
+					ui.Icon(c, appIcons["close"]).FontSize(12).TextColor(t.TextMuted)
+				}
+			})
+			if x.Clicked() {
+				a.later(func() { a.requestDocumentClose(d.Key) })
+			}
+		})
+	}
+}
+
+// documentTabs is the strip of the editor window, over the documents popped out.
+func (a *App) documentTabs(c *ui.Context, docs []*remoteDocument, shown *remoteDocument) {
+	t := c.Theme()
+	selected := slices.Index(docs, shown)
 	ui.ScrollHorizontal(c).Height(36).FillWidth().Children(func() {
-		tabs := ui.TabsBase(c.Key("remote-documents"), &selected, len(s.documents))
+		tabs := ui.TabsBase(c.Key("remote-documents"), &selected, len(docs))
 		tabs.List.Gap(4).Children(func() {
-			for i, d := range s.documents {
-				label := path.Base(d.Document.Path)
-				if d.Text != d.Document.Text {
+			for i, d := range docs {
+				label := a.docTitle(d)
+				if d.dirty() {
 					label = "● " + label
 				}
 				e := tabs.Tab(i).Label("文档 "+d.Document.Path).Padding(6, 10).Gap(8).Radius(t.Radius).Tooltip(d.Document.Path).AlignItems(ui.Center)
-				if i == s.active {
+				if d == shown {
 					e.Background(t.SurfaceHover).TextColor(accentInk(t))
 				}
 				e.Children(func() {
 					ui.Text(c, label).SingleLine()
 					if ui.ButtonBase(c).Label("关闭文档 "+d.Document.Path).Size(18, 18).Center().Children(func() { ui.Icon(c, appIcons["close"]).FontSize(12) }).Clicked() {
-						key := d.Key
-						a.later(func() { a.requestDocumentClose(key) })
+						a.later(func() { a.requestDocumentClose(d.Key) })
 					}
 				})
 			}
 		})
 	})
-	if selected != s.active {
-		a.later(func() { s.selectDocument(selected) })
+	if docs[selected] != shown {
+		a.editor.win = docs[selected].Key
 	}
 }
-func (a *App) documentCloseDialog(c *ui.Context) {
+
+// documentCloseDialog asks before closing an unsaved document, in the window that shows it.
+func (a *App) documentCloseDialog(c *ui.Context, w window) {
 	s := &a.editor
-	if s.closeKey == "" {
-		return
-	}
-	var d *remoteDocument
-	for _, v := range s.documents {
-		if v.Key == s.closeKey {
-			d = v
-		}
-	}
+	d := s.document(s.closeKey)
 	if d == nil {
 		s.closeKey = ""
+		return
+	}
+	if d.Popped != (w == editorWindow) {
 		return
 	}
 	open := true
@@ -401,7 +645,11 @@ func (a *App) documentCloseDialog(c *ui.Context) {
 		key := d.Key
 		a.later(func() { s.removeDocument(key) })
 	case 2:
-		a.P.SaveRemote(d.Session, d.Document, d.Text)
+		if s.closeSave == nil {
+			s.closeSave = map[string]bool{}
+		}
+		s.closeSave[d.Key] = true
+		a.saveDocument(d)
 	}
 	if !open {
 		s.closeKey = ""

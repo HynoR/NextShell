@@ -338,13 +338,22 @@ func TestScreenshots(t *testing.T) {
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/nginx/nginx.conf", Text: "user www-data;\nworker_processes auto;\n\nevents {\n    worker_connections 768;\n}\n"}}})
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/hosts", Text: "127.0.0.1 localhost\n"}}})
 	tt.Frame()
+	// The editor is a tab of the main window, with the unsaved dot; closing it asks; 在新窗口打开 moves it out.
+	click(t, tt, "nginx.conf")
+	tt.Type("# edited\n")
+	tt.Move(640, 420) // the dot shows while the pointer is elsewhere
+	shot(tt, "32-editor-tab-dirty")
+	click(t, tt, "关闭标签 nginx.conf")
+	shot(tt, "32b-editor-close-dirty")
+	click(t, tt, "取消")
+	click(t, tt, "在新窗口打开")
 	ed := ui.NewTester(a.EditorView, 960, 640)
-	ed.Type("# edited\n")
 	shot(ed, "14-editor-window")
 	if a.EditorMayClose() {
 		t.Fatal("dirty editor closed")
 	}
 	shot(ed, "14b-editor-close-guard")
+	tt.Frame()
 
 	// A dropped connection: the card and the tab offer to reconnect; with the left column folded, a line
 	// under the terminal does. (The ping card above reused the id s1: point it back at this terminal.)

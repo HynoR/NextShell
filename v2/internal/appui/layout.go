@@ -77,10 +77,14 @@ func (a *App) mainWindow(c *ui.Context) {
 // centreColumn is the tabs above the terminal and the workbench, or the welcome page.
 func (a *App) centreColumn(c *ui.Context) {
 	pending := a.pendingTabs()
-	if len(a.Tabs) > 0 || len(pending) > 0 {
+	if len(a.Tabs) > 0 || len(pending) > 0 || len(a.documentsIn(false)) > 0 {
 		a.tabBar(c)
 	}
 	if a.current() == nil { // no tabs, or only background tabs an agent opened
+		if d := a.activeEditor(); d != nil { // an unsaved document whose host has no session left
+			ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { a.editorTab(c, d) })
+			return
+		}
 		if len(a.Tabs) == 0 && len(pending) > 0 {
 			a.connectingView(c, pending)
 			return
@@ -97,6 +101,10 @@ func (a *App) centreColumn(c *ui.Context) {
 }
 
 func (a *App) terminalArea(c *ui.Context) {
+	if d := a.activeEditor(); d != nil {
+		a.editorTab(c, d)
+		return
+	}
 	if tool := a.activeTool(); tool != nil {
 		a.toolView(c, *tool)
 		return

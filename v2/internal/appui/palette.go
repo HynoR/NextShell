@@ -118,7 +118,7 @@ func (a *App) paletteItems() []paletteItem {
 		actions = append(actions, struct {
 			title string
 			run   func()
-		}{"远程编辑器", func() { a.editor.open = true }})
+		}{"远程编辑器", a.focusEditor})
 	}
 	if s := a.current(); s != nil {
 		actions = append(actions, []struct {

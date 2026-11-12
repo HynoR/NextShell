@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -76,7 +77,7 @@ func (d *dialogState) answer(values []string) {
 func (a *App) dialogsView(c *ui.Context) {
 	a.fileDialogView(c)
 	a.snippetDialogs(c)
-	a.editorDialog(c)
+	a.editorDialogs(c)
 	a.retryDialog(c)
 	a.closeDialog(c)
 	a.confirmView(c, mainWindow)
@@ -91,10 +92,14 @@ func (a *App) dialogsView(c *ui.Context) {
 		}
 	}
 	if a.ConfirmExit {
-		msg := fmt.Sprintf("仍有 %d 个会话", len(a.Tabs))
-		if n := a.DirtyDocumentCount(); n > 0 {
-			msg += fmt.Sprintf("、%d 个未保存的文件", n)
+		var parts []string
+		if n := len(a.Tabs); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d 个会话", n))
 		}
+		if n := a.DirtyDocumentCount(); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d 个未保存的文件", n))
+		}
+		msg := "仍有 " + strings.Join(parts, "、")
 		if ui.AlertDialog(c, &a.ConfirmExit, "退出 NextShell？", msg+"。退出会断开所有连接并丢弃未保存的修改。", "取消", "退出") == 1 {
 			a.ExitConfirmed = true
 			a.P.Quit()
