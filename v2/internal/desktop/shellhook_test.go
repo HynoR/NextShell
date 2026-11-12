@@ -10,6 +10,29 @@ import (
 	"nextshell.dev/v2/internal/appui"
 )
 
+// inbox is awaitEvent that keeps the events a Poll returned beyond the one asked for: on a fast machine the
+// session and the hook's verdict arrive in the same batch.
+type inbox struct {
+	t    *testing.T
+	p    *Platform
+	held []appui.Event
+}
+
+func (b *inbox) await(pick func(appui.Event) bool) appui.Event {
+	b.t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		b.held = append(b.held, b.p.Poll()...)
+		for i, e := range b.held {
+			if pick(e) {
+				b.held = append(b.held[:i], b.held[i+1:]...)
+				return e
+			}
+		}
+	}
+	b.t.Fatal("event timeout")
+	return appui.Event{}
+}
+
 func autoIntegration(t *testing.T, mode string) *Platform {
 	t.Helper()
 	p := desktopFixture(t)
@@ -69,13 +92,14 @@ func TestAutoShellIntegrationReportsAndTypesNothingWhenTheServerCannotOrNoPrompt
 			defer func(d time.Duration) { hookBudget = d }(hookBudget)
 			hookBudget = 400 * time.Millisecond
 			p := autoIntegration(t, "auto")
+			events := &inbox{t: t, p: p}
 			p.Connect(testServer(t).Options().Connection)
-			s := awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil }).Session
+			s := events.await(func(e appui.Event) bool { return e.Session != nil }).Session
 			t.Cleanup(func() { p.CloseSession(s.ID) })
 			if tc.prompt {
 				s.Terminal.Feed([]byte("tester@host:~$ "))
 			}
-			r := awaitEvent(t, p, func(e appui.Event) bool { return e.ShellHook != nil }).ShellHook
+			r := events.await(func(e appui.Event) bool { return e.ShellHook != nil }).ShellHook
 			if r.Session != s.ID || r.Err == nil || !strings.Contains(r.Err.Error(), tc.want) {
 				t.Fatalf("%+v", r)
 			}
