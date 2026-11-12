@@ -240,7 +240,7 @@ func TestScreenshots(t *testing.T) {
 	}
 	tt.Frame()
 	shot(tt, "06a-activity-strip")
-	click(t, tt, "2 个传输进行中")
+	click(t, tt, "1 个传输失败，2 个进行中")
 	shot(tt, "06-activity-transfers")
 	click(t, tt, "收起活动栏")
 

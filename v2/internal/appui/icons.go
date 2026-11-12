@@ -38,5 +38,7 @@ var appIcons = map[string]*ui.SVG{
 	"transfer":      iconSVG(`<path d="M7 20V4M3 8l4-4 4 4m6-4v16m4-4-4 4-4-4"/>`),
 	"cpu":           iconSVG(`<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/>`),
 	"globe":         iconSVG(`<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>`),
+	"play":          iconSVG(`<path d="M7 4.5v15l12-7.5z"/>`),
+	"link":          iconSVG(`<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1m1 5.7a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>`),
 	"more":          iconSVG(`<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>`),
 }

@@ -57,6 +57,100 @@ func (c *Client) RemovePath(p string) error {
 	}
 	return c.Remove(p)
 }
+
+// refuseRoot is the guard of every deletion: never the root, the folder itself or anything above it.
+func refuseRoot(p string) error {
+	if e := CheckPath(p); e != nil {
+		return e
+	}
+	if q := path.Clean(p); q == "/" || q == "." || q == ".." || strings.HasPrefix(q, "../") {
+		return errors.New("refusing root removal")
+	}
+	return nil
+}
+
+// Tally counts what RemoveTree takes along: the files (a link counts as one, and is never followed) and
+// the folders, p itself included.
+func (c *Client) Tally(ctx context.Context, p string) (files, dirs int, err error) {
+	if err = refuseRoot(p); err != nil {
+		return
+	}
+	var walk func(string, os.FileInfo) error
+	walk = func(p string, v os.FileInfo) error {
+		if e := ctx.Err(); e != nil {
+			return e
+		}
+		if !v.IsDir() { // a link to a folder is not IsDir here: it is a file to unlink
+			files++
+			return nil
+		}
+		dirs++
+		entries, e := c.ReadDir(p)
+		if e != nil {
+			return e
+		}
+		for _, f := range entries {
+			if e = walk(path.Join(p, f.Name()), f); e != nil {
+				return e
+			}
+		}
+		return nil
+	}
+	v, e := c.Lstat(p)
+	if e != nil {
+		return 0, 0, e
+	}
+	if err = walk(p, v); err != nil {
+		return 0, 0, err
+	}
+	return
+}
+
+// RemoveTree deletes p and what is inside it, the deepest first. Links are unlinked, never followed.
+// removed is told how many items are gone so far. Cancelling stops between two items; a path that is
+// already gone counts as done, so a retry carries on where a failed run stopped.
+func (c *Client) RemoveTree(ctx context.Context, p string, removed func(n int)) error {
+	if e := refuseRoot(p); e != nil {
+		return e
+	}
+	n := 0
+	var walk func(string, os.FileInfo) error
+	walk = func(p string, v os.FileInfo) (e error) {
+		if e = ctx.Err(); e != nil {
+			return e
+		}
+		if v.IsDir() {
+			var entries []os.FileInfo
+			if entries, e = c.ReadDir(p); e != nil {
+				return e
+			}
+			for _, f := range entries {
+				if e = walk(path.Join(p, f.Name()), f); e != nil {
+					return e
+				}
+			}
+			e = c.RemoveDirectory(p)
+		} else {
+			e = c.Remove(p)
+		}
+		if e != nil && !os.IsNotExist(e) {
+			return e
+		}
+		n++
+		if removed != nil {
+			removed(n)
+		}
+		return nil
+	}
+	v, e := c.Lstat(p)
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	return walk(p, v)
+}
 func (c *Client) RenamePath(from, to string) error {
 	if e := CheckPath(from); e != nil {
 		return e

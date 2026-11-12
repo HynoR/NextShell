@@ -62,19 +62,22 @@ func (p *Platform) operationFor(forEditor bool, fn func(context.Context) error) 
 	})
 }
 func (p *Platform) ListFiles(session, remote string) {
-	p.operation(func(ctx context.Context) error {
-		return p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
-			if remote == "" {
-				remote = "."
+	p.launch(func() {
+		ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
+		defer cancel()
+		e := p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
+			dir := remote
+			if dir == "" {
+				dir = "."
 			}
-			if remote == "~" || strings.HasPrefix(remote, "~/") {
+			if dir == "~" || strings.HasPrefix(dir, "~/") {
 				home, err := c.RealPath(".")
 				if err != nil {
 					return err
 				}
-				remote = path.Join(home, strings.TrimPrefix(strings.TrimPrefix(remote, "~"), "/"))
+				dir = path.Join(home, strings.TrimPrefix(strings.TrimPrefix(dir, "~"), "/"))
 			}
-			resolved, e := c.RealPath(remote)
+			resolved, e := c.RealPath(dir)
 			if e != nil {
 				return e
 			}
@@ -85,6 +88,9 @@ func (p *Platform) ListFiles(session, remote string) {
 			p.emit(appui.Event{Files: &appui.FileListing{Session: session, Path: resolved, Entries: entries}})
 			return nil
 		})
+		if e != nil { // the pane shows why in place of the list: nothing else would end its spinner
+			p.emit(appui.Event{FilesFailed: &appui.FileFailure{Session: session, Path: remote, Err: e.Error()}})
+		}
 	})
 }
 func (p *Platform) FileAction(session, action, from, to string) {
@@ -128,7 +134,7 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 		return "", e
 	}
 	switch req.Kind {
-	case "upload", "download", "upload-packed", "download-packed", "cross", "copy", "move":
+	case "upload", "download", "upload-packed", "download-packed", "cross", "copy", "move", "remove":
 	default:
 		return "", errors.New("unsupported transfer kind")
 	}
@@ -148,7 +154,11 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 			return "", errors.New("cut/paste is only available on the same server/account")
 		}
 	}
-	id, e := p.queue.Add(transferLabel(req), func(ctx context.Context, progress func(int64)) error {
+	add := p.queue.Add
+	if req.Kind == "remove" {
+		add = p.queue.AddItems
+	}
+	id, e := add(transferLabel(req), func(ctx context.Context, progress func(int64)) error {
 		if req.Kind == "upload-packed" || req.Kind == "download-packed" {
 			s, e := p.ssh(req.Session)
 			if e != nil {
@@ -194,6 +204,9 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
 			case "move":
 				return c.RenamePath(req.Remote, req.Destination)
+			case "remove":
+				transfer.SetTotal(ctx, int64(req.Items))
+				return c.RemoveTree(ctx, req.Remote, func(n int) { progress(int64(n)) })
 			case "cross", "copy":
 				if info, e := c.Lstat(req.Remote); e == nil && info.Mode().IsRegular() {
 					transfer.SetTotal(ctx, info.Size())
@@ -250,11 +263,41 @@ func transferLabel(r appui.TransferRequest) string {
 		return "上传 " + filepath.Base(r.Local) + " → " + path.Dir(r.Remote)
 	case "download", "download-packed":
 		return "下载 " + path.Base(r.Remote) + " → " + filepath.Dir(r.Local)
+	case "remove":
+		return "删除 " + r.Remote
 	case "move":
 		return "移动 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
 	default:
 		return "复制 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
 	}
+}
+
+// CountRemoval tells, by a Removal event, what deleting paths takes. A big tree takes a while, so it runs
+// beyond the 30 s of a plain operation, until the returned func gives it up.
+func (p *Platform) CountRemoval(session string, paths []string) func() {
+	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Minute)
+	p.launch(func() {
+		defer cancel()
+		count := &appui.RemovalCount{Session: session}
+		e := p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
+			for _, v := range paths {
+				files, dirs, e := c.Tally(ctx, v)
+				if e != nil {
+					return e
+				}
+				count.Targets = append(count.Targets, appui.RemovalTally{Path: v, Files: files, Dirs: dirs})
+			}
+			return nil
+		})
+		if errors.Is(ctx.Err(), context.Canceled) { // given up: nobody waits for it
+			return
+		}
+		if e != nil {
+			count.Err = e.Error()
+		}
+		p.emit(appui.Event{Removal: count})
+	})
+	return cancel
 }
 func (p *Platform) Transfers() []transfer.Job           { return p.queue.List() }
 func (p *Platform) CancelTransfer(id string)            { p.queue.Cancel(id) }
@@ -847,5 +890,6 @@ func (p *Platform) SessionDir(id string) string {
 
 func (p *Platform) CancelAllTransfers()          { p.queue.CancelAll() }
 func (p *Platform) ClearCompletedTransfers() int { return p.queue.ClearCompleted() }
+func (p *Platform) ClearFailedTransfers() int    { return p.queue.ClearFailed() }
 
 const packProbe = `command -v tar >/dev/null 2>&1 && d=$(mktemp -d 2>/dev/null) && { mv -T -n -- "$d" "$d.t" 2>/dev/null; r=$?; rm -rf -- "$d" "$d.t"; exit $r; }`

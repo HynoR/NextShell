@@ -2,6 +2,7 @@ package appui
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
@@ -35,18 +36,29 @@ type filesState struct {
 	follow                   bool
 	dialog                   fileDialog
 	trees                    map[string]*dirTree // per session
+	failed                   map[string]string   // per session: why its first listing could not be read
+	counting                 *removalCount       // the delete confirm waits for this count
+	removing                 map[string]string   // deletions started here: transfer job -> session
 	treeHidden               bool
 	treeWidth                float32
+}
+
+// removalCount is a delete waiting for its count: what the confirm says it takes.
+type removalCount struct {
+	session string
+	targets []sftpfs.Entry
+	cancel  func()
 }
 
 // dirTree is the SFTP directory tree of a session: what its listings showed, and which folders are open.
 type dirTree struct {
 	dirs   map[string][]string // a listed folder's subfolders, in order
 	open   map[string]*bool
-	asked  map[string]bool // listed, or being listed
-	peeks  map[string]bool // listings asked for the tree alone, not to show in the list
-	shown  string          // the folder the list shows, which the tree follows
-	hidden bool            // dotfolders were kept, as the list shows them
+	asked  map[string]bool   // listed, or being listed
+	peeks  map[string]bool   // listings asked for the tree alone, not to show in the list
+	failed map[string]string // a folder whose listing failed, and why
+	shown  string            // the folder the list shows, which the tree follows
+	hidden bool              // dotfolders were kept, as the list shows them
 }
 
 type remoteClipboard struct {
@@ -68,13 +80,15 @@ func (s *filesState) init() {
 	s.row = -1
 	s.paths = map[string]string{}
 	s.trees = map[string]*dirTree{}
+	s.failed = map[string]string{}
+	s.removing = map[string]string{}
 	s.treeWidth = 200
 }
 
 func (s *filesState) tree(id string) *dirTree {
 	t := s.trees[id]
 	if t == nil {
-		t = &dirTree{dirs: map[string][]string{}, open: map[string]*bool{}, asked: map[string]bool{}, peeks: map[string]bool{}}
+		t = &dirTree{dirs: map[string][]string{}, open: map[string]*bool{}, asked: map[string]bool{}, peeks: map[string]bool{}, failed: map[string]string{}}
 		s.trees[id] = t
 	}
 	return t
@@ -125,6 +139,14 @@ func (t *dirTree) flag(p string) *bool {
 }
 
 func (s *filesState) handle(a *App, e Event) {
+	if f := e.FilesFailed; f != nil {
+		s.listFailed(a, f)
+		return
+	}
+	if r := e.Removal; r != nil {
+		s.counted(a, r)
+		return
+	}
 	if e.Files == nil {
 		return
 	}
@@ -139,6 +161,7 @@ func (s *filesState) handle(a *App, e Event) {
 	tree := s.tree(e.Files.Session)
 	tree.learn(e.Files)
 	tree.follow(e.Files.Path)
+	delete(s.failed, e.Files.Session)
 	if s.session != e.Files.Session || s.path != e.Files.Path {
 		s.selection.Clear()
 		s.row = -1
@@ -147,6 +170,145 @@ func (s *filesState) handle(a *App, e Event) {
 	s.paths[s.session] = s.path
 	s.all = e.Files.Entries
 	s.filterEntries()
+}
+
+// counted opens the delete confirm with what the count found.
+func (s *filesState) counted(a *App, r *RemovalCount) {
+	n := s.counting
+	if n == nil || n.session != r.Session || len(n.targets) != len(r.Targets) && r.Err == "" { // given up, or another delete's
+		return
+	}
+	s.counting = nil
+	if r.Err != "" {
+		a.fail(errors.New(r.Err))
+		return
+	}
+	files, dirs := 0, 0
+	for _, v := range r.Targets {
+		files, dirs = files+v.Files, dirs+v.Dirs
+	}
+	a.confirm("删除远程文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs), fmt.Sprintf("删除 %d 项", len(n.targets)), func() {
+		for _, v := range r.Targets {
+			id, e := a.P.QueueTransfer(TransferRequest{Session: r.Session, Kind: "remove", Remote: v.Path, Items: v.Files + v.Dirs})
+			if e != nil {
+				a.fail(e)
+				return
+			}
+			s.removing[id] = r.Session
+		}
+	})
+}
+
+// fileNames lists up to five names for a confirm.
+func fileNames(files []sftpfs.Entry) string {
+	var names []string
+	for _, f := range files[:min(len(files), 5)] {
+		names = append(names, f.Name)
+	}
+	if len(files) > 5 {
+		return strings.Join(names, "、") + fmt.Sprintf(" 等 %d 项", len(files))
+	}
+	return strings.Join(names, "、")
+}
+
+// askRemove confirms deleting targets. A folder takes all inside it, so the server is asked to count first:
+// the confirm says how much goes. Plain files and links need no count.
+func (a *App) askRemove(id string, targets []sftpfs.Entry) {
+	s := &a.files
+	if !slices.ContainsFunc(targets, func(f sftpfs.Entry) bool { return f.Directory && !f.Symlink }) {
+		a.confirm("删除远程文件", fileNames(targets)+"\n删除后无法恢复。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
+			for _, v := range targets {
+				a.P.FileAction(id, "remove", v.Path, "")
+			}
+		})
+		return
+	}
+	s.giveUpCount()
+	paths := make([]string, len(targets))
+	for i, v := range targets {
+		paths[i] = v.Path
+	}
+	s.counting = &removalCount{session: id, targets: targets}
+	s.counting.cancel = a.P.CountRemoval(id, paths)
+}
+func (s *filesState) giveUpCount() {
+	if n := s.counting; n != nil {
+		n.cancel()
+		s.counting = nil
+	}
+}
+
+// removalStatus is the footer's word on a delete: the count it waits for, or its progress, and the way
+// to stop it. A finished delete refreshes the folder shown.
+func (a *App) removalStatus(c *ui.Context, id string) {
+	s := &a.files
+	if n := s.counting; n != nil && n.session == id {
+		muted(c, "正在统计要删除的内容…")
+		if ghost(c, "取消", "").Label("取消统计").Clicked() {
+			s.giveUpCount()
+		}
+		return
+	}
+	var done, total int64
+	var running []string
+	for _, j := range a.P.Transfers() {
+		if s.removing[j.ID] != id {
+			continue
+		}
+		if j.State == "queued" || j.State == "running" {
+			done, total = done+j.Bytes, total+j.Total
+			running = append(running, j.ID)
+		} else {
+			delete(s.removing, j.ID)
+			if s.session == id {
+				a.listFiles(id, s.path)
+			}
+		}
+	}
+	if len(running) == 0 {
+		return
+	}
+	text := fmt.Sprintf("正在删除，已删除 %d 项", done)
+	if total > 0 {
+		text = fmt.Sprintf("正在删除 %d / %d 项", min(done, total), total)
+	}
+	muted(c, text)
+	if ghost(c, "取消", "").Label("取消删除").Clicked() {
+		for _, j := range running {
+			a.P.CancelTransfer(j)
+		}
+	}
+}
+
+// listFailed answers a listing that failed: a folder of the tree shows it in place, a list not shown yet
+// takes the pane (its spinner would never end), and a folder opened from a list shown is a toast.
+func (s *filesState) listFailed(a *App, f *FileFailure) {
+	reason, detail := listReason(f.Err)
+	if tree := s.trees[f.Session]; tree != nil && tree.peeks[f.Path] {
+		delete(tree.peeks, f.Path)
+		tree.failed[f.Path] = reason
+		return
+	}
+	if f.Session == s.session {
+		a.failAs(reason, f.Err)
+		return
+	}
+	s.failed[f.Session] = reason
+	if detail != "" {
+		s.failed[f.Session] += "\n" + detail
+	}
+}
+
+// listReason says why a listing failed, in words for the user; detail is the server's own wording
+// when it is not one of the known causes.
+func listReason(msg string) (reason, detail string) {
+	if strings.Contains(strings.ToLower(msg), "subsystem") {
+		return "这台服务器没有开启文件传输（SFTP）", ""
+	}
+	if title, known := humanize(msg); known {
+		return title, ""
+	}
+	return "服务器没有返回目录内容", msg
 }
 func (s *filesState) filterEntries() {
 	s.entries = s.entries[:0:0]
@@ -216,6 +378,7 @@ func digits(s string) int {
 }
 func (a *App) listFiles(id, dir string) {
 	a.files.requested = id
+	delete(a.files.failed, id)
 	delete(a.files.tree(id).peeks, dir)
 	a.P.ListFiles(id, dir)
 }
@@ -243,6 +406,13 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 				for _, sub := range subs {
 					if a.files.hidden || !strings.HasPrefix(path.Base(sub), ".") {
 						node(sub)
+					}
+				}
+				if reason, bad := tree.failed[dir]; bad {
+					if ui.TreeItem(c.Key("retry-"+dir), "无法读取，点击重试", nil, nil).Label("重试读取 " + dir).Tooltip(reason).TextColor(c.Theme().Danger).Clicked() {
+						delete(tree.failed, dir)
+						tree.peeks[dir] = true
+						a.later(func() { a.P.ListFiles(id, dir) })
 					}
 				}
 			}
@@ -288,6 +458,13 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
+		follow := iconButton(c, "跟随终端目录", "link")
+		if s.follow {
+			follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+		}
+		if follow.Clicked() {
+			s.follow, s.followed = !s.follow, ""
+		}
 		if iconButton(c, "上传", "upload").Clicked() {
 			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
 		}
@@ -296,7 +473,14 @@ func (a *App) filesPanel(c *ui.Context) {
 		}
 		iconButton(c, "更多", "more").PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
+	if s.follow && a.P.SessionDir(id) == "" {
+		a.followHint(c)
+	}
 	if s.session != id {
+		if why, bad := s.failed[id]; bad {
+			a.listError(c, id, why)
+			return
+		}
 		ui.Row(c).Fill().Center().Children(func() { ui.Spinner(c) })
 		return
 	}
@@ -311,9 +495,44 @@ func (a *App) filesPanel(c *ui.Context) {
 			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
 		}
 		muted(c, info).Grow(1)
+		a.removalStatus(c, id)
 		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
 			a.pasteRemoteClipboard(id)
 		}
+	})
+}
+
+// followHint says what to do when the list is to follow the terminal, which has not told its folder.
+func (a *App) followHint(c *ui.Context) {
+	t := c.Theme()
+	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + shortcutLabel("K") + "，选「插入目录跟踪脚本」，检查后回车执行即可。"
+	if a.Prefs.ShellIntegration == "off" {
+		text = "目录跟踪在设置里是关闭的。到设置的「Shell 集成」打开后，文件面板才能跟随终端目录。"
+	}
+	ui.Row(c).FillWidth().Padding(5, 10).Gap(8).Background(t.Warning.Alpha(.12)).Label("跟随终端目录的提示").Children(func() {
+		ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.Warning)
+		ui.Text(c, text).FontSize(12).Grow(1).MinWidth(0)
+	})
+}
+
+// listError takes the pane when the first listing failed: why, and a way to ask again.
+func (a *App) listError(c *ui.Context, id, why string) {
+	reason, detail, _ := strings.Cut(why, "\n")
+	retry := orDefault(a.files.paths[id], ".")
+	ui.Column(c).Fill().Padding(24).Gap(6).Center().Children(func() {
+		ui.Text(c, "无法读取目录").Bold()
+		ui.Text(c, reason).FontSize(12).TextColor(c.Theme().Danger)
+		if detail != "" {
+			muted(c, detail).FontSize(11).Selectable()
+		}
+		ui.Row(c).Gap(8).Padding(8, 0, 0, 0).Children(func() {
+			if ui.Button(c, "重试").Clicked() {
+				a.listFiles(id, retry)
+			}
+			if retry != "." && ui.Button(c, "回到主目录").Clicked() {
+				a.listFiles(id, ".")
+			}
+		})
 	})
 }
 
@@ -384,6 +603,7 @@ func (a *App) fileList(c *ui.Context, id string) {
 			}
 		}).Grow(1).FillWidth()
 		a.fileClipboardKeys(table, id)
+		a.fileKeys(table, id)
 		if table.Submitted() && s.row >= 0 && s.row < len(s.entries) {
 			f := s.entries[s.row]
 			if f.Directory {
@@ -535,12 +755,6 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 		s.hidden = !s.hidden
 		s.filterEntries()
 	}
-	if m.Item("跟随终端目录").Checked(s.follow).Chosen() {
-		s.follow = !s.follow
-		if s.follow && a.P.SessionDir(id) == "" {
-			a.toast("终端还没有报告当前目录，可在命令面板里为会话插入目录跟踪脚本")
-		}
-	}
 	if m.Item("在终端中 cd 到此处").Chosen() {
 		a.later(func() { a.cdInTerminal(id, s.path) })
 	}
@@ -652,18 +866,7 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 	}
 	m.Separator()
 	if m.Item("删除").Danger().Chosen() {
-		a.later(func() {
-			targets := a.selectedFiles(&f)
-			names := make([]string, len(targets))
-			for i, v := range targets {
-				names[i] = v.Name
-			}
-			a.confirm("删除远程文件", strings.Join(names, "、")+"\n删除后无法恢复；只能删除文件、链接或空目录。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
-				for _, v := range targets {
-					a.P.FileAction(id, "remove", v.Path, "")
-				}
-			})
-		})
+		a.later(func() { a.askRemove(id, a.selectedFiles(&f)) })
 	}
 }
 
@@ -806,6 +1009,41 @@ func (a *App) pasteRemoteClipboard(id string) {
 	}
 	// Keep the clipboard on failures; a completed cut then fails safely (source absent).
 }
+
+// fileKeys are the keys of the list: Delete (⌘⌫ on a Mac) asks to delete what is selected, F2 renames the
+// row, Backspace goes up to the folder above. A name being typed keeps its keys.
+func (a *App) fileKeys(e ui.Element, id string) {
+	s := &a.files
+	if s.renaming != "" {
+		return
+	}
+	row := func() []sftpfs.Entry { // what is selected, or else the row the keyboard is on
+		if got := a.selectedFiles(nil); len(got) > 0 {
+			return got
+		}
+		if s.row >= 0 && s.row < len(s.entries) {
+			return s.entries[s.row : s.row+1]
+		}
+		return nil
+	}
+	switch {
+	case e.Shortcut(0, ui.KeyDelete), e.Shortcut(ui.Cmd, ui.KeyBackspace):
+		if targets := slices.Clone(row()); len(targets) > 0 {
+			a.later(func() { a.askRemove(id, targets) })
+		}
+	case e.Shortcut(0, ui.KeyF2):
+		if s.row >= 0 && s.row < len(s.entries) {
+			f := s.entries[s.row]
+			s.renaming, s.renameTo = f.Path, f.Name
+		} else if got := row(); len(got) == 1 {
+			s.renaming, s.renameTo = got[0].Path, got[0].Name
+		}
+	case e.Shortcut(0, ui.KeyBackspace):
+		if s.path != "/" {
+			a.listFiles(id, path.Dir(s.path))
+		}
+	}
+}
 func (a *App) fileClipboardKeys(e ui.Element, id string) {
 	if e.Shortcut(ui.Cmd, ui.KeyC) {
 		a.setRemoteClipboard(id, nil, false)
@@ -820,15 +1058,17 @@ func (a *App) fileClipboardKeys(e ui.Element, id string) {
 
 // Transfers: the queue in the activity column.
 
-func activeTransfers(jobs []transfer.Job) int {
+func transferCount(jobs []transfer.Job, states ...string) int {
 	n := 0
 	for _, j := range jobs {
-		if j.State == "queued" || j.State == "running" {
+		if slices.Contains(states, j.State) {
 			n++
 		}
 	}
 	return n
 }
+func activeTransfers(jobs []transfer.Job) int { return transferCount(jobs, "queued", "running") }
+func failedTransfers(jobs []transfer.Job) int { return transferCount(jobs, "failed") }
 
 func (a *App) transferSection(c *ui.Context) {
 	t := c.Theme()
@@ -840,15 +1080,42 @@ func (a *App) transferSection(c *ui.Context) {
 			if activeTransfers(jobs) > 0 && ghost(c, "全部取消", "").Clicked() {
 				a.P.CancelAllTransfers()
 			}
-			if len(jobs) > activeTransfers(jobs) && ghost(c, "清除已完成", "").Clicked() {
+			if transferCount(jobs, "done") > 0 && ghost(c, "清除已完成", "").Clicked() {
 				a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
 			}
 		})
+		if failed, cancelled := failedTransfers(jobs), transferCount(jobs, "cancelled"); failed+cancelled > 0 {
+			// What went wrong comes first, with its reason; it stays until retried or cleared.
+			jobs = slices.SortedStableFunc(slices.Values(jobs), func(x, y transfer.Job) int {
+				return cmp.Compare(btoi(y.State == "failed"), btoi(x.State == "failed"))
+			})
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				var parts []string
+				if failed > 0 {
+					parts = append(parts, fmt.Sprintf("%d 个传输失败", failed))
+				}
+				if cancelled > 0 {
+					parts = append(parts, fmt.Sprintf("%d 个已取消", cancelled))
+				}
+				color := t.TextMuted
+				if failed > 0 {
+					color = t.Danger
+				}
+				ui.Text(c, strings.Join(parts, "，")).FontSize(12).Bold().TextColor(color).Grow(1).MinWidth(0)
+				if ghost(c, "清除失败项", "").Clicked() {
+					a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearFailedTransfers()))
+				}
+			})
+		}
 		if len(jobs) == 0 {
 			muted(c, "没有传输任务。把文件拖到 SFTP 即可上传。")
 		}
 		for _, j := range jobs {
-			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
+			border := t.Border
+			if j.State == "failed" {
+				border = t.Danger.Alpha(.5)
+			}
+			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, border).Children(func() {
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, j.Label).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(j.Label)
 					switch j.State {
@@ -865,20 +1132,7 @@ func (a *App) transferSection(c *ui.Context) {
 				if j.State == "running" {
 					ui.Progress(c, transferFraction(j)).FillWidth()
 				}
-				detail := states[j.State] + " · " + humanSize(j.Bytes)
-				if j.Total > 0 {
-					detail = fmt.Sprintf("%s · %d%% · %s / %s", states[j.State], int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
-				}
-				if elapsed := j.Finished.Sub(j.Started); !j.Started.IsZero() && !j.Finished.IsZero() && elapsed > 0 {
-					detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-				} else if !j.Started.IsZero() && j.Finished.IsZero() {
-					if elapsed := time.Since(j.Started); elapsed > 0 {
-						detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-					}
-				}
-				if j.Attempt > 1 {
-					detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
-				}
+				detail := transferDetail(j, states[j.State])
 				muted(c, detail).FontSize(11)
 				if j.Error != "" {
 					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
@@ -894,10 +1148,51 @@ func (a *App) transferSection(c *ui.Context) {
 	})
 }
 
+// transferDetail is the grey line of a job: its state, how far it is, the speed and the attempt.
+func transferDetail(j transfer.Job, state string) string {
+	detail := state + " · " + humanSize(j.Bytes)
+	switch {
+	case j.Items: // a deletion counts items, and has no speed
+		detail = state
+		if j.Total > 0 && j.State == "running" {
+			detail += fmt.Sprintf(" · 已删除 %d / %d 项 · %d%%", j.Bytes, j.Total, int(transferFraction(j)*100))
+		} else if j.Bytes > 0 {
+			detail += fmt.Sprintf(" · 已删除 %d 项", j.Bytes)
+		}
+	case j.Total > 0:
+		detail = fmt.Sprintf("%s · %d%% · %s / %s", state, int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
+	}
+	if elapsed := transferElapsed(j); !j.Items && elapsed > 0 {
+		detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
+	}
+	if j.Attempt > 1 {
+		detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
+	}
+	return detail
+}
+
+// transferElapsed is how long j ran, or has been running; zero before it starts.
+func transferElapsed(j transfer.Job) time.Duration {
+	switch {
+	case j.Started.IsZero():
+		return 0
+	case j.Finished.IsZero():
+		return time.Since(j.Started)
+	}
+	return j.Finished.Sub(j.Started)
+}
+
 // transferFraction is the share done, or -1 (indeterminate) when the size is unknown.
 func transferFraction(j transfer.Job) float64 {
 	if j.Total <= 0 {
 		return -1
 	}
 	return min(1, float64(j.Bytes)/float64(j.Total))
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

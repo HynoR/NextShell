@@ -1,0 +1,121 @@
+package appui_test
+
+import (
+	"image/png"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/transfer"
+)
+
+// shooter renders a screen light and dark into $NEXTSHELL_SHOTS; without it the test skips.
+func shooter(t *testing.T) func(*ui.Tester, string) {
+	t.Helper()
+	dir := os.Getenv("NEXTSHELL_SHOTS")
+	if dir == "" {
+		t.Skip("set NEXTSHELL_SHOTS=<dir> to render screenshots")
+	}
+	if e := os.MkdirAll(dir, 0o755); e != nil {
+		t.Fatal(e)
+	}
+	return func(tt *ui.Tester, name string) {
+		t.Helper()
+		defer tt.SetDark(false)
+		for _, mode := range []string{"light", "dark"} {
+			tt.SetDark(mode == "dark")
+			tt.Frame()
+			f, e := os.Create(filepath.Join(dir, name+"-"+mode+".png"))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if e = png.Encode(f, tt.Image()); e != nil {
+				t.Fatal(e)
+			}
+			f.Close()
+		}
+	}
+}
+
+// TestScreenshotsUX7 renders the screens of the file, snippet and activity fixes.
+func TestScreenshotsUX7(t *testing.T) {
+	shot := shooter(t)
+	p := newPlatform(t)
+	_, db := demo(t, p)
+	_, tt := start(p)
+	tt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, p, tt, "s1", "db-master", db)
+	click(t, tt, "SFTP")
+	p.events = append(p.events, appui.Event{FilesFailed: &appui.FileFailure{Session: "s1", Path: ".", Err: `sftp: "permission denied" (SSH_FX_PERMISSION_DENIED)`}})
+	tt.Frame()
+	shot(tt, "ux7-1-listing-error")
+
+	// Deleting a folder: the count it waits for, the confirm that says what goes, and the progress.
+	rp, rt := removalFixture(t)
+	rt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	now := time.Now()
+	listing(rp.fakePlatform, rt, "one", "/srv/app",
+		sftpfs.Entry{Name: "node_modules", Path: "/srv/app/node_modules", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "releases", Path: "/srv/app/releases", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-50 * time.Hour)},
+		sftpfs.Entry{Name: "config.yaml", Path: "/srv/app/config.yaml", Size: 2048, Mode: "-rw-r--r--", Modified: now.Add(-time.Hour)})
+	deleteRow(t, rt, "打开 node_modules")
+	shot(rt, "ux7-2a-delete-counting")
+	rp.events = append(rp.events, appui.Event{Removal: &appui.RemovalCount{Session: "one", Targets: []appui.RemovalTally{{Path: "/srv/app/node_modules", Files: 18423, Dirs: 2160}}}})
+	rt.Frame()
+	shot(rt, "ux7-2b-delete-confirm")
+	click(t, rt, "删除 1 项")
+	rp.jobs = []transfer.Job{{ID: "job", Label: "删除 /srv/app/node_modules", State: "running", Items: true, Bytes: 7210, Total: 20583, Attempt: 1, Started: now}}
+	rt.Frame()
+	shot(rt, "ux7-2c-delete-progress")
+	click(t, rt, "展开活动栏")
+	shot(rt, "ux7-2d-delete-in-queue")
+
+	// Snippets: a click fills the command bar, the row under the pointer has ▶, whose tooltip names the target.
+	sp := newPlatform(t)
+	web, _ := demo(t, sp)
+	_, st := start(sp)
+	st.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	st.SetSize(1280, 900)
+	session(t, sp, st, "s1", "prod-web-01", web)
+	st.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	click(t, st, "片段 重启 nginx")
+	hover(t, st, "片段 查看日志")
+	shot(st, "ux7-3a-snippet-hover")
+	hover(t, st, "发送 查看日志")
+	shot(st, "ux7-3b-snippet-send-target")
+
+	// A failed transfer: the red count on the folded strip, and the failed entries first when it opens.
+	ap := newPlatform(t)
+	aweb, _ := demo(t, ap)
+	_, at := start(ap)
+	at.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, ap, at, "s1", "prod-web-01", aweb)
+	listing(ap, at, "s1", "/srv/app", sftpfs.Entry{Name: "releases", Path: "/srv/app/releases", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "config.yaml", Path: "/srv/app/config.yaml", Size: 2048, Mode: "-rw-r--r--", Modified: now.Add(-time.Hour)})
+	ap.jobs = []transfer.Job{
+		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Total: 120 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
+		{ID: "2", Label: "下载 /var/log/syslog", State: "done", Bytes: 2200000, Attempt: 1, Started: now.Add(-time.Minute), Finished: now.Add(-50 * time.Second)},
+		{ID: "3", Label: "上传 config.yaml → /etc/app", State: "failed", Error: "sftp: \"permission denied\" (SSH_FX_PERMISSION_DENIED)", Attempt: 1},
+		{ID: "4", Label: "删除 /srv/app/cache", State: "failed", Items: true, Bytes: 310, Total: 1200, Error: "sftp: \"permission denied\" (SSH_FX_PERMISSION_DENIED)", Attempt: 1},
+	}
+	at.Frame()
+	shot(at, "ux7-5a-failed-badge-strip")
+	click(t, at, "2 个传输失败，1 个进行中")
+	shot(at, "ux7-5b-failed-transfers-open")
+
+	// Following the terminal's folder, which it has not told.
+	fp := newPlatform(t)
+	fweb, _ := demo(t, fp)
+	_, ft := start(fp)
+	ft.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, fp, ft, "s1", "prod-web-01", fweb)
+	click(t, ft, "SFTP")
+	listing(fp, ft, "s1", "/var/log", sftpfs.Entry{Name: "nginx", Path: "/var/log/nginx", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "syslog", Path: "/var/log/syslog", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-time.Hour)})
+	click(t, ft, "跟随终端目录")
+	shot(ft, "ux7-4-follow-hint")
+}

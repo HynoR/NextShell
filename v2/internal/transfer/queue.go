@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"slices"
 	"sync"
 	"time"
 )
@@ -12,6 +13,7 @@ import (
 type Job struct {
 	ID, Label, State, Error string
 	Bytes, Total            int64 // Total is 0 when unknown
+	Items                   bool  // Bytes and Total count items (a deletion), not bytes
 	Attempt                 int
 	Started, Finished       time.Time
 }
@@ -55,14 +57,18 @@ func (q *Queue) notify() {
 		q.wake()
 	}
 }
-func (q *Queue) Add(label string, work Work) (string, error) {
+func (q *Queue) Add(label string, work Work) (string, error) { return q.add(label, work, false) }
+
+// AddItems is Add for work that reports items done, not bytes.
+func (q *Queue) AddItems(label string, work Work) (string, error) { return q.add(label, work, true) }
+func (q *Queue) add(label string, work Work, items bool) (string, error) {
 	q.mu.Lock()
 	if q.closed {
 		q.mu.Unlock()
 		return "", errors.New("queue closed")
 	}
 	ctx, cancel := context.WithCancel(q.ctx)
-	it := &item{job: Job{ID: uuid.NewString(), Label: label, State: "queued", Attempt: 1}, work: work, ctx: ctx, cancel: cancel}
+	it := &item{job: Job{ID: uuid.NewString(), Label: label, State: "queued", Attempt: 1, Items: items}, work: work, ctx: ctx, cancel: cancel}
 	q.items = append(q.items, it)
 	q.wg.Add(1)
 	q.mu.Unlock()
@@ -142,7 +148,7 @@ func (q *Queue) Retry(id string) error {
 			return errors.New("only failed/cancelled jobs may retry")
 		}
 		ctx, cancel := context.WithCancel(q.ctx)
-		next := &item{job: Job{ID: it.job.ID, Label: it.job.Label, State: "queued", Attempt: it.job.Attempt + 1}, ctx: ctx, cancel: cancel, work: it.work}
+		next := &item{job: Job{ID: it.job.ID, Label: it.job.Label, State: "queued", Attempt: it.job.Attempt + 1, Items: it.job.Items}, ctx: ctx, cancel: cancel, work: it.work}
 		for i, v := range q.items {
 			if v == it {
 				q.items[i] = next
@@ -161,13 +167,17 @@ func (q *Queue) Retry(id string) error {
 func (q *Queue) Close() { q.mu.Lock(); q.closed = true; q.cancel(); q.mu.Unlock(); q.wg.Wait() }
 
 // ClearCompleted removes only successful jobs, retaining failures for retry and active work.
-func (q *Queue) ClearCompleted() int {
+func (q *Queue) ClearCompleted() int { return q.clear("done") }
+
+// ClearFailed removes the failed and cancelled jobs, which were kept for a retry.
+func (q *Queue) ClearFailed() int { return q.clear("failed", "cancelled") }
+func (q *Queue) clear(states ...string) int {
 	q.mu.Lock()
 	original := q.items
 	kept := original[:0]
 	n := 0
 	for _, it := range q.items {
-		if it.job.State == "done" {
+		if slices.Contains(states, it.job.State) {
 			n++
 		} else {
 			kept = append(kept, it)
