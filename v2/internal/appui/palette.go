@@ -126,7 +126,7 @@ func (a *App) paletteItems() []paletteItem {
 			run   func()
 		}{
 			{"复制会话", func() { a.P.CloneSession(s) }},
-			{"重新连接", func() { a.reconnect(s) }},
+			{"重新连接", func() { a.requestReconnect(s) }},
 			{"重命名标签", func() { a.startRename(s) }},
 			{"关闭标签", func() { a.requestClose(s.ID) }},
 			{"清屏", func() { s.Terminal.ClearScreen() }},

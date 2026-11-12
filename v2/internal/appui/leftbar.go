@@ -81,6 +81,25 @@ func (a *App) reconnect(s *Session) {
 	a.P.Reconnect(s)
 }
 
+// requestReconnect is a reconnect the user asked for in a menu: a session still alive is replaced, and what
+// runs in it ends, so that asks first (a connected SSH tab as a close does, the 不再询问 preference
+// included). A session that has ended reconnects at once.
+func (a *App) requestReconnect(s *Session) {
+	if a.P.Exited(s.ID) || !s.Local && a.Prefs.NoTabConfirm {
+		a.reconnect(s)
+		return
+	}
+	title, msg, action := "重新连接 "+a.tabTitle(s)+"？", "当前连接会断开，正在运行的命令会中断。", "断开并重新连接"
+	if s.Local {
+		title, msg, action = "重新打开 "+a.tabTitle(s)+"？", "终端里正在运行的程序会结束。", "结束并重新打开"
+	}
+	a.confirm(title, msg, action, func() {
+		if a.tabIndex(s.ID) >= 0 { // the tab may have closed while the question was open
+			a.reconnect(s)
+		}
+	})
+}
+
 func (a *App) sessionCard(c *ui.Context, s *Session) {
 	t := c.Theme()
 	label, color := a.sessionStatus(c, s)
