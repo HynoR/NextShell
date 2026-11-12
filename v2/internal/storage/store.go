@@ -373,6 +373,7 @@ func (s *Store) PinHost(address, fp string) error {
 	}
 	return nil
 }
+
 // ReplaceHostPin overwrites a pin after the user confirmed a changed host key.
 func (s *Store) ReplaceHostPin(address, fp string) error {
 	s.mu.Lock()

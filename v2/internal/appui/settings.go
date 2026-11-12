@@ -2,45 +2,104 @@ package appui
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
-	"strconv"
 )
 
+// settingsState backs the settings window. Preferences apply as they change:
+// the text fields are parsed every frame and saved once valid.
 type settingsState struct {
-	Draft                                            model.Preferences
-	Size, LineHeight, Scrollback, Keepalive, Section string
+	section                                 string
+	draft                                   model.Preferences
+	size, lineHeight, scrollback, keepalive string
+	err                                     string
+	hosts                                   map[string]bool // chosen for export and cloud copy
+
+	keys    keysState
+	proxies proxiesState
+	cloud   cloudState
+	agent   agentState
+	data    dataState
+	diag    diagState
+}
+
+var settingsSections = []struct{ id, icon string }{
+	{"通用", "settings"}, {"终端", "terminal"}, {"SSH", "server"}, {"密钥", "keys"}, {"代理", "proxies"},
+	{"同步", "cloud"}, {"Agent", "agent"}, {"导入导出", "data"}, {"回收站", "trash"}, {"网络诊断", "diagnostics"}, {"关于", "info"},
 }
 
 func (s *settingsState) load(v model.Preferences) {
-	s.Draft = v
-	s.Size = strconv.Itoa(v.FontSize)
-	s.LineHeight = strconv.FormatFloat(float64(v.LineHeight), 'f', 1, 32)
-	s.Scrollback = strconv.Itoa(v.ScrollbackMiB)
-	s.Keepalive = strconv.Itoa(v.KeepaliveSeconds)
-	if s.Section == "" {
-		s.Section = "终端"
+	s.draft = v
+	s.size = strconv.Itoa(v.FontSize)
+	s.lineHeight = strconv.FormatFloat(float64(v.LineHeight), 'f', -1, 32)
+	s.scrollback = strconv.Itoa(v.ScrollbackMiB)
+	s.keepalive = strconv.Itoa(v.KeepaliveSeconds)
+	if s.section == "" {
+		s.section = "通用"
+	}
+	if s.hosts == nil {
+		s.hosts = map[string]bool{}
+		s.cloud.endpoint = "http://127.0.0.1:41888"
+		s.cloud.name = "我的工作区"
+		s.data.format = "nextshell"
+		s.data.policy = "skip"
+		s.data.encrypt = true
+		s.keys.algorithm = "ed25519"
+		s.diag.target = "127.0.0.1"
 	}
 }
 func (s *settingsState) parse() (model.Preferences, error) {
-	p := s.Draft
+	p := s.draft
 	var err error
-	if p.FontSize, err = strconv.Atoi(s.Size); err != nil {
-		return p, fmt.Errorf("字号必须为整数")
+	if p.FontSize, err = strconv.Atoi(strings.TrimSpace(s.size)); err != nil {
+		return p, fmt.Errorf("字号须为整数")
 	}
-	line, e := strconv.ParseFloat(s.LineHeight, 32)
-	if e != nil {
-		return p, fmt.Errorf("行高必须为数字")
+	line, err := strconv.ParseFloat(strings.TrimSpace(s.lineHeight), 32)
+	if err != nil {
+		return p, fmt.Errorf("行高须为数字")
 	}
 	p.LineHeight = float32(line)
-	if p.ScrollbackMiB, err = strconv.Atoi(s.Scrollback); err != nil {
-		return p, fmt.Errorf("滚动缓冲必须为整数")
+	if p.ScrollbackMiB, err = strconv.Atoi(strings.TrimSpace(s.scrollback)); err != nil {
+		return p, fmt.Errorf("滚动缓冲须为整数")
 	}
-	if p.KeepaliveSeconds, err = strconv.Atoi(s.Keepalive); err != nil {
-		return p, fmt.Errorf("keepalive必须为整数")
+	if p.KeepaliveSeconds, err = strconv.Atoi(strings.TrimSpace(s.keepalive)); err != nil {
+		return p, fmt.Errorf("心跳间隔须为整数")
+	}
+	if p.ScrollbackMiB < 1 || p.ScrollbackMiB > 256 {
+		return p, fmt.Errorf("滚动缓冲须为 1–256 MiB")
+	}
+	if p.KeepaliveSeconds < 5 || p.KeepaliveSeconds > 600 {
+		return p, fmt.Errorf("心跳间隔须为 5–600 秒")
 	}
 	return p, p.Validate()
+}
+func (s *settingsState) selectHosts(ids ...string) {
+	s.hosts = map[string]bool{}
+	for _, id := range ids {
+		s.hosts[id] = true
+	}
+}
+func (s *settingsState) handle(a *App, e Event) {
+	if e.Diagnostic != nil && e.Diagnostic.ID == s.diag.id {
+		s.diag.busy = false
+		s.diag.text = e.Diagnostic.Text
+	}
+	if e.Import != nil {
+		s.data.preview = e.Import
+		s.data.confirmOverwrite = false
+		a.openSettings("导入导出")
+	}
+	if strings.HasPrefix(e.Message, "已导入 ") {
+		s.data.preview = nil
+	}
+	if e.WorkspaceID != "" {
+		s.cloud.workspace = e.WorkspaceID
+		s.cloud.confirmRemote = false
+	}
 }
 
 // TerminalThemes uses official terminal palettes and preserves ANSI colors.
@@ -68,76 +127,201 @@ func TerminalThemes(v model.Preferences) (*terminal.Theme, *terminal.Theme) {
 	t.CursorText = t.Background
 	return &t, &t
 }
+
 func (a *App) savePreferences(p model.Preferences) {
 	if e := a.P.SavePreferences(p); e != nil {
-		a.status(e)
+		a.fail(e)
 		return
 	}
 	a.Prefs = p
-	a.Appearance = p.Appearance
-	a.Settings.load(p)
-	a.Phase2.ExternalProgram = p.EditorCommand
+	a.settings.draft = p
 	l, d := TerminalThemes(p)
 	for _, s := range a.Tabs {
 		s.Terminal.SetTheme(l, d)
 	}
-	a.status(nil)
+	if a.wakeMain != nil {
+		a.wakeMain()
+	}
 }
-func (a *App) settingsView(c *ui.Context) {
-	s := &a.Settings
-	v := &s.Draft
-	ui.Scroll(c).Key("page-settings").Fill().Padding(PageInset).Children(func() {
-		ui.Column(c).FillWidth().MaxWidth(1000).Padding(PanelInset).Radius(PanelRadius).Background(c.Theme().Surface).Gap(FormGap).Children(func() {
-			ui.Form(c, func() {
-				ui.Text(c, "设置").FontSize(26).Bold()
-				choice(c, "设置分类", &s.Section, []string{"终端", "连接与文件", "兼容性与未实现"})
-				if s.Section == "终端" {
-					choice(c, "设置外观", &v.Appearance, []string{"跟随系统", "浅色", "深色"})
-					field(c, "终端字体（空为系统等宽/CJK）", &v.FontFamily)
-					field(c, "终端字号（10..24）", &s.Size)
-					field(c, "终端行高（1..2）", &s.LineHeight)
-					choice(c, "终端配色", &v.TerminalTheme, []string{"跟随外观", "Default", "Dracula", "Solarized Dark", "Gruvbox Dark", "Nord", "自定义"})
-					field(c, "终端背景色 #RRGGBB", &v.Background)
-					field(c, "终端前景色 #RRGGBB", &v.Foreground)
-					choice(c, "终端光标", &v.Cursor, []string{"block", "bar", "underline"})
-					ui.Checkbox(c, &v.CursorBlink, "光标闪烁")
-					field(c, "滚动缓冲 MiB（1..256）", &s.Scrollback)
-					ui.Checkbox(c, &v.TitleUpdates, "允许 OSC 标题更新（手动名字优先）")
-					ui.Checkbox(c, &v.Notifications, "终端响铃与应用内通知")
-					ui.Checkbox(c, &v.HyperlinkConfirm, "打开终端链接前确认完整目标地址")
-					ui.Checkbox(c, &v.ClipboardWrite, "允许远端程序写入剪贴板（OSC 52）")
-					ui.Checkbox(c, &v.ClipboardReadAsk, "远端读取剪贴板时逐次询问（不自动批准）")
-					ui.Text(c, "字体/颜色立即生效；光标、缓冲、OSC剪贴板策略仅新建/重连会话生效。默认拒绝OSC剪贴板读写，比v1更保守。").TextColor(c.Theme().TextMuted)
-				} else if s.Section == "连接与文件" {
-					field(c, "本地 shell 可执行文件（空为系统默认；不含参数）", &v.LocalShell)
-					ui.Checkbox(c, &v.KeepaliveEnabled, "启用全局 SSH keepalive")
-					field(c, "全局 keepalive 秒（5..600）", &s.Keepalive)
-					ui.Text(c, "仅未指定覆盖值的新连接采用全局策略；已连接会话不被重连。").TextColor(c.Theme().TextMuted)
-					field(c, "默认上传远端目录", &v.UploadDir)
-					field(c, "默认下载本地目录", &v.DownloadDir)
-					field(c, "默认外部编辑器可执行文件", &v.EditorCommand)
-					field(c, "nexttrace 可执行文件（用户自行安装）", &v.NexttracePath)
-					ui.Text(c, "目录通过文件页的“默认上传目录/默认下载位置”显式填入；绝不静默覆盖现有路径。外部编辑仍需手动启动。").TextColor(c.Theme().TextMuted)
-				} else {
-					ui.Text(c, "以下1.x设置有对应说明入口，但尚无可工作的等价功能；不会保存无效开关。").Bold()
-					for _, x := range []string{"背景图 / 透明度 / see-through / WebGL：xterm专属材质未移植", "Shell集成 auto/manual/off：目前仅手工安装OSC7脚本；OSC133等待上游", "窗口关闭确认/默认侧栏折叠/默认工作台折叠：当前固定行为", "连接管理弹窗尺寸/列宽：v2为主页面与Split，不复刻旧弹窗", "外部编辑器自动默认模式：目前需显式启动", "Agent端口/exec超时/foreground/approval：使用v2独立更严格安全流程，见Agent页", "nexttrace PoW provider：不调用外部API；仅用户安装的CLI", "托盘/自动更新/多窗口：alex阶段4负责，本轮不动", "旧数据库/keytar迁移、旧云工作区、XOR：按既定决策不做"} {
-						ui.Text(c, x).TextColor(c.Theme().TextMuted)
-					}
+
+// SettingsView builds the settings window.
+func (a *App) SettingsView(c *ui.Context) {
+	a.inSettings = true
+	defer func() { a.inSettings = false }()
+	a.theme(c)
+	a.wakeSettings = c.Services().Invalidate
+	t := c.Theme()
+	s := &a.settings
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
+		ui.Column(c).Width(180).FillHeight().Padding(8).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
+			ui.Sidebar(c.Key("settings-nav"), &s.section, func() {
+				for _, v := range settingsSections {
+					ui.SidebarItem(c, v.id, appIcons[v.icon], v.id)
 				}
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.PrimaryButton(c, "保存设置").Clicked() {
-						p, e := s.parse()
-						if e != nil {
-							a.status(e)
-						} else {
-							a.savePreferences(p)
-						}
-					}
-					if ui.Button(c, "恢复默认（未保存）").Clicked() {
-						s.load(model.DefaultPreferences())
-					}
-				})
-			}).FillWidth().Gap(FormGap)
+			}).Label("设置分类").Grow(1).FillWidth()
 		})
+		ui.Scroll(c.Key("settings-" + s.section)).Grow(1).FillHeight().Children(func() {
+			ui.Column(c).FillWidth().MaxWidth(680).Padding(24, 28).Gap(16).Children(func() {
+				ui.Text(c, s.section).FontSize(20).Bold()
+				ui.Form(c, func() { a.settingsSection(c) }).FillWidth().Gap(FormGap)
+			})
+		})
+	})
+	if p, err := s.parse(); err != nil {
+		s.err = err.Error()
+	} else {
+		s.err = ""
+		if p != a.Prefs {
+			a.savePreferences(p)
+		}
+	}
+	a.confirmView(c, true)
+	a.runActions(c)
+	a.flushToasts(c)
+	if a.wakeMain != nil {
+		a.wakeMain()
+	}
+}
+
+func (a *App) settingsSection(c *ui.Context) {
+	switch a.settings.section {
+	case "通用":
+		a.generalSettings(c)
+	case "终端":
+		a.terminalSettings(c)
+	case "SSH":
+		a.sshSettings(c)
+	case "密钥":
+		a.keySettings(c)
+	case "代理":
+		a.proxySettings(c)
+	case "同步":
+		a.cloudSettings(c)
+	case "Agent":
+		a.agentSettings(c)
+	case "导入导出":
+		a.dataSettings(c)
+	case "回收站":
+		a.trashSettings(c)
+	case "网络诊断":
+		a.diagnosticSettings(c)
+	default:
+		a.aboutSettings(c)
+	}
+}
+
+// group is a titled block of a settings page.
+// The page is one form, so the labels of all groups line up.
+func group(c *ui.Context, title string, fn func()) {
+	if title != "" {
+		ui.Text(c.Key("group-"+title), title).Bold().FontSize(13).Margin(8, 0, 0, 0)
+	}
+	fn()
+}
+
+// actions lays out buttons at the end of a row.
+func actions(c *ui.Context, fn func()) {
+	ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(fn)
+}
+
+func (a *App) generalSettings(c *ui.Context) {
+	v := &a.settings.draft
+	group(c, "外观", func() {
+		modes := []string{"跟随系统", "浅色", "深色"}
+		i := max(0, indexOf(modes, v.Appearance))
+		ui.Field(c, "外观", func() {
+			if ui.Segmented(c, &i, modes...).Label("外观").Changed() {
+				v.Appearance = modes[i]
+			}
+		}).FillWidth()
+	})
+	group(c, "文件", func() {
+		field(c, "默认下载目录", &v.DownloadDir)
+		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
+		field(c, "外部编辑器", &v.EditorCommand).Description("可执行文件路径，如 /usr/local/bin/code；编辑结束后自动上传")
+	})
+}
+
+func (a *App) terminalSettings(c *ui.Context) {
+	s := &a.settings
+	v := &s.draft
+	group(c, "字体", func() {
+		field(c, "字体", &v.FontFamily).Description("留空使用系统等宽字体")
+		field(c, "字号", &s.size).Description("10–24")
+		field(c, "行高", &s.lineHeight).Description("1–2")
+	})
+	group(c, "配色", func() {
+		choice(c, "配色方案", &v.TerminalTheme, []string{"跟随外观", "Default", "Dracula", "Solarized Dark", "Gruvbox Dark", "Nord", "自定义"})
+		if v.TerminalTheme == "自定义" {
+			colorField(c, "背景色", &v.Background)
+			colorField(c, "前景色", &v.Foreground)
+		}
+	})
+	group(c, "光标与缓冲", func() {
+		cursors := []string{"block", "bar", "underline"}
+		i := max(0, indexOf(cursors, v.Cursor))
+		ui.Field(c, "光标样式", func() {
+			if ui.Segmented(c, &i, "方块", "竖线", "下划线").Label("光标样式").Changed() {
+				v.Cursor = cursors[i]
+			}
+		}).Description("新会话生效").FillWidth()
+		toggle(c, "光标闪烁", &v.CursorBlink)
+		field(c, "滚动缓冲（MiB）", &s.scrollback).Description("1–256，新会话生效")
+	})
+	group(c, "行为", func() {
+		toggle(c, "程序可以修改标签标题", &v.TitleUpdates)
+		toggle(c, "响铃与通知", &v.Notifications)
+		toggle(c, "打开链接前确认", &v.HyperlinkConfirm)
+		toggle(c, "允许服务器写入剪贴板", &v.ClipboardWrite)
+		toggle(c, "服务器读取剪贴板时询问", &v.ClipboardReadAsk)
+		muted(c, "剪贴板选项在新会话生效")
+	})
+	if s.err != "" {
+		ui.Text(c, s.err).TextColor(c.Theme().Danger)
+	}
+	actions(c, func() {
+		if ui.Button(c, "恢复默认设置…").Clicked() {
+			a.confirm("恢复默认设置", "外观、终端、SSH 和文件相关的设置都会恢复为默认值。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
+		}
+	})
+}
+
+// colorField edits a #rrggbb preference with a color well.
+func colorField(c *ui.Context, label string, hex *string) {
+	color := ui.Hex(*hex)
+	ui.Field(c, label, func() {
+		if ui.ColorWell(c, &color).Label(label).Changed() {
+			*hex = fmt.Sprintf("#%02x%02x%02x", color.R, color.G, color.B)
+		}
+	}).FillWidth()
+}
+
+func (a *App) sshSettings(c *ui.Context) {
+	s := &a.settings
+	v := &s.draft
+	group(c, "心跳", func() {
+		toggle(c, "默认发送心跳", &v.KeepaliveEnabled)
+		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
+	})
+	group(c, "本地终端", func() {
+		field(c, "本地 Shell", &v.LocalShell).Description("可执行文件路径，留空使用系统默认")
+	})
+	if s.err != "" {
+		ui.Text(c, s.err).TextColor(c.Theme().Danger)
+	}
+}
+
+func (a *App) aboutSettings(c *ui.Context) {
+	group(c, "", func() {
+		ui.Text(c, "NextShell 2").FontSize(16).Bold()
+		muted(c, "原生 SSH 终端、文件与监控")
+	})
+	group(c, "最近操作", func() {
+		if len(a.logs) == 0 {
+			muted(c, "暂无记录（不记录密码和终端内容）")
+		}
+		for i := len(a.logs) - 1; i >= 0; i-- {
+			ui.Text(c.Key(fmt.Sprint("log-", i)), a.logs[i]).FontSize(12).Selectable()
+		}
 	})
 }

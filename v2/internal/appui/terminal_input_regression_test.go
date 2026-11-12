@@ -5,6 +5,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"io"
+	"nextshell.dev/v2/internal/appui"
 	"runtime"
 	"strings"
 	"sync"
@@ -59,5 +60,32 @@ func TestTerminalClipboardKeysAndOrderedBurst(t *testing.T) {
 	}
 	if conn.text() != want {
 		t.Fatalf("lost/reordered: got %d bytes want %d", len(conn.text()), len(want))
+	}
+}
+
+// Bare Ctrl+letters belong to the shell: no app shortcut may take one.
+func TestBareCtrlLettersReachTheShell(t *testing.T) {
+	_, p, tt := fixture(t)
+	conn := &captureConn{closed: make(chan struct{})}
+	term, e := terminal.New(terminal.Options{Conn: conn, NoBlink: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer term.Close()
+	p.events = append(p.events, appui.Event{Session: &appui.Session{ID: "t", Title: "shell", Terminal: term, Local: true}})
+	tt.Frame()
+	keys := []ui.Key{ui.KeyA, ui.KeyB, ui.KeyC, ui.KeyD, ui.KeyE, ui.KeyF, ui.KeyG, ui.KeyH, ui.KeyI, ui.KeyJ, ui.KeyK, ui.KeyL, ui.KeyM, ui.KeyN, ui.KeyO, ui.KeyP, ui.KeyQ, ui.KeyR, ui.KeyS, ui.KeyT, ui.KeyU, ui.KeyV, ui.KeyW, ui.KeyX, ui.KeyY, ui.KeyZ}
+	for _, k := range keys {
+		tt.Key(ui.Ctrl, k)
+	}
+	until := time.Now().Add(2 * time.Second)
+	for len(conn.text()) < len(keys) && time.Now().Before(until) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := conn.text(); len(got) != len(keys) || got[0] != 1 || got[len(got)-1] != 26 {
+		t.Fatalf("shell got %q", got)
+	}
+	if tt.HasText("搜索主机、标签、片段和操作，或输入 user@host") || p.local != 0 || len(p.closed) != 0 {
+		t.Fatal("an app shortcut took a Ctrl+letter")
 	}
 }

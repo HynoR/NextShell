@@ -21,6 +21,7 @@ type Session struct {
 	Connection  model.Connection
 	Local       bool
 }
+
 // Prompt asks the user something during a connection. Kind selects the dialog:
 // "" (server questions), PromptPassword, PromptHostKey or PromptHostKeyChanged.
 // A nil answer cancels; Remember is set before answering and read after.
