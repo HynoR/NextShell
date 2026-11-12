@@ -143,3 +143,71 @@ func TestTransferLabelsNameTheServers(t *testing.T) {
 		}
 	}
 }
+
+// A link the user chose to download gives what it points to; a link to nothing fails with a reason.
+func TestDownloadThroughLinks(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
+	p := desktopFixture(t)
+	session, root := phase2SSH(t, p)
+	real := filepath.Join(root, "logs-real")
+	os.MkdirAll(filepath.Join(real, "sub"), 0700)
+	os.WriteFile(filepath.Join(real, "a.log"), []byte("alpha"), 0600)
+	os.WriteFile(filepath.Join(real, "sub", "b.log"), []byte("beta"), 0600)
+	os.Symlink(filepath.Join(real, "a.log"), filepath.Join(root, "link-file"))
+	os.Symlink(real, filepath.Join(root, "link-dir"))
+	os.Symlink(filepath.Join(root, "nowhere"), filepath.Join(root, "broken"))
+	out := t.TempDir()
+	id, err := p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "link-file"), Local: filepath.Join(out, "a.log")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueue(t, p, id)
+	if b, err := os.ReadFile(filepath.Join(out, "a.log")); err != nil || string(b) != "alpha" {
+		t.Fatal("link to a file:", err, string(b))
+	}
+	id, err = p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "link-dir"), Local: filepath.Join(out, "logs")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitQueue(t, p, id)
+	if b, err := os.ReadFile(filepath.Join(out, "logs", "sub", "b.log")); err != nil || string(b) != "beta" {
+		t.Fatal("link to a folder:", err, string(b))
+	}
+	id, err = p.QueueTransfer(appui.TransferRequest{Session: session, Kind: "download", Remote: filepath.Join(root, "broken"), Local: filepath.Join(out, "broken")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(3 * time.Second)
+	for failed := false; !failed; {
+		for _, j := range p.Transfers() {
+			failed = failed || j.ID == id && j.State == "failed" && j.Error != ""
+		}
+		select {
+		case <-deadline:
+			t.Fatal("a link to nothing did not fail")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if _, err = os.Lstat(filepath.Join(out, "broken")); err == nil {
+		t.Fatal("a file came out of a broken link")
+	}
+	// The list shows the three links as what they are.
+	p.ListFiles(session, root)
+	listed := awaitEvent(t, p, func(e appui.Event) bool { return e.Files != nil }).Files
+	for _, f := range listed.Entries {
+		switch f.Name {
+		case "link-file":
+			if !f.Symlink || f.Directory || f.Broken || f.Size != 5 {
+				t.Fatal(f)
+			}
+		case "link-dir":
+			if !f.Symlink || !f.Directory || f.Broken {
+				t.Fatal(f)
+			}
+		case "broken":
+			if !f.Symlink || !f.Broken {
+				t.Fatal(f)
+			}
+		}
+	}
+}

@@ -187,21 +187,23 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 				transfer.SetTotal(ctx, info.Size())
 				return c.Upload(ctx, req.Local, req.Remote, req.Overwrite, progress)
 			case "download":
-				info, e := c.Stat(req.Remote)
+				// A link the user chose gives what it points to: a folder is packed by its real path (tar
+				// would take the link itself), and a link inside a folder is still skipped.
+				remote, info, e := c.Resolve(req.Remote)
 				if e != nil {
 					return e
 				}
 				if info.IsDir() {
 					if s, e := p.ssh(req.Session); e == nil && p.canPack(ctx, req.Session, s) {
-						return transfer.DownloadPacked(ctx, s, req.Remote, req.Local, progress)
+						return transfer.DownloadPacked(ctx, s, remote, req.Local, progress)
 					}
-					return c.DownloadTree(ctx, req.Remote, req.Local, progress)
+					return c.DownloadTree(ctx, remote, req.Local, progress)
 				}
 				if e = os.MkdirAll(filepath.Dir(req.Local), 0o755); e != nil { // a default folder that does not exist yet
 					return e
 				}
 				transfer.SetTotal(ctx, info.Size())
-				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
+				return c.Download(ctx, remote, req.Local, req.Overwrite, progress)
 			case "move":
 				return c.RenamePath(req.Remote, req.Destination)
 			case "remove":

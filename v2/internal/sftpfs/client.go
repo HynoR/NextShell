@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,7 +22,11 @@ type Entry struct {
 	Size               int64
 	Mode               string
 	Directory, Symlink bool
-	Modified           time.Time
+	// A link takes what it points to: Directory, Size and Modified are the target's, Target is where it
+	// points as written, and Broken is set when the target cannot be read (it is gone, or out of reach).
+	Target   string
+	Broken   bool
+	Modified time.Time
 }
 
 func (c *Client) List(remote string) ([]Entry, error) {
@@ -33,7 +38,58 @@ func (c *Client) List(remote string) ([]Entry, error) {
 	for _, v := range entries {
 		out = append(out, Entry{Name: v.Name(), Path: path.Join(remote, v.Name()), Size: v.Size(), Mode: v.Mode().String(), Directory: v.IsDir(), Symlink: v.Mode()&os.ModeSymlink != 0, Modified: v.ModTime()})
 	}
+	c.resolveLinks(out)
 	return out, nil
+}
+
+// resolveLinks looks at where the links among entries lead, a few requests at a time (a folder such as
+// /usr/bin has hundreds). Nothing is followed further than the one stat: it is the server that resolves it.
+func (c *Client) resolveLinks(entries []Entry) {
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, 16)
+	for i := range entries {
+		if !entries[i].Symlink {
+			continue
+		}
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			e := &entries[i]
+			e.Target, _ = c.ReadLink(e.Path)
+			t, err := c.Stat(e.Path)
+			if err != nil {
+				e.Broken = true
+				return
+			}
+			e.Directory, e.Size, e.Modified = t.IsDir(), t.Size(), t.ModTime()
+		})
+	}
+	wg.Wait()
+}
+
+// Resolve follows p when it is a link, to the path of what it points to and what that is: a write to the
+// resolved path changes the target and leaves the link a link. A link that leads nowhere is an error.
+// ponytail: a relative target is joined to the link's folder lexically, so a ".." after a folder that is
+// itself a link can differ from the server's own reading; ask the server (RealPath) if that ever matters.
+func (c *Client) Resolve(p string) (string, os.FileInfo, error) {
+	for range 16 {
+		v, e := c.Lstat(p)
+		if e != nil {
+			return "", nil, e
+		}
+		if v.Mode()&os.ModeSymlink == 0 {
+			return p, v, nil
+		}
+		to, e := c.ReadLink(p)
+		if e != nil {
+			return "", nil, e
+		}
+		if !path.IsAbs(to) {
+			to = path.Join(path.Dir(p), to)
+		}
+		p = to
+	}
+	return "", nil, errors.New("too many levels of symbolic links")
 }
 func CheckPath(p string) error {
 	if strings.IndexByte(p, 0) >= 0 || strings.TrimSpace(p) == "" {

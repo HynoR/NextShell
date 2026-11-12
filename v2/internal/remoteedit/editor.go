@@ -25,44 +25,51 @@ type Document struct {
 
 func hash(b []byte) string { v := sha256.Sum256(b); return hex.EncodeToString(v[:]) }
 func Open(c *sftpfs.Client, remote string) (Document, error) {
+	d, _, e := open(c, remote)
+	return d, e
+}
+
+// open reads remote, a link included: it returns the document and the path that holds the text, which
+// is where a save must go so that a link stays a link.
+func open(c *sftpfs.Client, remote string) (Document, string, error) {
 	var d Document
 	d.Path = remote
-	info, e := c.Lstat(remote)
+	real, info, e := c.Resolve(remote)
 	if e != nil {
-		return d, e
+		return d, "", e
 	}
 	if !info.Mode().IsRegular() || info.Size() > MaxSize {
-		return d, errors.New("editor only accepts regular text files up to 8 MiB")
+		return d, "", errors.New("editor only accepts regular text files up to 8 MiB")
 	}
-	f, e := c.Open(remote)
+	f, e := c.Open(real)
 	if e != nil {
-		return d, e
+		return d, "", e
 	}
 	defer f.Close()
 	b, e := io.ReadAll(io.LimitReader(f, MaxSize+1))
 	if e != nil {
-		return d, e
+		return d, "", e
 	}
 	if len(b) > MaxSize || !utf8.Valid(b) || bytes.IndexByte(b, 0) >= 0 {
-		return d, errors.New("file is binary or too large")
+		return d, "", errors.New("file is binary or too large")
 	}
 	d.Text = string(b)
 	d.Hash = hash(b)
 	d.Mode = info.Mode()
-	return d, nil
+	return d, real, nil
 }
 func Save(ctx context.Context, c *sftpfs.Client, d Document, text string) (Document, error) {
 	if len(text) > MaxSize || !utf8.ValidString(text) || strings.IndexByte(text, 0) >= 0 {
 		return d, errors.New("invalid editor text")
 	}
-	current, e := Open(c, d.Path)
+	current, real, e := open(c, d.Path)
 	if e != nil {
 		return d, e
 	}
 	if current.Hash != d.Hash {
 		return d, ErrConflict
 	}
-	if e = c.UploadReader(ctx, strings.NewReader(text), d.Path, true, d.Mode, nil); e != nil {
+	if e = c.UploadReader(ctx, strings.NewReader(text), real, true, d.Mode, nil); e != nil {
 		return d, e
 	}
 	d.Text = text
