@@ -140,7 +140,7 @@ func TestEditorPopOutKeepsStateAndPopBack(t *testing.T) {
 		t.Fatal("pop out", *shown)
 	}
 	ed.Frame()
-	has(t, ed, "● /etc/app.conf", "回到主窗口")
+	has(t, ed, "未保存", "/etc/app.conf", "回到主窗口")
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("the edit was lost in the move")
 	}
@@ -273,10 +273,14 @@ func TestQuitAsksAboutUnsavedEditorTabs(t *testing.T) {
 
 // The external editor's arguments are plain text: spaces separate, quotes keep spaces together.
 func TestEditorExternalArgumentsArePlainText(t *testing.T) {
-	_, p, tt, _, _ := editorFixture(t)
+	a, p, tt, _, _ := editorFixture(t)
 	open(p, tt, "one", "/etc/app.conf", "a=1\n")
-	click(t, tt, "外部编辑器参数")
-	tt.Type(`--wait --new-window "my profile"`)
+	prefs := p.Preferences()
+	prefs.EditorArgs = `--wait --new-window "my profile"`
+	if e := p.SavePreferences(prefs); e != nil {
+		t.Fatal(e)
+	}
+	a.Prefs = prefs
 	click(t, tt, "用外部编辑器打开")
 	if len(p.external) != 1 || len(p.external[0]) != 3 || p.external[0][0] != "--wait" || p.external[0][2] != "my profile" {
 		t.Fatal("args", p.external)

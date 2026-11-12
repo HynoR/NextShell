@@ -22,17 +22,36 @@ type dialogState struct {
 // confirmation is an alert for a dangerous action, whose button names the action.
 type confirmation struct {
 	title, message, action, cancel string
+	danger                         bool
 	run                            func()
 }
+
+// The confirmations all look and behave alike: the wide dialog, with the focus on the button that backs out,
+// so that Enter never does the action. confirm is the plain one, for an action that can be undone;
+// confirmDanger fills the action's button red, for one that cannot (deleting, emptying, discarding, sending to
+// every session, rotating a token).
 
 // confirm asks before run, in the window that asked.
 func (a *App) confirm(title, message, action string, run func()) {
 	a.confirmWith(title, message, action, "取消", run)
 }
 
+// confirmDanger is confirm for an action that cannot be undone.
+func (a *App) confirmDanger(title, message, action string, run func()) {
+	a.confirmDangerWith(title, message, action, "取消", run)
+}
+
 // confirmWith is confirm with its own name for the button that backs out.
 func (a *App) confirmWith(title, message, action, cancel string, run func()) {
-	a.dialogs.pending = &confirmation{title, message, action, cancel, run}
+	a.ask(&confirmation{title: title, message: message, action: action, cancel: cancel, run: run})
+}
+
+// confirmDangerWith is confirmDanger with its own name for the button that backs out.
+func (a *App) confirmDangerWith(title, message, action, cancel string, run func()) {
+	a.ask(&confirmation{title: title, message: message, action: action, cancel: cancel, danger: true, run: run})
+}
+func (a *App) ask(p *confirmation) {
+	a.dialogs.pending = p
 	a.dialogs.pendingIn = a.view
 	if a.view == editorWindow { // it has no alerts of its own
 		a.dialogs.pendingIn = mainWindow
@@ -45,7 +64,7 @@ func (a *App) confirmView(c *ui.Context, w window) {
 	}
 	p := d.pending
 	open := true
-	if ui.AlertDialog(c, &open, p.title, p.message, p.cancel, p.action) == 1 {
+	if alert(c, &open, p.title, p.message, backOut(p.cancel), action(p.action, p.danger)) == 1 {
 		p.run()
 	}
 	if !open && d.pending == p {
@@ -89,7 +108,7 @@ func (a *App) dialogsView(c *ui.Context) {
 	d := &a.dialogs
 	if len(d.links) > 0 {
 		open := true
-		if ui.AlertDialog(c, &open, "打开外部链接", "请确认完整地址可信：\n"+d.links[0], "取消", "打开链接") == 1 {
+		if alert(c, &open, "打开外部链接", "请确认完整地址可信：\n"+d.links[0], backOut("取消"), action("打开链接", false)) == 1 {
 			a.report(a.P.OpenURL(d.links[0]), "")
 		}
 		if !open {
@@ -105,7 +124,7 @@ func (a *App) dialogsView(c *ui.Context) {
 			parts = append(parts, fmt.Sprintf("%d 个未保存的文件", n))
 		}
 		msg := "仍有 " + strings.Join(parts, "、")
-		if ui.AlertDialog(c, &a.ConfirmExit, "退出 NextShell？", msg+"。退出会断开所有连接并丢弃未保存的修改。", "取消", "退出") == 1 {
+		if alert(c, &a.ConfirmExit, "退出 NextShell？", msg+"。退出会断开所有连接并丢弃未保存的修改。", backOut("取消"), action("退出", true)) == 1 {
 			a.ExitConfirmed = true
 			a.P.Quit()
 		}
@@ -120,7 +139,7 @@ func (a *App) detailView(c *ui.Context, w window) {
 		return
 	}
 	open := true
-	ui.AlertDialog(c, &open, "详情", a.dialogs.detail, "关闭")
+	alert(c, &open, "详情", a.dialogs.detail, backOut("关闭"))
 	if !open {
 		a.dialogs.detail = ""
 	}
@@ -163,10 +182,13 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 	case PromptHostKeyChanged:
 		if d.changedAsk {
 			open := true
-			switch ui.AlertDialog(c, &open, "确定更新主机指纹？", "只有在你确认服务器重装过系统或更换过密钥时才这样做。", "断开", "更新指纹并连接") {
+			switch alert(c, &open, "确定更新主机指纹？", "只有在你确认服务器重装过系统或更换过密钥时才这样做。", backOut("断开"), action("更新指纹并连接", true)) {
 			case 1:
 				d.answer([]string{})
-			case ui.AlertDismissed, 0:
+			case 0:
+				d.answer(nil)
+			}
+			if !open && len(d.prompts) > 0 && d.prompts[0] == p { // Escape or a click outside: the safe answer
 				d.answer(nil)
 			}
 			return
@@ -254,6 +276,64 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 // dialog is ui.Modal with the app's look: a dimming scrim, and a panel one
 // step lighter than the window with a border, so it stands out in dark mode too.
 func dialog(c *ui.Context, open *bool, fn func()) ui.Element {
+	return dialogPanel(c, open, func(ui.Element) { fn() })
+}
+
+// alertButton is a button of alert. The one with focus is clicked by Enter: it must be the one that does no harm.
+type alertButton struct {
+	label         string
+	primary, risk bool // filled in the main color, or in the danger color
+	focus         bool
+}
+
+// backOut is the button that closes an alert without doing anything, and has its focus.
+func backOut(label string) alertButton { return alertButton{label: label, focus: true} }
+
+// action is the button that does what the alert asks about.
+func action(label string, risk bool) alertButton {
+	return alertButton{label: label, primary: !risk, risk: risk}
+}
+
+// alert is the app's one look for a question: title and message in a dialog, buttons at the end. It
+// returns the index of the button clicked, which closes it (*open turns false), or -1; Escape and a click
+// outside close it too, choosing nothing.
+func alert(c *ui.Context, open *bool, title, message string, buttons ...alertButton) int {
+	chosen := -1
+	dialogPanel(c, open, func(panel ui.Element) {
+		panel.Role(ui.RoleAlertDialog).Label(title)
+		ui.Column(c).Width(420).Gap(12).Children(func() {
+			ui.Text(c, title).FontSize(17).Bold().FillWidth()
+			if message != "" {
+				ui.Text(c, message).FillWidth()
+			}
+			ui.Row(c).FillWidth().Gap(8).Wrap().Justify(ui.End).Children(func() {
+				for i, b := range buttons {
+					var e ui.Element
+					switch {
+					case b.risk:
+						e = dangerButton(c, b.label)
+					case b.primary:
+						e = ui.PrimaryButton(c, b.label)
+					default:
+						e = ui.Button(c, b.label)
+					}
+					if b.focus {
+						e.AutoFocus()
+					}
+					if e.Clicked() {
+						chosen = i
+					}
+				}
+			})
+		})
+	})
+	if chosen >= 0 {
+		*open = false
+	}
+	return chosen
+}
+
+func dialogPanel(c *ui.Context, open *bool, fn func(panel ui.Element)) ui.Element {
 	t := c.Theme()
 	scrim := ui.RGBA(0, 0, 0, .35)
 	if t.Dark {
@@ -262,6 +342,6 @@ func dialog(c *ui.Context, open *bool, fn func()) ui.Element {
 	return ui.DialogBase(c, open, func(backdrop, panel ui.Element) {
 		backdrop.Background(scrim)
 		panel.Padding(20).Radius(12).Background(t.Surface).Border(1, t.Border).Shadow(0, 16, 48, 0, ui.RGBA(0, 0, 0, .35))
-		fn()
+		fn(panel)
 	})
 }

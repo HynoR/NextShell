@@ -72,12 +72,22 @@ func (a *App) importDropped(paths []string) {
 	a.toast("只能导入 .json 连接文件")
 }
 
+// The manager's columns: the folder tree, the tiles (a grid of cells with the padding around it) and the
+// card or form of the chosen host.
+const (
+	folderWidth, sideWidth = 220, 440
+	tileWidth, tilePad     = 190, 12
+	// ManagerMinWidth is the narrowest manager window: the tiles column keeps room for a whole tile, so
+	// nothing is cut off and the side column never has to shrink.
+	ManagerMinWidth = 880
+)
+
 // hostsPage is the 1.x manager: the folder tree, the hosts of the chosen folder as tiles, and the
 // chosen host's card or form.
 func (a *App) hostsPage(c *ui.Context) {
 	t := c.Theme()
 	ui.Row(c).Grow(1).FillWidth().MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		ui.Column(c).Width(220).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() { a.folderList(c) })
+		ui.Column(c).Width(folderWidth).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() { a.folderList(c) })
 		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() { a.hostTiles(c) })
 		a.hostSide(c)
 	})
@@ -88,7 +98,7 @@ func (a *App) hostsPage(c *ui.Context) {
 func (a *App) hostSide(c *ui.Context) {
 	t := c.Theme()
 	e := &a.hosts.editor
-	side := ui.Column(c).Width(440).FillHeight().BorderColor(t.Border).BorderWidth(0, 0, 0, 1)
+	side := ui.Column(c).Width(sideWidth).FillHeight().BorderColor(t.Border).BorderWidth(0, 0, 0, 1)
 	side.Children(func() {
 		ui.Scroll(c.Key("host-side")).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(16, 18).Gap(12).Children(func() {
@@ -205,8 +215,9 @@ func (a *App) hostTiles(c *ui.Context) {
 		}
 	}
 	if len(missing) > 0 {
-		ui.Row(c).FillWidth().Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(t.Danger.Alpha(.1)).Children(func() {
-			ui.Text(c, fmt.Sprintf("%d 个主机使用密钥认证，但还没有可用的密钥", len(missing))).FontSize(12).TextColor(t.Danger).Grow(1)
+		// A column: in the narrowest window the text keeps its width and the button sits under it.
+		ui.Column(c).FillWidth().Padding(8, 12).Gap(6).Background(t.Danger.Alpha(.1)).Children(func() {
+			ui.Text(c, fmt.Sprintf("%d 个主机使用密钥认证，但还没有可用的密钥", len(missing))).FontSize(12).TextColor(t.Danger).FillWidth()
 			if ui.Button(c, fmt.Sprintf("为 %d 个主机选择密钥", len(missing))).Clicked() {
 				a.openBatch("缺少密钥的主机", missing, "key")
 			}
@@ -252,7 +263,7 @@ func (a *App) hostTiles(c *ui.Context) {
 	if h.chosen >= len(hosts) {
 		h.chosen = -1
 	}
-	grid := ui.GridView(c.Key("tiles"), &h.grid, len(hosts), 190, 60, func(i int) { a.hostTile(c, hosts[i]) }).Gap(8).Padding(12).Grow(1).FillWidth()
+	grid := ui.GridView(c.Key("tiles"), &h.grid, len(hosts), tileWidth, 60, func(i int) { a.hostTile(c, hosts[i]) }).Gap(8).Padding(tilePad).Grow(1).FillWidth()
 	if grid.Changed() && h.chosen >= 0 && h.chosen < len(hosts) {
 		if id := hosts[h.chosen].ID; id != h.selected {
 			a.chooseHost(id)

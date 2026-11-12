@@ -29,6 +29,7 @@ type Preferences struct {
 	UploadDir        string  `json:"uploadDir"`
 	DownloadDir      string  `json:"downloadDir"`
 	EditorCommand    string  `json:"editorCommand"`
+	EditorArgs       string  `json:"editorArgs"` // the external editor's arguments, space separated, quotes keep spaces together
 	KeepaliveEnabled bool    `json:"keepaliveEnabled"`
 	KeepaliveSeconds int     `json:"keepaliveSeconds"`
 	NexttracePath    string  `json:"nexttracePath"`
@@ -73,7 +74,7 @@ func (p Preferences) Validate() error {
 	if p.KeepaliveSeconds < 5 || p.KeepaliveSeconds > 600 {
 		return fmt.Errorf("心跳间隔需为5..600秒")
 	}
-	for _, s := range []string{p.LocalShell, p.EditorCommand, p.NexttracePath, p.UploadDir, p.DownloadDir, p.FontFamily} {
+	for _, s := range []string{p.LocalShell, p.EditorCommand, p.EditorArgs, p.NexttracePath, p.UploadDir, p.DownloadDir, p.FontFamily} {
 		if strings.ContainsAny(s, "\x00\r\n") {
 			return fmt.Errorf("路径和字体不得含控制字符")
 		}

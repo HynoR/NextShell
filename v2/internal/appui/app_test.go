@@ -452,7 +452,7 @@ func TestShellIntegrationIsManualByDefault(t *testing.T) {
 	}
 	st := ui.NewTester(a.SettingsView, 880, 1400)
 	click(t, st, "终端")
-	has(t, st, "默认。不写服务器文件；需要时在命令面板执行「插入目录跟踪脚本」，只对当前会话生效")
+	has(t, st, "默认。不写服务器文件；需要时在命令面板执行「让文件面板跟随终端目录」，只对当前会话生效")
 	click(t, st, "自动")
 	has(t, st, "会在服务器上安装一小段目录跟踪脚本，新的 bash / zsh 会话自动加载；文件面板可跟随终端目录。其他 shell 不受影响")
 	if v := p.Preferences().ShellIntegration; v != "auto" {

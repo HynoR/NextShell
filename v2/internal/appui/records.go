@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
@@ -200,7 +201,7 @@ func (a *App) keysPage(c *ui.Context) {
 				del.Tooltip("有主机或凭据在使用，不能删除")
 			}
 			if del.Clicked() {
-				a.confirm("删除密钥「"+k.Name+"」", "删除后无法恢复。", "删除密钥", func() {
+				a.confirmDanger("删除密钥「"+k.Name+"」", "删除后无法恢复。", "删除密钥", func() {
 					a.report(a.P.Delete("key", k.ID), "已删除密钥")
 					a.reload()
 				})
@@ -375,7 +376,7 @@ func (a *App) proxiesPage(c *ui.Context) {
 				del.Tooltip("有主机在使用，不能删除")
 			}
 			if del.Clicked() {
-				a.confirm("删除代理「"+p.Name+"」", "删除后无法恢复。", "删除代理", func() {
+				a.confirmDanger("删除代理「"+p.Name+"」", "删除后无法恢复。", "删除代理", func() {
 					a.report(a.P.Delete("proxy", p.ID), "已删除代理")
 					a.reload()
 				})
@@ -515,7 +516,7 @@ func (a *App) credentialsPage(c *ui.Context) {
 				if len(users) > 0 {
 					msg = fmt.Sprintf("有 %d 个主机使用这个凭据，删除后它们改用各自的用户名和认证。", len(users))
 				}
-				a.confirm("删除凭据「"+cr.Name+"」", msg, "删除凭据", func() {
+				a.confirmDanger("删除凭据「"+cr.Name+"」", msg, "删除凭据", func() {
 					a.report(a.P.Delete("credential", cr.ID), "已删除凭据")
 					a.reload()
 				})
@@ -667,7 +668,8 @@ func (a *App) importDialog(c *ui.Context) {
 					}
 					muted(c, strings.Join(p.Names, "、"))
 					for _, w := range p.Warnings {
-						ui.Text(c, w).FontSize(12).TextColor(t.Warning)
+						text, detail := importNote(w)
+						ui.Text(c, text).FontSize(12).TextColor(t.Warning).Tooltip(detail)
 					}
 					for _, target := range p.Targets {
 						muted(c, "已存在："+target)
@@ -689,12 +691,31 @@ func (a *App) importDialog(c *ui.Context) {
 		})
 	})
 }
+
+// importNote words a note of the import preview for the user. The platform's own are partly English (a skipped
+// link, a file that could not be read, with the reader's error); known ones are said in Chinese, others as
+// "部分内容无法导入". The original wording stays as the tooltip, for whoever needs to look into it.
+func importNote(w string) (text, detail string) {
+	switch {
+	case strings.HasPrefix(w, "skipped symlink "):
+		return "已跳过链接文件「" + strings.TrimPrefix(w, "skipped symlink ") + "」", ""
+	case strings.Contains(w, "明文密码"):
+		return "此文件含明文密码；导入后会加密保存在本机", ""
+	}
+	if name, _, ok := strings.Cut(w, ": "); ok && strings.HasSuffix(strings.ToLower(name), ".json") {
+		return "「" + name + "」无法读取，已跳过", w
+	}
+	if strings.IndexFunc(w, func(r rune) bool { return unicode.Is(unicode.Han, r) }) >= 0 {
+		return w, "" // already worded for the user
+	}
+	return "部分内容无法导入", w
+}
 func (a *App) commitImportButton(c *ui.Context) {
 	s := &a.hosts.records.data
 	if ui.PrimaryButton(c, fmt.Sprintf("导入 %d 个主机", s.preview.Count)).Clicked() {
 		run := func() { a.P.CommitImport(s.preview.Token, s.folder, s.policy) }
 		if s.policy == "overwrite" && len(s.preview.Targets) > 0 {
-			a.confirm("覆盖已有主机", fmt.Sprintf("%d 个已有主机会被覆盖；文件里明确为空的密码会清空已保存的密码。", len(s.preview.Targets)), fmt.Sprintf("覆盖 %d 个主机", len(s.preview.Targets)), run)
+			a.confirmDanger("覆盖已有主机", fmt.Sprintf("%d 个已有主机会被覆盖；文件里明确为空的密码会清空已保存的密码。", len(s.preview.Targets)), fmt.Sprintf("覆盖 %d 个主机", len(s.preview.Targets)), run)
 		} else {
 			run()
 		}

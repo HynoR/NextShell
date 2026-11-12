@@ -144,7 +144,7 @@ func (a *App) cloudSettings(c *ui.Context) {
 						a.P.CloudBackground(s.workspace, false)
 					}
 					if ui.Button(c, "使用云端版本…").Clicked() {
-						a.confirm("使用云端版本", "这个工作区在本机的数据会被云端版本替换。替换前会保存一份加密的恢复快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
+						a.confirmDanger("使用云端版本", "这个工作区在本机的数据会被云端版本替换。替换前会保存一份加密的恢复快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
 					}
 				})
 			}
@@ -183,7 +183,9 @@ func (a *App) pendingCard(c *ui.Context, p agent.Pending) {
 				})
 			}
 		})
-		ui.Text(c, "目标 "+orDefault(p.TargetName, p.Target)).FontSize(12)
+		if target := orDefault(p.TargetName, p.Target); target != "" {
+			ui.Text(c, "目标 "+target).FontSize(12)
+		}
 		if p.Reason != "" {
 			ui.Text(c, "原因 "+p.Reason).FontSize(12)
 		}
@@ -224,10 +226,22 @@ func (a *App) agentSettings(c *ui.Context) {
 		if state.URL != "" {
 			ui.Field(c, "地址", func() { ui.Text(c, state.URL).Selectable() }).FillWidth()
 		}
-		stopped := state.Halted
-		if toggle(c, "紧急停止", &stopped) {
-			a.P.AgentHalt(stopped)
-		}
+		ui.Field(c, "紧急停止", func() {
+			ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				if state.Halted {
+					ui.Text(c, "已紧急停止 · Agent 的请求都会被拒绝").TextColor(t.Danger)
+					if ui.Button(c, "恢复 Agent").Clicked() {
+						a.P.AgentHalt(false)
+					}
+					return
+				}
+				stop := ui.ButtonBase(c).Padding(6, 14).Radius(t.Radius).Background(t.Danger.Alpha(.12))
+				stop.Children(func() { ui.Text(c, "立即停止").Bold().TextColor(t.Danger) })
+				if stop.Clicked() {
+					a.P.AgentHalt(true)
+				}
+			})
+		}).Description("拒绝待批准的请求、关闭自动批准并中止正在运行的命令；停止后可随时恢复").FillWidth()
 	})
 	group(c, "自动批准", func() {
 		auto := a.P.AgentAutoApproval()
@@ -286,7 +300,7 @@ func (a *App) agentSettings(c *ui.Context) {
 		})
 		actions(c, func() {
 			if ui.Button(c, "轮换令牌…").Clicked() {
-				a.confirm("轮换 MCP 令牌", "旧令牌和已连接的助手会立即失效，Agent 会暂停，需要手动恢复。", "轮换令牌", func() {
+				a.confirmDanger("轮换 MCP 令牌", "旧令牌和已连接的助手会立即失效，Agent 会暂停，需要手动恢复。", "轮换令牌", func() {
 					token, e := a.P.AgentToken(true)
 					a.report(e, "已轮换令牌")
 					if e == nil {
@@ -331,8 +345,7 @@ func (a *App) agentSettings(c *ui.Context) {
 }
 
 func (a *App) diagnosticSettings(c *ui.Context) {
-	muted(c, "路由追踪使用你自己安装的 nexttrace，在左栏点「PING 延迟」即可对当前服务器追踪。")
 	group(c, "", func() {
-		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &a.settings.draft.NexttracePath, FilePick{})
+		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &a.settings.draft.NexttracePath, FilePick{}).Description("路由追踪使用你自己安装的 nexttrace，在左栏点「PING 延迟」即可对当前服务器追踪。")
 	})
 }

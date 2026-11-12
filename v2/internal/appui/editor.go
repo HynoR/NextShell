@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -18,17 +19,16 @@ import (
 // editorState holds the open remote documents. A document is a tab of the main window; popped out,
 // it shows in the editor window instead. Each owns an official editor State (undo, selections, folds, scroll).
 type editorState struct {
-	documents    []*remoteDocument
-	shown        string          // the document the main window's tab shows; "" while a terminal or a tool does
-	win          string          // the document the editor window shows
-	closeKey     string          // asking before this one closes
-	closeSave    map[string]bool // closes when its save is acknowledged
-	reloadKey    string          // asking before this one is reloaded
-	externalArgs string
-	popOut       bool // the editor window is to open, or come forward
-	windowed     bool // the editor window is showing
-	closeAll     bool // closing the editor window asks about unsaved documents
-	fromWindow   bool // the last save or reload was asked for in the window: its result shows there
+	documents  []*remoteDocument
+	shown      string          // the document the main window's tab shows; "" while a terminal or a tool does
+	win        string          // the document the editor window shows
+	closeKey   string          // asking before this one closes
+	closeSave  map[string]bool // closes when its save is acknowledged
+	reloadKey  string          // asking before this one is reloaded
+	popOut     bool            // the editor window is to open, or come forward
+	windowed   bool            // the editor window is showing
+	closeAll   bool            // closing the editor window asks about unsaved documents
+	fromWindow bool            // the last save or reload was asked for in the window: its result shows there
 }
 
 // remoteDocument follows its host, as a tool tab does: Host is the host's key, and it saves through
@@ -90,7 +90,7 @@ func (a *App) openEditor(session, remote string) {
 
 // externalEdit opens remote in the chosen editor, or the system's text editor, and lists it under 实时编辑.
 func (a *App) externalEdit(session, remote string) {
-	args, err := splitArgs(a.editor.externalArgs)
+	args, err := splitArgs(a.Prefs.EditorArgs)
 	if err != nil {
 		a.fail(err)
 		return
@@ -133,6 +133,16 @@ func splitArgs(s string) ([]string, error) {
 		args = append(args, cur.String())
 	}
 	return args, nil
+}
+
+// saveLocalCopy writes d's text, with the edits not saved yet, to a file the user picks: the way out of a
+// conflict that keeps the edits. It is no overwrite: the server's file is not touched.
+func (a *App) saveLocalCopy(d *remoteDocument) {
+	d.sync()
+	text, popped := d.Text, d.Popped
+	a.pick(FilePick{Title: "另存本地副本", DefaultPath: filepath.Join(a.Prefs.DownloadDir, path.Base(d.Document.Path)), Save: true}, func(p []string) {
+		a.inEditor(popped, func() { a.report(a.P.SaveLocalCopy(p[0], text), "已另存到 "+p[0]) })
+	})
 }
 
 // hostSession is the host's connected session, else any session of it.
@@ -426,7 +436,7 @@ func (a *App) EditorView(c *ui.Context) {
 				n++
 			}
 		}
-		switch ui.AlertDialog(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存。", n), "取消", "全部不保存") {
+		switch alert(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存，关闭后会丢失。", n), backOut("取消"), action("全部不保存", true)) {
 		case 1:
 			s.discardPopped()
 		}
@@ -474,10 +484,13 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	s := &a.editor
 	t := c.Theme()
 	if s.reloadKey == d.Key {
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1)
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1).MinWidth(0)
 			if ui.Button(c, "取消").Clicked() {
 				s.reloadKey = ""
+			}
+			if ui.Button(c, "另存本地副本…").Clicked() {
+				a.saveLocalCopy(d)
 			}
 			if ui.Button(c, "丢弃并重新载入").Clicked() {
 				d.Text, d.Code = d.Document.Text, nil
@@ -488,11 +501,10 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 		})
 	}
 	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		label := d.Document.Path
 		if d.dirty() {
-			label = "● " + label
+			dirtyDot(c).Label("") // the tab says it
 		}
-		ui.Text(c, label).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
+		ui.Text(c, d.Document.Path).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
 		if ui.Button(c, "重新载入").Clicked() {
 			s.reloadKey = d.Key
 		}
@@ -520,11 +532,12 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	d.prepare()
 	editor.View(c.Key(d.Key), d.Code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
 	d.sync()
-	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "UTF-8 文本，最大 8 MiB").SingleLine().Grow(1)
-		muted(c, "用外部编辑器打开时的参数，空格分隔").SingleLine()
-		ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder("例如 --wait").Width(200)
-	})
+	muted(c, "UTF-8 文本，最大 8 MiB").SingleLine()
+}
+
+// dirtyDot marks a document with edits not saved: the orange dot of its tab, in the editor window too.
+func dirtyDot(c *ui.Context) ui.Element {
+	return ui.Box(c).Size(8, 8).Radius(4).Shrink(0).Background(c.Theme().Warning).Label("未保存")
 }
 
 // docTitle is the name on a document's tab: the file's, with its folder when another tab has the same name.
@@ -586,7 +599,7 @@ func (a *App) editorTabs(c *ui.Context, tabs ui.TabsParts, first int) {
 			}
 			x.Children(func() {
 				if dirty && !hover { // the unsaved dot gives way to the × the pointer is after
-					ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning).Label("未保存")
+					dirtyDot(c)
 				} else {
 					ui.Icon(c, appIcons["close"]).FontSize(12).TextColor(t.TextMuted)
 				}
@@ -607,14 +620,14 @@ func (a *App) documentTabs(c *ui.Context, docs []*remoteDocument, shown *remoteD
 		tabs.List.Gap(4).Children(func() {
 			for i, d := range docs {
 				label := a.docTitle(d)
-				if d.dirty() {
-					label = "● " + label
-				}
 				e := tabs.Tab(i).Label("文档 "+d.Document.Path).Padding(6, 10).Gap(8).Radius(t.Radius).Tooltip(d.Document.Path).AlignItems(ui.Center)
 				if d == shown {
 					e.Background(t.SurfaceHover).TextColor(accentInk(t))
 				}
 				e.Children(func() {
+					if d.dirty() {
+						dirtyDot(c)
+					}
 					ui.Text(c, label).SingleLine()
 					if ui.ButtonBase(c).Label("关闭文档 "+d.Document.Path).Size(18, 18).Center().Children(func() { ui.Icon(c, appIcons["close"]).FontSize(12) }).Clicked() {
 						a.later(func() { a.requestDocumentClose(d.Key) })
@@ -640,7 +653,8 @@ func (a *App) documentCloseDialog(c *ui.Context, w window) {
 		return
 	}
 	open := true
-	switch ui.AlertDialog(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存。保存失败或有冲突时文件会保持打开。", "取消", "不保存", "保存") {
+	// 保存 has the focus: Enter saves, and a failed save or a conflict leaves the file open; nothing is lost.
+	switch alert(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存。保存失败或有冲突时文件会保持打开。", alertButton{label: "取消"}, alertButton{label: "不保存", risk: true}, alertButton{label: "保存", primary: true, focus: true}) {
 	case 1:
 		key := d.Key
 		a.later(func() { s.removeDocument(key) })

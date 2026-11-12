@@ -165,6 +165,9 @@ type Platform interface {
 	// and a failure's Message is ForEditor.
 	ReloadRemote(session, path string)
 	SaveRemote(session string, doc remoteedit.Document, text string)
+	// SaveLocalCopy writes text to the local file dest: the editor keeps unsaved edits there when the server's
+	// file changed under them. The server is not touched.
+	SaveLocalCopy(dest, text string) error
 	// ExternalEdit opens path in an outside editor (none: the system's text editor) and keeps every save
 	// in sync until StopLiveEdit, whether or not the editor keeps running.
 	ExternalEdit(session, path, executable string, args []string)
