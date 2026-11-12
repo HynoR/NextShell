@@ -2,6 +2,7 @@ package sshclient
 
 import (
 	"context"
+	"errors"
 	"runtime"
 	"testing"
 )
@@ -31,7 +32,7 @@ func TestAgentTarget(t *testing.T) {
 
 func TestDialAgentErrors(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		if _, e := dialAgent(context.Background(), `\\.\pipe\nextshell-no-such-agent`); e != errNoWindowsAgent {
+		if _, e := dialAgent(context.Background(), `\\.\pipe\nextshell-no-such-agent`); !errors.Is(e, errNoWindowsAgent) {
 			t.Fatal(e)
 		}
 		return
