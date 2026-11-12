@@ -11,6 +11,7 @@ import (
 type Preferences struct {
 	HyperlinkConfirm bool    `json:"hyperlinkConfirm"`
 	Appearance       string  `json:"appearance"`
+	Accent           string  `json:"accent"` // the main color preset; "" is the default
 	FontFamily       string  `json:"fontFamily"`
 	FontSize         int     `json:"fontSize"`
 	LineHeight       float32 `json:"lineHeight"`

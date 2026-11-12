@@ -17,7 +17,7 @@ const (
 )
 
 // All chrome uses the official Theme's colors and spacing, not per-page palettes.
-func designTheme(base *ui.Theme, mode string, highContrast bool) *ui.Theme {
+func designTheme(base *ui.Theme, mode, accent string, highContrast bool) *ui.Theme {
 	t := *base
 	if mode == "浅色" {
 		t = *ui.LightTheme()
@@ -40,10 +40,6 @@ func designTheme(base *ui.Theme, mode string, highContrast bool) *ui.Theme {
 		t.Border = ui.Hex("#293a50")
 		t.Text = ui.Hex("#e5edf6")
 		t.TextMuted = ui.Hex("#a0b2c8")
-		t.Accent = ui.Hex("#5ce1c7")
-		t.AccentHover = ui.Hex("#8bead8")
-		t.AccentPressed = ui.Hex("#35c7ad")
-		t.AccentText = ui.Hex("#092522")
 	} else {
 		t.Background = ui.Hex("#f4f7fb")
 		t.Surface = ui.Hex("#ffffff")
@@ -52,18 +48,46 @@ func designTheme(base *ui.Theme, mode string, highContrast bool) *ui.Theme {
 		t.Border = ui.Hex("#dce5ee")
 		t.Text = ui.Hex("#203249")
 		t.TextMuted = ui.Hex("#5d7087")
-		t.Accent = ui.Hex("#087f83")
-		t.AccentHover = ui.Hex("#08696e")
-		t.AccentPressed = ui.Hex("#06575d")
-		t.AccentText = ui.Hex("#ffffff")
 	}
+	v := accentFor(accent).light
+	if t.Dark {
+		v = accentFor(accent).dark
+	}
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = ui.Hex(v[0]), ui.Hex(v[1]), ui.Hex(v[2]), ui.Hex(v[3])
 	t.Selection = t.Accent.Alpha(.24)
 	t.Focus = t.Accent.Alpha(.65)
 	return &t
 }
 
+// accentPreset is a main color the user picks in the settings: Accent, AccentHover, AccentPressed and
+// AccentText in the light theme and in the dark one. Every preset keeps the contrast described below.
+type accentPreset struct {
+	id, name    string
+	light, dark [4]string
+}
+
+// accentPresets start with the default, the 1.x blue; cyan is the color of 2.0.0-rc1.
+var accentPresets = []accentPreset{
+	{"blue", "蓝", [4]string{"#1f6fd6", "#1a5fb8", "#164f9c", "#ffffff"}, [4]string{"#4d9fff", "#7ab8ff", "#3388f0", "#04162e"}},
+	{"cyan", "青", [4]string{"#087f83", "#08696e", "#06575d", "#ffffff"}, [4]string{"#5ce1c7", "#8bead8", "#35c7ad", "#092522"}},
+	{"green", "绿", [4]string{"#18794e", "#146640", "#105535", "#ffffff"}, [4]string{"#3ecf8e", "#6ddca9", "#2bb877", "#04241a"}},
+	{"violet", "紫", [4]string{"#7046d4", "#5f3ab8", "#4f309a", "#ffffff"}, [4]string{"#a78bfa", "#c4b5fd", "#9171f0", "#1e0f45"}},
+	{"orange", "橙", [4]string{"#b4530a", "#9a4708", "#803b06", "#ffffff"}, [4]string{"#fb923c", "#fdba74", "#f07a1c", "#2e1403"}},
+	{"rose", "玫红", [4]string{"#c4245b", "#a81e4e", "#8c1941", "#ffffff"}, [4]string{"#fb7185", "#fda4af", "#f2546b", "#330a12"}},
+}
+
+// accentFor is the preset id names, or the default one.
+func accentFor(id string) accentPreset {
+	for _, p := range accentPresets {
+		if p.id == id {
+			return p
+		}
+	}
+	return accentPresets[0]
+}
+
 // Selected rows of tables, lists and sidebars are filled with Accent and their
-// text is AccentText: 4.8:1 in the light theme and 10:1 in the dark one, also
+// text is AccentText: at least 4.5:1 with every preset, in both themes, also
 // in a window that is not active (design_test.go checks all of these). Text
 // that colors itself no longer follows the row, so it asks for its color here.
 
@@ -77,8 +101,8 @@ func mutedOnRow(t *ui.Theme, selected bool) ui.Color {
 }
 
 // accentInk is accent-colored text on the pale accent tint of a chosen button
-// or on SurfaceHover. Accent itself is 3.7:1 to 4.3:1 there in the light theme,
-// so that theme uses the deeper AccentPressed (6.4:1 or better).
+// or on SurfaceHover. Accent itself can fall below 4.5:1 there in the light theme,
+// so that theme uses the deeper AccentPressed (4.5:1 or better with every preset).
 func accentInk(t *ui.Theme) ui.Color {
 	if t.Dark {
 		return t.Accent

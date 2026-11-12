@@ -128,8 +128,10 @@ func (a *App) savePreferences(p model.Preferences) {
 	for _, s := range a.Tabs {
 		s.Terminal.SetTheme(l, d)
 	}
-	if a.wakeMain != nil {
-		a.wakeMain()
+	for _, wake := range []func(){a.wakeMain, a.wakeManager, a.wakeEditor} { // the main color and appearance apply at once
+		if wake != nil {
+			wake()
+		}
 	}
 }
 

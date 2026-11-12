@@ -248,7 +248,7 @@ func (a *App) remote() *Session {
 	return nil
 }
 func (a *App) theme(c *ui.Context) {
-	c.SetTheme(designTheme(c.Theme(), a.Prefs.Appearance, c.Preferences().HighContrast))
+	c.SetTheme(designTheme(c.Theme(), a.Prefs.Appearance, a.Prefs.Accent, c.Preferences().HighContrast))
 }
 func (a *App) openSettings(section string) {
 	if section != "" {
