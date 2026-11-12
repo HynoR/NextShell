@@ -54,7 +54,9 @@ M2 未做:拖出到 Finder 下载(mygo 只能拖出已存在的文件,需上游�
 ### M3 macOS 日用验收(进行中)
 
 - [x] 真实 OpenSSH 互操作 + 性能基准(`internal/interop`,`docs/v2/PERF.md`);修了 known_hosts 算法协商、SFTP 流水线(20ms RTT 下 1.4→46 MB/s)、打包传输报错、BusyBox 监控提示
-- [ ] Agent 通过 MCP 驱动应用的测试(进行中)
+- [x] Agent 通过 MCP 驱动应用的测试:两轮(19 + 13 个问题),全部修复并回归;健壮性、20 并发、10 分钟浸泡通过
+- [x] 本地打包:`go tool mygo build -skip-dmg` → `v2/dist/darwin-arm64/NextShell.app`(ad-hoc 签名,见 `v2/PACKAGING.md`)
+- [ ] 你本人用 .app 日用一周(从 2026-11-12 起)
 
 - 你本人连续日用一周,问题进 issue
 - 中文输入法(终端 + 输入框)、Cmd 快捷键、全屏 / 多显示器 / Retina
