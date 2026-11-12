@@ -98,3 +98,14 @@ func TestTraceOutputIsBounded(t *testing.T) {
 		t.Fatal(n, e, len(b.String()))
 	}
 }
+
+func TestResolveGivesAnAddressOrFails(t *testing.T) {
+	ctx := context.Background()
+	if a, e := Resolve(ctx, " 10.0.0.1 "); a != "10.0.0.1" || e != nil {
+		t.Fatal(a, e)
+	}
+	if a, e := Resolve(ctx, "localhost"); e != nil || targetIPOK(a) != nil {
+		t.Fatal(a, e)
+	}
+}
+func targetIPOK(s string) error { _, e := targetIP(s); return e }

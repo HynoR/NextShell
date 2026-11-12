@@ -27,6 +27,10 @@ func (p *Platform) Diagnose(kind, target string) string {
 		defer cancel()
 		var text string
 		var err error
+		if target, err = diagnostics.Resolve(ctx, target); err != nil {
+			p.emit(appui.Event{Diagnostic: &appui.DiagnosticResult{ID: id, Kind: kind, Text: "错误：" + err.Error()}})
+			return
+		}
 		switch kind {
 		case "ping":
 			var r diagnostics.PingResult

@@ -146,7 +146,22 @@ func (s *Session) Close() error {
 	return e
 }
 func (s *Session) Done() <-chan struct{} { return s.done }
-func (s *Session) WaitError() error      { s.waitMu.Lock(); defer s.waitMu.Unlock(); return s.waitErr }
+
+// Latency is the round trip of an SSH keepalive request: the delay of the real path, proxy included.
+func (s *Session) Latency(ctx context.Context) (time.Duration, error) {
+	start := time.Now()
+	reply := make(chan error, 1)
+	go func() { _, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil); reply <- err }()
+	select {
+	case err := <-reply:
+		return time.Since(start), err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-s.done:
+		return 0, io.EOF
+	}
+}
+func (s *Session) WaitError() error { s.waitMu.Lock(); defer s.waitMu.Unlock(); return s.waitErr }
 
 // Dial connects and opens the interactive shell. Timeout bounds the network work: the time spent in
 // the HostKey and Keyboard callbacks, where a person answers a dialog, does not count against it.

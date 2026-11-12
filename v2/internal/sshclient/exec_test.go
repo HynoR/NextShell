@@ -136,3 +136,15 @@ func TestRunTextDecodesAcrossWritesAndMarksInvalidBytes(t *testing.T) {
 		t.Fatal("a command the host encoding cannot represent was sent")
 	}
 }
+
+func TestLatencyIsARoundTrip(t *testing.T) {
+	s, _ := session(t)
+	d, e := s.Latency(context.Background())
+	if e != nil || d <= 0 || d > 5*time.Second {
+		t.Fatal(d, e)
+	}
+	s.Close()
+	if _, e = s.Latency(context.Background()); e == nil {
+		t.Fatal("a closed session has no latency")
+	}
+}

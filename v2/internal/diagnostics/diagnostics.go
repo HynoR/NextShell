@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	probing "github.com/prometheus-community/pro-bing"
+	"net"
 	"net/netip"
 	"os/exec"
 	"runtime"
@@ -21,6 +22,23 @@ func targetIP(s string) (string, error) {
 		return "", fmt.Errorf("目标必须为IPv4/IPv6字面地址（不接受URL、参数或zone）")
 	}
 	return a.String(), nil
+}
+
+// Resolve turns a host name into an address, IPv4 first; an address stays as it is. The tools below take only addresses.
+func Resolve(ctx context.Context, host string) (string, error) {
+	if a, e := netip.ParseAddr(strings.TrimSpace(host)); e == nil {
+		return a.String(), nil
+	}
+	addrs, e := net.DefaultResolver.LookupNetIP(ctx, "ip", strings.TrimSpace(host))
+	if e != nil || len(addrs) == 0 {
+		return "", fmt.Errorf("找不到主机：域名无法解析")
+	}
+	for _, a := range addrs {
+		if a.Is4() {
+			return a.String(), nil
+		}
+	}
+	return addrs[0].Unmap().WithZone("").String(), nil
 }
 
 type PingResult struct {

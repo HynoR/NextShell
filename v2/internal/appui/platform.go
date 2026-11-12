@@ -194,6 +194,7 @@ type EditorResult struct {
 type MonitorResult struct {
 	Session  string
 	Snapshot monitor.Snapshot
+	Latency  time.Duration // the round trip to the server; 0 when unknown
 }
 type ImportPreview struct {
 	Targets                                     []string

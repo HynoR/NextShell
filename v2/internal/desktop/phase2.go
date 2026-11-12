@@ -338,6 +338,7 @@ func (p *Platform) RefreshMonitor(session string) {
 		if have {
 			old = &previous
 		}
+		latency, _ := s.Latency(p.ctx) // unknown (0) when the server does not answer in time
 		next, e := monitor.Collect(p.ctx, s, old, detail)
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
@@ -347,7 +348,7 @@ func (p *Platform) RefreshMonitor(session string) {
 		p.monitorPrevious[session] = next
 		light = !next.Detail
 		p.mu.Unlock()
-		p.emit(appui.Event{Monitor: &appui.MonitorResult{Session: session, Snapshot: next}})
+		p.emit(appui.Event{Monitor: &appui.MonitorResult{Session: session, Snapshot: next, Latency: latency}})
 	})
 }
 
