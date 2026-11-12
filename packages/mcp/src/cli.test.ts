@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { version, name } from "../package.json";
-import { MCP_PACKAGE_SPEC, buildStdioConfig } from "../../shared/src/mcp-config";
+import { MCP_PACKAGE_SPEC } from "../../shared/src/mcp-config";
 import pluginConfig from "../../../nextshell-plugin/.mcp.json";
 import { defaultConfigPath } from "./credentials";
 import { FakeApp, success } from "./fake-app";
@@ -78,8 +78,19 @@ const writeDiscovery = async (file: string, port: number, token = TOKEN) => {
 test("published version and plugin configuration stay aligned", () => {
   expect(version).toBe("0.2.0");
   expect(MCP_PACKAGE_SPEC).toBe(`${name}@${version}`);
+  // NextShell 2 releases attach the bridge as a tarball (it is not on npm), run by URL. npm 12
+  // refuses URL packages unless --allow-remote permits the one on the command line.
   // No port and no token: both come from the mcp.json the app writes.
-  expect(pluginConfig.mcpServers.nextshell).toEqual(buildStdioConfig());
+  expect(pluginConfig.mcpServers.nextshell.command).toBe("npx");
+  expect(pluginConfig.mcpServers.nextshell.args).toEqual([
+    "--allow-remote=root",
+    "-y",
+    expect.stringMatching(
+      new RegExp(
+        `^https://github\\.com/HynoR/NextShell/releases/download/v2\\.[^/]+/nextshell-mcp-${version.replaceAll(".", "\\.")}\\.tgz$`
+      )
+    )
+  ]);
   expect(JSON.stringify(pluginConfig)).not.toMatch(/token|--port/i);
 });
 test("real stdio process discovers tools offline and exits cleanly", async () => {

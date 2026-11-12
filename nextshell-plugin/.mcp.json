@@ -2,7 +2,11 @@
   "mcpServers": {
     "nextshell": {
       "command": "npx",
-      "args": ["-y", "@nextshell/mcp@0.2.0"]
+      "args": [
+        "--allow-remote=root",
+        "-y",
+        "https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz"
+      ]
     }
   }
 }

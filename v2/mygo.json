@@ -1,8 +1,18 @@
 {
   "name": "NextShell",
   "identifier": "io.github.hynor.nextshell",
-  "version": "2.0.0-dev",
+  "version": "2.0.0-rc1",
+  "copyright": "© 2026 HynoR",
+  "license": "GPL-3.0-only",
   "main": "./cmd/nextshell",
   "icon": "packaging/icon.png",
-  "macos": { "signingIdentity": "-" }
+  "macos": { "signingIdentity": "-" },
+  "linux": {
+    "maintainer": "HynoR <20227709+HynoR@users.noreply.github.com>",
+    "comment": "Native SSH client",
+    "categories": ["Network", "Utility"],
+    "webview": false,
+    "command": "nextshell",
+    "formats": ["deb", "rpm"]
+  }
 }

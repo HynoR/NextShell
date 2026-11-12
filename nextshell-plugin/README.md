@@ -8,8 +8,9 @@ change is approved in the app (or auto-approved for a time you choose).
 
 1. In NextShell: 设置 → Agent → 开启 MCP. The app writes a private `mcp.json` (port and token)
    into its config directory and removes it when MCP is turned off or the app quits.
-2. Install the plugin. It starts `@nextshell/mcp`, which finds the port and token in that file
-   by itself, so there is nothing to copy or paste:
+2. Install the plugin. It starts the MCP bridge (`nextshell-mcp`, the `nextshell-mcp-*.tgz` attached
+   to each NextShell 2 release; it is not on npm), which finds the port and token in that file by
+   itself, so there is nothing to copy or paste:
 
    ```
    /plugin marketplace add HynoR/NextShell
@@ -19,8 +20,11 @@ change is approved in the app (or auto-approved for a time you choose).
    Without the plugin, add the same bridge by hand (Node.js 24+, no token or port needed):
 
    ```sh
-   claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.2.0
+   claude mcp add --transport stdio nextshell -- npx --allow-remote=root -y https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz
    ```
+
+   The URL is the one of the release you installed. npm 12 refuses to install from a URL unless
+   `--allow-remote=root` permits it; that allows only the URL on this command line.
 
 3. Open the server tab in NextShell, then tell your agent what to do. Tool calls that change
    something show an approval prompt in NextShell; in 设置 → Agent you can turn on 自动批准
