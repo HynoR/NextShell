@@ -290,7 +290,10 @@ func TestImportPreviewOpensSettingsAndExportUsesChosenHosts(t *testing.T) {
 	has(t, st, "导出 1 个主机")
 	// Local paths come only from native panels.
 	var picked []appui.FilePick
-	a.PickFiles = func(o appui.FilePick, done func([]string)) { picked = append(picked, o); done([]string{"/out/hosts.json"}) }
+	a.PickFiles = func(o appui.FilePick, done func([]string)) {
+		picked = append(picked, o)
+		done([]string{"/out/hosts.json"})
+	}
 	click(t, st, "选择保存到")
 	has(t, st, "/out/hosts.json")
 	if len(picked) != 1 || !picked[0].Save || picked[0].Title != "保存到" {

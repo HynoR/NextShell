@@ -314,3 +314,34 @@ func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 		t.Fatal("size descending", got)
 	}
 }
+
+func TestSnippetGroupRenameAndDeleteWithCount(t *testing.T) {
+	p := newPlatform(t)
+	p.SaveCommand(model.Command{ID: p.NewID(), Name: "a", Group: "运维", Text: "uptime"})
+	p.SaveCommand(model.Command{ID: p.NewID(), Name: "b", Group: "运维", Text: "df -h"})
+	p.SaveCommand(model.Command{ID: p.NewID(), Name: "c", Group: "其他", Text: "id"})
+	_, tt := start(p)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	tt.RightClick("分组 运维")
+	if e := tt.ChooseMenuItem("重命名分组…"); e != nil {
+		t.Fatal(e)
+	}
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("部署")
+	tt.Key(0, ui.KeyEnter)
+	snap, _ := p.Snapshot()
+	for _, v := range snap.Commands {
+		if (v.Group == "部署") != (v.Name != "c") {
+			t.Fatal("rename", v)
+		}
+	}
+	tt.RightClick("分组 部署")
+	tt.ChooseMenuItem("删除分组…")
+	has(t, tt, "分组里的 2 个片段会一起删除，无法恢复。")
+	click(t, tt, "删除 2 个片段")
+	snap, _ = p.Snapshot()
+	if len(snap.Commands) != 1 || snap.Commands[0].Name != "c" {
+		t.Fatal("delete group", snap.Commands)
+	}
+}

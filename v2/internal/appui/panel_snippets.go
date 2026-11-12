@@ -11,6 +11,8 @@ import (
 
 type snippetsState struct {
 	search, group string
+	// renaming is the group whose header is an inline text field.
+	renaming, renameTo string
 
 	// editor is the 新建 / 编辑片段 dialog.
 	editing bool
@@ -103,7 +105,7 @@ func (a *App) snippetsPanel(c *ui.Context) {
 					continue
 				}
 				if visible == 0 || v.Group != last {
-					muted(c, v.Group).Padding(8, 6, 2, 6)
+					a.snippetGroupHeader(c, v.Group)
 					last = v.Group
 				}
 				visible++
@@ -341,5 +343,70 @@ func (a *App) sendCommand(text string, all bool) {
 	a.snippets.command = ""
 	if !all {
 		a.snippets.commandOpen = false
+	}
+}
+
+// snippetGroupHeader names a group; its menu renames or deletes the whole group.
+func (a *App) snippetGroupHeader(c *ui.Context, group string) {
+	s := &a.snippets
+	if s.renaming == group {
+		in := ui.TextInput(c.Key("group-rename"), &s.renameTo).Label("分组名称").AutoFocus().FillWidth().Height(24).FontSize(12).Margin(6, 0, 2, 0).OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEscape {
+				s.renaming = ""
+				return true
+			}
+			return false
+		})
+		if in.Submitted() {
+			a.renameSnippetGroup(group, strings.TrimSpace(s.renameTo))
+		}
+		return
+	}
+	n := 0
+	for _, v := range a.Data.Commands {
+		if v.Group == group {
+			n++
+		}
+	}
+	muted(c, group).Padding(8, 6, 2, 6).Label("分组 "+group).ContextMenu(func(m *ui.Menu) {
+		if m.Item("重命名分组…").Chosen() {
+			s.renaming, s.renameTo = group, group
+		}
+		if m.Item("删除分组…").Danger().Chosen() {
+			a.later(func() {
+				a.confirm(fmt.Sprintf("删除分组「%s」", group), fmt.Sprintf("分组里的 %d 个片段会一起删除，无法恢复。", n), fmt.Sprintf("删除 %d 个片段", n), func() {
+					for _, v := range a.Data.Commands {
+						if v.Group == group {
+							if e := a.P.Delete("command", v.ID); e != nil {
+								a.fail(e)
+								break
+							}
+						}
+					}
+					a.reload()
+					s.group = "全部"
+				})
+			})
+		}
+	})
+}
+func (a *App) renameSnippetGroup(from, to string) {
+	s := &a.snippets
+	s.renaming = ""
+	if to == "" || to == from {
+		return
+	}
+	for _, v := range a.Data.Commands {
+		if v.Group == from {
+			v.Group = to
+			if e := a.P.SaveCommand(v); e != nil {
+				a.fail(e)
+				break
+			}
+		}
+	}
+	a.reload()
+	if s.group == from {
+		s.group = to
 	}
 }
