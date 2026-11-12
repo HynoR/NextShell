@@ -1,0 +1,16 @@
+Port 22
+UsePAM yes
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+PubkeyAuthentication yes
+PermitRootLogin no
+AllowAgentForwarding yes
+PrintMotd no
+PrintLastLog no
+LogLevel VERBOSE
+Subsystem sftp /usr/lib/openssh/sftp-server
+
+# Real 2FA: PAM asks for the password, then a google-authenticator code.
+Match User otpuser
+    PasswordAuthentication no
+    AuthenticationMethods keyboard-interactive
