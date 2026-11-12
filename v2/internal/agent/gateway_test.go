@@ -253,14 +253,14 @@ func TestV1CommandRiskExactVectors(t *testing.T) {
 			})
 		}
 	}
-	for _, cmd := range []string{"cat .env", "cat /srv/app/.env.production", "echo KEY=1 >> .env", "echo x >.env.local", "sed -i 's/a/b/' ./.env && ls", "cat .env.example.md"} {
+	for _, cmd := range []string{"cat .env", "cat /srv/app/.env.production", "echo KEY=1 >> .env", "echo x >.env.local", "sed -i 's/a/b/' ./.env && ls", "cat .env.example.md", "ls .envrc", "env | grep PATH"} {
 		t.Run(cmd, func(t *testing.T) {
 			if !Sensitive(cmd) {
 				t.Fatal("sensitive vector missed", cmd)
 			}
 		})
 	}
-	for _, cmd := range []string{"env | grep PATH", "cat environment.txt", "ls .envrc"} {
+	for _, cmd := range []string{"cat environment.txt", "env FOO=1 ls", "printenv PATH"} {
 		t.Run(cmd, func(t *testing.T) {
 			if Sensitive(cmd) {
 				t.Fatal("look-alike flagged", cmd)
