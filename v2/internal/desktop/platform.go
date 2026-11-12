@@ -495,6 +495,9 @@ func (p *Platform) Shutdown() {
 	p.order = nil
 	p.credentials = map[string]model.Connection{}
 	p.mu.Unlock()
+	for id := range ts {
+		p.agentIO.stopExecs(id) // agent commands are killed on their servers before the connections go
+	}
 	for _, t := range ts {
 		t.Close()
 	}

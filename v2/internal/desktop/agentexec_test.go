@@ -370,3 +370,26 @@ func TestExecRunsInTheTabsDirectoryOrNotAtAll(t *testing.T) {
 		t.Fatalf("%+v %v", r, e)
 	}
 }
+
+// Quitting the app does not leave an agent's command running on the server either.
+func TestShuttingDownKillsRunningExecs(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	s := connectAs(t, p, server, "quitting", "utf-8")
+	done := make(chan error, 1)
+	go func() {
+		_, e := agentBackend{p}.Exec(context.Background(), s.ID, "sleep 30")
+		done <- e
+	}()
+	waitUntil(t, "the command to start", func() bool { return server.Execs.Load() == 1 })
+	p.Shutdown()
+	select {
+	case e := <-done:
+		if codeOf(e) != "disconnected" {
+			t.Fatal(e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec kept running after shutdown")
+	}
+	waitUntil(t, "the server to kill the command", func() bool { return server.Killed.Load() == 1 })
+}
