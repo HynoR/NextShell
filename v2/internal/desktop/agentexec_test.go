@@ -3,6 +3,9 @@ package desktop
 import (
 	"context"
 	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -309,5 +312,61 @@ func TestHandshakeEOFIsReportedAsRefused(t *testing.T) {
 	}
 	if codeOf(openError(errors.New("dial tcp 1.2.3.4:22: connect: connection refused"))) != "refused" || codeOf(openError(errors.New("ssh: handshake failed: ssh: unable to authenticate"))) != "auth_failed" {
 		t.Fatal("other codes changed")
+	}
+}
+
+// trackDir tells the session's terminal its directory, like a shell with directory tracking does.
+func trackDir(t *testing.T, p *Platform, id, dir string) {
+	t.Helper()
+	u := &url.URL{Scheme: "file", Host: "localhost", Path: dir}
+	if e := p.Send(id, "\x1b]7;"+u.String()+"\x07"); e != nil {
+		t.Fatal(e)
+	}
+	waitUntil(t, "the terminal to report "+dir, func() bool { return p.SessionDir(id) == dir })
+}
+
+// The command runs as a whole in the tab's directory, whatever operators or comments it has; if the
+// directory is gone nothing runs at all and the caller is told which path is missing.
+func TestExecRunsInTheTabsDirectoryOrNotAtAll(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	s := connectAs(t, p, server, "cwd", "utf-8")
+	b := agentBackend{p}
+	dir := filepath.Join(server.Root, "it's here")
+	if e := os.Mkdir(dir, 0o700); e != nil {
+		t.Fatal(e)
+	}
+	trackDir(t, p, s.ID, dir)
+	for _, tc := range []struct {
+		command, out string
+		exit         int
+	}{
+		{"pwd", dir + "\n", 0},
+		{"echo a; pwd; echo b", "a\n" + dir + "\nb\n", 0},
+		{"false || pwd", dir + "\n", 0},
+		{"echo hi # a trailing comment", "hi\n", 0},
+		{"pwd & wait", dir + "\n", 0},
+		{"exit 3", "", 1}, // the test server reports every failure as 1
+		{"cat <<EOF\ninside\nEOF", "inside\n", 0},
+	} {
+		r, e := b.Exec(context.Background(), s.ID, tc.command)
+		if e != nil || r.Output != tc.out || r.ExitCode != tc.exit || r.ActualCWD != dir {
+			t.Errorf("%q: %+v %v", tc.command, r, e)
+		}
+	}
+	if e := os.Remove(dir); e != nil {
+		t.Fatal(e)
+	}
+	r, e := b.Exec(context.Background(), s.ID, "echo first; touch ran-anyway")
+	if codeOf(e) != "cwd_missing" || !strings.Contains(e.Error(), dir) || r.Output != "" || r.Stderr != "" {
+		t.Fatalf("%+v %v", r, e)
+	}
+	if _, e := os.Stat(filepath.Join(server.Root, "ran-anyway")); e == nil {
+		t.Fatal("the command ran although its directory is gone")
+	}
+	// A tab without directory tracking runs in the login directory and reports no actualCwd.
+	u := connectAs(t, p, server, "untracked", "utf-8")
+	if r, e := b.Exec(context.Background(), u.ID, "echo ok"); e != nil || r.Output != "ok\n" || r.ActualCWD != "" {
+		t.Fatalf("%+v %v", r, e)
 	}
 }

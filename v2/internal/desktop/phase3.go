@@ -500,12 +500,16 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	if e != nil {
 		return result, agent.Coded("disconnected", e)
 	}
+	// The command starts in the tab's directory when the shell reports it (directory tracking); otherwise
+	// in the login directory and actualCwd stays empty. If the directory is gone, nothing runs.
 	cwd := b.p.SessionDir(id)
+	gone := ""
 	if cwd != "" {
 		if !strings.HasPrefix(cwd, "/") || strings.ContainsRune(cwd, 0) {
 			return result, errors.New("invalid cwd")
 		}
-		command = "cd '" + strings.ReplaceAll(cwd, "'", "'\"'\"'") + "' && " + command
+		gone = "nextshell-cwd-missing-" + b.p.NewID()
+		command = "cd -- " + shellQuote(cwd) + " 2>/dev/null || { echo " + gone + " >&2; exit 1; }\n{ " + command + "\n}"
 	}
 	result.ActualCWD = cwd
 	ctx, cancel := context.WithCancelCause(ctx)
@@ -519,6 +523,9 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	var exit *ssh.ExitError
 	var missing *ssh.ExitMissingError
 	switch {
+	case gone != "" && strings.HasPrefix(result.Stderr, gone):
+		result.ActualCWD, result.Stderr = "", ""
+		return result, agent.Coded("cwd_missing", errors.New(cwd+" no longer exists or cannot be entered"))
 	case e == nil:
 		return result, nil
 	case errors.As(e, &exit):
@@ -532,6 +539,8 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 	}
 	return result, e
 }
+
+func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // connectionDone reports whether the interactive session behind s has ended.
 func connectionDone(s *sshclient.Session) bool {

@@ -282,7 +282,7 @@ func TestErrorModelCodesAndCauses(t *testing.T) {
 	if c := code(t, call(g, "o", "session_read", m{})); c != "invalid_argument" {
 		t.Fatal(c)
 	}
-	for _, c := range []string{"disconnected", "auth_failed", "host_key", "refused", "unreachable", "user_action_required", "user_typing", "timeout", "busy"} {
+	for _, c := range []string{"disconnected", "auth_failed", "host_key", "refused", "unreachable", "user_action_required", "user_typing", "timeout", "busy", "cwd_missing"} {
 		if messages[c] == "" {
 			t.Fatal("no message for", c)
 		}

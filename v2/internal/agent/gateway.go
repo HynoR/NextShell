@@ -150,6 +150,7 @@ var messages = map[string]string{
 	"internal":             "The operation failed",
 	"busy":                 "Another call is already running on this session",
 	"disconnected":         "The session is disconnected or was closed",
+	"cwd_missing":          "The session's working directory is gone; nothing was run",
 	"auth_failed":          "Authentication failed",
 	"host_key":             "The host key was not trusted or has changed",
 	"refused":              "The connection was refused",
