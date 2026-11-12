@@ -817,7 +817,7 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 				group += "/" + strings.Join(segments, "/")
 			}
 			var ref *exchange.CredentialRef
-			if c.CredentialID != "" { // the host carries the credential's user and auth, and the credential itself
+			if c.CredentialID != "" { // by reference: the host keeps its own user and auth
 				cr, e := p.store.Credential(c.CredentialID)
 				if e != nil {
 					return e
@@ -827,7 +827,6 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 					ck = &v
 				}
 				ref = exchange.ToCredential(cr, ck)
-				c = c.WithCredential(cr)
 			}
 			var k *model.Key
 			if v, ok := keyMap[c.KeyID]; ok {

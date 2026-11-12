@@ -82,8 +82,8 @@ func TestKeyDedupeAndRebind(t *testing.T) {
 	}
 }
 
-// Exports carry the credential with each host, its password only when encrypted; an import creates it
-// once and binds every host to it.
+// Exports carry the credential by reference with each host, its password only when encrypted, and never
+// copy its user or auth into the host; an import creates it once and binds every host to it.
 func TestCredentialExportImport(t *testing.T) {
 	p := desktopFixture(t)
 	cr := model.Credential{ID: p.NewID(), Name: "共享", User: "ops", Auth: "password"}
@@ -113,6 +113,11 @@ func TestCredentialExportImport(t *testing.T) {
 	if e != nil || f.Connections[0].Credential == nil || *f.Connections[0].Credential.Password != pw {
 		t.Fatal(f, e)
 	}
+	for _, h := range f.Connections {
+		if h.Username != "" || h.Password != nil && *h.Password == pw {
+			t.Fatal("credential copied into the host", h)
+		}
+	}
 
 	q := desktopFixture(t)
 	q.PreviewImport(enc, pass, "nextshell")
@@ -130,5 +135,10 @@ func TestCredentialExportImport(t *testing.T) {
 	}
 	if got, _ := q.store.Credential(snap.Credentials[0].ID); got.Secret != pw || got.User != "ops" {
 		t.Fatal(got)
+	}
+	for _, c := range snap.Connections {
+		if c.User != "" {
+			t.Fatal("host got the credential's user", c)
+		}
 	}
 }

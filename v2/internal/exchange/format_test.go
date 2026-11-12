@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"nextshell.dev/v2/internal/model"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,5 +195,26 @@ func TestImportMonitorDefaultsOn(t *testing.T) {
 		if got := FromEntry(e, nil).Monitor; got != want {
 			t.Fatalf("%s: %v", in, got)
 		}
+	}
+}
+
+// A host using a credential is exported without a user of its own; when the credential's key is not
+// here, the host waits for that key instead of being dropped.
+func TestCredentialByReference(t *testing.T) {
+	raw := `{"format":"nextshell-connections","version":1,"exportedAt":"","passwordsOmitted":true,"connections":[{"name":"a","host":"h","port":22,"username":"","authType":"password","credential":{"name":"ops","username":"ops","authType":"privateKey","sshKeyRef":{"name":"deploy"}}}]}`
+	f, e := Decode([]byte(raw), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := FromEntry(f.Connections[0], nil)
+	if c.User != "ops" || c.Auth != "key" || !c.NeedsKeyRebind || c.SourceKeyRef == nil || c.SourceKeyRef.Name != "deploy" || c.Validate() != nil {
+		t.Fatal("missing key", c)
+	}
+	keys := []model.Key{{ID: "k", Name: "deploy"}}
+	if c = FromEntry(f.Connections[0], keys); c.User != "" || c.Auth != "password" || c.NeedsKeyRebind {
+		t.Fatal("credential copied into the host", c)
+	}
+	if _, e = Decode([]byte(strings.Replace(raw, `,"credential":{"name":"ops","username":"ops","authType":"privateKey","sshKeyRef":{"name":"deploy"}}`, "", 1)), nil); e == nil {
+		t.Fatal("host without a user or credential accepted")
 	}
 }
