@@ -345,3 +345,41 @@ func TestSnippetGroupRenameAndDeleteWithCount(t *testing.T) {
 		t.Fatal("delete group", snap.Commands)
 	}
 }
+
+func TestRemoteEditorWindowGuardsCloseAndHidesWhenEmpty(t *testing.T) {
+	a, p, tt := fixture(t)
+	shown, hidden := 0, 0
+	a.ShowEditor = func() { shown++ }
+	a.HideEditor = func() { hidden++ }
+	ed := ui.NewTester(a.EditorView, 900, 640)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
+	tt.Frame()
+	if shown != 1 || tt.HasText("重新载入") {
+		t.Fatal("editor should open in its own window", shown)
+	}
+	ed.Frame()
+	has(t, ed, "/etc/a.conf", "保存", "重新载入")
+	ed.Type("x")
+	ed.Frame()
+	if a.EditorMayClose() {
+		t.Fatal("closed with unsaved changes")
+	}
+	ed.Frame()
+	has(t, ed, "1 个文件的修改尚未保存。")
+	click(t, ed, "取消")
+	if a.DirtyDocumentCount() != 1 {
+		t.Fatal("cancel dropped the document")
+	}
+	a.EditorMayClose()
+	ed.Frame()
+	click(t, ed, "全部不保存")
+	ed.Frame()
+	if a.DirtyDocumentCount() != 0 || hidden != 1 {
+		t.Fatal("discard all", a.DirtyDocumentCount(), hidden)
+	}
+	// The palette offers the editor only while documents are open.
+	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Type("远程编辑器")
+	has(t, tt, "没有结果")
+}

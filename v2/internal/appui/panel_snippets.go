@@ -368,7 +368,7 @@ func (a *App) snippetGroupHeader(c *ui.Context, group string) {
 			n++
 		}
 	}
-	muted(c, group).Padding(8, 6, 2, 6).Label("分组 "+group).ContextMenu(func(m *ui.Menu) {
+	muted(c, group).Padding(8, 6, 2, 6).Label("分组 " + group).ContextMenu(func(m *ui.Menu) {
 		if m.Item("重命名分组…").Chosen() {
 			s.renaming, s.renameTo = group, group
 		}

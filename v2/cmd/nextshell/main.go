@@ -81,6 +81,30 @@ func main() {
 			mygo.RunOnMain(func() { done(paths); p.Invalidate() })
 		}()
 	}
+	var editor *mygo.Window
+	a.ShowEditor = func() {
+		if editor != nil {
+			editor.Show()
+			editor.Focus()
+			return
+		}
+		editor = mygo.NewWindow(mygo.WindowOptions{Title: "远程编辑器", Width: 960, Height: 700, MinWidth: 560, MinHeight: 360, StateKey: "editor", Content: ui.View(a.EditorView)})
+		editor.OnClose(func(e *mygo.CloseEvent) {
+			if !a.EditorMayClose() {
+				e.PreventDefault()
+				p.Invalidate()
+			}
+		})
+		editor.OnClosed(func() { editor = nil })
+	}
+	// HideEditor runs inside the editor's own frame: close it after that frame.
+	a.HideEditor = func() {
+		go mygo.RunOnMain(func() {
+			if editor != nil {
+				editor.Close()
+			}
+		})
+	}
 	mygo.App.WhenReady(func() {
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		w.OnClose(func(e *mygo.CloseEvent) {

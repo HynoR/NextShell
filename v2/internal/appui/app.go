@@ -29,6 +29,9 @@ type App struct {
 	// PickFiles shows a native open/save panel and calls done on the UI
 	// thread with the chosen paths (none when cancelled). Nil means no panels.
 	PickFiles func(o FilePick, done func([]string))
+	// ShowEditor opens (or raises) the remote editor window, which EditorView
+	// builds; HideEditor closes it. Without ShowEditor the editor is a dialog.
+	ShowEditor, HideEditor func()
 
 	layout   layoutState
 	tabs     tabsState
@@ -51,6 +54,7 @@ type App struct {
 		at    time.Time
 	}
 	wakeMain, wakeSettings func()
+	wakeEditor             func()
 }
 
 type layoutState struct {
@@ -227,8 +231,12 @@ func (a *App) View(c *ui.Context) {
 	a.P.SetWake(c.Services().Invalidate)
 	a.P.SetClipboard(c.Services().WriteClipboard)
 	a.P.SetURLopener(c.Services().OpenURL)
-	if a.poll() && a.wakeSettings != nil {
-		a.wakeSettings()
+	if a.poll() {
+		for _, wake := range []func(){a.wakeSettings, a.wakeEditor} {
+			if wake != nil {
+				wake()
+			}
+		}
 	}
 	a.refreshTitles()
 	a.shortcuts(c)

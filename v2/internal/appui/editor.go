@@ -29,6 +29,8 @@ type editorState struct {
 	externalArgs  string
 	reloadSession string
 	reloadPath    string
+	windowed      bool // the editor window is showing
+	closeAll      bool // the window's close asks about unsaved documents
 }
 
 type remoteDocument struct {
@@ -223,63 +225,127 @@ func (a *App) DirtyDocumentCount() int {
 	return n
 }
 
-// editorDialog shows the open remote documents over the window.
+// editorDialog shows the open remote documents: in their own window when
+// the host has one, else over the main window.
 func (a *App) editorDialog(c *ui.Context) {
 	s := &a.editor
+	if a.ShowEditor != nil {
+		if s.open {
+			s.open = false
+			s.windowed = true
+			a.ShowEditor()
+		}
+		return
+	}
 	if !s.open || len(s.documents) == 0 {
 		return
 	}
-	t := c.Theme()
 	w, h := c.Size()
 	dialog(c, &s.open, func() {
-		ui.Column(c).Width(max(w-120, 480)).Height(max(h-120, 360)).Gap(8).Children(func() {
-			a.documentTabs(c)
-			if s.reloadPath != "" {
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1)
-					if ui.Button(c, "取消").Clicked() {
-						s.reloadPath = ""
-					}
-					if ui.Button(c, "丢弃并重新载入").Clicked() {
-						s.text = s.document.Text
-						a.P.OpenRemote(s.reloadSession, s.reloadPath)
-						s.reloadPath = ""
-					}
-				})
-			}
-			if s.document.Path == "" {
-				return
-			}
-			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				label := s.document.Path
-				if s.text != s.document.Text {
-					label = "● " + label
-				}
-				ui.Text(c, label).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
-				if ui.Button(c, "重新载入").Clicked() {
-					s.reloadSession, s.reloadPath = s.session, s.document.Path
-				}
-				if ui.Button(c, "用外部编辑器打开").Clicked() {
-					if s.text != s.document.Text {
-						a.toast("请先保存或放弃修改")
-					} else {
-						a.externalEdit(s.session, s.document.Path)
-					}
-				}
-				if ui.PrimaryButton(c, "保存").KeyShortcuts(ui.Cmd, ui.KeyS).Clicked() || c.Shortcut(ui.Cmd, ui.KeyS) {
-					a.P.SaveRemote(s.session, s.document, s.text)
-				}
-			})
-			s.prepareBuffer()
-			editor.View(c.Key(documentKey(s.session, s.document.Path)), s.code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
-			s.syncText()
-			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-				muted(c, "UTF-8 文本，最大 8 MiB · 外部编辑器参数").SingleLine()
-				ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder(`["--wait"]`).Width(200)
-			})
-		})
+		ui.Column(c).Width(max(w-120, 480)).Height(max(h-120, 360)).Gap(8).Children(func() { a.editorBody(c) })
 	})
 	a.documentCloseDialog(c)
+}
+
+// EditorView builds the remote editor window.
+func (a *App) EditorView(c *ui.Context) {
+	s := &a.editor
+	a.theme(c)
+	a.wakeEditor = c.Services().Invalidate
+	t := c.Theme()
+	ui.Column(c).Fill().Padding(8, 12, 12, 12).Gap(8).Background(t.Background).Children(func() {
+		if len(s.documents) == 0 {
+			emptyState(c, "没有打开的远程文件", "在文件面板里双击文件即可编辑。")
+			return
+		}
+		a.editorBody(c)
+	})
+	if len(s.documents) == 0 && s.windowed && a.HideEditor != nil {
+		s.windowed = false
+		a.HideEditor()
+	}
+	a.documentCloseDialog(c)
+	if s.closeAll {
+		open := true
+		n := a.DirtyDocumentCount()
+		switch ui.AlertDialog(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存。", n), "取消", "全部不保存") {
+		case 1:
+			s.discardAll()
+		}
+		if !open {
+			s.closeAll = false
+		}
+	}
+	a.runActions(c)
+	a.flushToasts(c)
+	if a.wakeMain != nil {
+		a.wakeMain()
+	}
+}
+
+// EditorMayClose guards closing the editor window: with unsaved documents
+// it asks in the window and returns false; otherwise it lets the documents go.
+func (a *App) EditorMayClose() bool {
+	s := &a.editor
+	if a.DirtyDocumentCount() > 0 {
+		s.closeAll = true
+		return false
+	}
+	s.discardAll()
+	s.windowed = false
+	return true
+}
+func (s *editorState) discardAll() {
+	s.documents, s.document, s.text, s.code, s.codePath, s.codeSource, s.session, s.open = nil, remoteedit.Document{}, "", nil, "", "", "", false
+}
+
+func (a *App) editorBody(c *ui.Context) {
+	s := &a.editor
+	t := c.Theme()
+	a.documentTabs(c)
+	if s.reloadPath != "" {
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1)
+			if ui.Button(c, "取消").Clicked() {
+				s.reloadPath = ""
+			}
+			if ui.Button(c, "丢弃并重新载入").Clicked() {
+				s.text = s.document.Text
+				a.P.OpenRemote(s.reloadSession, s.reloadPath)
+				s.reloadPath = ""
+			}
+		})
+	}
+	if s.document.Path == "" {
+		return
+	}
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		label := s.document.Path
+		if s.text != s.document.Text {
+			label = "● " + label
+		}
+		ui.Text(c, label).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
+		if ui.Button(c, "重新载入").Clicked() {
+			s.reloadSession, s.reloadPath = s.session, s.document.Path
+		}
+		if ui.Button(c, "用外部编辑器打开").Clicked() {
+			if s.text != s.document.Text {
+				a.toast("请先保存或放弃修改")
+			} else {
+				a.externalEdit(s.session, s.document.Path)
+			}
+		}
+		if ui.PrimaryButton(c, "保存").KeyShortcuts(ui.Cmd, ui.KeyS).Clicked() || c.Shortcut(ui.Cmd, ui.KeyS) {
+			a.P.SaveRemote(s.session, s.document, s.text)
+		}
+	})
+	s.prepareBuffer()
+	editor.View(c.Key(documentKey(s.session, s.document.Path)), s.code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
+	s.syncText()
+	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+		muted(c, "UTF-8 文本，最大 8 MiB · 外部编辑器参数").SingleLine()
+		ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder(`["--wait"]`).Width(200)
+	})
 }
 
 func (a *App) documentTabs(c *ui.Context) {
