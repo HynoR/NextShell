@@ -51,8 +51,8 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 }
 
 // titled shows the tab strip with SSH tabs to similar hosts whose shells all set the same kind of title,
-// and a local terminal running a program: SSH tabs read as the connections, the program title is in the
-// status bar, and the local tab follows its program.
+// and a local terminal running a program: SSH tabs read as the connections, each with its host's color,
+// the program title is on the session card, and the local tab follows its program.
 func titled(t *testing.T, shot func(*ui.Tester, string)) {
 	t.Helper()
 	p := newPlatform(t)
@@ -70,8 +70,9 @@ func titled(t *testing.T, shot func(*ui.Tester, string)) {
 }
 
 func monitorSnapshot(at time.Time, i int) monitor.Snapshot {
-	return monitor.Snapshot{At: at, Info: "Ubuntu 24.04 LTS · 4 核 · 运行 12 天", Load: "0.42 0.38 0.35", HasDelta: true, HasNetworkDelta: true, CPUPercent: float64(20 + i*3%40), MemoryTotal: 8 << 30, MemoryAvailable: uint64(3+i%2) << 30, SwapTotal: 2 << 30, SwapFree: 2 << 30, RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000),
-		Disks:     []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 41 << 20, UsedPercent: 51}},
+	return monitor.Snapshot{At: at, Info: "Ubuntu 24.04 LTS · 4 核 · 运行 12 天", Load: "0.42 0.38 0.35", HasDelta: true, HasNetworkDelta: true, CPUPercent: float64(20 + i*3%40), MemoryTotal: 8 << 30, MemoryAvailable: uint64(3+i%2) << 30, SwapTotal: 2 << 30, SwapFree: 1843 << 20, RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000),
+		Disks:     []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 59 << 20, UsedPercent: 74}},
+		Detail:    true,
 		Processes: []monitor.Process{{PID: 812, User: "www", CPU: 12.5, MemoryMB: 140, Command: "nginx: worker process"}, {PID: 1, User: "root", CPU: 0.1, MemoryMB: 12, Command: "/sbin/init"}, {PID: 2201, User: "postgres", CPU: 4.2, MemoryMB: 610, Command: "postgres: checkpointer", Elapsed: 7260, PPID: 2190, State: "Ss", MemoryPercent: 3.8}},
 		Network:   []monitor.Network{{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 443, PID: 812, Process: "nginx", Connections: 32, UniqueIPs: 9}, {Protocol: "tcp", State: "ESTAB", LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.9.4", RemotePort: 51022, PID: 990, Process: "sshd", Connections: 1, UniqueIPs: 1}}}
 }
@@ -109,6 +110,7 @@ func TestScreenshots(t *testing.T) {
 	p := newPlatform(t)
 	web, db := demo(t, p)
 	a, tt := start(p)
+	tt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
 	shot(tt, "01-welcome")
 	_, _, empty := fixture(t) // a profile with no hosts: the first run
 	shot(empty, "01b-welcome-first-run")
@@ -120,20 +122,13 @@ func TestScreenshots(t *testing.T) {
 	tt.Frame()
 	tt.Key(0, ui.KeyEscape)
 	now := time.Now()
-	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
-		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
-		{Name: "access.log.10", Path: "/var/log/nginx/access.log.10", Size: 900000, Mode: "-rw-r-----", Modified: now.Add(-240 * time.Hour)},
-		{Name: "access.log.2", Path: "/var/log/nginx/access.log.2", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-48 * time.Hour)},
-		{Name: "access.log", Path: "/var/log/nginx/access.log", Size: 5100000, Mode: "-rw-r-----", Modified: now.Add(-time.Minute)},
-		{Name: "error.log", Path: "/var/log/nginx/error.log", Size: 81000, Mode: "-rw-r-----", Modified: now.Add(-2 * time.Hour)},
-	}}})
-	tt.Frame()
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log", Entries: []sftpfs.Entry{
 		{Name: "nginx", Path: "/var/log/nginx", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
 		{Name: "apt", Path: "/var/log/apt", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-50 * time.Hour)},
 		{Name: "syslog", Path: "/var/log/syslog", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-time.Hour)},
 		{Name: "auth.log", Path: "/var/log/auth.log", Size: 81000, Mode: "-rw-r-----", Modified: now.Add(-2 * time.Hour)},
 		{Name: "kern.log", Path: "/var/log/kern.log", Size: 4096, Mode: "-rw-r-----", Modified: now.AddDate(0, -2, 0)},
+		{Name: "dpkg.log", Path: "/var/log/dpkg.log", Size: 12400, Mode: "-rw-r--r--", Modified: now.AddDate(0, 0, -3)},
 	}}})
 	for i := range 12 {
 		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s1", Snapshot: monitorSnapshot(now.Add(time.Duration(i-12)*2*time.Second), i)}})
@@ -141,7 +136,13 @@ func TestScreenshots(t *testing.T) {
 	tt.Frame()
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	tt.Frame()
-	shot(tt, "02-main-files")
+	// The connected workspace, as the 1.x reference: session card, live status, terminal, SFTP.
+	shot(tt, "02-main-connected")
+	tt.SetSize(1440, 900)
+	shot(tt, "02-main-connected-1440")
+	tt.SetSize(1000, 650)
+	shot(tt, "02-main-connected-small")
+	tt.SetSize(1280, 800)
 	titled(t, shot)
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
 		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
@@ -151,27 +152,27 @@ func TestScreenshots(t *testing.T) {
 	}}})
 	tt.Frame()
 	shot(tt, "02b-files-breadcrumbs-natural-order")
-	// Selected rows: two files and a host, where the accent fill carries the text.
+	// Selected rows, where the accent fill carries the text.
 	click(t, tt, "选择 access.log.2")
 	if e := tt.ClickWith(ui.Cmd, "选择 access.log"); e != nil {
 		t.Fatal(e)
 	}
-	tt.ClickAt(73, 330) // db-master in the sidebar; its tab has the same label
 	shot(tt, "02c-selected-rows")
 	tt.Key(0, ui.KeyEscape)
-	click(t, tt, "监控")
-	shot(tt, "03-main-monitor")
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
+	shot(tt, "03-sysinfo-history")
 	click(t, tt, "进程")
-	shot(tt, "04-main-monitor-processes")
+	shot(tt, "04-sysinfo-processes")
 	click(t, tt, "网络")
 	click(t, tt, "tcp ESTAB")
-	shot(tt, "04a-main-monitor-network-selected")
+	shot(tt, "04a-sysinfo-network-selected")
 	click(t, tt, "进程")
 	dblclick(t, tt, "postgres: checkpointer")
 	shot(tt, "04b-process-drawer")
 	click(t, tt, "关闭详情")
-	click(t, tt, "片段")
-	shot(tt, "05-main-snippets")
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	shot(tt, "05-snippets")
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 
 	p.jobs = []transfer.Job{
 		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Total: 120 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
@@ -180,27 +181,40 @@ func TestScreenshots(t *testing.T) {
 		{ID: "4", Label: "下载 /var/log/journal → ~/Downloads", State: "running", Bytes: 9 << 20, Attempt: 1, Started: now.Add(-5 * time.Second)},
 	}
 	tt.Frame()
-	click(t, tt, "传输列表")
-	shot(tt, "06-transfers")
-	tt.Key(0, ui.KeyEscape)
+	shot(tt, "06a-activity-strip")
+	click(t, tt, "2 个传输进行中")
+	shot(tt, "06-activity-transfers")
+	click(t, tt, "收起活动栏")
 
 	tt.Key(appMod(), ui.KeyK)
 	tt.Type("prod")
 	shot(tt, "07-palette")
 	tt.Key(0, ui.KeyEscape)
 
-	if e := tt.RightClick("prod-web-02"); e != nil {
+	// Folded: the left column keeps the status dot, the workbench keeps its tabs.
+	tt.Key(appMod(), ui.KeyB)
+	tt.Key(appMod(), ui.KeyJ)
+	shot(tt, "07b-folded")
+	tt.Key(appMod(), ui.KeyB)
+	tt.Key(appMod(), ui.KeyJ)
+
+	// The connection manager window and its host dialog.
+	mt := ui.NewTester(a.ManagerView, 960, 640)
+	shot(mt, "16-manager")
+	click(t, mt, "prod-web-01")
+	shot(mt, "16b-manager-host")
+	if e := mt.RightClick("prod-web-02"); e != nil {
 		t.Fatal(e)
 	}
-	if e := tt.ChooseMenuItem("编辑…"); e != nil {
+	if e := mt.ChooseMenuItem("编辑…"); e != nil {
 		t.Fatal(e)
 	}
-	shot(tt, "08-host-general")
-	click(t, tt, "认证")
-	shot(tt, "09-host-auth")
-	click(t, tt, "高级")
-	shot(tt, "10-host-advanced")
-	click(t, tt, "取消")
+	shot(mt, "08-host-general")
+	click(t, mt, "认证")
+	shot(mt, "09-host-auth")
+	click(t, mt, "高级")
+	shot(mt, "10-host-advanced")
+	click(t, mt, "取消")
 
 	answers := make(chan []string, 1)
 	done := make(chan struct{})
@@ -240,11 +254,21 @@ func TestScreenshots(t *testing.T) {
 	}
 	shot(ed, "14b-editor-close-guard")
 
+	// A dropped connection: the card and the tab offer to reconnect.
+	one.Terminal.Close()
+	<-one.Terminal.Done()
+	tt.Frame()
+	shot(tt, "17-disconnected")
+
 	sp := &servicesPlatform{fakePlatform: p, auto: agent.AutoApproval{On: true, Expires: now.Add(42 * time.Minute)}}
+	sp.agent = appui.AgentOverview{Pending: []agent.Pending{{ID: "r", Client: "claude", Tool: "exec", Summary: "systemctl restart nginx", ExpiresAt: now.Add(time.Minute)}}}
 	sa := appui.New(sp)
 	stt := ui.NewTester(sa.View, 1280, 800)
+	stt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
 	session(t, p, stt, "s9", "prod-web-01", web)
 	shot(stt, "15-auto-approve-status")
+	click(t, stt, "Agent 待批准 1")
+	shot(stt, "15b-agent-activity")
 	sst := ui.NewTester(sa.SettingsView, 880, 900)
 	click(t, sst, "Agent")
 	shot(sst, "21-settings-agent-auto-approve")
