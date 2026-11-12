@@ -2,12 +2,14 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 	"unicode/utf8"
 
+	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
@@ -187,5 +189,76 @@ func TestMonitorSnapshotsDoNotPileUpWhileNoFrameDrainsThem(t *testing.T) {
 	events := p.Poll()
 	if len(events) != 3 || events[0].Monitor.Session != "a" || events[0].Monitor.Snapshot.Load != "499" || events[2].Message != "kept" {
 		t.Fatalf("%d events, first %+v", len(events), events[0].Monitor)
+	}
+}
+
+func codeOf(e error) string {
+	var coded *agent.CodedError
+	if errors.As(e, &coded) {
+		return coded.C
+	}
+	return ""
+}
+
+// waitUntil polls cond for a few seconds.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if cond() {
+			return
+		}
+	}
+	t.Fatal("timeout waiting for", what)
+}
+
+// Closing a session (the tab, or session_close) ends the agent's command on the server first: it is
+// killed while the connection is still up, and the caller hears "disconnected", not a timeout.
+func TestClosingASessionKillsItsRunningExec(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	s := connectAs(t, p, server, "closing", "utf-8")
+	done := make(chan error, 1)
+	go func() {
+		_, e := agentBackend{p}.Exec(context.Background(), s.ID, "sleep 30")
+		done <- e
+	}()
+	waitUntil(t, "the command to start", func() bool { return server.Execs.Load() == 1 })
+	start := time.Now()
+	p.CloseSession(s.ID)
+	select {
+	case e := <-done:
+		if codeOf(e) != "disconnected" {
+			t.Fatalf("exec answered %v (%q), want disconnected", e, codeOf(e))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec kept running after its session was closed")
+	}
+	waitUntil(t, "the server to kill the command", func() bool { return server.Killed.Load() == 1 }) // the signal went out before the connection closed
+	t.Log("exec ended", time.Since(start), "after the tab closed")
+}
+
+// A connection that drops during a command is "disconnected", with a hint that the command may have run.
+func TestExecOnAConnectionThatDropsIsDisconnected(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	s := connectAs(t, p, server, "dropping", "utf-8")
+	done := make(chan error, 1)
+	go func() {
+		_, e := agentBackend{p}.Exec(context.Background(), s.ID, "sleep 30")
+		done <- e
+	}()
+	waitUntil(t, "the command to start", func() bool { return server.Execs.Load() == 1 })
+	server.Drop()
+	select {
+	case e := <-done:
+		if codeOf(e) != "disconnected" || !strings.Contains(e.Error(), "may or may not") {
+			t.Fatalf("exec answered %v (%q), want disconnected", e, codeOf(e))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("exec did not notice the lost connection")
+	}
+	// and a later call on the dead session says the same
+	if _, e := (agentBackend{p}).Exec(context.Background(), s.ID, "echo hi"); codeOf(e) != "disconnected" {
+		t.Fatal("exec on a dead connection:", e)
 	}
 }

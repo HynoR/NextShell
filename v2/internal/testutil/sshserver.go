@@ -181,6 +181,11 @@ func (s *Server) Options() sshclient.Options {
 	port, _ := strconv.Atoi(p)
 	return sshclient.Options{Connection: model.Connection{Name: "test", Host: h, Port: port, User: "tester", Auth: "password", Secret: "test-password", Fingerprint: ssh.FingerprintSHA256(s.Signer.PublicKey()), Encoding: "utf-8"}}
 }
+
+// Drop cuts every connection without a word, like a network failure: commands keep running on the
+// "remote" side and no exit status is ever sent.
+func (s *Server) Drop() { s.conns.Range(func(k, v any) bool { k.(net.Conn).Close(); return true }) }
+
 func (s *Server) Close() {
 	s.once.Do(func() {
 		s.listener.Close()

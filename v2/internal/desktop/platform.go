@@ -423,6 +423,7 @@ func (p *Platform) Local() {
 	})
 }
 func (p *Platform) CloseSession(id string) {
+	p.agentIO.stopExecs(id) // before the connection goes: an agent's command is killed on the server
 	p.mu.Lock()
 	t := p.sessions[id]
 	p.forgetAgentIO(id, t, p.sshSessions[id])

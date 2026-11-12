@@ -10,6 +10,7 @@ import (
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/sshclient"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -105,6 +106,54 @@ type agentIO struct {
 	typed       map[*terminal.Terminal]*atomic.Int64
 	closed      map[string]bool
 	closedOrder []string
+	execs       map[string][]*execRun // commands an agent runs on a session
+}
+
+// execRun is one agent command in flight on a session.
+type execRun struct {
+	cancel context.CancelCauseFunc
+	done   chan struct{}
+}
+
+var errSessionClosed = errors.New("the session was closed while the command ran")
+
+// startExec registers a command on session id; the returned function ends it.
+func (a *agentIO) startExec(id string, cancel context.CancelCauseFunc) (finish func()) {
+	r := &execRun{cancel: cancel, done: make(chan struct{})}
+	a.mu.Lock()
+	if a.execs == nil {
+		a.execs = map[string][]*execRun{}
+	}
+	a.execs[id] = append(a.execs[id], r)
+	a.mu.Unlock()
+	return func() {
+		a.mu.Lock()
+		a.execs[id] = slices.DeleteFunc(a.execs[id], func(o *execRun) bool { return o == r })
+		if len(a.execs[id]) == 0 {
+			delete(a.execs, id)
+		}
+		a.mu.Unlock()
+		close(r.done)
+	}
+}
+
+// stopExecs cancels the commands running on session id and waits (briefly) until each has asked its
+// server to kill the command, which has to happen while the connection is still up.
+func (a *agentIO) stopExecs(id string) {
+	a.mu.Lock()
+	running := slices.Clone(a.execs[id])
+	a.mu.Unlock()
+	for _, r := range running {
+		r.cancel(errSessionClosed)
+	}
+	deadline := time.After(2 * time.Second)
+	for _, r := range running {
+		select {
+		case <-r.done:
+		case <-deadline:
+			return
+		}
+	}
 }
 
 // recorded returns the connection to hand to the terminal for s.

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/egoist/mygo/plugins/terminal"
 	"golang.org/x/crypto/ssh"
+	"io"
+	"net"
 	neturl "net/url"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
@@ -15,6 +17,7 @@ import (
 	"nextshell.dev/v2/internal/mcpendpoint"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/shellintegration"
+	"nextshell.dev/v2/internal/sshclient"
 	"nextshell.dev/v2/internal/storage"
 	"os"
 	"path/filepath"
@@ -505,17 +508,39 @@ func (b agentBackend) Exec(ctx context.Context, id, command string) (agent.ExecR
 		command = "cd '" + strings.ReplaceAll(cwd, "'", "'\"'\"'") + "' && " + command
 	}
 	result.ActualCWD = cwd
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	defer b.p.agentIO.startExec(id, cancel)()
 	out, stderr := &boundedOutput{limit: 512 << 10}, &boundedOutput{limit: 512 << 10}
 	e = session.RunText(ctx, command, out, stderr)
 	result.Output = out.String()
 	result.Stderr = stderr.String()
 	result.Truncated = out.truncated || stderr.truncated
 	var exit *ssh.ExitError
-	if errors.As(e, &exit) {
+	var missing *ssh.ExitMissingError
+	switch {
+	case e == nil:
+		return result, nil
+	case errors.As(e, &exit):
 		result.ExitCode = exit.ExitStatus()
 		return result, nil
+	case errors.Is(context.Cause(ctx), errSessionClosed):
+		return result, agent.Coded("disconnected", errSessionClosed)
+	case errors.As(e, &missing) || errors.Is(e, io.EOF) || errors.Is(e, net.ErrClosed) || connectionDone(session):
+		// The channel ended without an exit status: the connection dropped, the command may have run.
+		return result, agent.Coded("disconnected", errors.New("the connection was lost while the command ran; it may or may not have finished"))
 	}
 	return result, e
+}
+
+// connectionDone reports whether the interactive session behind s has ended.
+func connectionDone(s *sshclient.Session) bool {
+	select {
+	case <-s.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 // boundedOutput keeps the first limit bytes (cut at a character boundary) and swallows the rest, so a
