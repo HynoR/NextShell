@@ -63,7 +63,7 @@ func TestAutoApproveRunsEveryMutationWithoutPrompt(t *testing.T) {
 	}
 	var audited bool
 	for _, a := range g.Activity() {
-		audited = audited || (a.Tool == "exec" && a.State == "auto-approved")
+		audited = audited || (a.Tool == "exec" && a.State == "auto-approved" && a.Target != "" && a.Summary != "")
 	}
 	if !audited {
 		t.Fatal("auto-approved call missing from activity log", g.Activity())

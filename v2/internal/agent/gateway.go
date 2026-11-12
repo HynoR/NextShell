@@ -222,7 +222,10 @@ type Pending struct {
 	owner                    string
 	decision                 int
 }
-type Activity struct{ Tool, State, At string }
+
+// Activity is one entry of the agent's log: a tool call (Target names the session or host it acted on,
+// Summary what it did, both redacted) or a change of the whole gateway (Tool "global").
+type Activity struct{ Tool, State, At, Target, Summary string }
 
 // Notice tells the app that an agent call is changing something (Pending: it is waiting for a
 // decision), so it can show its one-time takeover notice and the "agent active" indicator.
@@ -284,9 +287,13 @@ func (g *Gateway) tell(n Notice) {
 		f(n)
 	}
 }
-func (g *Gateway) record(tool, state string) {
+func (g *Gateway) record(tool, state string, about ...string) {
+	ev := Activity{Tool: tool, State: state, At: g.now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("15:04:05 UTC+8")}
+	if len(about) == 2 {
+		ev.Target, ev.Summary = about[0], about[1]
+	}
 	g.mu.Lock()
-	g.activity = append(g.activity, Activity{Tool: tool, State: state, At: g.now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("15:04:05 UTC+8")})
+	g.activity = append(g.activity, ev)
 	if len(g.activity) > 100 {
 		g.activity = g.activity[len(g.activity)-100:]
 	}
@@ -459,6 +466,8 @@ func tail(text string, lines int) (string, bool) {
 var targeted = map[string]bool{"session_read": true, "session_history": true, "exec": true, "session_send_text": true, "session_send_signal": true, "session_focus": true, "session_close": true}
 
 func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, raw json.RawMessage) (result Result) {
+	var a Arguments
+	var data string // bytes for session_send_text
 	defer func() {
 		state := "failed"
 		if result.OK {
@@ -467,7 +476,11 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 				state = p["status"].(string)
 			}
 		}
-		g.record(tool, state)
+		var target, summary string
+		if a.Target != "" || a.Command != "" {
+			target, summary = g.describe(tool, a, data)
+		}
+		g.record(tool, state, target, summary)
 	}()
 	sp := spec(tool)
 	g.mu.Lock()
@@ -490,7 +503,6 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	if e := validateArguments(sp.Schema, raw, sp.Gated && probe.RequestID != ""); e != nil {
 		return fail("invalid_argument", e.Error())
 	}
-	var a Arguments
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if d.Decode(&a) != nil || d.Decode(new(any)) != io.EOF {
@@ -545,7 +557,6 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	}
 	var verdict Verdict
 	var typedNext typedLine
-	var data string // bytes for session_send_text
 	switch tool {
 	case "session_list":
 		sessions := append([]Session{}, g.backend.Sessions()...) // [] not null for clients
@@ -693,7 +704,8 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	}
 	auto := sp.Gated && !approved && !verdict.Manual() && g.AutoApproval().On
 	if auto {
-		g.record(tool, "auto-approved")
+		target, summary := g.describe(tool, a, data)
+		g.record(tool, "auto-approved", target, summary)
 	}
 	if sp.Gated && !approved && !auto {
 		g.mu.Lock()
