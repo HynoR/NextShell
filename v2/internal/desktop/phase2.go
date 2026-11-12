@@ -158,7 +158,7 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 	if req.Kind == "remove" {
 		add = p.queue.AddItems
 	}
-	id, e := add(transferLabel(req), func(ctx context.Context, progress func(int64)) error {
+	id, e := add(p.transferLabel(req), func(ctx context.Context, progress func(int64)) error {
 		if req.Kind == "upload-packed" || req.Kind == "download-packed" {
 			s, e := p.ssh(req.Session)
 			if e != nil {
@@ -257,19 +257,42 @@ func localSize(dir string) int64 {
 	})
 	return n
 }
-func transferLabel(r appui.TransferRequest) string {
+
+// hostName is what a transfer's label calls the server of session: the connection's name.
+func (p *Platform) hostName(session string) string {
+	p.mu.Lock()
+	c := p.credentials[session]
+	p.mu.Unlock()
+	if c.Name != "" {
+		return c.Name
+	}
+	return c.Host
+}
+
+// transferLabel is the line of a transfer in the list: what moves, and the servers it touches, written
+// "host:/path" (a failed row says which server it was, among a hundred alike). ← names the source.
+func (p *Platform) transferLabel(r appui.TransferRequest) string {
+	at := func(session, dir string) string {
+		if host := p.hostName(session); host != "" {
+			return host + ":" + dir
+		}
+		return dir
+	}
 	switch r.Kind {
 	case "upload", "upload-packed":
-		return "上传 " + filepath.Base(r.Local) + " → " + path.Dir(r.Remote)
+		return "上传 " + filepath.Base(r.Local) + " → " + at(r.Session, path.Dir(r.Remote))
 	case "download", "download-packed":
-		return "下载 " + path.Base(r.Remote) + " → " + filepath.Dir(r.Local)
+		return "下载 " + path.Base(r.Remote) + " ← " + at(r.Session, path.Dir(r.Remote))
 	case "remove":
-		return "删除 " + r.Remote
+		return "删除 " + at(r.Session, r.Remote)
 	case "move":
-		return "移动 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
-	default:
-		return "复制 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
+		return "移动 " + path.Base(r.Remote) + " → " + at(r.TargetSession, path.Dir(r.Destination))
 	}
+	label := "复制 " + path.Base(r.Remote)
+	if r.TargetSession != r.Session { // from one server to another: the source too
+		label += " ← " + at(r.Session, path.Dir(r.Remote))
+	}
+	return label + " → " + at(r.TargetSession, path.Dir(r.Destination))
 }
 
 // CountRemoval tells, by a Removal event, what deleting paths takes. A big tree takes a while, so it runs

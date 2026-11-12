@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
@@ -87,7 +88,7 @@ func TestRemovalIsCountedThenQueuedAndNeverFollowsLinks(t *testing.T) {
 	}
 	waitQueue(t, p, id)
 	for _, j := range p.Transfers() {
-		if j.ID == id && (!j.Items || j.Bytes != 6 || j.Total != 6 || j.Label != "删除 "+dir) {
+		if j.ID == id && (!j.Items || j.Bytes != 6 || j.Total != 6 || j.Label != "删除 test:"+dir) {
 			t.Fatal("a deletion's job counts items:", j)
 		}
 	}
@@ -119,4 +120,26 @@ func TestRemovalIsCountedThenQueuedAndNeverFollowsLinks(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("the root was not refused")
+}
+
+func TestTransferLabelsNameTheServers(t *testing.T) {
+	p := desktopFixture(t)
+	p.credentials = map[string]model.Connection{"web": {Name: "prod-web-01", Host: "10.0.0.1"}, "db": {Name: "db-master"}, "quick": {Host: "10.9.9.9"}}
+	for _, v := range []struct {
+		r    appui.TransferRequest
+		want string
+	}{
+		{appui.TransferRequest{Session: "web", Kind: "upload", Local: "/home/me/config.yaml", Remote: "/etc/app/config.yaml"}, "上传 config.yaml → prod-web-01:/etc/app"},
+		{appui.TransferRequest{Session: "db", Kind: "download", Remote: "/var/log/syslog", Local: "/tmp/x/syslog"}, "下载 syslog ← db-master:/var/log"},
+		{appui.TransferRequest{Session: "web", Kind: "remove", Remote: "/srv/old"}, "删除 prod-web-01:/srv/old"},
+		{appui.TransferRequest{Session: "web", TargetSession: "web", Kind: "move", Remote: "/a/f", Destination: "/b/f"}, "移动 f → prod-web-01:/b"},
+		{appui.TransferRequest{Session: "web", TargetSession: "web", Kind: "copy", Remote: "/a/f", Destination: "/b/f"}, "复制 f → prod-web-01:/b"},
+		{appui.TransferRequest{Session: "web", TargetSession: "db", Kind: "cross", Remote: "/a/f", Destination: "/b/f"}, "复制 f ← prod-web-01:/a → db-master:/b"},
+		{appui.TransferRequest{Session: "quick", Kind: "upload", Local: "/x/f", Remote: "/srv/f"}, "上传 f → 10.9.9.9:/srv"}, // no name: the address
+		{appui.TransferRequest{Session: "gone", Kind: "remove", Remote: "/srv/old"}, "删除 /srv/old"},
+	} {
+		if got := p.transferLabel(v.r); got != v.want {
+			t.Errorf("%s %s: %q, want %q", v.r.Kind, v.r.Remote, got, v.want)
+		}
+	}
 }
