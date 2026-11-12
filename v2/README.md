@@ -14,6 +14,8 @@ go run ./cmd/nextshell --db :memory:       # 一次性 profile
 go vet ./... && go test ./... && go test -race ./...
 ```
 
+Agent 测试:`go run -tags nextshell_devtools ./cmd/nextshell --agent-test --db <临时目录>/t.db` 启动即开启 MCP 和自动批准,并在 stderr 打印 `mcp.json` 路径(必须带 `--db`;默认和发布构建没有这个参数)。
+
 开发版 inspector:`go run -tags nextshell_devtools ./cmd/nextshell`,并设置 `NEXTSHELL_DEVTOOLS=1`,Ctrl+Alt+F12 打开。默认构建和发布构建都关闭。
 
 ## 结构
@@ -27,7 +29,8 @@ go vet ./... && go test ./... && go test -race ./...
 
 - 设备密钥存在同一数据库,凭据 AES-256-GCM 加密、资源 ID 作 AAD;不防整库被盗。
 - 主机指纹首次需确认,变化即拒绝。终端剪贴板读写默认关闭。命令历史为本地明文。
-- MCP 端点 `127.0.0.1:41777/mcp` 默认关闭,开启后需 bearer token,每次变更需应用内批准。
+- MCP 端点 `127.0.0.1:41777/mcp` 默认关闭,开启后需 bearer token,每次变更需应用内批准。开启期间应用把 `{"port","token"}` 写入 `mcp.json`(权限 0600;默认 profile 在 `<系统配置目录>/NextShell-v2/`,`--db` 指定的 profile 写在该数据库旁),关闭或退出时删除;`@nextshell/mcp` 自动读取它。
+- 自动批准(15 分钟 / 1 小时 / 直到退出)仅存内存,紧急停止、关闭 MCP、重启都会关闭;风险命令、黑名单命中和 `.env` 访问不受影响。
 
 ## 已知限制
 

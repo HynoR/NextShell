@@ -1,59 +1,52 @@
 ---
 name: nextshell
-description: Operate servers through the tabs the user already opened in the NextShell desktop app (MCP tools session_list / session_read / exec / session_history / host_list / session_open). Use when the user says things like "看一下 xx 服务器", "在那台机器上跑一下", "帮我查下 web-1 的磁盘", or names a host they have open in NextShell.
+description: Operate servers through the NextShell 2 desktop app (MCP tools host_list / session_open / session_list / exec / session_read / command_search / command_save). Use when the user says things like "看一下 xx 服务器", "在那台机器上跑一下", "帮我查下 web-1 的磁盘", or names a host saved in NextShell.
 ---
 
 # NextShell
 
-NextShell lends you the user's **already-open, already-authenticated** terminal tabs.
-You never see a password or key; you only get session ids and command output.
+NextShell lends you the user's **saved hosts and already-authenticated terminal tabs**.
+You never see a password or key; you only get session ids and redacted output.
 
 ## Workflow
 
-1. `session_list` — the tabs already open. If the host the user means is not there,
-   `host_list` (no query = their 10 most recent hosts; add a keyword to search) and then
-   `session_open` with its id: NextShell raises a dialog and the tab opens only after the
-   user clicks 授权. `pending` → call again with the same `requestId`. `denied` → stop and
-   ask the user to confirm in NextShell; never retry on your own.
-2. `exec` — the only way to run a command. **How** it runs is the user's switch in
-   NextShell's Agent panel, not your decision and not a parameter:
-   - foreground (default): typed into the tab. The window comes to the front only
-     on the first command; later commands do not steal focus. The call waits up
-     to 120s for the prompt to return.
-   - background: a fresh SSH channel of the same connection, invisible in the tab,
-     returns stdout/stderr. Local shell tabs always run in the foreground.
-     Read `mode` in the response to know which happened. `waitTimedOut: true` means the
-     command may still be running in the tab: `session_read` until it finishes, never re-run.
-     To answer a y/n prompt on screen, `exec` the answer text.
-   - **Permission mode** is the user's other switch. On Auto (default) commands run at once.
-     On Permission every command first shows a dialog in NextShell and the call returns
-     `{ status: "pending", requestId }`; call `exec` again with **only** that `requestId` to
-     keep waiting (5 minutes total). `denied` means the user refused: stop and ask them,
-     never retry on your own.
-3. `session_read` to see what is on screen, `session_history` for recent commands with
-   exit codes and output.
-4. `session_send_signal` (Ctrl-C / Ctrl-D / Ctrl-Z) to stop something you started;
-   `session_focus` to bring a tab to the front when the user should look at it.
+1. `session_list` — tabs already open (`connected: true`, `local: false` ones can run `exec`).
+   If the host the user means is not there, `host_list` with a keyword, then `session_open`
+   with its id. A host that already has a connected tab is reused.
+2. `exec` — runs a command on the **remote** host of a session over a separate channel (not typed
+   into the tab; local shell tabs are not supported). Returns `output`, `stderr`, `exitCode`,
+   `actualCwd`. `timeoutSec` max 120.
+3. `session_read` to see what is on a tab's screen; `session_send_signal` (Ctrl-C / Ctrl-D /
+   Ctrl-Z) to stop something; `session_focus` to bring a tab forward for the user;
+   `command_search` / `command_save` for the user's saved command library.
+
+## Approvals
+
+Every change (`exec`, `session_open`, `command_save`, `session_send_signal`, `session_focus`)
+needs the user's approval in NextShell, unless they turned on 自动批准 for a while (then calls run
+at once and return their result directly).
+
+- The first call may return `{ status: "pending", requestId }`. Call the **same tool** again with
+  **only** that `requestId` to keep waiting (a request lives 2 minutes); repeat while it is `pending`.
+- `denied`: the user declined or it expired. Stop and ask them; never resend it on your own.
 
 ## Rules
 
-- A `human_intervention` error means the user has an unsubmitted command on that tab's
-  command line. Stop, report what you were doing, and wait for instructions — do not retry.
-- A blacklist error is final; there is no "allow once". Tell the user what was blocked.
-- `denied` means the user declined a command in NextShell's dialog (or let it time out).
-  Do not resend it; ask what they want instead.
-- `consent_required` means the command touches a `.env` file: ask the user, and only after
-  they agree retry with `allowSensitive: true`.
-- Both stdio and HTTP are supported. Stdio discovers tools even when the app is closed;
-  HTTP requires the app to be running before connecting. Neither starts NextShell automatically.
-- `app_unavailable`: ask the user to start NextShell, enable 设置 → Agent 接入, and check
-  the configured port. After that, the next tool call reconnects; do not retry in a loop.
-- `connection_lost`: execution may already have happened. Inspect the terminal state before
-  deciding what to do; never automatically replay a command or an old approval request.
-- `incompatible_version`: update the application and MCP package, then restart the MCP process.
+- `forbidden` is final: the command is dangerous or on the user's blacklist, or access is halted
+  (the user pressed 紧急停止). There is no "allow once". Tell the user what was blocked.
+- `consent_required`: the command touches a `.env` file. Ask the user, and only after they agree
+  retry with `allowSensitive: true`; this always needs a manual click, even under auto-approve.
+- `token_missing`: ask the user to turn on 设置 → Agent → 开启 MCP in NextShell. `unauthorized`:
+  the token was rotated or points at another profile; ask them to check the same page. Then try
+  again: the bridge re-reads the token each time. Do not retry in a loop.
+- `app_unavailable`: NextShell is not running or MCP is off. Ask the user to start it.
+- `connection_lost`: the command may already have run. Inspect the terminal first; never replay a
+  command or an old `requestId` automatically.
+- `busy`: the session is running another agent call; wait and retry later.
+- `incompatible_version`: the app and the `@nextshell/mcp` package differ; ask the user to update.
 
 ## Not available on purpose
 
-No unrestricted host enumeration, no connecting without the user's click, no raw keystroke
-injection, no file transfer, no local filesystem.
-Do file work on the remote side with `cat`/`sed`/`tar` through the terminal.
+No unrestricted host enumeration (max 20 results), no connecting without approval, no raw
+keystroke injection, no file transfer, no local filesystem, no `exec` on local shells.
+Do file work on the remote side with `cat`/`sed`/`tar` through `exec`.
