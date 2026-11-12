@@ -48,13 +48,59 @@ describe("stdio bridge lifecycle", () => {
     });
     const client = await harness(credentials);
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(Object.keys(toolDefinitions).sort());
+    expect(tools.map((tool) => tool.name).sort()).toEqual(
+      toolDefinitions.map((tool) => tool.name).sort()
+    );
     expect(tools.every((tool) => tool.description && tool.inputSchema.type === "object")).toBe(
       true
     );
     await client.ping();
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(credentials).not.toHaveBeenCalled();
+  });
+
+  test("the offline list is the generated tool metadata, schemas included", async () => {
+    const client = await harness(async () => {
+      throw new MissingTokenError("");
+    });
+    const { tools } = await client.listTools();
+    for (const tool of tools) {
+      const generated = toolDefinitions.find((definition) => definition.name === tool.name)!;
+      expect(tool.description).toBe(generated.description);
+      expect(tool.inputSchema).toEqual(generated.inputSchema);
+      expect(tool.annotations).toMatchObject({ readOnlyHint: generated.annotations.readOnlyHint });
+    }
+    expect(client.getInstructions()).toContain("session_open");
+  });
+
+  test("arguments are forwarded as sent: the app validates, a requestId alone is a valid poll", async () => {
+    const invoke = vi.fn(async () => success({ status: "pending" }));
+    const fake = await app({ invoke });
+    const client = await harness(to(fake));
+    await call(client, "exec", { requestId: "req-1" });
+    await call(client, "session_read", {
+      target: "s1",
+      sinceCursor: "42",
+      waitFor: { pattern: "re:ok$", timeoutSec: 5 }
+    });
+    expect(invoke).toHaveBeenNthCalledWith(1, "exec", { requestId: "req-1" });
+    expect(invoke).toHaveBeenNthCalledWith(2, "session_read", {
+      target: "s1",
+      sinceCursor: "42",
+      waitFor: { pattern: "re:ok$", timeoutSec: 5 }
+    });
+  });
+
+  test("a tool the package does not know is reported, not sent", async () => {
+    const invoke = vi.fn(async () => success({}));
+    const fake = await app({ invoke });
+    const client = await harness(to(fake));
+    const result = await call(client, "rm_rf_everything");
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: "unknown_tool" } }
+    });
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   test("every request to the app carries the bearer token", async () => {
