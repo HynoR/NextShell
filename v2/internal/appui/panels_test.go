@@ -665,7 +665,7 @@ func TestRemoteEditorWindowGuardsCloseAndHidesWhenEmpty(t *testing.T) {
 		t.Fatal("closed with unsaved changes")
 	}
 	ed.Frame()
-	has(t, ed, "1 个文件的修改尚未保存。")
+	has(t, ed, "1 个文件的修改尚未保存，关闭后会丢失。")
 	click(t, ed, "取消")
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("cancel dropped the document")

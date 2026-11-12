@@ -426,7 +426,7 @@ func (a *App) EditorView(c *ui.Context) {
 				n++
 			}
 		}
-		switch ui.AlertDialog(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存。", n), "取消", "全部不保存") {
+		switch alert(c, &open, "关闭编辑器", fmt.Sprintf("%d 个文件的修改尚未保存，关闭后会丢失。", n), backOut("取消"), action("全部不保存", true)) {
 		case 1:
 			s.discardPopped()
 		}
@@ -640,7 +640,8 @@ func (a *App) documentCloseDialog(c *ui.Context, w window) {
 		return
 	}
 	open := true
-	switch ui.AlertDialog(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存。保存失败或有冲突时文件会保持打开。", "取消", "不保存", "保存") {
+	// 保存 has the focus: Enter saves, and a failed save or a conflict leaves the file open; nothing is lost.
+	switch alert(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存。保存失败或有冲突时文件会保持打开。", alertButton{label: "取消"}, alertButton{label: "不保存", risk: true}, alertButton{label: "保存", primary: true, focus: true}) {
 	case 1:
 		key := d.Key
 		a.later(func() { s.removeDocument(key) })

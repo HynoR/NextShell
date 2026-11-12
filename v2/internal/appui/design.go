@@ -40,6 +40,8 @@ func designTheme(base *ui.Theme, mode, accent string, highContrast bool) *ui.The
 		t.Border = ui.Hex("#293a50")
 		t.Text = ui.Hex("#e5edf6")
 		t.TextMuted = ui.Hex("#a0b2c8")
+		// Lighter than mygo's, so danger text reads at 4.5:1 or better on its own tint (design_test.go).
+		t.Danger = ui.Hex("#ff9a9a")
 	} else {
 		t.Background = ui.Hex("#f4f7fb")
 		t.Surface = ui.Hex("#ffffff")
@@ -114,6 +116,49 @@ func accentInk(t *ui.Theme) ui.Color {
 	return t.AccentPressed
 }
 
+// dangerFace is the fill of a danger button when idle, hovered and pressed, and the text on it. mygo has no
+// danger button, so this is ButtonBase in the theme's Danger, with white text on the deeper light-theme red and
+// dark text on the lighter dark-theme one, as AccentText does for the accent (design_test.go checks all three
+// states in both themes).
+func dangerFace(t *ui.Theme) (fill, hover, pressed, ink ui.Color) {
+	white, black := ui.RGB(255, 255, 255), ui.RGB(0, 0, 0)
+	if t.Dark {
+		return t.Danger, t.Danger.Mix(white, .2), t.Danger.Mix(black, .12), ui.Hex("#2d0a0a")
+	}
+	return t.Danger, t.Danger.Mix(black, .12), t.Danger.Mix(black, .24), white
+}
+
+// dangerButton is the button of an action that cannot be undone: filled in the danger color.
+func dangerButton(c *ui.Context, label string) ui.Element {
+	t := c.Theme()
+	fill, hover, pressed, ink := dangerFace(t)
+	b := ui.ButtonBase(c).Padding(t.Spacing*1.5, t.Spacing*3.5).Gap(t.Spacing * 1.5).Radius(t.Radius).Background(fill).TextColor(ink)
+	switch {
+	case b.Pressed():
+		b.Background(pressed)
+	case b.Hovered():
+		b.Background(hover)
+	}
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
+}
+
+// meterColors are the amber and red a bar of the system monitor turns at 70% and 90%. mygo's own fall back
+// to the theme's Warning and Danger, which the light theme deepens for text until they read as brown on a bar;
+// these keep 3:1 against the bar's track and the surfaces it sits on (design_test.go).
+func meterColors(t *ui.Theme) (warning, critical ui.Color) {
+	if t.Dark {
+		return ui.Hex("#f59e0b"), ui.Hex("#f87171")
+	}
+	return ui.Hex("#c26700"), ui.Hex("#dc2626")
+}
+
+// meterLevels colors a bar normal below 70%, amber to 90%, then red.
+func meterLevels(t *ui.Theme, normal ui.Color) *ui.MeterLevels {
+	w, r := meterColors(t)
+	return &ui.MeterLevels{Warning: 70, Critical: 90, NormalColor: normal, WarningColor: w, CriticalColor: r}
+}
+
 var terminalLight, terminalDark = terminalPalette(false), terminalPalette(true)
 
 func terminalPalette(dark bool) *terminal.Theme {
@@ -143,8 +188,10 @@ func swatches(c *ui.Context, label string, id *string, ids, names, colors []stri
 		ui.RadioGroup(c, func() {
 			for i, v := range ids {
 				sw := ui.RadioBase(c, id, v).Size(22, 22).Radius(11).Label(names[i]).Tooltip(names[i])
-				if colors[i] == "" {
-					sw.Border(1, t.TextMuted)
+				if colors[i] == "" { // hollow, with a slash: no color of its own
+					sw.Border(1, t.TextMuted).DrawOver(func(p *ui.Painter, r ui.Rect) {
+						p.Line(r.X+r.W*.3, r.Y+r.H*.7, r.X+r.W*.7, r.Y+r.H*.3, 1.5, t.TextMuted)
+					})
 				} else {
 					sw.Background(ui.Hex(colors[i]))
 				}

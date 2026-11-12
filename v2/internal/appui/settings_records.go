@@ -47,7 +47,7 @@ func (a *App) trashSettings(c *ui.Context) {
 					a.reload()
 				}
 				if ghost(c, "永久删除", "").TextColor(t.Danger).Clicked() {
-					a.confirm("永久删除「"+cc.Name+"」", "主机和保存的凭据都会被删除，无法恢复。", "永久删除", func() {
+					a.confirmDanger("永久删除「"+cc.Name+"」", "主机和保存的凭据都会被删除，无法恢复。", "永久删除", func() {
 						a.report(a.P.Delete("connection", cc.ID), "已永久删除")
 						a.reload()
 					})
@@ -73,7 +73,7 @@ func (a *App) trashSettings(c *ui.Context) {
 }
 func (a *App) emptyTrashButton(c *ui.Context, deleted []model.Connection) {
 	if ui.Button(c, fmt.Sprintf("清空回收站（%d）", len(deleted))).Clicked() {
-		a.confirm("清空回收站", fmt.Sprintf("永久删除 %d 个主机和它们保存的凭据，无法恢复。", len(deleted)), fmt.Sprintf("删除 %d 个主机", len(deleted)), func() {
+		a.confirmDanger("清空回收站", fmt.Sprintf("永久删除 %d 个主机和它们保存的凭据，无法恢复。", len(deleted)), fmt.Sprintf("删除 %d 个主机", len(deleted)), func() {
 			for _, cc := range deleted {
 				if e := a.P.Delete("connection", cc.ID); e != nil {
 					a.fail(e)

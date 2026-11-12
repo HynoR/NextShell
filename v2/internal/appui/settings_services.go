@@ -144,7 +144,7 @@ func (a *App) cloudSettings(c *ui.Context) {
 						a.P.CloudBackground(s.workspace, false)
 					}
 					if ui.Button(c, "使用云端版本…").Clicked() {
-						a.confirm("使用云端版本", "这个工作区在本机的数据会被云端版本替换。替换前会保存一份加密的恢复快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
+						a.confirmDanger("使用云端版本", "这个工作区在本机的数据会被云端版本替换。替换前会保存一份加密的恢复快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
 					}
 				})
 			}
@@ -286,7 +286,7 @@ func (a *App) agentSettings(c *ui.Context) {
 		})
 		actions(c, func() {
 			if ui.Button(c, "轮换令牌…").Clicked() {
-				a.confirm("轮换 MCP 令牌", "旧令牌和已连接的助手会立即失效，Agent 会暂停，需要手动恢复。", "轮换令牌", func() {
+				a.confirmDanger("轮换 MCP 令牌", "旧令牌和已连接的助手会立即失效，Agent 会暂停，需要手动恢复。", "轮换令牌", func() {
 					token, e := a.P.AgentToken(true)
 					a.report(e, "已轮换令牌")
 					if e == nil {

@@ -500,7 +500,7 @@ func meterRow(c *ui.Context, name string, percent float64, detail string, color 
 				ui.Text(c, fmt.Sprintf("%.0f%%", percent)).Font("monospace").FontSize(12).Bold().SingleLine().Width(38).TextAlign(ui.End)
 			}
 		})
-		ui.Meter(c, clampRatio(percent/100)*100, 0, 100, &ui.MeterLevels{Warning: 70, Critical: 90, NormalColor: color}).Label(name).FillWidth().Height(6).Radius(3)
+		ui.Meter(c, clampRatio(percent/100)*100, 0, 100, meterLevels(c.Theme(), color)).Label(name).FillWidth().Height(6).Radius(3)
 	})
 }
 
@@ -690,7 +690,7 @@ func (a *App) processTable(c *ui.Context, id string, snap monitor.Snapshot) {
 			for _, sig := range []string{"TERM", "KILL", "STOP", "CONT"} {
 				if m.Item(sig).Chosen() {
 					a.later(func() {
-						a.confirm(fmt.Sprintf("向进程 %d 发送 %s", v.PID, sig), v.Command+"\n这可能会终止或暂停服务器上的程序。", "发送 "+sig, func() { a.P.SignalProcess(id, v.PID, sig) })
+						a.confirmDanger(fmt.Sprintf("向进程 %d 发送 %s", v.PID, sig), v.Command+"\n这可能会终止或暂停服务器上的程序。", "发送 "+sig, func() { a.P.SignalProcess(id, v.PID, sig) })
 					})
 				}
 			}
@@ -799,7 +799,7 @@ func (a *App) processDrawer(c *ui.Context, id string, snap monitor.Snapshot) {
 					a.toast("已复制命令行")
 				}
 				if ui.Button(c, "结束进程…").Clicked() {
-					a.confirm(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
+					a.confirmDanger(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
 				}
 			})
 		})

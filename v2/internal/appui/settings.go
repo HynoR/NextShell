@@ -260,7 +260,7 @@ func (a *App) windowSettings(c *ui.Context) {
 	}
 	actions(c, func() {
 		if ui.Button(c, "恢复默认设置…").Clicked() {
-			a.confirm("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
+			a.confirmDanger("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
 		}
 	})
 }
@@ -436,7 +436,7 @@ func (a *App) hostKeySettings(c *ui.Context) {
 					ui.Text(c, k.Fingerprint).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine().Selectable()
 				})
 				if ghost(c, "移除", "").Label("移除 " + k.Address).Clicked() {
-					a.confirm("移除主机密钥", k.Address+"\n下次连接时会重新显示指纹并询问是否信任。", "移除密钥", func() {
+					a.confirmDanger("移除主机密钥", k.Address+"\n下次连接时会重新显示指纹并询问是否信任。", "移除密钥", func() {
 						a.report(a.P.ForgetHostKey(k.Address), "已移除 "+k.Address+" 的主机密钥")
 					})
 				}

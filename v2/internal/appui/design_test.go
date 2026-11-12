@@ -86,6 +86,66 @@ func TestStatusTextContrast(t *testing.T) {
 	}
 }
 
+// Danger text in the dark theme on the tints the activity column, the manager's banners and the host key
+// dialog put behind it; mygo's own red was 3.3:1 there.
+func TestDarkDangerTextContrast(t *testing.T) {
+	th := designTheme(ui.DarkTheme(), "深色", "", false)
+	for bgName, bg := range map[string]ui.Color{"surface": th.Surface, "background": th.Background, "hover": th.SurfaceHover} {
+		for _, alpha := range []float32{0, .08, .1, .12, .14, .18} {
+			if r := contrast(th.Danger, th.Danger.Alpha(alpha).Over(bg)); r < 4.5 {
+				t.Errorf("danger on its %.2f tint over %s: %.2f:1, want at least 4.5:1", alpha, bgName, r)
+			}
+		}
+	}
+}
+
+// The danger button: its text reads on the fill idle, hovered and pressed, in both themes, with any accent.
+func TestDangerButtonContrast(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		base := ui.LightTheme()
+		if dark {
+			base = ui.DarkTheme()
+		}
+		th := designTheme(base, "跟随系统", "", false)
+		fill, hover, pressed, ink := dangerFace(th)
+		for name, bg := range map[string]ui.Color{"idle": fill, "hovered": hover, "pressed": pressed} {
+			if r := contrast(ink, bg); r < 4.5 {
+				t.Errorf("dark=%v danger button text on %s: %.2f:1, want at least 4.5:1", dark, name, r)
+			}
+		}
+		if fill == th.Surface || fill == th.Accent {
+			t.Errorf("dark=%v the danger button looks like another", dark)
+		}
+		// Against the dialog panel it sits on, the fill is a shape of its own (3:1).
+		if r := contrast(fill, th.Surface); r < 3 {
+			t.Errorf("dark=%v danger fill on the dialog: %.2f:1, want at least 3:1", dark, r)
+		}
+	}
+}
+
+// The amber and red of the monitor's bars are 3:1 or better against the track and the surfaces behind the bar,
+// in both themes: a bar that cannot be told from its track says nothing.
+func TestMeterColorsContrast(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		base := ui.LightTheme()
+		if dark {
+			base = ui.DarkTheme()
+		}
+		th := designTheme(base, "跟随系统", "", false)
+		levels := meterLevels(th, ui.Hex("#2563eb"))
+		if levels.Warning != 70 || levels.Critical != 90 || levels.WarningColor == ui.Transparent || levels.CriticalColor == ui.Transparent {
+			t.Fatalf("meter levels %+v", levels)
+		}
+		for name, fill := range map[string]ui.Color{"amber": levels.WarningColor, "red": levels.CriticalColor} {
+			for bgName, bg := range map[string]ui.Color{"track": th.Border, "surface": th.Surface, "background": th.Background} {
+				if r := contrast(fill, bg); r < 3 {
+					t.Errorf("dark=%v %s bar on the %s: %.2f:1, want at least 3:1", dark, name, bgName, r)
+				}
+			}
+		}
+	}
+}
+
 func TestDesignThemesAndSystemPreferences(t *testing.T) {
 	for _, dark := range []bool{false, true} {
 		for _, mode := range []string{"跟随系统", "浅色", "深色"} {
