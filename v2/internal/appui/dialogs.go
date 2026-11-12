@@ -20,13 +20,18 @@ type dialogState struct {
 
 // confirmation is an alert for a dangerous action, whose button names the action.
 type confirmation struct {
-	title, message, action string
-	run                    func()
+	title, message, action, cancel string
+	run                            func()
 }
 
 // confirm asks before run, in the window that asked.
 func (a *App) confirm(title, message, action string, run func()) {
-	a.dialogs.pending = &confirmation{title, message, action, run}
+	a.confirmWith(title, message, action, "取消", run)
+}
+
+// confirmWith is confirm with its own name for the button that backs out.
+func (a *App) confirmWith(title, message, action, cancel string, run func()) {
+	a.dialogs.pending = &confirmation{title, message, action, cancel, run}
 	a.dialogs.pendingIn = a.view
 	if a.view == editorWindow { // it has no alerts of its own
 		a.dialogs.pendingIn = mainWindow
@@ -39,7 +44,7 @@ func (a *App) confirmView(c *ui.Context, w window) {
 	}
 	p := d.pending
 	open := true
-	if ui.AlertDialog(c, &open, p.title, p.message, "取消", p.action) == 1 {
+	if ui.AlertDialog(c, &open, p.title, p.message, p.cancel, p.action) == 1 {
 		p.run()
 	}
 	if !open && d.pending == p {

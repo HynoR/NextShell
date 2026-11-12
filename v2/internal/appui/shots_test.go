@@ -292,6 +292,7 @@ func TestScreenshots(t *testing.T) {
 	choose(t, mt, "使用凭据", "运维账号")
 	shot(mt, "10-host-editor-credential")
 	click(t, mt, "取消")
+	click(t, mt, "放弃") // the form has an edit: the credential
 	click(t, mt, "密钥")
 	click(t, mt, "deploy")
 	shot(mt, "18-manager-keys")

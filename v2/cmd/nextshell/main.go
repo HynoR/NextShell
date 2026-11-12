@@ -91,7 +91,20 @@ func main() {
 				manager.Close()
 			}
 		}))})
+		manager.OnClose(func(e *mygo.CloseEvent) {
+			if !end.Terminating() && !a.ManagerMayClose() {
+				e.PreventDefault()
+			}
+		})
 		manager.OnClosed(func() { manager = nil })
+	}
+	// HideManager runs inside the manager's own frame: close it after that frame.
+	a.HideManager = func() {
+		go mygo.RunOnMain(func() {
+			if manager != nil {
+				manager.Close()
+			}
+		})
 	}
 	a.PickFiles = func(o appui.FilePick, done func([]string)) {
 		if dir, e := desktop.LocalPath(o.DefaultPath); e == nil {

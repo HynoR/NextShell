@@ -3,6 +3,7 @@ package appui
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -78,16 +79,33 @@ func (a *App) hostsPage(c *ui.Context) {
 	ui.Row(c).Grow(1).FillWidth().MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 		ui.Column(c).Width(220).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() { a.folderList(c) })
 		ui.Column(c).Grow(1).MinWidth(0).FillHeight().Children(func() { a.hostTiles(c) })
-		ui.Scroll(c.Key("host-side")).Width(440).FillHeight().BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
+		a.hostSide(c)
+	})
+}
+
+// hostSide is the right column: the chosen host's card, or the form, whose buttons stay below the
+// scrolling fields so a long form never hides them.
+func (a *App) hostSide(c *ui.Context) {
+	t := c.Theme()
+	e := &a.hosts.editor
+	side := ui.Column(c).Width(440).FillHeight().BorderColor(t.Border).BorderWidth(0, 0, 0, 1)
+	side.Children(func() {
+		ui.Scroll(c.Key("host-side")).FillWidth().Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(16, 18).Gap(12).Children(func() {
-				if a.hosts.editor.open {
+				if e.open {
 					a.hostForm(c)
 				} else {
 					a.hostCard(c)
 				}
 			})
 		})
+		if e.open {
+			a.hostFooter(c)
+		}
 	})
+	if e.open && side.Shortcut(0, ui.KeyEscape) {
+		a.cancelHostEdit()
+	}
 }
 
 // folderList is the folder tree: recent hosts, all hosts, then the folders with their host counts.
@@ -164,7 +182,7 @@ func (a *App) hostTiles(c *ui.Context) {
 	h := &a.hosts
 	t := c.Theme()
 	hosts := a.shownHosts()
-	ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
+	ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).Wrap().BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
 		if ui.PrimaryButton(c, "+ 新建连接").Clicked() {
 			folder := h.folder
 			if folder == recentFolder {
@@ -237,8 +255,7 @@ func (a *App) hostTiles(c *ui.Context) {
 	grid := ui.GridView(c.Key("tiles"), &h.grid, len(hosts), 190, 60, func(i int) { a.hostTile(c, hosts[i]) }).Gap(8).Padding(12).Grow(1).FillWidth()
 	if grid.Changed() && h.chosen >= 0 && h.chosen < len(hosts) {
 		if id := hosts[h.chosen].ID; id != h.selected {
-			h.selected = id
-			h.editor.open = false
+			a.chooseHost(id)
 		}
 	}
 	if grid.Submitted() && h.chosen >= 0 && h.chosen < len(hosts) {
@@ -246,11 +263,42 @@ func (a *App) hostTiles(c *ui.Context) {
 	}
 }
 
+// chooseHost shows host id in the right column, which closes the form there. With unsaved edits in it,
+// the tiles keep the choice they had until the user agrees to drop them.
+func (a *App) chooseHost(id string) {
+	h := &a.hosts
+	if !h.editor.dirty() {
+		h.selected, h.editor.open = id, false
+		return
+	}
+	picked := slices.Collect(h.picked.All())
+	at := func(id string) int {
+		return slices.IndexFunc(a.shownHosts(), func(cc model.Connection) bool { return cc.ID == id })
+	}
+	h.picked.Clear()
+	if h.chosen = at(h.selected); h.chosen >= 0 {
+		h.picked.Add(h.selected)
+	}
+	a.confirmDiscard(func() {
+		h.selected, h.editor.open = id, false
+		h.chosen = at(id)
+		h.picked.Clear()
+		for _, k := range picked {
+			h.picked.Add(k)
+		}
+	})
+}
+
 // hostTile is a host in the grid: its name and login, its status, and a red mark when it logs in
 // with a key it does not have.
 func (a *App) hostTile(c *ui.Context, cc model.Connection) {
 	t := c.Theme()
-	tile := ui.Row(c).Grow(1).FillWidth().Padding(8, 10).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Tooltip(a.login(cc))
+	cr, viaCredential := a.credential(cc.CredentialID)
+	tip := a.login(cc)
+	if viaCredential {
+		tip += "\n用户来自凭据「" + cr.Name + "」"
+	}
+	tile := ui.Row(c).Grow(1).FillWidth().Padding(8, 10).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Tooltip(tip)
 	if !a.hosts.picked.Has(cc.ID) { // a chosen tile shows the grid's fill
 		tile.Background(t.Surface).Border(1, t.Border)
 	}
@@ -266,7 +314,12 @@ func (a *App) hostTile(c *ui.Context, cc model.Connection) {
 				}
 				ui.Text(c, cc.Name).Bold().SingleLine().MinWidth(0)
 			})
-			ui.Text(c, a.login(cc)).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Row(c).Gap(4).AlignItems(ui.Center).MinWidth(0).Children(func() {
+				ui.Text(c, a.login(cc)).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine().MinWidth(0)
+				if viaCredential {
+					credentialTag(c, cr)
+				}
+			})
 		})
 		if a.missingKey(cc) {
 			ui.Text(c, "!").Label("缺少密钥").Bold().FontSize(11).TextColor(ui.RGB(255, 255, 255)).Background(t.Danger).Padding(0, 6).Radius(8).Tooltip("使用密钥认证，但还没有可用的密钥")
@@ -277,13 +330,20 @@ func (a *App) hostTile(c *ui.Context, cc model.Connection) {
 	})
 }
 
+// credentialTag marks a login whose user comes from credential cr.
+func credentialTag(c *ui.Context, cr model.Credential) {
+	t := c.Theme()
+	why := "用户来自凭据「" + cr.Name + "」"
+	ui.Text(c, "凭据").Label(why).FontSize(10).TextColor(t.TextMuted).Padding(0, 4).Radius(4).Border(1, t.Border).Shrink(0).Tooltip(why)
+}
+
 // hostCard shows the host chosen among the tiles.
 func (a *App) hostCard(c *ui.Context) {
 	t := c.Theme()
 	cc, ok := a.host(a.hosts.selected)
 	if !ok || cc.Deleted {
 		ui.Text(c, "连接管理器").FontSize(20).Bold()
-		muted(c, "单击主机查看详情，双击连接；按住 ⌘ 或 Shift 可选择多个主机批量操作。右键目录可批量绑定认证。")
+		muted(c, "单击主机查看详情，双击连接；按住 "+modifierName()+" 或 Shift 可选择多个主机批量操作。右键目录可批量绑定认证。")
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.PrimaryButton(c, "+ 新建主机").Clicked() {
 				a.newHost("")
@@ -296,9 +356,15 @@ func (a *App) hostCard(c *ui.Context) {
 	}
 	r := a.resolved(cc)
 	ui.Text(c, cc.Name).FontSize(20).Bold()
-	ui.Text(c, a.login(cc)).Font("monospace").TextColor(t.TextMuted).Selectable()
 	login := authLabel(a, r.Auth, r.KeyID)
-	if cr, ok := a.credential(cc.CredentialID); ok {
+	cr, viaCredential := a.credential(cc.CredentialID)
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, a.login(cc)).Font("monospace").TextColor(t.TextMuted).Selectable()
+		if viaCredential {
+			credentialTag(c, cr)
+		}
+	})
+	if viaCredential {
 		login = "凭据「" + cr.Name + "」· " + login
 	}
 	for _, kv := range [][2]string{
@@ -331,3 +397,6 @@ func (a *App) hostCard(c *ui.Context) {
 		}
 	})
 }
+
+// modifierName is the key that adds to a choice: ⌘ on macOS, Ctrl elsewhere.
+func modifierName() string { return strings.TrimSuffix(shortcutLabel(""), "+") }

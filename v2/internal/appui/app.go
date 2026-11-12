@@ -25,6 +25,9 @@ type App struct {
 	// ShowSettings opens the settings window. The host sets it; SettingsView builds it.
 	// ShowManager opens (or raises) the connection manager window, which ManagerView builds.
 	ShowSettings, ShowManager func()
+	// HideManager closes the connection manager window once its unsaved edits are discarded; the host
+	// asks ManagerMayClose when the window is about to close.
+	HideManager func()
 	// PickFiles shows a native open/save panel and calls done on the UI
 	// thread with the chosen paths (none when cancelled). Nil means no panels.
 	PickFiles func(o FilePick, done func([]string))
@@ -540,8 +543,15 @@ func ghost(c *ui.Context, label, icon string) ui.Element {
 func muted(c *ui.Context, s string) ui.Element {
 	return ui.Text(c, s).FontSize(12).TextColor(c.Theme().TextMuted)
 }
-func field(c *ui.Context, label string, value *string) ui.Element {
-	return ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Grow(1) }).FillWidth()
+
+// field is a labeled text input; enter, if given, is set when Enter is pressed in it.
+func field(c *ui.Context, label string, value *string, enter ...*bool) ui.Element {
+	return ui.Field(c, label, func() { submitted(ui.TextInput(c, value).Label(label).Grow(1), enter) }).FillWidth()
+}
+func submitted(in ui.Element, enter []*bool) {
+	if in.Submitted() && len(enter) > 0 {
+		*enter[0] = true
+	}
 }
 
 // localPath shows a local path chosen with a native panel; nothing is typed.
@@ -570,8 +580,8 @@ func (a *App) localPath(c *ui.Context, label, empty string, value *string, o Fil
 		})
 	}).FillWidth()
 }
-func password(c *ui.Context, label string, value *string) ui.Element {
-	return ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Password().Grow(1) }).FillWidth()
+func password(c *ui.Context, label string, value *string, enter ...*bool) ui.Element {
+	return ui.Field(c, label, func() { submitted(ui.TextInput(c, value).Label(label).Password().Grow(1), enter) }).FillWidth()
 }
 func choice(c *ui.Context, label string, value *string, options []string) ui.Element {
 	return ui.Field(c, label, func() { ui.Select(c, value, options).Label(label).Grow(1) }).FillWidth()
