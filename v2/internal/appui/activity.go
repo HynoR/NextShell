@@ -167,7 +167,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 			}
 		})
 		if len(edits) == 0 {
-			muted(c, "暂无实时编辑。在 SFTP 里右键文件，选「用外部编辑器打开」。")
+			muted(c, "暂无实时编辑。在 SFTP 里右键文件，选「远程编辑」。")
 		}
 		for _, l := range edits {
 			color := map[remoteedit.LiveState]ui.Color{remoteedit.Watching: t.TextMuted, remoteedit.Syncing: accentInk(t), remoteedit.Synced: t.Success, remoteedit.Conflict: t.Warning, remoteedit.Failed: t.Danger}[l.State]

@@ -34,6 +34,19 @@ type filesState struct {
 	clipboard                remoteClipboard
 	follow                   bool
 	dialog                   fileDialog
+	trees                    map[string]*dirTree // per session
+	treeHidden               bool
+	treeWidth                float32
+}
+
+// dirTree is the SFTP directory tree of a session: what its listings showed, and which folders are open.
+type dirTree struct {
+	dirs   map[string][]string // a listed folder's subfolders, in order
+	open   map[string]*bool
+	asked  map[string]bool // listed, or being listed
+	peeks  map[string]bool // listings asked for the tree alone, not to show in the list
+	shown  string          // the folder the list shows, which the tree follows
+	hidden bool            // dotfolders were kept, as the list shows them
 }
 
 type remoteClipboard struct {
@@ -54,12 +67,78 @@ type fileDialog struct {
 func (s *filesState) init() {
 	s.row = -1
 	s.paths = map[string]string{}
+	s.trees = map[string]*dirTree{}
+	s.treeWidth = 200
+}
+
+func (s *filesState) tree(id string) *dirTree {
+	t := s.trees[id]
+	if t == nil {
+		t = &dirTree{dirs: map[string][]string{}, open: map[string]*bool{}, asked: map[string]bool{}, peeks: map[string]bool{}}
+		s.trees[id] = t
+	}
+	return t
+}
+
+// learn keeps the subfolders of a listing.
+func (t *dirTree) learn(l *FileListing) {
+	var dirs []string
+	for _, f := range l.Entries {
+		if f.Directory && !f.Symlink { // a link may point anywhere: the tree shows real folders alone
+			dirs = append(dirs, f.Path)
+		}
+	}
+	slices.SortFunc(dirs, func(x, y string) int { return naturalCompare(path.Base(x), path.Base(y)) })
+	t.dirs[l.Path] = dirs
+	t.asked[l.Path] = true
+}
+
+// follow opens the folders down to dir, as the list went there.
+func (t *dirTree) follow(dir string) {
+	t.shown = dir
+	for p := dir; ; p = path.Dir(p) {
+		*t.flag(p) = true
+		if p == "/" || p == "." {
+			return
+		}
+	}
+}
+
+// pathBelow is the folder inside dir on the way down to sub, or "" when sub is not inside dir.
+func pathBelow(dir, sub string) string {
+	prefix := strings.TrimSuffix(dir, "/") + "/"
+	if !strings.HasPrefix(sub, prefix) || sub == dir {
+		return ""
+	}
+	name, _, _ := strings.Cut(sub[len(prefix):], "/")
+	return prefix + name
+}
+
+// flag is whether folder p is open, for its TreeItem.
+func (t *dirTree) flag(p string) *bool {
+	o := t.open[p]
+	if o == nil {
+		o = new(bool)
+		t.open[p] = o
+	}
+	return o
 }
 
 func (s *filesState) handle(a *App, e Event) {
-	if e.Files == nil || e.Files.Session != a.activeID() {
+	if e.Files == nil {
 		return
 	}
+	if tree := s.trees[e.Files.Session]; tree != nil && tree.peeks[e.Files.Path] {
+		delete(tree.peeks, e.Files.Path)
+		tree.learn(e.Files)
+		return
+	}
+	if e.Files.Session != a.activeID() {
+		return
+	}
+	tree := s.tree(e.Files.Session)
+	tree.learn(e.Files)
+	tree.follow(e.Files.Path)
 	if s.session != e.Files.Session || s.path != e.Files.Path {
 		s.selection.Clear()
 		s.row = -1
@@ -137,7 +216,45 @@ func digits(s string) int {
 }
 func (a *App) listFiles(id, dir string) {
 	a.files.requested = id
+	delete(a.files.tree(id).peeks, dir)
 	a.P.ListFiles(id, dir)
+}
+
+// dirTreeView is the SFTP directory tree: a click opens a folder in the list, and an opened folder
+// lists its subfolders the first time.
+func (a *App) dirTreeView(c *ui.Context, id string) {
+	tree := a.files.tree(id)
+	var node func(dir string)
+	node = func(dir string) {
+		name := path.Base(dir)
+		subs, listed := tree.dirs[dir]
+		if !listed { // until it is listed, it shows the way down to the folder shown
+			if next := pathBelow(dir, tree.shown); next != "" {
+				subs = []string{next}
+			}
+		}
+		var children func()
+		if !listed || len(subs) > 0 {
+			children = func() {
+				if !tree.asked[dir] {
+					tree.asked[dir], tree.peeks[dir] = true, true
+					a.P.ListFiles(id, dir)
+				}
+				for _, sub := range subs {
+					if a.files.hidden || !strings.HasPrefix(path.Base(sub), ".") {
+						node(sub)
+					}
+				}
+			}
+		}
+		item := ui.TreeItem(c.Key("dir-"+dir), name, tree.flag(dir), children).Label("目录 " + dir).Selected(dir == tree.shown).Tooltip(dir)
+		if item.Clicked() {
+			a.later(func() { a.listFiles(id, dir) })
+		}
+	}
+	ui.Scroll(c).Fill().Children(func() {
+		ui.Tree(c, func() { node("/") }).FillWidth().Padding(4)
+	})
 }
 
 func (a *App) filesPanel(c *ui.Context) {
@@ -159,6 +276,14 @@ func (a *App) filesPanel(c *ui.Context) {
 		}
 	}
 	ui.Row(c).FillWidth().Padding(6, 8).Gap(2).AlignItems(ui.Center).Children(func() {
+		treeLabel := "隐藏目录树"
+		if s.treeHidden {
+			treeLabel = "显示目录树"
+		}
+		if iconButton(c, treeLabel, "panel-left").Clicked() {
+			s.treeHidden = !s.treeHidden
+			a.report(a.P.SaveUIState("sftp-tree", fmt.Sprint(s.treeHidden)), "")
+		}
 		if iconButton(c, "上级目录", "up").Clicked() && s.session == id {
 			a.listFiles(id, path.Dir(s.path))
 		}
@@ -175,7 +300,28 @@ func (a *App) filesPanel(c *ui.Context) {
 		ui.Row(c).Fill().Center().Children(func() { ui.Spinner(c) })
 		return
 	}
-	zone := ui.Column(c).Grow(1).FillWidth().MinHeight(0)
+	if s.treeHidden {
+		a.fileList(c, id)
+	} else {
+		ui.Split(c, &s.treeWidth, func() { a.dirTreeView(c, id) }, func() { a.fileList(c, id) }).SplitReset(200).Grow(1).FillWidth().MinHeight(0)
+	}
+	ui.Row(c).FillWidth().Height(26).Padding(0, 10).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
+		info := fmt.Sprintf("%d 项", len(s.entries))
+		if n := s.selection.Len(); n > 0 {
+			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
+		}
+		muted(c, info).Grow(1)
+		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
+			a.pasteRemoteClipboard(id)
+		}
+	})
+}
+
+// fileList is the SFTP list of the folder shown: a drop uploads to it.
+func (a *App) fileList(c *ui.Context, id string) {
+	t := c.Theme()
+	s := &a.files
+	zone := ui.Column(c).Grow(1).FillWidth().FillHeight().MinWidth(0).MinHeight(0)
 	zone.ContextMenu(func(m *ui.Menu) { a.filesMenuItems(m, id) })
 	if dropped := zone.DroppedFiles(); dropped != nil {
 		a.upload(id, dropped)
@@ -245,16 +391,6 @@ func (a *App) filesPanel(c *ui.Context) {
 			} else if !f.Symlink {
 				a.openEditor(id, f.Path)
 			}
-		}
-	})
-	ui.Row(c).FillWidth().Height(26).Padding(0, 10).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
-		info := fmt.Sprintf("%d 项", len(s.entries))
-		if n := s.selection.Len(); n > 0 {
-			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
-		}
-		muted(c, info).Grow(1)
-		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
-			a.pasteRemoteClipboard(id)
 		}
 	})
 }
@@ -470,7 +606,7 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 		if m.Item("编辑").Chosen() {
 			a.later(func() { a.openEditor(id, f.Path) })
 		}
-		if m.Item("用外部编辑器打开").Chosen() {
+		if m.Item("远程编辑").Chosen() {
 			a.later(func() { a.externalEdit(id, f.Path) })
 		}
 	}

@@ -110,6 +110,13 @@ func (a *App) terminalArea(c *ui.Context) {
 		if a.P.Exited(s.ID) && term.Shortcut(0, ui.KeyEnter) {
 			a.reconnect(s)
 		}
+		if id := s.Connection.ID; id != "" && a.hosts.connecting[id] && a.P.Exited(s.ID) && term.Shortcut(0, ui.KeyEscape) {
+			a.cancelConnect(id)
+		}
+		if a.cmdbar.finding {
+			a.findBar(c, s)
+		}
+		a.commandBar(c, s)
 	})
 }
 

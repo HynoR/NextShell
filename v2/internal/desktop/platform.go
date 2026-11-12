@@ -43,9 +43,10 @@ type Platform struct {
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
-	dialSlots        map[string]chan struct{} // handshake limiter per endpoint; see dial
-	trustNewHosts    atomic.Bool              // development builds only (see devtrust_development.go): pin first-seen host keys without asking
-	tar              map[string]bool          // whether each session's server has tar
+	dialSlots        map[string]chan struct{}   // handshake limiter per endpoint; see dial
+	connects         map[string]*connectAttempt // connects in progress per saved connection; see CancelConnect
+	trustNewHosts    atomic.Bool                // development builds only (see devtrust_development.go): pin first-seen host keys without asking
+	tar              map[string]bool            // whether each session's server has tar
 	queue            *transfer.Queue
 	edits            *remoteedit.LiveEdits // files open in an outside editor; see ExternalEdit
 	imports          map[string]importPlan
@@ -322,18 +323,59 @@ func (p *Platform) launch(fn func()) {
 	go func() { defer p.wg.Done(); fn() }()
 }
 func (p *Platform) Connect(c model.Connection) {
-	p.launch(func() {
-		if e := p.connect(c, ""); e != nil {
-			p.emit(appui.Event{Message: e.Error(), Failed: c.ID, AuthFailed: c.ID != "" && authFailed(e)})
+	p.launch(func() { p.attempt(c.ID, func(ctx context.Context) error { return p.connectContext(ctx, c, "") }) })
+}
+
+// connectAttempt is the context the connects of one saved connection share until they end or are cancelled.
+type connectAttempt struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	n      int
+}
+
+// attempt runs connect for saved connection id under a context CancelConnect(id) ends, and reports a
+// failure; a cancelled attempt reports nothing, as the user asked for it.
+func (p *Platform) attempt(id string, connect func(context.Context) error) {
+	p.mu.Lock()
+	at := p.connects[id]
+	if at == nil {
+		ctx, cancel := context.WithCancel(p.ctx)
+		at = &connectAttempt{ctx: ctx, cancel: cancel}
+		if p.connects == nil {
+			p.connects = map[string]*connectAttempt{}
 		}
-	})
+		p.connects[id] = at
+	}
+	at.n++
+	p.mu.Unlock()
+	e := connect(at.ctx)
+	cancelled := at.ctx.Err() != nil
+	p.mu.Lock()
+	if at.n--; at.n == 0 {
+		at.cancel()
+		if p.connects[id] == at {
+			delete(p.connects, id)
+		}
+	}
+	p.mu.Unlock()
+	if e != nil && !cancelled {
+		p.emit(appui.Event{Message: e.Error(), Failed: id, AuthFailed: id != "" && authFailed(e)})
+	}
+}
+
+// CancelConnect stops the connects in progress to saved connection id: their dialogs close, their
+// network connections are closed and no session or failure is reported.
+func (p *Platform) CancelConnect(id string) {
+	p.mu.Lock()
+	if at := p.connects[id]; at != nil {
+		at.cancel()
+		delete(p.connects, id)
+	}
+	p.mu.Unlock()
 }
 
 // authFailed reports a login the server refused, or one without its key: other details could fix it.
 func authFailed(e error) bool { return isAuthFailure(e) || errors.Is(e, model.ErrNoKey) }
-func (p *Platform) connect(c model.Connection, replace string) error {
-	return p.connectContext(p.ctx, c, replace)
-}
 func (p *Platform) connectContext(ctx context.Context, c model.Connection, replace string) error {
 	var stored model.Connection
 	if c.ID != "" {
@@ -630,9 +672,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 			if !ok {
 				c = old.Connection
 			}
-			if e := p.connect(c, old.ID); e != nil {
-				p.emit(appui.Event{Message: e.Error(), Failed: old.Connection.ID, AuthFailed: old.Connection.ID != "" && authFailed(e)})
-			}
+			p.attempt(old.Connection.ID, func(ctx context.Context) error { return p.connectContext(ctx, c, old.ID) })
 			return
 		}
 		t, e := p.newTerminal(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})

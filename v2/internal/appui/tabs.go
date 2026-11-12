@@ -291,6 +291,9 @@ func (a *App) closeTab(i int) {
 		return
 	}
 	id := a.Tabs[i].ID
+	if host := a.Tabs[i].Connection.ID; host != "" && a.hosts.connecting[host] && a.P.Exited(id) {
+		a.cancelConnect(host) // its reconnect would otherwise open a new tab
+	}
 	delete(a.tabs.started, id)
 	a.P.CloseSession(id)
 	a.Tabs = append(a.Tabs[:i], a.Tabs[i+1:]...)

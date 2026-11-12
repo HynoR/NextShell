@@ -51,6 +51,7 @@ type App struct {
 	welcome  welcomeState
 	palette  paletteState
 	files    filesState
+	cmdbar   cmdbarState
 	monitor  monitorState
 	snippets snippetsState
 	editor   editorState
@@ -121,6 +122,7 @@ func New(p Platform) *App {
 	a.hosts.init()
 	a.hosts.recent = strings.Fields(p.UIState("recent"))
 	a.files.init()
+	a.files.treeHidden = p.UIState("sftp-tree") == "true"
 	a.monitor.init()
 	a.snippets.init()
 	a.reload()
@@ -430,11 +432,13 @@ func (a *App) shortcuts(c *ui.Context) {
 	if c.Shortcut(appMod, ui.KeyT) {
 		a.P.Local()
 	}
-	if c.Shortcut(appMod, ui.KeyW) && a.current() != nil {
+	if c.Shortcut(appMod, ui.KeyW) {
 		if tool := a.activeTool(); tool != nil {
 			a.closeTool(*tool)
-		} else {
+		} else if a.current() != nil {
 			a.closeTab(a.Active)
+		} else if pending := a.pendingTabs(); len(a.Tabs) == 0 && len(pending) > 0 { // the 连接中 page shows
+			a.cancelConnect(pending[0].ID)
 		}
 	}
 	// The ⌘ letters a shell also uses take Ctrl only outside the terminal, as ⌘K does.
@@ -451,10 +455,13 @@ func (a *App) shortcuts(c *ui.Context) {
 	for _, v := range []struct {
 		key   ui.Key
 		bench int
-	}{{ui.KeyF, benchFiles}, {ui.KeyM, benchSysinfo}, {ui.KeyS, benchSnippets}} {
+	}{{ui.KeyM, benchSysinfo}, {ui.KeyS, benchSnippets}} {
 		if c.Shortcut(ui.Cmd|ui.Shift, v.key) {
 			a.showBench(v.bench)
 		}
+	}
+	if s := a.current(); s != nil && a.activeTool() == nil && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
+		a.toggleFind(s)
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
 		if s := a.current(); s != nil {
