@@ -376,6 +376,9 @@ func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
 	default:
 		o.Cursor = terminal.CursorBlock
 	}
+	// The terminal leaves its background to the view under it (appui's terminalGround), which paints the
+	// theme's own color unless the main window shows a picture: that can change with sessions open.
+	o.Transparent = true
 	o.NoClipboardWrite = !prefs.ClipboardWrite
 	o.ClipboardRead = terminal.ClipboardDeny
 	if prefs.ClipboardReadAsk {

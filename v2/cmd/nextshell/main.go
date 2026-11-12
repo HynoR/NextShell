@@ -118,7 +118,11 @@ func main() {
 					paths = []string{path}
 				}
 			} else {
-				paths, _ = mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: parent, Title: o.Title, DefaultPath: o.DefaultPath, Directory: o.Directory, Multiple: o.Multiple, CreateDirectories: o.Directory, ShowHiddenFiles: o.Hidden})
+				var filters []mygo.FileFilter
+				if o.Images {
+					filters = []mygo.FileFilter{{Name: "图片", Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "bmp"}}}
+				}
+				paths, _ = mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: parent, Title: o.Title, DefaultPath: o.DefaultPath, Directory: o.Directory, Multiple: o.Multiple, CreateDirectories: o.Directory, ShowHiddenFiles: o.Hidden, Filters: filters})
 			}
 			mygo.RunOnMain(func() { done(paths); p.Invalidate() })
 		}()
@@ -159,14 +163,22 @@ func main() {
 			mygo.App.Quit()
 		})
 	}, 10*time.Second, os.Exit)
+	tr := &tray{app: a, create: newTrayIcon, terminating: end.Terminating, show: func() {}}
+	a.PreferencesChanged = tr.Sync
+	// Every way of quitting closes the windows one by one: until the quit is cancelled, the main window's
+	// closing is part of it, and must not hide the window into the tray.
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		tr.quitting.Store(true)
 		if e.SessionEnding { // logout, restart, shutdown: cannot be cancelled and cannot wait for a dialog
 			end.terminating.Store(true)
 		}
 	})
 	// OnQuit is the last hook the OS session's end leaves time for; Run may never return then.
 	mygo.App.OnQuit(end.Finish)
+	mygo.App.OnQuitCanceled(func() { tr.quitting.Store(false) })
 	mygo.App.WhenReady(func() {
+		a.TrayAvailable = true
+		tr.Probe(runtime.GOOS)
 		mygo.App.SetMenu(appMenu(func() { a.ShowSettings() }))
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		// An agent never takes the keyboard: the first action shows the window without focus (and bounces
@@ -182,7 +194,13 @@ func main() {
 				go mygo.App.Dock.Bounce(false)
 			}
 		}
+		tr.show = func() { bringForward(w) }
 		w.OnClose(func(e *mygo.CloseEvent) {
+			if tr.closeHides() {
+				e.PreventDefault()
+				go mygo.RunOnMain(w.Hide)
+				return
+			}
 			if !end.Terminating() && a.ExitNeedsConfirm() {
 				e.PreventDefault()
 				a.ConfirmExit = true
@@ -191,6 +209,21 @@ func main() {
 			}
 		})
 		w.OnClosed(func() { mygo.App.Quit() })
+		w.OnMinimize(func() {
+			if tr.Hides(a.Prefs.MinimizeToTray) {
+				go mygo.RunOnMain(w.Hide)
+			}
+		})
+		// A system whose panel shows the icon's own menu is told what it lists when the window goes away.
+		w.OnHide(tr.Refresh)
+		w.OnBlur(tr.Refresh)
+		// The Dock icon of a window hidden into the tray brings it back.
+		mygo.App.OnActivate(func(visible bool) {
+			if !visible && !w.IsVisible() && tr.icon != nil {
+				bringForward(w)
+			}
+		})
+		tr.Sync()
 		if opts.smoke {
 			p.Local()
 			a.ShowSettings() // the smoke run also opens a second native window

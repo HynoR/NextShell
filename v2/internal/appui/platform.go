@@ -3,6 +3,7 @@ package appui
 
 import (
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/cloudsync"
 	"nextshell.dev/v2/internal/model"
@@ -104,6 +105,12 @@ type Platform interface {
 	Snapshot() (Snapshot, error)
 	Preferences() model.Preferences
 	SavePreferences(model.Preferences) error
+	// ImportBackground copies the picture at src into the app's data folder and returns the copy's file name
+	// and the picture; a refusal's message is meant for the user. BackgroundPicture reads a copy back, and
+	// RemoveBackground deletes one that may already be gone.
+	ImportBackground(src string) (string, *ui.Bitmap, error)
+	BackgroundPicture(name string) (*ui.Bitmap, error)
+	RemoveBackground(name string)
 	SaveConnection(model.Connection, *string) error
 	SaveFolder(model.Folder) error
 	SaveKey(model.Key) error

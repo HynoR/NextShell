@@ -84,7 +84,7 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 	case exited:
 		placeholder = "连接已断开，回车重新连接"
 	}
-	ui.Row(c).FillWidth().Height(36).Padding(0, 8).Gap(6).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
+	ui.Row(c).FillWidth().Height(36).Padding(0, 8).Gap(6).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
 		if !s.Local {
 			ui.Box(c).Size(3, 14).Radius(1.5).Background(a.hostColor(s.Connection))
 		}
@@ -204,7 +204,7 @@ func (a *App) findBar(c *ui.Context, s *Session) {
 		s.Terminal.Search(b.find)
 	}
 	st := s.Terminal.SearchStatus()
-	bar := ui.Row(c).FillWidth().Height(36).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0)
+	bar := ui.Row(c).FillWidth().Height(36).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(1, 0, 0, 0)
 	if bar.Shortcut(0, ui.KeyEscape) {
 		a.toggleFind(s)
 		return

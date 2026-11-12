@@ -71,7 +71,7 @@ type tabDrag string
 // tabBar heads the centre column: the tabs, and a button for a new local terminal or a recent host.
 func (a *App) tabBar(c *ui.Context) {
 	t := c.Theme()
-	ui.Row(c).FillWidth().Height(38).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
+	ui.Row(c).FillWidth().Height(38).Padding(0, 8).Gap(4).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
 		a.tabStrip(c)
 		a.pendingStrip(c, a.pendingTabs())
 		a.plusMenu(c)

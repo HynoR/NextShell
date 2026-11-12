@@ -64,7 +64,11 @@ func (a *App) showBench(i int) {
 
 func (a *App) mainWindow(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().Background(t.Background).Children(func() {
+	root := ui.Column(c).Fill().Background(t.Background)
+	if bmp := a.backdropBitmap(); bmp != nil {
+		root.Draw(a.paintBackdrop(t, bmp))
+	}
+	root.Children(func() {
 		a.titlebar(c)
 		ui.Row(c).FillWidth().Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.leftColumn(c)
@@ -89,7 +93,7 @@ func (a *App) centreColumn(c *ui.Context) {
 			a.connectingView(c, pending)
 			return
 		}
-		ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { a.welcomeView(c) })
+		ui.Column(c).Grow(1).FillWidth().MinHeight(0).Background(a.page(c.Theme())).Children(func() { a.welcomeView(c) })
 		return
 	}
 	if a.layout.benchHidden {
@@ -114,7 +118,7 @@ func (a *App) terminalArea(c *ui.Context) {
 		if a.tabs.mru.Active() {
 			a.mruOverlay(c)
 		}
-		term := terminal.View(c.Key(s.ID+"terminal"), s.Terminal).Grow(1).FillWidth().AutoFocus().Bind(&a.tabs.term)
+		term := terminal.View(c.Key(s.ID+"terminal"), s.Terminal).Grow(1).FillWidth().Background(a.terminalGround(c)).AutoFocus().Bind(&a.tabs.term)
 		if a.P.Exited(s.ID) && term.Shortcut(0, ui.KeyEnter) {
 			a.reconnect(s)
 		}
