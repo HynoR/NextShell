@@ -215,8 +215,9 @@ func (a *App) hostTiles(c *ui.Context) {
 		}
 	}
 	if len(missing) > 0 {
-		ui.Row(c).FillWidth().Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(t.Danger.Alpha(.1)).Children(func() {
-			ui.Text(c, fmt.Sprintf("%d 个主机使用密钥认证，但还没有可用的密钥", len(missing))).FontSize(12).TextColor(t.Danger).Grow(1)
+		// A column: in the narrowest window the text keeps its width and the button sits under it.
+		ui.Column(c).FillWidth().Padding(8, 12).Gap(6).Background(t.Danger.Alpha(.1)).Children(func() {
+			ui.Text(c, fmt.Sprintf("%d 个主机使用密钥认证，但还没有可用的密钥", len(missing))).FontSize(12).TextColor(t.Danger).FillWidth()
 			if ui.Button(c, fmt.Sprintf("为 %d 个主机选择密钥", len(missing))).Clicked() {
 				a.openBatch("缺少密钥的主机", missing, "key")
 			}
