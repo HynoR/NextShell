@@ -22,6 +22,8 @@ type servicesPlatform struct {
 	connects  int
 	diagnosed string
 	cancelled bool
+	auto      agent.AutoApproval
+	autoSet   []time.Duration
 }
 
 func (p *servicesPlatform) CloudOverview() appui.CloudOverview { return p.cloud }
@@ -39,6 +41,53 @@ func (p *servicesPlatform) Diagnose(kind, target string) string {
 	return "current"
 }
 func (p *servicesPlatform) CancelDiagnostic() { p.cancelled = true }
+func (p *servicesPlatform) AgentAutoApprove(d time.Duration) error {
+	p.autoSet = append(p.autoSet, d)
+	switch {
+	case d == 0:
+		p.auto = agent.AutoApproval{}
+	case d == agent.UntilExit:
+		p.auto = agent.AutoApproval{On: true, UntilExit: true}
+	default:
+		p.auto = agent.AutoApproval{On: true, Expires: time.Now().Add(d)}
+	}
+	return nil
+}
+func (p *servicesPlatform) AgentAutoApproval() agent.AutoApproval { return p.auto }
+func (p *servicesPlatform) MCPConfigPath() (string, error)        { return "/cfg/NextShell-v2/mcp.json", nil }
+
+func TestAgentAutoApproveSettingAndStatusIndicator(t *testing.T) {
+	a, p, tt, st := settingsFixture(t)
+	shown := 0
+	a.ShowSettings = func() { shown++ }
+	click(t, st, "Agent")
+	has(t, st, "/cfg/NextShell-v2/mcp.json", "开启 MCP 服务时写入地址和令牌；Claude Code 插件会自动读取，无需手动填写")
+	click(t, st, "15 分钟")
+	if len(p.autoSet) != 1 || p.autoSet[0] != 15*time.Minute {
+		t.Fatal(p.autoSet)
+	}
+	has(t, st, "自动批准中 · 剩余 15 分钟")
+	tt.Frame()
+	has(t, tt, "自动批准中 · 剩余 15 分钟")
+	click(t, tt, "自动批准中")
+	if shown != 1 {
+		t.Fatal("indicator did not open the Agent settings")
+	}
+	click(t, st, "直到退出")
+	has(t, st, "自动批准中 · 直到退出")
+	// Turning it off elsewhere (emergency stop, MCP off) shows at once.
+	p.auto = agent.AutoApproval{}
+	tt.Frame()
+	st.Frame()
+	if tt.HasText("自动批准中") || st.HasText("自动批准中") {
+		t.Fatal("indicator outlived auto-approval")
+	}
+	click(t, st, "1 小时")
+	click(t, st, "关闭")
+	if p.autoSet[len(p.autoSet)-1] != 0 {
+		t.Fatal(p.autoSet)
+	}
+}
 
 // flip clicks the switch named label.
 func flip(t *testing.T, tt *ui.Tester, label string) {

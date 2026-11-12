@@ -508,6 +508,15 @@ func (a *App) statusBar(c *ui.Context) {
 		if s := a.current(); s != nil && !s.Local {
 			ui.Text(c, strings.ToUpper(orDefault(s.Connection.Encoding, "utf-8"))).FontSize(12).TextColor(t.TextMuted)
 		}
+		if auto := a.P.AgentAutoApproval(); auto.On {
+			c.After(30 * time.Second)
+			b := ui.ButtonBase(c).Label("自动批准中").Padding(0, 8).Radius(4).Background(t.Warning.Alpha(.18)).Children(func() {
+				ui.Text(c, "自动批准中 · "+autoApproveLabel(auto)).FontSize(12).Bold().TextColor(t.Warning)
+			})
+			if b.Clicked() {
+				a.openSettings("Agent")
+			}
+		}
 		if n := len(a.P.AgentOverview().Pending); n > 0 {
 			b := ui.ButtonBase(c).Label("Agent 待批准").Padding(0, 6).Children(func() {
 				ui.Text(c, fmt.Sprintf("Agent 待批准 %d", n)).FontSize(12).TextColor(t.Warning)

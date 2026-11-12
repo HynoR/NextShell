@@ -2,6 +2,8 @@ package appui
 
 import (
 	"fmt"
+	"math"
+	"nextshell.dev/v2/internal/agent"
 	"strings"
 	"time"
 
@@ -18,7 +20,23 @@ type cloudState struct {
 type agentState struct {
 	token, blacklist string
 	showToken        bool
+	auto             int // the duration last chosen: 1 = 15 分钟, 2 = 1 小时
 }
+
+var autoApproveDurations = []time.Duration{0, 15 * time.Minute, time.Hour, agent.UntilExit}
+
+// autoApproveLabel is "剩余 12 分钟" or "直到退出" while auto-approval is on.
+func autoApproveLabel(v agent.AutoApproval) string {
+	if v.UntilExit {
+		return "直到退出"
+	}
+	m := max(1, int(math.Ceil(time.Until(v.Expires).Minutes())))
+	if m >= 60 {
+		return fmt.Sprintf("剩余 %d 小时 %d 分钟", m/60, m%60)
+	}
+	return fmt.Sprintf("剩余 %d 分钟", m)
+}
+
 type dataState struct {
 	path, password, format, policy, folder string
 	preview                                *ImportPreview
@@ -176,6 +194,44 @@ func (a *App) agentSettings(c *ui.Context) {
 			a.P.AgentHalt(stopped)
 		}
 	})
+	group(c, "自动批准", func() {
+		auto := a.P.AgentAutoApproval()
+		choice := 0
+		if auto.On {
+			choice = max(1, s.auto)
+			if auto.UntilExit {
+				choice = 3
+			}
+		}
+		ui.Field(c, "自动批准", func() {
+			if ui.Segmented(c, &choice, "关闭", "15 分钟", "1 小时", "直到退出").Label("自动批准").Changed() {
+				if e := a.P.AgentAutoApprove(autoApproveDurations[choice]); e != nil {
+					a.fail(e)
+				} else {
+					s.auto = choice
+				}
+			}
+		}).Description("风险命令和黑名单命中仍需手动批准；重启应用后自动关闭").FillWidth()
+		if auto.On {
+			ui.Text(c, "自动批准中 · "+autoApproveLabel(auto)).TextColor(t.Warning)
+		}
+	})
+	group(c, "Claude Code 插件", func() {
+		path, e := a.P.MCPConfigPath()
+		shown := path
+		if e != nil {
+			shown = e.Error()
+		}
+		ui.Field(c, "连接文件", func() {
+			ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, shown).Font("monospace").FontSize(12).Selectable().Grow(1).MinWidth(0)
+				if ui.Button(c, "复制路径").Disabled(e != nil).Clicked() {
+					a.P.CopyText(path)
+					a.toast("已复制路径")
+				}
+			})
+		}).Description("开启 MCP 服务时写入地址和令牌；Claude Code 插件会自动读取，无需手动填写").FillWidth()
+	})
 	group(c, "令牌", func() {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 			in := ui.TextInput(c.Key("mcp-token"), &s.token).Label("令牌").Placeholder("点击「显示」读取").ReadOnly(true).Grow(1).Font("monospace")
@@ -240,7 +296,8 @@ func (a *App) agentSettings(c *ui.Context) {
 		if len(state.Activity) == 0 {
 			muted(c, "暂无记录")
 		}
-		states := map[string]string{"halted": "已停止", "resumed": "已恢复", "completed": "完成", "pending": "等待批准", "failed": "失败"}
+		states := map[string]string{"halted": "已停止", "resumed": "已恢复", "completed": "完成", "pending": "等待批准", "failed": "失败",
+			"auto-approve on": "开启自动批准", "auto-approve off": "关闭自动批准", "auto-approve expired": "自动批准已到期", "auto-approved": "已自动批准"}
 		for i := len(state.Activity) - 1; i >= 0; i-- {
 			ev := state.Activity[i]
 			tool := ev.Tool
