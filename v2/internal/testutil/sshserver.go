@@ -12,12 +12,14 @@ import (
 	"net"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sshclient"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // linuxTestCmd runs the whole suite on Linux from a non-Linux dev machine (run inside v2/).
@@ -43,7 +45,9 @@ type Server struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	Execs, SFTP   atomic.Int64
-	once          sync.Once
+	// Killed counts exec commands ended by a "signal" request, like sshd's session_signal_req.
+	Killed atomic.Int64
+	once   sync.Once
 }
 
 func New(root string) (*Server, error) {
@@ -111,8 +115,7 @@ func New(root string) (*Server, error) {
 func (s *Server) serve(ch ssh.Channel, requests <-chan *ssh.Request) {
 	defer s.wg.Done()
 	defer ch.Close()
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
+	var running atomic.Pointer[os.Process]
 	for r := range requests {
 		switch r.Type {
 		case "pty-req", "window-change":
@@ -141,19 +144,33 @@ func (s *Server) serve(ch ssh.Channel, requests <-chan *ssh.Request) {
 			ssh.Unmarshal(r.Payload, &v)
 			r.Reply(true, nil)
 			s.Execs.Add(1)
+			// Like sshd, a command outlives its channel: only a "signal" request or Close ends it early.
+			cmd := exec.CommandContext(s.ctx, "/bin/sh", "-c", v.Command)
+			cmd.Dir = s.Root
+			cmd.Stdin = ch
+			cmd.Stdout = ch
+			cmd.Stderr = ch.Stderr()
+			cmd.WaitDelay = time.Second
+			s.wg.Add(1)
 			go func() {
-				cmd := exec.CommandContext(ctx, "/bin/sh", "-c", v.Command)
-				cmd.Dir = s.Root
-				cmd.Stdin = ch
-				cmd.Stdout = ch
-				cmd.Stderr = ch.Stderr()
+				defer s.wg.Done()
 				status := uint32(0)
-				if e := cmd.Run(); e != nil {
-					status = 1
+				if e := cmd.Start(); e != nil {
+					status = 127
+				} else {
+					running.Store(cmd.Process)
+					if e := cmd.Wait(); e != nil {
+						status = 1
+					}
 				}
 				ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 				ch.Close()
 			}()
+		case "signal":
+			// Any signal ends the command (the tests only send KILL); like sshd, closing the channel does not.
+			if p := running.Load(); p != nil && p.Kill() == nil {
+				s.Killed.Add(1)
+			}
 		default:
 			r.Reply(false, nil)
 		}

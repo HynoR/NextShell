@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func Quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
@@ -173,6 +174,12 @@ func UploadPacked(ctx context.Context, runner Runner, local, remoteDestination s
 	e := runner.Run(ctx, command, &countReader{Reader: pr, progress: progress}, io.Discard, &stderr)
 	e = stderr.wrap(e)
 	pr.CloseWithError(e)
+	if ctx.Err() != nil {
+		// A cancelled Run kills the remote shell, so its EXIT trap never removes the staging directory.
+		clean, stop := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		runner.Run(clean, cleanup, nil, io.Discard, io.Discard)
+		stop()
+	}
 	pe := <-packErr
 	if e != nil {
 		return e

@@ -19,6 +19,11 @@ func (s *Session) OpenSFTP() (*sftp.Client, error) {
 }
 
 // Run uses a separate exec channel; closing/cancelling it never writes into the interactive PTY.
+//
+// sshd does not end a PTY-less command when its channel closes, and keeps the channel half-open until
+// the command exits, so waiting for the channel would hold the caller for as long as the remote runs.
+// When ctx ends Run therefore asks the server to SIGKILL the command, closes its side and returns
+// ctx.Err() at once; out and stderr are not written after Run returns.
 func (s *Session) Run(ctx context.Context, command string, in io.Reader, out, stderr io.Writer) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -29,16 +34,60 @@ func (s *Session) Run(ctx context.Context, command string, in io.Reader, out, st
 	}
 	defer ss.Close()
 	ss.Stdin = in
-	ss.Stdout = out
-	ss.Stderr = stderr
-	stop := context.AfterFunc(ctx, func() { ss.Close() })
-	defer stop()
-	e = ss.Run(command)
-	if ctx.Err() != nil {
+	var guards []*detachable
+	for _, w := range []struct {
+		dst *io.Writer
+		src io.Writer
+	}{{&ss.Stdout, out}, {&ss.Stderr, stderr}} {
+		if w.src == nil {
+			continue
+		}
+		g := &detachable{w: w.src}
+		guards = append(guards, g)
+		*w.dst = g
+	}
+	defer func() {
+		for _, g := range guards {
+			g.detach()
+		}
+	}()
+	if e = ss.Start(command); e != nil {
+		return e
+	}
+	done := make(chan error, 1)
+	go func() { done <- ss.Wait() }()
+	select {
+	case e = <-done:
+		return e
+	case <-ctx.Done():
+		killAndClose(ss)
 		return ctx.Err()
 	}
-	return e
 }
+
+// killAndClose ends a channel that is being abandoned: the signal goes first (the channel keeps its order),
+// and a server that ignores it still sees the channel close.
+func killAndClose(ss *ssh.Session) {
+	ss.Signal(ssh.SIGKILL)
+	ss.Close()
+}
+
+// detachable forwards to w until detach, after which writes are accepted and dropped: the SSH library's
+// copying goroutines may outlive an abandoned channel, and w belongs to the caller again.
+type detachable struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (d *detachable) Write(p []byte) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.w == nil {
+		return len(p), nil
+	}
+	return d.w.Write(p)
+}
+func (d *detachable) detach() { d.mu.Lock(); d.w = nil; d.mu.Unlock() }
 
 type limitedBuffer struct {
 	mu    sync.Mutex
@@ -94,6 +143,7 @@ func (s *Session) OpenSFTPContext(ctx context.Context) (*sftp.Client, func(), er
 	if e != nil {
 		return nil, nil, e
 	}
+	// No signal here: sshd refuses them for subsystems, and sftp-server exits when its stdin closes.
 	stop := context.AfterFunc(ctx, func() { ss.Close() })
 	fail := func() { stop(); ss.Close() }
 	in, e := ss.StdinPipe()

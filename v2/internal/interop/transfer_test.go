@@ -4,10 +4,13 @@ package interop
 
 import (
 	"context"
+	"crypto/rand"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"nextshell.dev/v2/internal/transfer"
 )
@@ -90,5 +93,42 @@ func TestPackedUploadWithoutGNUMv(t *testing.T) {
 	}
 	if got := Sh(t, s, "cat ~/keep/data"); got != "precious\n" {
 		t.Fatalf("existing data changed: %q", got)
+	}
+}
+
+// Cancelling a packed upload kills the remote shell, which never gets to run its own cleanup trap:
+// the client removes the staging directory, and the destination never appears.
+func TestPackedUploadCancelLeavesNothing(t *testing.T) {
+	c := Shared(t, Debian)
+	_, s := sftpOn(t, c)
+	local := filepath.Join(t.TempDir(), "tree")
+	if e := os.MkdirAll(local, 0o755); e != nil {
+		t.Fatal(e)
+	}
+	big := make([]byte, 64<<20) // random: gzip cannot shrink it, so the transfer outlasts the cancel
+	rand.Read(big)
+	if e := os.WriteFile(filepath.Join(local, "big"), big, 0o644); e != nil {
+		t.Fatal(e)
+	}
+	Sh(t, s, "rm -rf ~/cancelled")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	start := time.Now()
+	err := transfer.UploadPacked(ctx, s, local, "/home/tester/cancelled", func(n int64) {
+		if n > 1<<20 {
+			cancel()
+		}
+	})
+	if err == nil || time.Since(start) > 10*time.Second {
+		t.Fatalf("err=%v after %v", err, time.Since(start))
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		left := strings.TrimSpace(Sh(t, s, "ls -A ~ | grep -E 'nextshell-pack|^cancelled$' || true"))
+		if left == "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("cancelled upload left %q behind", left)
+		}
 	}
 }
