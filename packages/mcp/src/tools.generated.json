@@ -91,6 +91,14 @@
             "additionalProperties": false,
             "description": "Wait until this appears in the new output.",
             "properties": {
+              "on": {
+                "description": "`stream` (default): the new output after the cursor. `screen`: the rendered screen, polled about ten times a second, for full-screen programs (htop, vim, less) whose output is cursor movement and not text; sinceCursor is ignored.",
+                "enum": [
+                  "stream",
+                  "screen"
+                ],
+                "type": "string"
+              },
               "pattern": {
                 "description": "A substring, or a Go (RE2) regular expression when it starts with `re:` (^ and $ match at line boundaries). Max 200 characters.",
                 "maxLength": 200,
@@ -352,6 +360,35 @@
           "allowSensitive": {
             "description": "Set only after the user agreed that credential files or the environment may be touched.",
             "type": "boolean"
+          },
+          "input": {
+            "description": "Ordered steps instead of `text` and `keys`: strings (typed with the same escapes as `text`) and { key } items, so [{\"key\":\"Ctrl-b\"}, \"%\"] is tmux's split in one call.",
+            "items": {
+              "oneOf": [
+                {
+                  "description": "Text to type.",
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "key": {
+                      "description": "A named key: Enter, Esc, Tab, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1-F12, Ctrl-a to Ctrl-z.",
+                      "maxLength": 16,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "key"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 64,
+            "type": "array"
           },
           "keys": {
             "description": "Named keys typed after `text`, in order.",

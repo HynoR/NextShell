@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -57,8 +59,31 @@ var keyNames = func() map[string]string {
 // maxTyped is the most one session_send_text call may type.
 const maxTyped = 4 << 10
 
-// Keystrokes expands the escapes of text (\r \n \t \e \xHH \\) and appends the named keys.
-func Keystrokes(text string, keys []string) (string, error) {
+// InputItem is one step of session_send_text's ordered input: text, or a named key.
+type InputItem struct{ Text, Key string }
+
+func (i *InputItem) UnmarshalJSON(b []byte) error {
+	if e := json.Unmarshal(b, &i.Text); e == nil {
+		return nil
+	}
+	var o struct {
+		Key string `json:"key"`
+	}
+	if e := json.Unmarshal(b, &o); e != nil || o.Key == "" {
+		return errors.New(`an input item is a string or {"key": "Ctrl-b"}`)
+	}
+	i.Key = o.Key
+	return nil
+}
+func (i InputItem) MarshalJSON() ([]byte, error) {
+	if i.Key != "" {
+		return json.Marshal(map[string]string{"key": i.Key})
+	}
+	return json.Marshal(i.Text)
+}
+
+// expandEscapes interprets \r \n \t \e \xHH and \\ in text.
+func expandEscapes(text string) string {
 	var b strings.Builder
 	for i := 0; i < len(text); i++ {
 		if text[i] != '\\' || i+1 >= len(text) {
@@ -92,10 +117,20 @@ func Keystrokes(text string, keys []string) (string, error) {
 			b.WriteByte(text[i])
 		}
 	}
-	for _, k := range keys {
-		seq, ok := keyNames[strings.ToLower(strings.TrimSpace(k))]
+	return b.String()
+}
+
+// TypeInput turns ordered input items into the bytes to type.
+func TypeInput(items []InputItem) (string, error) {
+	var b strings.Builder
+	for _, it := range items {
+		if it.Key == "" {
+			b.WriteString(expandEscapes(it.Text))
+			continue
+		}
+		seq, ok := keyNames[strings.ToLower(strings.TrimSpace(it.Key))]
 		if !ok {
-			return "", fmt.Errorf("unknown key %q", k)
+			return "", fmt.Errorf("unknown key %q", it.Key)
 		}
 		b.WriteString(seq)
 	}
@@ -106,6 +141,15 @@ func Keystrokes(text string, keys []string) (string, error) {
 		return "", fmt.Errorf("nothing to type")
 	}
 	return b.String(), nil
+}
+
+// Keystrokes expands the escapes of text and appends the named keys.
+func Keystrokes(text string, keys []string) (string, error) {
+	items := []InputItem{{Text: text}}
+	for _, k := range keys {
+		items = append(items, InputItem{Key: k})
+	}
+	return TypeInput(items)
 }
 
 // typedLine follows what has been typed into a session since its last Enter, so that a command typed

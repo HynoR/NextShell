@@ -44,7 +44,34 @@ func joinPath(path, key string) string {
 }
 func intOf(v any) (int, bool) { n, ok := v.(int); return n, ok }
 
+// jsonKind names the JSON type of a decoded value.
+func jsonKind(v any) string {
+	switch v.(type) {
+	case string:
+		return "string"
+	case json.Number:
+		return "integer"
+	case bool:
+		return "boolean"
+	case []any:
+		return "array"
+	case map[string]any:
+		return "object"
+	}
+	return "null"
+}
+
 func validateValue(schema map[string]any, v any, path string, partial bool) error {
+	if alts, ok := schema["oneOf"].([]map[string]any); ok { // alternatives of different JSON types
+		var kinds []string
+		for _, alt := range alts {
+			if alt["type"] == jsonKind(v) {
+				return validateValue(alt, v, path, partial)
+			}
+			kinds = append(kinds, fmt.Sprint(alt["type"]))
+		}
+		return fmt.Errorf("%s must be a %s", path, strings.Join(kinds, " or "))
+	}
 	switch schema["type"] {
 	case "object":
 		obj, ok := v.(map[string]any)

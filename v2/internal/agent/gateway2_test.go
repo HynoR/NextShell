@@ -27,6 +27,7 @@ type rich struct {
 	open     func(ctx context.Context, host string, ua UserAction) (string, error)
 	opens    atomic.Int32
 	typing   bool
+	screen   string      // what Read returns; "screen" when empty
 	alt      atomic.Bool // the session shows a full-screen program
 	gated    atomic.Bool
 }
@@ -52,7 +53,15 @@ func (r *rich) SaveCommand(c Command) (Command, error) {
 	r.mark(fmt.Sprintf("save:%s|%s|%s|%s", c.ID, c.Name, c.Command, c.Group))
 	return c, nil
 }
-func (r *rich) Read(string) (string, error) { return "screen", nil }
+func (r *rich) Read(string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.screen != "" {
+		return r.screen, nil
+	}
+	return "screen", nil
+}
+func (r *rich) draw(s string) { r.mu.Lock(); r.screen = s; r.mu.Unlock() }
 func (r *rich) Output(id string, since int64) (Output, error) {
 	if id == "local" {
 		return Output{}, nil
@@ -909,5 +918,78 @@ func TestHostListIsSortedByNameIgnoringCase(t *testing.T) {
 	page := data(t, call(g, "o", "host_list", m{"limit": 2, "offset": 2}))["hosts"].([]Host)
 	if len(page) != 2 || page[0].ID != "5" || page[1].ID != "3" {
 		t.Fatal(page)
+	}
+}
+
+// waitFor can watch the rendered screen, which is how a full-screen program (htop, vim) shows its state.
+func TestWaitForOnTheScreen(t *testing.T) {
+	b := newRich()
+	g := New(b, nil)
+	b.draw("loading...")
+	go func() { time.Sleep(250 * time.Millisecond); b.draw("CPU[|||   ] 12%\nPID USER  password=TOPSECRET\n") }()
+	started := time.Now()
+	d := data(t, call(g, "o", "session_read", m{"target": "s1", "sinceCursor": "0", "waitFor": m{"pattern": "PID USER", "on": "screen", "timeoutSec": 10}}))
+	if d["matched"] != true || d["timedOut"] != false || d["mode"] != "screen" || time.Since(started) > 5*time.Second || !strings.Contains(d["content"].(string), "CPU[|||   ] 12%") {
+		t.Fatal(d)
+	}
+	if strings.Contains(d["content"].(string), "TOPSECRET") {
+		t.Fatal("the screen must be redacted", d)
+	}
+	// the default is the stream, which holds no screen text; and a pattern cannot probe redacted text
+	for _, w := range []m{{"pattern": "PID USER", "timeoutSec": 1}, {"pattern": "PID USER", "on": "stream", "timeoutSec": 1}, {"pattern": "TOPSECRET", "on": "screen", "timeoutSec": 1}} {
+		if d = data(t, call(g, "o", "session_read", m{"target": "s1", "waitFor": w})); d["matched"] != false || d["timedOut"] != true {
+			t.Fatal(w, d)
+		}
+	}
+	if d = data(t, call(g, "o", "session_read", m{"target": "local", "waitFor": m{"pattern": "CPU", "on": "screen"}})); d["matched"] != true {
+		t.Fatal("local shells too", d)
+	}
+	if c := code(t, call(g, "o", "session_read", m{"target": "s1", "waitFor": m{"pattern": "x", "on": "framebuffer"}})); c != "invalid_argument" {
+		t.Fatal(c)
+	}
+}
+
+// input types text and named keys in the order given.
+func TestSendTextInputTypesStepsInOrder(t *testing.T) {
+	b := newRich()
+	g := New(b, nil)
+	g.SetAutoApprove(UntilExit)
+	b.alt.Store(true) // a tmux session
+	last := func() string { c := b.Calls(); return c[len(c)-1] }
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{`[{"key":"Ctrl-b"},"%"]`, `control:"\x02%"`},
+		{`["ls -la",{"key":"Enter"}]`, `control:"ls -la\r"`},
+		{`[{"key":"Esc"},":wq\\r"]`, `control:"\x1b:wq\r"`},
+		{`["a",{"key":"Up"},"b",{"key":"ctrl-c"}]`, `control:"a\x1b[Ab\x03"`},
+		{`[{"key":"Ctrl-b"},{"key":"Left"}]`, `control:"\x02\x1b[D"`},
+	} {
+		r := g.Call(t.Context(), "o", "c", "session_send_text", json.RawMessage(`{"target":"s1","input":`+tc.input+`}`))
+		if !r.OK || last() != tc.want {
+			t.Errorf("%s: %+v, typed %s, want %s", tc.input, r, last(), tc.want)
+		}
+	}
+	for _, tc := range []struct{ args, want string }{
+		{`{"target":"s1","input":[{"key":"Hyper"}]}`, `unknown key "Hyper"`},
+		{`{"target":"s1","input":[{"kee":"Enter"}]}`, `unknown argument "input[0].kee"`},
+		{`{"target":"s1","input":[5]}`, "input[0] must be a string or object"},
+		{`{"target":"s1","input":[]}`, "nothing to type"},
+		{`{"target":"s1","input":["a"],"text":"b"}`, "either input, or text and keys"},
+		{`{"target":"s1","input":["a"],"keys":["Enter"]}`, "either input, or text and keys"},
+		{`{"target":"s1","input":[{"key":""}]}`, "input[0].key must not be empty"},
+	} {
+		r := g.Call(t.Context(), "o", "c", "session_send_text", json.RawMessage(tc.args))
+		if r.OK || r.Error.Code != "invalid_argument" || !strings.Contains(r.Error.Message, tc.want) {
+			t.Errorf("%s: %+v, want %q", tc.args, r, tc.want)
+		}
+	}
+	// the typed lines are judged like text: a forbidden line is refused, a risky one waits for a person
+	if r := g.Call(t.Context(), "o", "c", "session_send_text", json.RawMessage(`{"target":"s1","input":["reboot",{"key":"Enter"}]}`)); r.OK || r.Error.Code != "forbidden" {
+		t.Errorf("%+v", r)
+	}
+	if r := g.Call(t.Context(), "o", "c", "session_send_text", json.RawMessage(`{"target":"s1","input":["sudo ls",{"key":"Enter"}]}`)); !r.OK || r.Data.(map[string]any)["tier"] != "risky" {
+		t.Errorf("%+v", r)
 	}
 }

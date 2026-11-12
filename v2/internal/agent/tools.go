@@ -86,6 +86,7 @@ var specs = []ToolSpec{
 				"properties": map[string]any{
 					"pattern":    name("A substring, or a Go (RE2) regular expression when it starts with `re:` (^ and $ match at line boundaries). Max 200 characters.", 200),
 					"timeoutSec": integer("How long to wait, 1-60 (default 30).", 1, 60),
+					"on":         enum("`stream` (default): the new output after the cursor. `screen`: the rendered screen, polled about ten times a second, for full-screen programs (htop, vim, less) whose output is cursor movement and not text; sinceCursor is ignored.", "stream", "screen"),
 				},
 			},
 		}),
@@ -161,9 +162,14 @@ var specs = []ToolSpec{
 			"Every complete line (ended by Enter) is classified like an exec command: forbidden lines are refused with `forbidden`, risky lines are always a manual approval, credential files need allowSensitive; a line built with history, completion or cursor keys cannot be inspected and counts as risky. " +
 			"The response carries the `cursor` from before the keystrokes: pass it as session_read's sinceCursor (with waitFor) to read the result. If the user pressed a key in that tab within the last 3 seconds the call fails with `user_typing`; retry later.",
 		Schema: object([]string{"target"}, map[string]any{
-			"target":         targetProp,
-			"text":           str("Text to type. Include \\r (or a real newline) to press Enter.", 4096),
-			"keys":           map[string]any{"type": "array", "description": "Named keys typed after `text`, in order.", "maxItems": 64, "items": map[string]any{"type": "string", "maxLength": 16}},
+			"target": targetProp,
+			"text":   str("Text to type. Include \\r (or a real newline) to press Enter.", 4096),
+			"keys":   map[string]any{"type": "array", "description": "Named keys typed after `text`, in order.", "maxItems": 64, "items": map[string]any{"type": "string", "maxLength": 16}},
+			"input": map[string]any{"type": "array", "maxItems": 64, "description": "Ordered steps instead of `text` and `keys`: strings (typed with the same escapes as `text`) and { key } items, so [{\"key\":\"Ctrl-b\"}, \"%\"] is tmux's split in one call.",
+				"items": map[string]any{"oneOf": []map[string]any{
+					str("Text to type.", 4096),
+					object([]string{"key"}, map[string]any{"key": name("A named key: Enter, Esc, Tab, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, F1-F12, Ctrl-a to Ctrl-z.", 16)}),
+				}}},
 			"allowSensitive": boolean("Set only after the user agreed that credential files or the environment may be touched."),
 			"reason":         str("Shown to the user in the approval prompt.", 300),
 			"requestId":      requestProp,

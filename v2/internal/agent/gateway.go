@@ -105,30 +105,32 @@ type Backend interface {
 type WaitFor struct {
 	Pattern    string `json:"pattern"`
 	TimeoutSec int    `json:"timeoutSec,omitempty"`
+	On         string `json:"on,omitempty"` // "stream" (default) or "screen"
 }
 type Arguments struct {
-	Target         string   `json:"target,omitempty"`
-	Query          string   `json:"query,omitempty"`
-	Command        string   `json:"command,omitempty"`
-	Name           string   `json:"name,omitempty"`
-	Group          *string  `json:"group,omitempty"`
-	ID             string   `json:"id,omitempty"`
-	WorkspaceID    string   `json:"workspaceId,omitempty"`
-	AppendCR       *bool    `json:"appendCr,omitempty"`
-	Signal         string   `json:"signal,omitempty"`
-	RequestID      string   `json:"requestId,omitempty"`
-	Reason         string   `json:"reason,omitempty"`
-	AllowSensitive bool     `json:"allowSensitive,omitempty"`
-	TimeoutSec     int      `json:"timeoutSec,omitempty"`
-	Limit          int      `json:"limit,omitempty"`
-	Offset         int      `json:"offset,omitempty"`
-	Mode           string   `json:"mode,omitempty"`
-	Lines          int      `json:"lines,omitempty"`
-	StripANSI      *bool    `json:"stripAnsi,omitempty"`
-	Text           string   `json:"text,omitempty"`
-	Keys           []string `json:"keys,omitempty"`
-	WaitFor        *WaitFor `json:"waitFor,omitempty"`
-	SinceCursor    string   `json:"sinceCursor,omitempty"`
+	Target         string      `json:"target,omitempty"`
+	Query          string      `json:"query,omitempty"`
+	Command        string      `json:"command,omitempty"`
+	Name           string      `json:"name,omitempty"`
+	Group          *string     `json:"group,omitempty"`
+	ID             string      `json:"id,omitempty"`
+	WorkspaceID    string      `json:"workspaceId,omitempty"`
+	AppendCR       *bool       `json:"appendCr,omitempty"`
+	Signal         string      `json:"signal,omitempty"`
+	RequestID      string      `json:"requestId,omitempty"`
+	Reason         string      `json:"reason,omitempty"`
+	AllowSensitive bool        `json:"allowSensitive,omitempty"`
+	TimeoutSec     int         `json:"timeoutSec,omitempty"`
+	Limit          int         `json:"limit,omitempty"`
+	Offset         int         `json:"offset,omitempty"`
+	Mode           string      `json:"mode,omitempty"`
+	Lines          int         `json:"lines,omitempty"`
+	StripANSI      *bool       `json:"stripAnsi,omitempty"`
+	Text           string      `json:"text,omitempty"`
+	Keys           []string    `json:"keys,omitempty"`
+	Input          []InputItem `json:"input,omitempty"`
+	WaitFor        *WaitFor    `json:"waitFor,omitempty"`
+	SinceCursor    string      `json:"sinceCursor,omitempty"`
 }
 type ToolError struct {
 	Code    string `json:"code"`
@@ -624,7 +626,15 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		}
 	case "session_send_text":
 		var e error
-		if data, e = Keystrokes(a.Text, a.Keys); e != nil {
+		if len(a.Input) > 0 {
+			if a.Text != "" || len(a.Keys) > 0 {
+				return fail("invalid_argument", "pass either input, or text and keys")
+			}
+			data, e = TypeInput(a.Input)
+		} else {
+			data, e = Keystrokes(a.Text, a.Keys)
+		}
+		if e != nil {
 			return fail("invalid_argument", e.Error())
 		}
 		g.mu.Lock()
@@ -884,7 +894,7 @@ func (g *Gateway) cancel(owner, id string) Result {
 	return ok(map[string]any{"requestId": id, "cancelled": true})
 }
 
-const readPoll = 150 * time.Millisecond
+const readPoll = 100 * time.Millisecond
 
 // redactContext is how much output before a cursor is judged together with what comes after it.
 const redactContext = 8 << 10 // more than any private key
@@ -968,8 +978,9 @@ func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 		}
 		return nil
 	}
-	if (since < 0 && !wait) || !probe.Supported {
-		if since >= 0 {
+	onScreen := wait && a.WaitFor.On == "screen"
+	if (since < 0 && !wait) || !probe.Supported || onScreen {
+		if since >= 0 && !probe.Supported {
 			return fail("unavailable", "local shells have no output stream; omit sinceCursor")
 		}
 		for {
@@ -982,6 +993,9 @@ func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 			timedOut := wait && !matched && !time.Now().Before(deadline)
 			if !wait || matched || timedOut {
 				content, truncated := tail(text, lines)
+				if now, e := g.backend.Output(a.Target, -1); e == nil {
+					probe = now // the cursor of what the screen shows now
+				}
 				data := map[string]any{"sessionId": a.Target, "content": content, "mode": "screen", "truncated": truncated, "cursor": strconv.FormatInt(probe.Cursor, 10)}
 				if wait {
 					data["matched"], data["timedOut"] = matched, timedOut
