@@ -1,0 +1,8 @@
+{
+  "name": "NextShell",
+  "identifier": "io.github.hynor.nextshell",
+  "version": "2.0.0-dev",
+  "main": "./cmd/nextshell",
+  "icon": "packaging/icon.png",
+  "macos": { "signingIdentity": "-" }
+}
