@@ -181,7 +181,7 @@ func (a *App) pendingStrip(c *ui.Context, pending []model.Connection) {
 	t := c.Theme()
 	for _, cc := range pending {
 		ui.Row(c.Key("pending-"+cc.ID)).Height(28).Padding(0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Background(t.Background).Border(1, t.Border).Label("连接中 " + cc.Name).Children(func() {
-			ui.Box(c).Size(3, 14).Radius(1.5).Background(hostColor(&Session{Connection: cc}))
+			ui.Box(c).Size(3, 14).Radius(1.5).Background(hostColor(cc))
 			ui.Box(c).Size(6, 6).Radius(3).Background(t.Warning)
 			ui.Text(c, cc.Name).SingleLine().MaxWidth(180).FontSize(13)
 			ui.Text(c, "连接中").FontSize(11).TextColor(t.Warning).SingleLine()

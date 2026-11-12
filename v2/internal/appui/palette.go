@@ -111,7 +111,7 @@ func (a *App) paletteItems() []paletteItem {
 		actions = append(actions, struct {
 			title string
 			run   func()
-		}{"云同步", func() { a.openSettings("同步") }})
+		}{"云同步", func() { a.openSettings("云同步") }})
 	}
 	if len(a.editor.documents) > 0 {
 		actions = append(actions, struct {

@@ -40,13 +40,13 @@ type Entry struct {
 	Delete               string          `json:"deleteMode"`
 	Monitor              bool            `json:"monitorSession"`
 	KeyRef               *KeyRef         `json:"sshKeyRef,omitempty"`
-	Credential           *CredentialRef  `json:"credential,omitempty"` // the shared credential the user and auth above come from
+	Credential           *CredentialRef  `json:"credential,omitempty"` // the shared credential the host logs in with; user and auth above stay the host's own
 	NeedsKeyRebind       bool            `json:"-"`
 	PasswordUnavailable  bool            `json:"-"`
 }
 
-// CredentialRef carries a shared credential with each host using it; its password follows the
-// same rule as a host's (encrypted exports only).
+// CredentialRef carries a shared credential, by reference, with each host using it: the host's own
+// user and auth are not filled from it. Its password follows a host's rule (encrypted exports only).
 type CredentialRef struct {
 	Name     string  `json:"name"`
 	Username string  `json:"username"`
@@ -185,7 +185,7 @@ func Decode(raw []byte, password *string) (File, error) {
 		if (v.AuthType == "password" || v.AuthType == "interactive") && v.Password == nil {
 			out.Connections[i].PasswordUnavailable = true
 		}
-		if v.Name == "" || v.Host == "" || v.Username == "" || v.Port < 1 || v.Port > 65535 {
+		if v.Name == "" || v.Host == "" || v.Username == "" && v.Credential == nil || v.Port < 1 || v.Port > 65535 {
 			return out, errors.New("invalid connection in export")
 		}
 		switch v.AuthType {
@@ -316,6 +316,16 @@ func FromEntry(e Entry, keys []model.Key) model.Connection {
 			}
 		} else {
 			c.Auth = "key"
+		}
+	}
+	// A credential whose key is not here cannot be created; a host with no user of its own then logs in
+	// as the credential would, its key marked missing until one is imported.
+	if r := e.Credential; r != nil && c.User == "" {
+		if _, ok := FromCredential(*r, keys); !ok {
+			c.User, c.Auth, c.KeyID, c.NeedsKeyRebind, c.OriginalAuth = r.Username, "key", "", true, "key"
+			if r.KeyRef != nil {
+				c.SourceKeyRef = &model.KeyReference{Name: r.KeyRef.Name, Fingerprint: r.KeyRef.Fingerprint}
+			}
 		}
 	}
 	if c.Encoding == "" {

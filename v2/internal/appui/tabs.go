@@ -1,7 +1,6 @@
 package appui
 
 import (
-	"hash/fnv"
 	"slices"
 	"strings"
 	"time"
@@ -85,15 +84,6 @@ func (a *App) tabBar(c *ui.Context) {
 	})
 }
 
-// hostColors tell hosts apart on tabs; a host keeps its color across runs.
-var hostColors = []string{"#4d9fff", "#a78bfa", "#f472b6", "#2dd4bf", "#fb923c", "#818cf8", "#38bdf8", "#e879f9"}
-
-func hostColor(s *Session) ui.Color {
-	h := fnv.New32a()
-	h.Write([]byte(orDefault(s.Connection.ID, s.Connection.User+"@"+s.Connection.Address())))
-	return ui.Hex(hostColors[h.Sum32()%uint32(len(hostColors))])
-}
-
 func (a *App) tabStrip(c *ui.Context) {
 	t := c.Theme()
 	ui.ScrollHorizontal(c).Height(38).MinWidth(0).Shrink(1).Children(func() {
@@ -134,7 +124,7 @@ func (a *App) tabStrip(c *ui.Context) {
 						color = t.TextMuted
 					}
 					if !s.Local {
-						ui.Box(c).Size(3, 14).Radius(1.5).Background(hostColor(s))
+						ui.Box(c).Size(3, 14).Radius(1.5).Background(a.hostColor(s.Connection))
 					}
 					label, status := a.sessionStatus(c, s)
 					ui.Box(c).Size(6, 6).Radius(3).Background(status).Label("状态 " + label)

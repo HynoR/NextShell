@@ -117,6 +117,8 @@ func New(p Platform) *App {
 	a := &App{P: p, Active: -1}
 	a.layout.load(p.UIState("layout"))
 	a.Prefs = p.Preferences()
+	a.layout.leftHidden = a.layout.leftHidden || a.Prefs.FoldLeft
+	a.layout.benchHidden = a.layout.benchHidden || a.Prefs.FoldBench
 	a.settings.load(a.Prefs)
 	a.tabs.started = map[string]time.Time{}
 	a.hosts.init()
@@ -250,7 +252,7 @@ func (a *App) remote() *Session {
 	return nil
 }
 func (a *App) theme(c *ui.Context) {
-	c.SetTheme(designTheme(c.Theme(), a.Prefs.Appearance, c.Preferences().HighContrast))
+	c.SetTheme(designTheme(c.Theme(), a.Prefs.Appearance, a.Prefs.Accent, c.Preferences().HighContrast))
 }
 func (a *App) openSettings(section string) {
 	if section != "" {

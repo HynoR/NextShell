@@ -80,7 +80,7 @@ func (a *App) syncIcon(c *ui.Context) {
 		b.TextColor(t.Danger)
 	}
 	if b.Clicked() {
-		a.openSettings("同步")
+		a.openSettings("云同步")
 	}
 }
 

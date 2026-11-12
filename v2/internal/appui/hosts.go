@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"hash/fnv"
 	"slices"
 	"strconv"
 	"strings"
@@ -163,6 +164,29 @@ func (a *App) key(id string) (model.Key, bool) {
 	return model.Key{}, false
 }
 
+// hostColors are the colors a host can be given, named by hostColorNames. A host without one gets one
+// of them by its id, the same across runs.
+var hostColors = []string{"#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#a855f7", "#ec4899"}
+var hostColorNames = []string{"红", "橙", "黄", "绿", "青", "蓝", "紫", "粉"}
+
+// hostColor is the bar that marks cc on its tab and tile.
+func hostColor(cc model.Connection) ui.Color {
+	if cc.Color != "" {
+		return ui.Hex(cc.Color)
+	}
+	h := fnv.New32a()
+	h.Write([]byte(orDefault(cc.ID, cc.User+"@"+cc.Address())))
+	return ui.Hex(hostColors[h.Sum32()%uint32(len(hostColors))])
+}
+
+// hostColor is hostColor of the host as saved now: a tab's copy is from when it connected.
+func (a *App) hostColor(cc model.Connection) ui.Color {
+	if h, ok := a.host(cc.ID); ok && cc.ID != "" {
+		cc = h
+	}
+	return hostColor(cc)
+}
+
 // resolved is cc with the user and authentication it connects with: its credential's, if it uses one.
 func (a *App) resolved(cc model.Connection) model.Connection {
 	if cr, ok := a.credential(cc.CredentialID); ok {
@@ -289,7 +313,7 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 			a.later(func() { a.openExport([]string{cc.ID}) })
 		}
 		if a.Cloud && m.Item("复制到云工作区…").Chosen() {
-			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("同步") })
+			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("云同步") })
 		}
 		m.Separator()
 		if m.Item("移入回收站").Danger().Chosen() {
@@ -580,6 +604,7 @@ func (a *App) hostForm(c *ui.Context) {
 	section(3, "标签与备注", func() {
 		field(c, "标签", &e.tags).Description("用逗号分隔")
 		toggle(c, "收藏", &e.edit.Favorite)
+		swatches(c, "颜色", &e.edit.Color, append([]string{""}, hostColors...), append([]string{"自动"}, hostColorNames...), append([]string{""}, hostColors...))
 		ui.Field(c, "备注", func() { ui.TextArea(c, &e.edit.Notes).Label("备注").Height(60).Grow(1) }).FillWidth()
 	})
 	if e.err != "" {

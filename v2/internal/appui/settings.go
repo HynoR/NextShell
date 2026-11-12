@@ -25,9 +25,10 @@ type settingsState struct {
 	agent agentState
 }
 
+// settingsSections follow the 1.x settings.
 var settingsSections = []struct{ id, icon string }{
-	{"通用", "settings"}, {"终端", "terminal"}, {"SSH", "server"},
-	{"同步", "cloud"}, {"Agent", "agent"}, {"回收站", "trash"}, {"网络工具", "diagnostics"}, {"关于", "info"},
+	{"窗口行为", "panel-left"}, {"文件传输", "transfer"}, {"远端编辑", "edit"}, {"终端", "terminal"},
+	{"网络工具", "diagnostics"}, {"云同步", "cloud"}, {"回收站", "trash"}, {"Agent", "agent"}, {"关于", "info"},
 }
 
 func (s *settingsState) load(v model.Preferences) {
@@ -37,7 +38,7 @@ func (s *settingsState) load(v model.Preferences) {
 	s.scrollback = strconv.Itoa(v.ScrollbackMiB)
 	s.keepalive = strconv.Itoa(v.KeepaliveSeconds)
 	if s.section == "" {
-		s.section = "通用"
+		s.section = "窗口行为"
 	}
 	if s.hosts == nil {
 		s.hosts = map[string]bool{}
@@ -128,8 +129,10 @@ func (a *App) savePreferences(p model.Preferences) {
 	for _, s := range a.Tabs {
 		s.Terminal.SetTheme(l, d)
 	}
-	if a.wakeMain != nil {
-		a.wakeMain()
+	for _, wake := range []func(){a.wakeMain, a.wakeManager, a.wakeEditor} { // the main color and appearance apply at once
+		if wake != nil {
+			wake()
+		}
 	}
 }
 
@@ -145,7 +148,7 @@ func (a *App) SettingsView(c *ui.Context) {
 		ui.Column(c).Width(180).FillHeight().Padding(8).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 			ui.Sidebar(c.Key("settings-nav"), &s.section, func() {
 				for _, v := range settingsSections {
-					if v.id == "同步" && !a.Cloud {
+					if v.id == "云同步" && !a.Cloud {
 						continue
 					}
 					ui.SidebarItem(c, v.id, appIcons[v.icon], v.id)
@@ -178,13 +181,15 @@ func (a *App) SettingsView(c *ui.Context) {
 
 func (a *App) settingsSection(c *ui.Context) {
 	switch a.settings.section {
-	case "通用":
-		a.generalSettings(c)
+	case "窗口行为":
+		a.windowSettings(c)
+	case "文件传输":
+		a.transferSettings(c)
+	case "远端编辑":
+		a.editSettings(c)
 	case "终端":
 		a.terminalSettings(c)
-	case "SSH":
-		a.sshSettings(c)
-	case "同步":
+	case "云同步":
 		a.cloudSettings(c)
 	case "Agent":
 		a.agentSettings(c)
@@ -211,7 +216,7 @@ func actions(c *ui.Context, fn func()) {
 	ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(fn)
 }
 
-func (a *App) generalSettings(c *ui.Context) {
+func (a *App) windowSettings(c *ui.Context) {
 	v := &a.settings.draft
 	group(c, "外观", func() {
 		modes := []string{"跟随系统", "浅色", "深色"}
@@ -221,6 +226,18 @@ func (a *App) generalSettings(c *ui.Context) {
 				v.Appearance = modes[i]
 			}
 		}).FillWidth()
+		var ids, names, colors []string
+		for _, p := range accentPresets {
+			ids, names, colors = append(ids, p.id), append(names, p.name), append(colors, p.light[0])
+			if c.Theme().Dark {
+				colors[len(colors)-1] = p.dark[0]
+			}
+		}
+		chosen := accentFor(v.Accent).id
+		swatches(c, "主色", &chosen, ids, names, colors)
+		if chosen != accentFor(v.Accent).id {
+			v.Accent = chosen
+		}
 	})
 	group(c, "窗口", func() {
 		confirm := !v.NoCloseConfirm
@@ -229,11 +246,31 @@ func (a *App) generalSettings(c *ui.Context) {
 		}
 		toggle(c, "启动时恢复标签", &v.RestoreTabs)
 		muted(c, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
+		toggle(c, "左栏默认折叠", &v.FoldLeft)
+		toggle(c, "底部工作区默认折叠", &v.FoldBench)
+		muted(c, "每次启动时折叠；不勾选时保持上次退出时的样子")
 	})
-	group(c, "文件", func() {
+	if a.settings.err != "" {
+		ui.Text(c, a.settings.err).TextColor(c.Theme().Danger)
+	}
+	actions(c, func() {
+		if ui.Button(c, "恢复默认设置…").Clicked() {
+			a.confirm("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
+		}
+	})
+}
+
+func (a *App) transferSettings(c *ui.Context) {
+	v := &a.settings.draft
+	group(c, "", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
 		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
-		a.localPath(c, "外部编辑器", "系统文本编辑器", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
+	})
+}
+
+func (a *App) editSettings(c *ui.Context) {
+	group(c, "", func() {
+		a.localPath(c, "外部编辑器", "系统文本编辑器", &a.settings.draft.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
 	})
 }
 
@@ -284,14 +321,7 @@ func (a *App) terminalSettings(c *ui.Context) {
 			"不注入，命令面板里也不提供",
 		}[i]).FillWidth()
 	})
-	if s.err != "" {
-		ui.Text(c, s.err).TextColor(c.Theme().Danger)
-	}
-	actions(c, func() {
-		if ui.Button(c, "恢复默认设置…").Clicked() {
-			a.confirm("恢复默认设置", "外观、终端、SSH 和文件相关的设置都会恢复为默认值。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
-		}
-	})
+	a.sshSettings(c)
 }
 
 // colorField edits a #rrggbb preference with a color well.
@@ -304,10 +334,11 @@ func colorField(c *ui.Context, label string, hex *string) {
 	}).FillWidth()
 }
 
+// sshSettings are the terminal page's connection groups.
 func (a *App) sshSettings(c *ui.Context) {
 	s := &a.settings
 	v := &s.draft
-	group(c, "心跳", func() {
+	group(c, "SSH 心跳", func() {
 		toggle(c, "默认发送心跳", &v.KeepaliveEnabled)
 		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
 	})

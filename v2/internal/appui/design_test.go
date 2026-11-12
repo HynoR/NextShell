@@ -27,41 +27,62 @@ func contrast(a, b ui.Color) float64 {
 }
 
 // Text that sits on the accent fill or tint, in the places that use them: selected rows
-// of tables and the sidebar, the palette, the host dialog's sections and the editor's tabs.
+// of tables and the sidebar, the palette, the host dialog's sections and the editor's tabs,
+// with every accent preset.
 func TestSelectedTextContrastInBothThemes(t *testing.T) {
-	for _, dark := range []bool{false, true} {
-		base := ui.LightTheme()
-		if dark {
-			base = ui.DarkTheme()
-		}
-		th := designTheme(base, "跟随系统", false)
-		// What mygo fades the fill to in a window that is not active (Theme.inactiveAccent).
-		far := ui.RGB(0, 0, 0)
-		if luminance(th.AccentText) < 0.5 {
-			far = ui.RGB(255, 255, 255)
-		}
-		inactive := th.AccentText.Mix(far, 0.55)
-		check := func(what string, fg, bg ui.Color) {
-			t.Helper()
-			if r := contrast(fg, bg); r < 4.5 {
-				t.Errorf("dark=%v %s: %.2f:1, want at least 4.5:1", dark, what, r)
+	for _, preset := range accentPresets {
+		for _, dark := range []bool{false, true} {
+			accent := preset.id
+			base := ui.LightTheme()
+			if dark {
+				base = ui.DarkTheme()
 			}
+			th := designTheme(base, "跟随系统", accent, false)
+			// What mygo fades the fill to in a window that is not active (Theme.inactiveAccent).
+			far := ui.RGB(0, 0, 0)
+			if luminance(th.AccentText) < 0.5 {
+				far = ui.RGB(255, 255, 255)
+			}
+			inactive := th.AccentText.Mix(far, 0.55)
+			check := func(what string, fg, bg ui.Color) {
+				t.Helper()
+				if r := contrast(fg, bg); r < 4.5 {
+					t.Errorf("%s dark=%v %s: %.2f:1, want at least 4.5:1", accent, dark, what, r)
+				}
+			}
+			for name, fill := range map[string]ui.Color{"accent": th.Accent, "hovered": th.AccentHover, "pressed": th.AccentPressed, "inactive window": inactive} {
+				check("selected row text on "+name, th.AccentText, fill)
+				check("selected row secondary text on "+name, mutedOnRow(th, true), fill)
+			}
+			for name, bg := range map[string]ui.Color{"surface": th.Surface, "background": th.Background} {
+				check("secondary text on "+name, mutedOnRow(th, false), bg)
+				for _, alpha := range []float32{.12, .15} {
+					tint := th.Accent.Alpha(alpha).Over(bg)
+					check("text on the accent tint over "+name, th.Text, tint)
+					if alpha == .15 {
+						check("accent ink on the accent tint over "+name, accentInk(th), tint)
+					}
+				}
+			}
+			check("accent ink on SurfaceHover", accentInk(th), th.SurfaceHover)
 		}
-		for name, fill := range map[string]ui.Color{"accent": th.Accent, "hovered": th.AccentHover, "pressed": th.AccentPressed, "inactive window": inactive} {
-			check("selected row text on "+name, th.AccentText, fill)
-			check("selected row secondary text on "+name, mutedOnRow(th, true), fill)
-		}
-		for name, bg := range map[string]ui.Color{"surface": th.Surface, "background": th.Background} {
-			check("secondary text on "+name, mutedOnRow(th, false), bg)
-			for _, alpha := range []float32{.12, .15} {
-				tint := th.Accent.Alpha(alpha).Over(bg)
-				check("text on the accent tint over "+name, th.Text, tint)
-				if alpha == .15 {
-					check("accent ink on the accent tint over "+name, accentInk(th), tint)
+	}
+}
+
+// Status text (已连接, 自动批准中, 缓存数据, the missing-key banner) on the surfaces it sits on and on
+// its own tint, as the pills and banners draw it, in the light theme.
+func TestStatusTextContrast(t *testing.T) {
+	{
+		th := designTheme(ui.LightTheme(), "浅色", "", false)
+		for name, fg := range map[string]ui.Color{"warning": th.Warning, "success": th.Success, "danger": th.Danger} {
+			for bgName, bg := range map[string]ui.Color{"white": ui.Hex("#ffffff"), "surface": th.Surface, "background": th.Background} {
+				for _, alpha := range []float32{0, .1, .14, .18} {
+					if r := contrast(fg, fg.Alpha(alpha).Over(bg)); r < 4.5 {
+						t.Errorf("%s on its %.2f tint over %s: %.2f:1, want at least 4.5:1", name, alpha, bgName, r)
+					}
 				}
 			}
 		}
-		check("accent ink on SurfaceHover", accentInk(th), th.SurfaceHover)
 	}
 }
 
@@ -74,7 +95,7 @@ func TestDesignThemesAndSystemPreferences(t *testing.T) {
 					base = ui.DarkTheme()
 				}
 				base.FontSize = 21
-				got := designTheme(base, mode, false)
+				got := designTheme(base, mode, "", false)
 				want := dark
 				if mode == "浅色" {
 					want = false
@@ -91,9 +112,15 @@ func TestDesignThemesAndSystemPreferences(t *testing.T) {
 			})
 		}
 	}
+	if got := designTheme(ui.DarkTheme(), "深色", "", false).Accent; got != ui.Hex("#4d9fff") {
+		t.Fatalf("default accent %v, want the 1.x blue", got)
+	}
+	if designTheme(ui.DarkTheme(), "深色", "gone", false).Accent != designTheme(ui.DarkTheme(), "深色", "", false).Accent {
+		t.Fatal("an unknown preset is not the default")
+	}
 	base := ui.DarkTheme()
 	base.TextMuted = ui.Hex("#ffffff")
-	if designTheme(base, "跟随系统", true).TextMuted != base.TextMuted {
+	if designTheme(base, "跟随系统", "", true).TextMuted != base.TextMuted {
 		t.Fatal("high contrast preference overwritten")
 	}
 }
