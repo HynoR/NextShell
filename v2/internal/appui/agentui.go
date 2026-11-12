@@ -39,6 +39,11 @@ func (a *App) raise(focus bool) {
 // agentActed records an agent call and, the first time in a run, tells the user once.
 func (a *App) agentActed(n *AgentNotice) {
 	a.agent.lastAt = a.now()
+	if n.Pending {
+		// The agent waits for a decision: say so, passively (no raise, no tab switch, no keyboard). 查看 opens
+		// the activity column, where the request can be approved; a later request replaces this toast.
+		a.addToast(ui.Toast{ID: "agent-pending", Title: "Agent 请求等待批准", Description: "在右侧活动栏的「Agent 活动」里批准或拒绝", Timeout: 10 * time.Second, Action: "查看", OnAction: func() { a.layout.rightOpen = true }})
+	}
 	if a.agent.noticed {
 		return
 	}

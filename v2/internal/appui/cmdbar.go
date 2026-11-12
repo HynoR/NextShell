@@ -12,7 +12,9 @@ import (
 // cmdbarState is the command bar under the terminal and its find bar.
 type cmdbarState struct {
 	text, draft string
-	at          int // the history entry shown, counted from the newest (1); 0 is the line being typed
+	owner       string              // the session the text is for: a line typed for one tab is never sent to another
+	drafts      map[string]cmdDraft // the lines waiting in the other tabs, until sent or the tab closes
+	at          int                 // the history entry shown, counted from the newest (1); 0 is the line being typed
 	finding     bool
 	find        string
 	searched    string         // the session and the text last searched
@@ -20,16 +22,87 @@ type cmdbarState struct {
 	focus       bool           // the next frame moves the keyboard focus into the bar
 }
 
-// commandBar sends a line to the session; ↑/↓ walk the saved history, as a shell does.
+// cmdDraft is what the command bar held for a tab it is not showing.
+type cmdDraft struct {
+	text    string
+	snippet *model.Command
+}
+
+// switchTo makes the bar's text the one of session id: the line left in the bar goes back to its own tab's
+// draft and id's comes in, so a command typed for one server is not sent to the next tab's.
+func (b *cmdbarState) switchTo(id string) {
+	if b.owner == id {
+		return
+	}
+	if b.drafts == nil {
+		b.drafts = map[string]cmdDraft{}
+	}
+	if b.owner != "" && b.text != "" {
+		b.drafts[b.owner] = cmdDraft{b.text, b.snippet}
+	}
+	d := b.drafts[id]
+	delete(b.drafts, id)
+	b.owner, b.text, b.snippet = id, d.text, d.snippet
+	b.at, b.draft = 0, ""
+}
+
+// forget drops what the bar holds for a closed session.
+func (b *cmdbarState) forget(id string) {
+	delete(b.drafts, id)
+	if b.owner == id {
+		b.owner, b.text, b.snippet = "", "", nil
+		b.at, b.draft = 0, ""
+	}
+}
+
+// rehome gives a reconnected session's line to its replacement.
+func (b *cmdbarState) rehome(old, next string) {
+	if b.owner == old {
+		b.owner = next
+	}
+	if d, ok := b.drafts[old]; ok {
+		delete(b.drafts, old)
+		b.drafts[next] = d
+	}
+}
+
+// commandBar sends a line to the session; ↑/↓ walk the saved history, as a shell does. It names its
+// target, so there is no doubt which server a line goes to.
 func (a *App) commandBar(c *ui.Context, s *Session) {
 	t := c.Theme()
 	b := &a.cmdbar
+	b.switchTo(s.ID)
+	title := a.tabTitle(s)
+	exited := a.P.Exited(s.ID)
+	status, _ := a.sessionStatus(c, s)
+	placeholder := "输入命令，回车发送，↑/↓ 历史"
+	switch {
+	case status == "连接中":
+		placeholder = "正在重新连接…"
+	case exited && s.Local:
+		placeholder = "终端已退出，回车重新打开"
+	case exited:
+		placeholder = "连接已断开，回车重新连接"
+	}
 	ui.Row(c).FillWidth().Height(36).Padding(0, 8).Gap(6).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
+		if !s.Local {
+			ui.Box(c).Size(3, 14).Radius(1.5).Background(a.hostColor(s.Connection))
+		}
+		ui.Text(c, "→ "+title).FontSize(12).TextColor(t.TextMuted).SingleLine().MaxWidth(160).Shrink(1).Tooltip("命令发送到 " + title)
 		ui.Text(c, "$").Font("monospace").FontSize(13).TextColor(t.TextMuted)
-		in := ui.TextInput(c.Key("cmdbar"), &b.text).Label("命令输入").Placeholder("输入命令，回车发送，↑/↓ 历史").Font("monospace").FontSize(12).Height(26).Grow(1).MinWidth(0).OnTextKey(func(k ui.TextKey) bool {
+		in := ui.TextInput(c.Key("cmdbar"), &b.text).Label("命令输入").Placeholder(placeholder).Font("monospace").FontSize(12).Height(26).Grow(1).MinWidth(0).OnTextKey(func(k ui.TextKey) bool {
 			h := a.Data.History
 			switch k.Key {
+			case ui.KeyEscape:
+				a.tabs.term.Focus()
+				return true
 			case ui.KeyEnter:
+				if exited { // nothing to send to: Return brings the session back
+					if status != "连接中" {
+						a.reconnect(s)
+					}
+					return true
+				}
 				a.sendLine(s, k.Text())
 				k.SetText("")
 				return true
@@ -59,12 +132,12 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 			b.focus = false
 			in.Focus()
 		}
-		if ghost(c, "发送", "").Disabled(strings.TrimSpace(b.text) == "").Clicked() {
+		if ghost(c, "发送", "").Disabled(exited || strings.TrimSpace(b.text) == "").Clicked() {
 			a.sendLine(s, b.text)
 			b.text = ""
 			in.Focus()
 		}
-		find := iconButton(c, "查找 "+shortcutLabel("⇧F"), "search")
+		find := iconButton(c, "查找 "+findShortcutLabel(), "search")
 		if b.finding {
 			find.Background(t.SurfacePressed)
 		}
@@ -79,7 +152,11 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 func (a *App) fillCommandBar(v model.Command) {
 	b := &a.cmdbar
 	if strings.Contains(strings.TrimSpace(v.Text), "\n") {
+		a.toast("多行片段请点 ▶ 发送")
 		return
+	}
+	if id := a.activeID(); id != "" { // the line is for the tab showing
+		b.switchTo(id)
 	}
 	b.text, b.at, b.draft, b.snippet, b.focus = v.Text, 0, "", &v, true
 }

@@ -43,6 +43,7 @@ func (a *App) quickConnect(text string) bool {
 		return false
 	}
 	a.connect(cc)
+	a.toast("正在连接 " + a.login(cc) + "…") // an unsaved host has no 连接中 tab
 	return true
 }
 
@@ -94,7 +95,7 @@ func (a *App) welcomeView(c *ui.Context) {
 						a.P.Local()
 					}
 				})
-				muted(c, shortcutLabel("K")+" 搜索主机、标签和操作").AlignSelf(ui.Center).TextColor(t.TextMuted)
+				muted(c, appShortcutLabel("K")+" 搜索主机、标签和操作").AlignSelf(ui.Center).TextColor(t.TextMuted)
 			})
 		})
 	})

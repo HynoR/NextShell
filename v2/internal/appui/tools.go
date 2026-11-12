@@ -158,11 +158,12 @@ func (a *App) toolView(c *ui.Context, tool toolTab) {
 	})
 }
 
-// pendingTabs are the saved hosts connecting for the first time: no tab of theirs exists yet.
+// pendingTabs are the saved hosts being connected to that have no tab saying so: none exists yet, or
+// only live ones (a further connection is on its way). A tab that ended and is reconnecting says it itself.
 func (a *App) pendingTabs() []model.Connection {
 	var out []model.Connection
 	for id := range a.hosts.connecting {
-		if cc, ok := a.host(id); ok && !slices.ContainsFunc(a.Tabs, func(s *Session) bool { return s.Connection.ID == id }) {
+		if cc, ok := a.host(id); ok && !slices.ContainsFunc(a.Tabs, func(s *Session) bool { return s.Connection.ID == id && a.P.Exited(s.ID) }) {
 			out = append(out, cc)
 		}
 	}
@@ -202,7 +203,7 @@ func (a *App) connectingView(c *ui.Context, pending []model.Connection) {
 	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Center().Gap(10).Children(func() {
 		ui.Spinner(c)
 		ui.Text(c, "正在连接 "+pending[0].Name+"…").Bold()
-		muted(c, pending[0].User+"@"+pending[0].Address())
+		muted(c, a.login(pending[0]))
 		if ui.Button(c, "取消").Label("取消连接").Clicked() || c.Shortcut(0, ui.KeyEscape) {
 			a.later(func() { a.cancelConnect(pending[0].ID) })
 		}

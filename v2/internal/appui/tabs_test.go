@@ -98,6 +98,7 @@ func TestTabMenuCloseVariantsAndDuplicate(t *testing.T) {
 	tt.ChooseMenuItem("复制会话")
 	tt.RightClick("tab-B")
 	tt.ChooseMenuItem("重新连接")
+	click(t, tt, "断开并重新连接") // the tab is alive: replacing it asks first
 	if p.cloned != 1 || p.reconnected != 1 {
 		t.Fatal("duplicate / reconnect")
 	}

@@ -87,6 +87,7 @@ func (a *App) plusMenu(c *ui.Context) {
 		}
 		if recent := a.hosts.recentHosts(a, 10); len(recent) > 0 {
 			m.Separator()
+			m.Item("最近连接").Disabled(true) // a heading for the hosts below
 			for _, cc := range recent {
 				if m.Item(cc.Name).ID(cc.ID).Subtitle(a.login(cc)).Chosen() {
 					a.later(func() { a.connect(cc) })
@@ -285,7 +286,7 @@ func (a *App) tabMenu(item ui.Element, s *Session) {
 			a.later(func() { a.P.CloneSession(s) })
 		}
 		if m.Item("重新连接").Chosen() {
-			a.later(func() { a.reconnect(s) })
+			a.later(func() { a.requestReconnect(s) })
 		}
 		if m.Item("打开连接管理器").Chosen() {
 			a.later(a.openManager)
@@ -385,6 +386,7 @@ func (a *App) closeTab(i int) {
 		a.cancelConnect(host) // its reconnect would otherwise open a new tab
 	}
 	delete(a.tabs.started, id)
+	a.cmdbar.forget(id)
 	a.P.CloseSession(id)
 	a.Tabs = append(a.Tabs[:i], a.Tabs[i+1:]...)
 	switch {
@@ -530,10 +532,19 @@ func (a *App) closeDialog(c *ui.Context) {
 				ui.Checkbox(c, &k.never, "不再询问")
 			}
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "取消").Clicked() {
+				// Enter confirms the focused button: with edits at stake that is 取消, never the loss.
+				cancel := ui.Button(c, "取消")
+				if len(k.dirty) > 0 {
+					cancel.AutoFocus()
+				}
+				if cancel.Clicked() {
 					open = false
 				}
-				if ui.PrimaryButton(c, action).AutoFocus().Clicked() {
+				confirm := ui.PrimaryButton(c, action)
+				if len(k.dirty) == 0 {
+					confirm.AutoFocus()
+				}
+				if confirm.Clicked() {
 					open = false
 					a.later(func() {
 						if k.never && len(k.dirty) == 0 {

@@ -47,7 +47,7 @@ func (a *App) benchHeader(c *ui.Context, fold, icon string) {
 		}
 		ui.Spacer(c).Grow(1)
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			if iconButton(c, fold, icon).Tooltip(fold + " " + shortcutLabel("J")).Clicked() {
+			if iconButtonTip(c, fold, fold+" "+appShortcutLabel("J"), icon).Clicked() {
 				a.layout.benchHidden = !a.layout.benchHidden
 			}
 		})

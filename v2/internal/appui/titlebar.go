@@ -20,7 +20,7 @@ func (a *App) titlebar(c *ui.Context) {
 		search.Children(func() {
 			ui.Icon(c, appIcons["search"]).FontSize(14).TextColor(t.TextMuted)
 			ui.Text(c, "快速连接服务器…").FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine()
-			ui.Text(c, shortcutLabel("K")).FontSize(11).TextColor(t.TextMuted).Padding(1, 5).Radius(4).Border(1, t.Border)
+			ui.Text(c, appShortcutLabel("K")).FontSize(11).TextColor(t.TextMuted).Padding(1, 5).Radius(4).Border(1, t.Border)
 		})
 		if search.Clicked() {
 			a.palette.show()

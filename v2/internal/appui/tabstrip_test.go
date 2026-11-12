@@ -206,17 +206,20 @@ func TestEndedSessionBannerShowsWhileTheLeftColumnIsFolded(t *testing.T) {
 	s.Terminal.Close()
 	<-s.Terminal.Done()
 	tt.Frame()
-	if tt.HasText("连接已断开") && tt.HasText("按回车键重新连接") {
+	if exactText(tt, "按回车重新连接") { // the card says it inside one line, the banner on its own
 		t.Fatal("the card already says it; no banner")
 	}
 	tt.Key(appMod(), ui.KeyB)
-	has(t, tt, "连接已断开", "按回车键重新连接")
+	has(t, tt, "连接已断开")
+	if !exactText(tt, "按回车重新连接") {
+		t.Fatal("no banner", tt.Texts())
+	}
 	click(t, tt, "重新连接")
 	if p.reconnected != 1 || len(a.Tabs) != 1 {
 		t.Fatal("reconnect", p.reconnected)
 	}
 	// While reconnecting there is nothing to offer.
-	if tt.HasText("按回车键重新连接") {
+	if tt.HasText("按回车重新连接") {
 		t.Fatal("banner while connecting")
 	}
 	// A local shell that exited says so too.
