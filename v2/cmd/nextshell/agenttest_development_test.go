@@ -84,7 +84,8 @@ func TestAgentTestImportsConnectionsIntoTheTestProfile(t *testing.T) {
 	pw := "secret"
 	file := writeConnections(t, dir,
 		exchange.Entry{Name: "web-1", Host: "10.0.0.1", Port: 22, Username: "tester", AuthType: "password", Password: &pw, GroupPath: "/server/prod", Tags: []string{"t"}, Encoding: "utf-8"},
-		exchange.Entry{Name: "web-2", Host: "10.0.0.2", Port: 2222, Username: "tester", AuthType: "password", GroupPath: "/server", Encoding: "utf-8"})
+		exchange.Entry{Name: "web-2", Host: "10.0.0.2", Port: 2222, Username: "tester", AuthType: "password", GroupPath: "/server", Encoding: "utf-8"},
+		exchange.Entry{Name: "web-3", Host: "10.0.0.1", Port: 22, Username: "tester", AuthType: "password", GroupPath: "/server", Encoding: "utf-8"}) // same endpoint as web-1
 	p, e := desktop.Open(filepath.Join(dir, "t.db"))
 	if e != nil {
 		t.Fatal(e)
@@ -96,14 +97,14 @@ func TestAgentTestImportsConnectionsIntoTheTestProfile(t *testing.T) {
 		t.Fatal(e)
 	}
 	snap, e := p.Snapshot()
-	if e != nil || len(snap.Connections) != 2 {
+	if e != nil || len(snap.Connections) != 3 {
 		t.Fatal(snap.Connections, e)
 	}
-	names := snap.Connections[0].Name + snap.Connections[1].Name
-	if !strings.Contains(names, "web-1") || !strings.Contains(names, "web-2") {
+	names := snap.Connections[0].Name + snap.Connections[1].Name + snap.Connections[2].Name
+	if !strings.Contains(names, "web-1") || !strings.Contains(names, "web-2") || !strings.Contains(names, "web-3") {
 		t.Fatal(names)
 	}
-	if !strings.Contains(stderr.String(), "imported 2 connection(s)") {
+	if !strings.Contains(stderr.String(), "imported 3 connection(s)") {
 		t.Fatal(stderr.String())
 	}
 	if len(snap.Folders) == 0 {

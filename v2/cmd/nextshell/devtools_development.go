@@ -10,7 +10,6 @@ import (
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
-	"strings"
 	"time"
 )
 
@@ -58,19 +57,24 @@ func startDevMode(p *desktop.Platform, o options, stderr io.Writer) error {
 	return e
 }
 
-// importFile runs the app's own import (preview, then commit with "skip" on duplicates) and waits for it,
-// so test agents get saved hosts without a private seeder. Host keys stay unpinned: trust is still asked.
+// importFile runs the app's own import (preview, then commit as "rename-copy" so several test entries may
+// share one endpoint) and waits for it, so test agents get saved hosts without a private seeder.
+// Host keys stay unpinned: trust is still asked.
 func importFile(p *desktop.Platform, file string) (int, error) {
 	p.PreviewImport(file, "", "nextshell")
 	var preview *appui.ImportPreview
 	if e := awaitEvent(p, func(ev appui.Event) bool { preview = ev.Import; return preview != nil }); e != nil {
 		return 0, e
 	}
-	p.CommitImport(preview.Token, "", "skip")
-	if e := awaitEvent(p, func(ev appui.Event) bool { return strings.HasPrefix(ev.Message, "已导入") }); e != nil {
+	p.CommitImport(preview.Token, "", "rename-copy")
+	n := 0
+	if e := awaitEvent(p, func(ev appui.Event) bool {
+		_, e := fmt.Sscanf(ev.Message, "已导入 %d 个连接", &n)
+		return e == nil
+	}); e != nil {
 		return 0, e
 	}
-	return preview.Count, nil
+	return n, nil
 }
 
 // awaitEvent consumes the platform's events (the window is not up yet) until pick accepts one;
