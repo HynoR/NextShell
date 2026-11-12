@@ -22,6 +22,12 @@ func (p *paletteState) show() {
 	p.selected = 0
 }
 
+// paletteAction is a command of the palette that is no host, tab or snippet.
+type paletteAction struct {
+	title string
+	run   func()
+}
+
 // paletteItem is one result; run gets the modifiers held with Enter.
 type paletteItem struct {
 	group, title, detail string
@@ -83,10 +89,7 @@ func (a *App) paletteItems() []paletteItem {
 	for _, v := range a.Data.Commands {
 		add("命令片段", v.Name, firstLine(v.Text), v.Group+" "+v.Description+" "+v.Text, func(mods ui.Modifiers) { a.runSnippet(v, mods&ui.Alt != 0) })
 	}
-	actions := []struct {
-		title string
-		run   func()
-	}{
+	actions := []paletteAction{
 		{"新建主机", func() { a.newHost("") }},
 		{"新建目录", func() { a.editFolder(model.Folder{}) }},
 		{"打开本地终端", a.P.Local},
@@ -112,35 +115,46 @@ func (a *App) paletteItems() []paletteItem {
 		{"传输队列", func() { a.layout.rightOpen = true }},
 	}
 	if a.Cloud {
-		actions = append(actions, struct {
-			title string
-			run   func()
-		}{"云同步", func() { a.openSettings("云同步") }})
+		actions = append(actions, paletteAction{"云同步", func() { a.openSettings("云同步") }})
 	}
 	if len(a.editor.documents) > 0 {
-		actions = append(actions, struct {
-			title string
-			run   func()
-		}{"远程编辑器", a.focusEditor})
+		actions = append(actions, paletteAction{"远程编辑器", a.focusEditor})
+	}
+	if state := a.P.AgentOverview(); state.URL != "" { // the MCP service is on
+		if state.Halted {
+			actions = append(actions, paletteAction{"恢复 Agent", func() { a.P.AgentHalt(false) }})
+		} else {
+			actions = append(actions, paletteAction{"紧急停止 Agent", func() {
+				a.P.AgentHalt(true)
+				a.toast("已紧急停止 Agent")
+			}})
+		}
 	}
 	if s := a.current(); s != nil {
-		actions = append(actions, []struct {
-			title string
-			run   func()
-		}{
+		actions = append(actions, []paletteAction{
 			{"复制会话", func() { a.P.CloneSession(s) }},
 			{"重新连接", func() { a.requestReconnect(s) }},
 			{"重命名标签", func() { a.startRename(s) }},
 			{"关闭标签", func() { a.requestClose(s.ID) }},
 			{"清屏", func() { s.Terminal.ClearScreen() }},
 			{"清除滚动缓冲", func() { s.Terminal.ClearScrollback() }},
+			{"输入命令", func() { // the command bar, where a terminal shows
+				a.activateTab(a.Active)
+				a.cmdbar.focus = true
+			}},
+			{"查找终端内容", func() {
+				a.activateTab(a.Active)
+				if !a.cmdbar.finding {
+					a.toggleFind(s)
+				}
+			}},
 		}...)
+		if !s.Local && !a.P.Exited(s.ID) {
+			actions = append(actions, paletteAction{"进程管理器", func() { a.openTool(toolProcess, s) }}, paletteAction{"网络管理器", func() { a.openTool(toolNetwork, s) }})
+		}
 		if !s.Local && a.Prefs.ShellIntegration != "off" {
 			for _, shell := range []string{"bash", "zsh"} {
-				actions = append(actions, struct {
-					title string
-					run   func()
-				}{"插入目录跟踪脚本（" + shell + "）", func() { a.insertShellHook(s, shell) }})
+				actions = append(actions, paletteAction{"让文件面板跟随终端目录（" + shell + "）", func() { a.insertShellHook(s, shell) }})
 			}
 		}
 	}
@@ -164,6 +178,10 @@ func actionKey(title string) string {
 		return appShortcutLabel("B")
 	case "显示 / 隐藏底部工作区":
 		return appShortcutLabel("J")
+	case "输入命令":
+		return appShortcutLabel("L")
+	case "查找终端内容":
+		return findShortcutLabel()
 	}
 	return ""
 }
