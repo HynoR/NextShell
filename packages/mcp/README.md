@@ -14,14 +14,25 @@ on auto-approve for a while), dangerous commands are blocked, output is redacted
 ```json
 {
   "mcpServers": {
-    "nextshell": { "command": "npx", "args": ["-y", "@nextshell/mcp@0.2.0"] }
+    "nextshell": {
+      "command": "npx",
+      "args": [
+        "--allow-remote=root",
+        "-y",
+        "https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz"
+      ]
+    }
   }
 }
 ```
 
 ```sh
-claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.2.0
+claude mcp add --transport stdio nextshell -- npx --allow-remote=root -y https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz
 ```
+
+The package is not on npm: each NextShell 2 release attaches it as `nextshell-mcp-<version>.tgz`, and
+the URL above is the one of v2.0.0-rc1. npm 12 refuses to install from a URL unless
+`--allow-remote=root` permits it (only the URL on the command line).
 
 Requires Node.js 24+. The harness can start the bridge, initialize and list tools while
 NextShell is closed; only a tool call contacts the app, and it re-reads the token every time it
@@ -96,5 +107,6 @@ enforces the bearer token. To try the real app, build it with `-tags nextshell_d
 start, the path of `mcp.json` is printed on stderr (`--config <that path>`), and `--import` loads a
 `nextshell-connections` v1 JSON (plain) as saved hosts.
 
-The package is prepared locally and is not published automatically. Keep `package.json`, `MCP_PACKAGE_SPEC`
-(`packages/shared/src/mcp-config.ts`) and `nextshell-plugin/.mcp.json` on the same version; a test checks it.
+The package is not published to npm; `v2-release.yml` builds and attaches the tarball to each NextShell 2
+release (`v2/PACKAGING.md`). Keep `package.json`, `MCP_PACKAGE_SPEC` (`packages/shared/src/mcp-config.ts`, used by
+the 1.x app) and the version in the URL of `nextshell-plugin/.mcp.json` the same; a test checks it.
