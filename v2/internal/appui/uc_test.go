@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
 )
@@ -255,4 +256,117 @@ func TestEditorArgumentsAreASettingAndSurviveARestart(t *testing.T) {
 	if in, ok := sb.AccessByRole(ui.RoleTextField, "外部编辑器参数"); !ok || in.Value != `--wait "my profile"` {
 		t.Fatal("the settings do not show the arguments", in.Value)
 	}
+}
+
+// invalid reports whether the text input named label shows an error.
+func invalid(t *testing.T, tt *ui.Tester, label string) bool {
+	t.Helper()
+	info, ok := tt.AccessByRole(ui.RoleTextField, label)
+	if !ok {
+		t.Fatal("no field", label, tt.Texts())
+	}
+	return info.Invalid
+}
+
+// One bad value no longer holds back the rest: it is reported on its own field, and on the other pages at the
+// top, while the other settings (here the appearance and the main color) are saved as before.
+func TestSettingsErrorIsInlineAndTheRestStillSaves(t *testing.T) {
+	_, p, _, st := settingsFixture(t)
+	click(t, st, "终端")
+	click(t, st, "字号")
+	st.Key(ui.Cmd, ui.KeyA)
+	st.Type("99")
+	has(t, st, "须为 10–24 的整数")
+	if !invalid(t, st, "字号") || invalid(t, st, "行高") {
+		t.Fatal("the wrong field is marked")
+	}
+	if p.Preferences().FontSize != 14 {
+		t.Fatal("the bad value was saved", p.Preferences().FontSize)
+	}
+
+	// Another page: the error is not forgotten, said at the top, and does not stop what is changed here.
+	click(t, st, "窗口行为")
+	has(t, st, "「终端」里的「字号」须为 10–24 的整数，这一项还没有保存")
+	click(t, st, "深色")
+	click(t, st, "紫")
+	got := p.Preferences()
+	if got.Appearance != "深色" || got.Accent != "violet" || got.FontSize != 14 {
+		t.Fatalf("saved %+v", got)
+	}
+	// 查看 goes to the field, which still holds what was typed.
+	click(t, st, "查看 字号")
+	has(t, st, "须为 10–24 的整数")
+	if tt, ok := st.AccessByRole(ui.RoleTextField, "字号"); !ok || tt.Value != "99" || st.HasText("「终端」里的") {
+		t.Fatal("the field lost its text, or the page repeats the error", tt.Value)
+	}
+	click(t, st, "字号")
+	st.Key(ui.Cmd, ui.KeyA)
+	st.Type("16")
+	if invalid(t, st, "字号") || st.HasText("须为 10–24 的整数") || p.Preferences().FontSize != 16 {
+		t.Fatal("fixed value", p.Preferences().FontSize)
+	}
+
+	// Each of the others reports itself on its own page and keeps the saved value.
+	click(t, st, "文件传输")
+	click(t, st, "默认上传目录")
+	st.Key(ui.Cmd, ui.KeyA)
+	st.Key(0, ui.KeyBackspace)
+	has(t, st, "不能为空")
+	if !invalid(t, st, "默认上传目录") || p.Preferences().UploadDir != "~" {
+		t.Fatal("empty upload directory", p.Preferences().UploadDir)
+	}
+	click(t, st, "远端编辑")
+	has(t, st, "「文件传输」里的「默认上传目录」不能为空，这一项还没有保存")
+	click(t, st, "外部编辑器参数")
+	st.Type(`--wait "x`)
+	has(t, st, "引号没有闭合")
+	if p.Preferences().EditorArgs != "" {
+		t.Fatal("an unclosed quote was saved")
+	}
+	st.Type(`"`)
+	if invalid(t, st, "外部编辑器参数") || p.Preferences().EditorArgs != `--wait "x"` {
+		t.Fatal("closed quote", p.Preferences().EditorArgs)
+	}
+}
+
+// haltPlatform remembers the emergency stop the way the real one does.
+type haltPlatform struct {
+	*servicesPlatform
+	halts []bool
+}
+
+func (p *haltPlatform) AgentHalt(on bool) { p.halts = append(p.halts, on); p.agent.Halted = on }
+
+// Settings polish: help sits under its switch like every other field's; the group 外观 has a field 主题;
+// the emergency stop is a button, with the way back, not a switch that reads the wrong way round; a request
+// with no target does not print a bare 目标.
+func TestSettingsPolish(t *testing.T) {
+	p := &haltPlatform{servicesPlatform: &servicesPlatform{fakePlatform: newPlatform(t)}}
+	p.agent.Pending = []agent.Pending{{ID: "x", Client: "claude", Tool: "exec", Summary: "uptime", ExpiresAt: time.Now().Add(time.Minute)}}
+	a := appui.New(p)
+	st := ui.NewTester(a.SettingsView, 880, 1400)
+	has(t, st, "外观", "主题", "每次启动时折叠；关闭时保持上次退出时的样子", "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭")
+	if st.HasText("不勾选") {
+		t.Fatal("the help still talks of ticking a switch")
+	}
+	if _, ok := st.AccessByRole(ui.RoleSwitch, "外观"); ok {
+		t.Fatal("a field is named like its group")
+	}
+	click(t, st, "终端")
+	has(t, st, "新会话生效")
+	click(t, st, "Agent")
+	has(t, st, "claude · exec", "uptime")
+	if st.HasText("目标 ") || st.HasText("目标") {
+		t.Fatal("a request without a target printed 目标", st.Texts())
+	}
+	if _, ok := st.AccessByRole(ui.RoleSwitch, "紧急停止"); ok {
+		t.Fatal("the emergency stop is still a switch")
+	}
+	click(t, st, "立即停止")
+	has(t, st, "已紧急停止 · Agent 的请求都会被拒绝", "恢复 Agent")
+	click(t, st, "恢复 Agent")
+	if len(p.halts) != 2 || !p.halts[0] || p.halts[1] {
+		t.Fatal(p.halts)
+	}
+	has(t, st, "立即停止")
 }

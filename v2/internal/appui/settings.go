@@ -3,6 +3,7 @@ package appui
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -17,9 +18,9 @@ type settingsState struct {
 	section                                 string
 	draft                                   model.Preferences
 	size, lineHeight, scrollback, keepalive string
-	err                                     string
-	hosts                                   map[string]bool // chosen for export and cloud copy
-	trash                                   map[string]bool // chosen in the recycle bin
+	problems                                []settingsProblem // values that do not hold up, as the last frame found them
+	hosts                                   map[string]bool   // chosen for export and cloud copy
+	trash                                   map[string]bool   // chosen in the recycle bin
 
 	cloud cloudState
 	agent agentState
@@ -46,30 +47,82 @@ func (s *settingsState) load(v model.Preferences) {
 		s.cloud.name = "我的工作区"
 	}
 }
-func (s *settingsState) parse() (model.Preferences, error) {
+
+// settingsProblem is a value that does not hold up: it is not saved, and says why where it is typed.
+// page and field are the names the user sees; an empty field is a problem of no single one.
+type settingsProblem struct{ page, field, msg string }
+
+// parse reads the text fields into the draft. A value that does not hold up keeps what is saved (saved)
+// and is reported on its own, so one mistake never holds back the other settings.
+func (s *settingsState) parse(saved model.Preferences) (model.Preferences, []settingsProblem) {
 	p := s.draft
-	var err error
-	if p.FontSize, err = strconv.Atoi(strings.TrimSpace(s.size)); err != nil {
-		return p, fmt.Errorf("字号须为整数")
+	var bad []settingsProblem
+	fail := func(page, field, msg string) { bad = append(bad, settingsProblem{page, field, msg}) }
+	whole := func(text string, lo, hi, keep int, page, field, unit string) int {
+		if n, err := strconv.Atoi(strings.TrimSpace(text)); err == nil && n >= lo && n <= hi {
+			return n
+		}
+		fail(page, field, fmt.Sprintf("须为 %d–%d 的整数%s", lo, hi, unit))
+		return keep
 	}
-	line, err := strconv.ParseFloat(strings.TrimSpace(s.lineHeight), 32)
-	if err != nil {
-		return p, fmt.Errorf("行高须为数字")
+	p.FontSize = whole(s.size, 10, 24, saved.FontSize, "终端", "字号", "")
+	p.ScrollbackMiB = whole(s.scrollback, 1, 256, saved.ScrollbackMiB, "终端", "滚动缓冲（MiB）", "")
+	p.KeepaliveSeconds = whole(s.keepalive, 5, 600, saved.KeepaliveSeconds, "终端", "默认间隔（秒）", "")
+	if line, err := strconv.ParseFloat(strings.TrimSpace(s.lineHeight), 32); err == nil && line >= 1 && line <= 2 { // not NaN
+		p.LineHeight = float32(line)
+	} else {
+		p.LineHeight = saved.LineHeight
+		fail("终端", "行高", "须为 1–2 的数字")
 	}
-	p.LineHeight = float32(line)
-	if p.ScrollbackMiB, err = strconv.Atoi(strings.TrimSpace(s.scrollback)); err != nil {
-		return p, fmt.Errorf("滚动缓冲须为整数")
+	if strings.ContainsAny(p.FontFamily, "\x00\r\n") {
+		p.FontFamily = saved.FontFamily
+		fail("终端", "字体", "不能含换行")
 	}
-	if p.KeepaliveSeconds, err = strconv.Atoi(strings.TrimSpace(s.keepalive)); err != nil {
-		return p, fmt.Errorf("心跳间隔须为整数")
+	if strings.TrimSpace(p.UploadDir) == "" {
+		p.UploadDir = saved.UploadDir
+		fail("文件传输", "默认上传目录", "不能为空")
 	}
-	if p.ScrollbackMiB < 1 || p.ScrollbackMiB > 256 {
-		return p, fmt.Errorf("滚动缓冲须为 1–256 MiB")
+	if _, err := splitArgs(p.EditorArgs); err != nil {
+		p.EditorArgs = saved.EditorArgs
+		fail("远端编辑", "外部编辑器参数", "引号没有闭合")
 	}
-	if p.KeepaliveSeconds < 5 || p.KeepaliveSeconds > 600 {
-		return p, fmt.Errorf("心跳间隔须为 5–600 秒")
+	// ponytail: anything else that Validate refuses has no field to blame, so nothing is saved until it is fixed.
+	if err := p.Validate(); err != nil {
+		fail("", "", err.Error())
+		return saved, bad
 	}
-	return p, p.Validate()
+	return p, bad
+}
+
+// helped is the field's help text, or what is wrong with it, shown in the danger color with its border.
+func (s *settingsState) helped(f ui.Element, label, help string) ui.Element {
+	for _, v := range s.problems {
+		if v.field == label {
+			return f.Error(v.msg)
+		}
+	}
+	return f.Description(help)
+}
+
+// problemsView says, on every page but the one of the field, which values were not saved and why.
+func (a *App) problemsView(c *ui.Context) {
+	s := &a.settings
+	t := c.Theme()
+	for _, v := range s.problems {
+		if v.page == s.section && v.field != "" {
+			continue // the field shows it
+		}
+		msg := v.msg
+		if v.field != "" {
+			msg = fmt.Sprintf("「%s」里的「%s」%s，这一项还没有保存", v.page, v.field, v.msg)
+		}
+		ui.Row(c.Key("problem-"+v.page+v.field)).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Background(t.Danger.Alpha(.1)).Children(func() {
+			ui.Text(c, msg).FontSize(13).TextColor(t.Danger).Grow(1).MinWidth(0)
+			if v.page != "" && ui.Button(c, "查看").Label("查看 "+v.field).Clicked() {
+				s.section = v.page
+			}
+		})
+	}
 }
 func (s *settingsState) selectHosts(ids ...string) {
 	s.hosts = map[string]bool{}
@@ -119,12 +172,18 @@ func TerminalThemes(v model.Preferences) (*terminal.Theme, *terminal.Theme) {
 }
 
 func (a *App) savePreferences(p model.Preferences) {
+	if a.applyPreferences(p) {
+		a.settings.draft = p
+	}
+}
+
+// applyPreferences saves p and applies it at once, leaving the settings window's draft as typed.
+func (a *App) applyPreferences(p model.Preferences) bool {
 	if e := a.P.SavePreferences(p); e != nil {
 		a.fail(e)
-		return
+		return false
 	}
 	a.Prefs = p
-	a.settings.draft = p
 	l, d := TerminalThemes(p)
 	for _, s := range a.Tabs {
 		s.Terminal.SetTheme(l, d)
@@ -134,6 +193,7 @@ func (a *App) savePreferences(p model.Preferences) {
 			wake()
 		}
 	}
+	return true
 }
 
 // SettingsView builds the settings window.
@@ -158,17 +218,18 @@ func (a *App) SettingsView(c *ui.Context) {
 		ui.Scroll(c.Key("settings-" + s.section)).Grow(1).FillHeight().Children(func() {
 			ui.Column(c).FillWidth().MaxWidth(680).Padding(24, 28).Gap(16).Children(func() {
 				ui.Text(c, s.section).FontSize(20).Bold()
+				a.problemsView(c)
 				ui.Form(c, func() { a.settingsSection(c) }).FillWidth().Gap(FormGap)
 			})
 		})
 	})
-	if p, err := s.parse(); err != nil {
-		s.err = err.Error()
-	} else {
-		s.err = ""
-		if p != a.Prefs {
-			a.savePreferences(p)
-		}
+	p, problems := s.parse(a.Prefs)
+	if p != a.Prefs {
+		a.applyPreferences(p)
+	}
+	if !slices.Equal(problems, s.problems) { // typed this frame: show it in the next
+		s.problems = problems
+		c.Services().Invalidate()
 	}
 	a.confirmView(c, settingsWindow)
 	a.detailView(c, settingsWindow)
@@ -221,8 +282,8 @@ func (a *App) windowSettings(c *ui.Context) {
 	group(c, "外观", func() {
 		modes := []string{"跟随系统", "浅色", "深色"}
 		i := max(0, indexOf(modes, v.Appearance))
-		ui.Field(c, "外观", func() {
-			if ui.Segmented(c, &i, modes...).Label("外观").Changed() {
+		ui.Field(c, "主题", func() {
+			if ui.Segmented(c, &i, modes...).Label("主题").Changed() {
 				v.Appearance = modes[i]
 			}
 		}).FillWidth()
@@ -245,19 +306,13 @@ func (a *App) windowSettings(c *ui.Context) {
 			v.NoCloseConfirm = !confirm
 		}
 		tabConfirm := !v.NoTabConfirm
-		if toggle(c, "关闭标签时确认", &tabConfirm) {
+		if switchField(c, "关闭标签时确认", &tabConfirm, "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭") {
 			v.NoTabConfirm = !tabConfirm
 		}
-		muted(c, "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭")
-		toggle(c, "启动时恢复标签", &v.RestoreTabs)
-		muted(c, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
-		toggle(c, "左栏默认折叠", &v.FoldLeft)
-		toggle(c, "底部工作区默认折叠", &v.FoldBench)
-		muted(c, "每次启动时折叠；不勾选时保持上次退出时的样子")
+		switchField(c, "启动时恢复标签", &v.RestoreTabs, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
+		switchField(c, "左栏默认折叠", &v.FoldLeft, "每次启动时折叠；关闭时保持上次退出时的样子")
+		switchField(c, "底部工作区默认折叠", &v.FoldBench, "每次启动时折叠；关闭时保持上次退出时的样子")
 	})
-	if a.settings.err != "" {
-		ui.Text(c, a.settings.err).TextColor(c.Theme().Danger)
-	}
 	actions(c, func() {
 		if ui.Button(c, "恢复默认设置…").Clicked() {
 			a.confirmDanger("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
@@ -269,7 +324,7 @@ func (a *App) transferSettings(c *ui.Context) {
 	v := &a.settings.draft
 	group(c, "", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
-		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
+		a.settings.helped(field(c, "默认上传目录", &v.UploadDir), "默认上传目录", "远程服务器上的目录，文件面板的「前往默认上传目录」使用")
 	})
 }
 
@@ -281,7 +336,7 @@ func (a *App) editSettings(c *ui.Context) {
 		if v.EditorCommand == "" {
 			help = "只在选择了上面的程序时使用，例如 --wait"
 		}
-		field(c, "外部编辑器参数", &v.EditorArgs).Description(help)
+		a.settings.helped(field(c, "外部编辑器参数", &v.EditorArgs), "外部编辑器参数", help)
 	})
 }
 
@@ -289,9 +344,9 @@ func (a *App) terminalSettings(c *ui.Context) {
 	s := &a.settings
 	v := &s.draft
 	group(c, "字体", func() {
-		field(c, "字体", &v.FontFamily).Description("留空使用系统等宽字体")
-		field(c, "字号", &s.size).Description("10–24")
-		field(c, "行高", &s.lineHeight).Description("1–2")
+		s.helped(field(c, "字体", &v.FontFamily), "字体", "留空使用系统等宽字体")
+		s.helped(field(c, "字号", &s.size), "字号", "10–24")
+		s.helped(field(c, "行高", &s.lineHeight), "行高", "1–2")
 	})
 	group(c, "配色", func() {
 		choice(c, "配色方案", &v.TerminalTheme, []string{"跟随外观", "Default", "Dracula", "Solarized Dark", "Gruvbox Dark", "Nord", "自定义"})
@@ -309,15 +364,14 @@ func (a *App) terminalSettings(c *ui.Context) {
 			}
 		}).Description("新会话生效").FillWidth()
 		toggle(c, "光标闪烁", &v.CursorBlink)
-		field(c, "滚动缓冲（MiB）", &s.scrollback).Description("1–256，新会话生效")
+		s.helped(field(c, "滚动缓冲（MiB）", &s.scrollback), "滚动缓冲（MiB）", "1–256，新会话生效")
 	})
 	group(c, "行为", func() {
 		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("只影响本地终端。SSH 标签始终显示连接名称，程序设置的标题在标签的悬停提示和左栏会话卡里；手动重命名优先").FillWidth()
 		toggle(c, "响铃与通知", &v.Notifications)
 		toggle(c, "打开链接前确认", &v.HyperlinkConfirm)
-		toggle(c, "允许服务器写入剪贴板", &v.ClipboardWrite)
-		toggle(c, "服务器读取剪贴板时询问", &v.ClipboardReadAsk)
-		muted(c, "剪贴板选项在新会话生效")
+		switchField(c, "允许服务器写入剪贴板", &v.ClipboardWrite, "新会话生效")
+		switchField(c, "服务器读取剪贴板时询问", &v.ClipboardReadAsk, "新会话生效")
 	})
 	group(c, "Shell 集成", func() {
 		modes := []string{"auto", "", "off"}
@@ -333,6 +387,13 @@ func (a *App) terminalSettings(c *ui.Context) {
 		}[i]).FillWidth()
 	})
 	a.sshSettings(c)
+}
+
+// switchField is a switch with its help text under it, as the other fields have theirs; it reports a change.
+func switchField(c *ui.Context, label string, on *bool, help string) bool {
+	changed := false
+	ui.Field(c, label, func() { changed = ui.Switch(c, on).Label(label).Changed() }).Description(help).FillWidth()
+	return changed
 }
 
 // colorField edits a #rrggbb preference with a color well.
@@ -351,31 +412,29 @@ func (a *App) sshSettings(c *ui.Context) {
 	v := &s.draft
 	group(c, "SSH 心跳", func() {
 		toggle(c, "默认发送心跳", &v.KeepaliveEnabled)
-		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
+		s.helped(field(c, "默认间隔（秒）", &s.keepalive), "默认间隔（秒）", "5–600；主机设为「跟随全局设置」时使用，新会话生效")
 	})
 	group(c, "密钥、代理与凭据", func() {
-		muted(c, "密钥、代理、凭据和连接的导入导出都在连接管理器里，可以在编辑主机时直接新建。")
-		actions(c, func() {
-			for _, v := range []struct {
-				label string
-				page  int
-			}{{"管理密钥", managerKeys}, {"管理代理", managerProxies}, {"管理凭据", managerCredentials}} {
-				if ui.Button(c, v.label).Clicked() {
-					a.openManagerPage(v.page)
+		ui.Field(c, "连接管理器", func() {
+			ui.Row(c).Grow(1).Gap(8).Wrap().Children(func() {
+				for _, v := range []struct {
+					label string
+					page  int
+				}{{"管理密钥", managerKeys}, {"管理代理", managerProxies}, {"管理凭据", managerCredentials}} {
+					if ui.Button(c, v.label).Clicked() {
+						a.openManagerPage(v.page)
+					}
 				}
-			}
-			if ui.Button(c, "导入导出连接").Clicked() {
-				a.openImport("")
-			}
-		})
+				if ui.Button(c, "导入导出连接").Clicked() {
+					a.openImport("")
+				}
+			})
+		}).Description("密钥、代理、凭据和连接的导入导出都在连接管理器里，可以在编辑主机时直接新建。").FillWidth()
 	})
 	group(c, "本地终端", func() {
 		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: programDir(true), Hidden: true})
 	})
 	a.hostKeySettings(c)
-	if s.err != "" {
-		ui.Text(c, s.err).TextColor(c.Theme().Danger)
-	}
 }
 
 // programDir is where the settings' program pickers open: where this OS keeps shells or applications.

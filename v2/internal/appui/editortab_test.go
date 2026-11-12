@@ -140,7 +140,7 @@ func TestEditorPopOutKeepsStateAndPopBack(t *testing.T) {
 		t.Fatal("pop out", *shown)
 	}
 	ed.Frame()
-	has(t, ed, "● /etc/app.conf", "回到主窗口")
+	has(t, ed, "未保存", "/etc/app.conf", "回到主窗口")
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("the edit was lost in the move")
 	}

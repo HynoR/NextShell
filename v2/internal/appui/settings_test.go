@@ -123,7 +123,7 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 	}
 	st.Key(ui.Cmd, ui.KeyA)
 	st.Type("99")
-	has(t, st, "字号需为10..24，行高需为1..2")
+	has(t, st, "须为 10–24 的整数")
 	if p.Preferences().FontSize != 18 {
 		t.Fatal("invalid value saved")
 	}
@@ -141,7 +141,7 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 	click(t, st, "默认间隔（秒）")
 	st.Key(ui.Cmd, ui.KeyA)
 	st.Type("2")
-	has(t, st, "心跳间隔须为 5–600 秒")
+	has(t, st, "须为 5–600 的整数")
 	st.Type("0")
 	if p.Preferences().KeepaliveSeconds != 20 {
 		t.Fatal("keepalive", p.Preferences().KeepaliveSeconds)

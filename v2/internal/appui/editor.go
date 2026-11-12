@@ -501,11 +501,10 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 		})
 	}
 	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		label := d.Document.Path
 		if d.dirty() {
-			label = "● " + label
+			dirtyDot(c).Label("") // the tab says it
 		}
-		ui.Text(c, label).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
+		ui.Text(c, d.Document.Path).SingleLine().Grow(1).MinWidth(0).TextColor(t.TextMuted)
 		if ui.Button(c, "重新载入").Clicked() {
 			s.reloadKey = d.Key
 		}
@@ -534,6 +533,11 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	editor.View(c.Key(d.Key), d.Code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
 	d.sync()
 	muted(c, "UTF-8 文本，最大 8 MiB").SingleLine()
+}
+
+// dirtyDot marks a document with edits not saved: the orange dot of its tab, in the editor window too.
+func dirtyDot(c *ui.Context) ui.Element {
+	return ui.Box(c).Size(8, 8).Radius(4).Shrink(0).Background(c.Theme().Warning).Label("未保存")
 }
 
 // docTitle is the name on a document's tab: the file's, with its folder when another tab has the same name.
@@ -595,7 +599,7 @@ func (a *App) editorTabs(c *ui.Context, tabs ui.TabsParts, first int) {
 			}
 			x.Children(func() {
 				if dirty && !hover { // the unsaved dot gives way to the × the pointer is after
-					ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning).Label("未保存")
+					dirtyDot(c)
 				} else {
 					ui.Icon(c, appIcons["close"]).FontSize(12).TextColor(t.TextMuted)
 				}
@@ -616,14 +620,14 @@ func (a *App) documentTabs(c *ui.Context, docs []*remoteDocument, shown *remoteD
 		tabs.List.Gap(4).Children(func() {
 			for i, d := range docs {
 				label := a.docTitle(d)
-				if d.dirty() {
-					label = "● " + label
-				}
 				e := tabs.Tab(i).Label("文档 "+d.Document.Path).Padding(6, 10).Gap(8).Radius(t.Radius).Tooltip(d.Document.Path).AlignItems(ui.Center)
 				if d == shown {
 					e.Background(t.SurfaceHover).TextColor(accentInk(t))
 				}
 				e.Children(func() {
+					if d.dirty() {
+						dirtyDot(c)
+					}
 					ui.Text(c, label).SingleLine()
 					if ui.ButtonBase(c).Label("关闭文档 "+d.Document.Path).Size(18, 18).Center().Children(func() { ui.Icon(c, appIcons["close"]).FontSize(12) }).Clicked() {
 						a.later(func() { a.requestDocumentClose(d.Key) })
