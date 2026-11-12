@@ -45,7 +45,7 @@ func (a *App) welcomeView(c *ui.Context) {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {
 						muted(c, "开始使用")
 						guide(c, "新建主机", "填写地址和用户名，保存后双击即可连接", func() { a.newHost("") })
-						guide(c, "从 NextShell 1.x 导入连接文件", "在设置的「导入导出」中选择导出的文件", func() { a.openSettings("导入导出") })
+						guide(c, "从 NextShell 1.x 导入连接文件", "在 NextShell 1.x 中导出连接文件，然后在这里导入", func() { a.openSettings("导入导出") })
 					})
 				} else {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {

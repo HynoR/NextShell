@@ -436,3 +436,17 @@ func TestAboutShowsVersionProfileAndOpensReleases(t *testing.T) {
 		t.Fatal(p.opened)
 	}
 }
+
+func TestEmptyWelcomeTellsHowToBringOneDotXHostsOver(t *testing.T) {
+	a, p, tt := fixture(t)
+	has(t, tt, "开始使用", "在 NextShell 1.x 中导出连接文件，然后在这里导入")
+	click(t, tt, "从 NextShell 1.x 导入连接文件")
+	if p.settingsShown != 1 {
+		t.Fatal("settings not opened")
+	}
+	st := ui.NewTester(a.SettingsView, 880, 900)
+	has(t, st, "导入", "来源", "NextShell 1.x")
+	if st.HasText("原生 SSH 终端、文件与监控") {
+		t.Fatal("not on the 导入导出 page")
+	}
+}
