@@ -109,6 +109,7 @@ func (a *App) paletteItems() []paletteItem {
 		{"显示 / 隐藏左栏", func() { a.layout.leftHidden = !a.layout.leftHidden }},
 		{"显示 / 隐藏底部工作区", func() { a.layout.benchHidden = !a.layout.benchHidden }},
 		{"显示 / 隐藏活动栏", func() { a.layout.rightOpen = !a.layout.rightOpen }},
+		{"显示 / 隐藏监视网格", a.toggleGrid},
 		{"SFTP", func() { a.showBench(benchFiles) }},
 		{"命令库", func() { a.showBench(benchSnippets) }},
 		{"系统信息", func() { a.showBench(benchSysinfo) }},

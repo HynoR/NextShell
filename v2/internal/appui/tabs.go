@@ -76,6 +76,7 @@ func (a *App) tabBar(c *ui.Context) {
 		a.pendingStrip(c, a.pendingTabs())
 		a.plusMenu(c)
 		ui.Spacer(c).Grow(1)
+		a.gridButton(c)
 	})
 }
 
@@ -111,6 +112,9 @@ func (a *App) tabStrip(c *ui.Context) {
 		// The widget keeps a selection inside the strip; a window with tabs but none active (an agent opened
 		// the only one in the background) must stay that way, so it gets a copy and a.Active only follows a click.
 		selected := a.Active
+		if a.grid.on {
+			selected = -1 // the grid shows every session: no tab is the one showing
+		}
 		tool := a.activeTool() // the tool tabs follow the sessions' tabs, and the documents' the tools'
 		doc := a.activeEditor()
 		switch {
@@ -119,7 +123,7 @@ func (a *App) tabStrip(c *ui.Context) {
 		case tool != nil:
 			selected = len(a.Tabs) + slices.Index(a.monitor.tools, *tool)
 		}
-		other := tool != nil || doc != nil
+		other := tool != nil || doc != nil || a.grid.on
 		a.tabs.reveal = ""
 		if key := a.activeTabKey(); key != a.tabs.shown { // scrolled to once, when it changes: not again, to leave the scrolling to the user
 			a.tabs.reveal, a.tabs.shown = key, key
@@ -141,7 +145,7 @@ func (a *App) tabStrip(c *ui.Context) {
 				if x, ok := ui.Drop[tabDrag](tab); ok {
 					a.moveTab(string(x), i)
 				}
-				if a.Active < 0 && tab.Clicked() { // the strip's own selection cannot be "none": the click picks the tab
+				if (a.Active < 0 || a.grid.on) && tab.Clicked() { // the strip's own selection cannot be "none": the click picks the tab
 					a.later(func() { a.activateTab(i) })
 				}
 				if tab.DoubleClicked() {
@@ -202,6 +206,7 @@ func (a *App) tabStrip(c *ui.Context) {
 		a.toolTabs(c, tabs, len(a.Tabs))
 		a.editorTabs(c, tabs, len(a.Tabs)+len(a.monitor.tools))
 		if tabs.List.Changed() {
+			a.closeGrid()
 			switch tools := len(a.Tabs) + len(a.monitor.tools); {
 			case selected >= tools:
 				a.showDocument(docs[selected-tools])
@@ -348,6 +353,7 @@ func (a *App) selectTabID(id string) {
 }
 func (a *App) activateTab(i int) {
 	if i >= 0 && i < len(a.Tabs) {
+		a.closeGrid()
 		a.Active = i
 		a.monitor.tool, a.editor.shown = "", ""
 		a.tabs.term.Focus()
@@ -399,6 +405,7 @@ func (a *App) closeTab(i int) {
 	}
 	a.dropTools()
 	a.dropDocuments()
+	a.gridRebase()
 }
 
 // closeWhere closes the tabs for which close reports true, from the right.
