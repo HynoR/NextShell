@@ -723,8 +723,12 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	p.events = append(p.events, appui.Event{Message: "外部编辑器已关闭"})
 	expect("other event", "外部编辑器已关闭", true, false, false)
 	// A toast raised while the editor window builds.
-	click(t, ed, "外部编辑器参数")
-	ed.Type(`--wait "x`)
+	quoted := p.Preferences()
+	quoted.EditorArgs = `--wait "x`
+	if e := p.SavePreferences(quoted); e != nil {
+		t.Fatal(e)
+	}
+	a.Prefs = quoted
 	click(t, ed, "用外部编辑器打开")
 	expect("editor action", "外部编辑器参数里有没有闭合的引号", false, true, false)
 	ed.Advance(7 * time.Second) // the toast times out

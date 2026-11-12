@@ -274,8 +274,14 @@ func (a *App) transferSettings(c *ui.Context) {
 }
 
 func (a *App) editSettings(c *ui.Context) {
+	v := &a.settings.draft
 	group(c, "", func() {
-		a.localPath(c, "外部编辑器", "系统文本编辑器", &a.settings.draft.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
+		a.localPath(c, "外部编辑器", "系统文本编辑器", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
+		help := "空格分隔，含空格的参数用引号括起来，例如 --wait"
+		if v.EditorCommand == "" {
+			help = "只在选择了上面的程序时使用，例如 --wait"
+		}
+		field(c, "外部编辑器参数", &v.EditorArgs).Description(help)
 	})
 }
 

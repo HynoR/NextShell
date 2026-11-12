@@ -2,11 +2,15 @@ package appui_test
 
 import (
 	"image/color"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/desktop"
 )
 
 // pixel is the color the window shows at x, y (DIPs; the testers render at scale 1).
@@ -166,5 +170,89 @@ func TestMetersTurnAmberAndRedInBothThemes(t *testing.T) {
 				t.Errorf("dark=%v %s: fill %v, want %s", v.dark, name, got, want)
 			}
 		}
+	}
+}
+
+// A save conflict keeps the edits reachable: 重新载入 asks first, and offers 另存本地副本… which writes the text
+// with the edits to the chosen file, touching neither the server's file nor the open document.
+func TestConflictCanSaveALocalCopy(t *testing.T) {
+	a, p, tt, _, _ := editorFixture(t)
+	open(p, tt, "one", "/etc/app.conf", "a=1\n")
+	tt.Type("x")
+	click(t, tt, "保存")
+	p.events = append(p.events, appui.Event{Message: "remote file changed since open; reload before saving", ForEditor: true})
+	tt.Frame()
+	has(t, tt, "远程文件在打开后被修改了，请重新载入后再保存")
+	click(t, tt, "重新载入")
+	has(t, tt, "重新载入会丢弃未保存的修改", "另存本地副本…", "丢弃并重新载入")
+
+	click(t, tt, "另存本地副本…")
+	has(t, tt, "此环境不支持系统文件选择框") // a host without a file panel says so
+	dest := filepath.Join(t.TempDir(), "app.conf.mine")
+	var picked []appui.FilePick
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { picked = append(picked, o); done([]string{dest}) }
+	click(t, tt, "另存本地副本…")
+	if len(picked) != 1 || !picked[0].Save || filepath.Base(picked[0].DefaultPath) != "app.conf" {
+		t.Fatal("the save panel", picked)
+	}
+	got, e := os.ReadFile(dest)
+	if e != nil || string(got) != "xa=1\n" {
+		t.Fatalf("copy %q, %v: want the text with the unsaved edit", got, e)
+	}
+	if info, _ := os.Stat(dest); info.Mode().Perm() != 0o600 {
+		t.Fatal("the copy is readable by others", info.Mode())
+	}
+	has(t, tt, "已另存到 "+dest, "重新载入会丢弃未保存的修改") // the banner stays: the user still chooses
+	if len(p.reloaded) != 0 || len(p.saved) != 1 || a.DirtyDocumentCount() != 1 {
+		t.Fatal("a copy touched the document or the server", p.reloaded, len(p.saved))
+	}
+}
+
+// profile opens the real platform on a profile file, as the app does at start.
+func profile(t *testing.T, path string) *editPlatform {
+	t.Helper()
+	p, e := desktop.Open(path)
+	if e != nil {
+		t.Fatal(e)
+	}
+	return &editPlatform{fakePlatform: &fakePlatform{Platform: p, terminals: map[string]*terminal.Terminal{}, watching: map[string]bool{}, detailed: map[string]bool{}}}
+}
+
+// The external editor's arguments live in the settings, are saved with them, survive a restart and are used
+// by 用外部编辑器打开; the editor itself no longer has an input for them.
+func TestEditorArgumentsAreASettingAndSurviveARestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "profile.db")
+	first := profile(t, path)
+	a := appui.New(first)
+	st := ui.NewTester(a.SettingsView, 880, 640)
+	click(t, st, "远端编辑")
+	has(t, st, "外部编辑器参数", "例如 --wait")
+	click(t, st, "外部编辑器参数")
+	st.Type(`--wait "my profile"`)
+	if got := first.Preferences().EditorArgs; got != `--wait "my profile"` {
+		t.Fatalf("saved %q", got)
+	}
+	first.Shutdown()
+
+	again := profile(t, path)
+	t.Cleanup(again.Shutdown)
+	if got := again.Preferences().EditorArgs; got != `--wait "my profile"` {
+		t.Fatalf("after a restart: %q", got)
+	}
+	b := appui.New(again)
+	tt := ui.NewTester(b.View, 1280, 800)
+	session(t, again.fakePlatform, tt, "one", "one", remoteHost("one"))
+	open(again, tt, "one", "/etc/app.conf", "a=1\n")
+	if tt.HasText("外部编辑器参数") {
+		t.Fatal("the editor still has its own input for the arguments")
+	}
+	click(t, tt, "用外部编辑器打开")
+	if len(again.external) != 1 || len(again.external[0]) != 2 || again.external[0][0] != "--wait" || again.external[0][1] != "my profile" {
+		t.Fatal("args", again.external)
+	}
+	sb := ui.NewTester(b.SettingsView, 880, 640)
+	click(t, sb, "远端编辑")
+	if in, ok := sb.AccessByRole(ui.RoleTextField, "外部编辑器参数"); !ok || in.Value != `--wait "my profile"` {
+		t.Fatal("the settings do not show the arguments", in.Value)
 	}
 }

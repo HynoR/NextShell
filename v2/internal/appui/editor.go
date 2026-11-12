@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
@@ -18,17 +19,16 @@ import (
 // editorState holds the open remote documents. A document is a tab of the main window; popped out,
 // it shows in the editor window instead. Each owns an official editor State (undo, selections, folds, scroll).
 type editorState struct {
-	documents    []*remoteDocument
-	shown        string          // the document the main window's tab shows; "" while a terminal or a tool does
-	win          string          // the document the editor window shows
-	closeKey     string          // asking before this one closes
-	closeSave    map[string]bool // closes when its save is acknowledged
-	reloadKey    string          // asking before this one is reloaded
-	externalArgs string
-	popOut       bool // the editor window is to open, or come forward
-	windowed     bool // the editor window is showing
-	closeAll     bool // closing the editor window asks about unsaved documents
-	fromWindow   bool // the last save or reload was asked for in the window: its result shows there
+	documents  []*remoteDocument
+	shown      string          // the document the main window's tab shows; "" while a terminal or a tool does
+	win        string          // the document the editor window shows
+	closeKey   string          // asking before this one closes
+	closeSave  map[string]bool // closes when its save is acknowledged
+	reloadKey  string          // asking before this one is reloaded
+	popOut     bool            // the editor window is to open, or come forward
+	windowed   bool            // the editor window is showing
+	closeAll   bool            // closing the editor window asks about unsaved documents
+	fromWindow bool            // the last save or reload was asked for in the window: its result shows there
 }
 
 // remoteDocument follows its host, as a tool tab does: Host is the host's key, and it saves through
@@ -90,7 +90,7 @@ func (a *App) openEditor(session, remote string) {
 
 // externalEdit opens remote in the chosen editor, or the system's text editor, and lists it under 实时编辑.
 func (a *App) externalEdit(session, remote string) {
-	args, err := splitArgs(a.editor.externalArgs)
+	args, err := splitArgs(a.Prefs.EditorArgs)
 	if err != nil {
 		a.fail(err)
 		return
@@ -133,6 +133,16 @@ func splitArgs(s string) ([]string, error) {
 		args = append(args, cur.String())
 	}
 	return args, nil
+}
+
+// saveLocalCopy writes d's text, with the edits not saved yet, to a file the user picks: the way out of a
+// conflict that keeps the edits. It is no overwrite: the server's file is not touched.
+func (a *App) saveLocalCopy(d *remoteDocument) {
+	d.sync()
+	text, popped := d.Text, d.Popped
+	a.pick(FilePick{Title: "另存本地副本", DefaultPath: filepath.Join(a.Prefs.DownloadDir, path.Base(d.Document.Path)), Save: true}, func(p []string) {
+		a.inEditor(popped, func() { a.report(a.P.SaveLocalCopy(p[0], text), "已另存到 "+p[0]) })
+	})
 }
 
 // hostSession is the host's connected session, else any session of it.
@@ -474,10 +484,13 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	s := &a.editor
 	t := c.Theme()
 	if s.reloadKey == d.Key {
-		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1)
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+			ui.Text(c, "重新载入会丢弃未保存的修改").TextColor(t.Warning).Grow(1).MinWidth(0)
 			if ui.Button(c, "取消").Clicked() {
 				s.reloadKey = ""
+			}
+			if ui.Button(c, "另存本地副本…").Clicked() {
+				a.saveLocalCopy(d)
 			}
 			if ui.Button(c, "丢弃并重新载入").Clicked() {
 				d.Text, d.Code = d.Document.Text, nil
@@ -520,11 +533,7 @@ func (a *App) editorBody(c *ui.Context, d *remoteDocument) {
 	d.prepare()
 	editor.View(c.Key(d.Key), d.Code).Grow(1).FillWidth().AutoFocus().Border(1, t.Border)
 	d.sync()
-	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "UTF-8 文本，最大 8 MiB").SingleLine().Grow(1)
-		muted(c, "用外部编辑器打开时的参数，空格分隔").SingleLine()
-		ui.TextInput(c, &s.externalArgs).Label("外部编辑器参数").Placeholder("例如 --wait").Width(200)
-	})
+	muted(c, "UTF-8 文本，最大 8 MiB").SingleLine()
 }
 
 // docTitle is the name on a document's tab: the file's, with its folder when another tab has the same name.

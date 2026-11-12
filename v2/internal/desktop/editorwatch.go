@@ -2,6 +2,7 @@ package desktop
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -73,3 +74,8 @@ func (p *Platform) ResolveLiveEdit(id string, overwrite bool) {
 	})
 }
 func (p *Platform) SaveLiveEditCopy(id, dest string) error { return p.edits.SaveCopy(id, dest) }
+
+// SaveLocalCopy writes text to dest, readable by the user alone like the live edits' copies.
+func (p *Platform) SaveLocalCopy(dest, text string) error {
+	return os.WriteFile(dest, []byte(text), 0o600)
+}
