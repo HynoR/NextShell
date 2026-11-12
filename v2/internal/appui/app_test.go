@@ -321,3 +321,63 @@ func TestDragHostIntoFolderAndMoveFoldersUp(t *testing.T) {
 		t.Fatal("folder order", order)
 	}
 }
+
+func TestStartupRestoresTabsRecentsAndCloseConfirmPreference(t *testing.T) {
+	p := newPlatform(t)
+	h := saveHost(t, p, model.Connection{Name: "db", Host: "db.example", Port: 22, User: "u", Auth: "agent"})
+	prefs := p.Preferences()
+	prefs.RestoreTabs = true
+	p.SavePreferences(prefs)
+	p.SaveUIState("tabs", "local\n"+h.ID+"\nmissing-host")
+	a, tt := start(p)
+	tt.Frame()
+	if p.local != 1 || len(p.connects) != 1 || p.connects[0].ID != h.ID {
+		t.Fatal("restore", p.local, p.connects)
+	}
+	if a.ExitNeedsConfirm() {
+		t.Fatal("no tabs yet, nothing to confirm")
+	}
+	session(t, p, tt, "local", "local", model.Connection{})
+	session(t, p, tt, "db", "db", h)
+	if !a.ExitNeedsConfirm() {
+		t.Fatal("open tabs confirm by default")
+	}
+	a.SaveOpenTabs()
+	if got := p.UIState("tabs"); got != "local\n"+h.ID {
+		t.Fatal("saved tabs", got)
+	}
+	prefs.NoCloseConfirm = true
+	p.SavePreferences(prefs)
+	a.Prefs = prefs
+	if a.ExitNeedsConfirm() {
+		t.Fatal("confirm switched off")
+	}
+	// Connecting records the host among the recents kept across runs.
+	if got := p.UIState("recent"); got != h.ID {
+		t.Fatal("recent", got)
+	}
+}
+
+func TestAutoShellIntegrationWaitsForThePrompt(t *testing.T) {
+	p := newPlatform(t)
+	prefs := p.Preferences()
+	prefs.ShellIntegration = "auto"
+	p.SavePreferences(prefs)
+	_, tt := start(p)
+	s := &appui.Session{ID: "r", Title: "r", Terminal: newTerminal(t, "Welcome to Ubuntu\r\n"), Connection: remoteHost("r")}
+	p.events = append(p.events, appui.Event{Session: s})
+	tt.Frame()
+	tt.Frame()
+	if len(p.sent) != 0 {
+		t.Fatal("injected before the prompt", p.sent)
+	}
+	s.Terminal.Feed([]byte("u@r:~$ "))
+	tt.Frame()
+	if len(p.sent) != 1 || !strings.Contains(p.sent[0], "ZSH_VERSION") || !strings.HasSuffix(p.sent[0], "\r") || !strings.HasPrefix(p.sent[0], " ") {
+		t.Fatal("hook", p.sent)
+	}
+	tt.Frame()
+	if len(p.sent) != 1 {
+		t.Fatal("injected twice")
+	}
+}

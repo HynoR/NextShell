@@ -87,6 +87,10 @@ type Platform interface {
 	DuplicateConnection(id string) (model.Connection, error)
 	RenameKey(id, name string) error
 	SaveHistory([]string) error
+	HostKeys() ([]model.HostKey, error)
+	ForgetHostKey(address string) error
+	UIState(key string) string
+	SaveUIState(key, value string) error
 	Capabilities() TerminalCapabilities
 	GenerateKey(name, algorithm string) (model.Key, error)
 	ImportKey(path, passphrase string) (model.Key, error)

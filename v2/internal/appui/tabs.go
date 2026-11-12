@@ -1,6 +1,7 @@
 package appui
 
 import (
+	"cmp"
 	"strings"
 	"time"
 
@@ -13,6 +14,80 @@ type tabsState struct {
 	started              map[string]time.Time
 	renaming, renameText string
 	term                 ui.Handle
+	restored             bool
+	hooks                map[string]time.Time // sessions awaiting the automatic shell hook, until when
+}
+
+// ExitNeedsConfirm says whether closing the main window should ask first.
+func (a *App) ExitNeedsConfirm() bool {
+	return !a.ExitConfirmed && (a.DirtyDocumentCount() > 0 || len(a.Tabs) > 0 && !a.Prefs.NoCloseConfirm)
+}
+
+// SaveOpenTabs remembers the open hosts and local shells for the next start.
+func (a *App) SaveOpenTabs() {
+	var ids []string
+	for _, s := range a.Tabs {
+		switch {
+		case s.Local:
+			ids = append(ids, "local")
+		case s.Connection.ID != "":
+			ids = append(ids, s.Connection.ID)
+		}
+	}
+	a.report(a.P.SaveUIState("tabs", strings.Join(ids, "\n")), "")
+}
+
+// restoreTabs reopens the last run's tabs once, when the preference asks.
+func (a *App) restoreTabs() {
+	if a.tabs.restored {
+		return
+	}
+	a.tabs.restored = true
+	if !a.Prefs.RestoreTabs {
+		return
+	}
+	for _, id := range strings.Fields(a.P.UIState("tabs")) {
+		if id == "local" {
+			a.P.Local()
+		} else if cc, ok := a.host(id); ok && !cc.Deleted {
+			a.connect(cc)
+		}
+	}
+}
+
+// injectShellHooks types the directory hook into new remote sessions once
+// their prompt shows, when Shell 集成 is 自动. Sessions that show no
+// prompt within ten seconds are left alone.
+func (a *App) injectShellHooks(c *ui.Context) {
+	if len(a.tabs.hooks) == 0 {
+		return
+	}
+	for id, until := range a.tabs.hooks {
+		if time.Now().After(until) {
+			delete(a.tabs.hooks, id)
+			continue
+		}
+		if !promptShown(a.P.ScreenText(id)) {
+			continue
+		}
+		delete(a.tabs.hooks, id)
+		bash, e1 := a.P.ShellCommand("bash")
+		zsh, e2 := a.P.ShellCommand("zsh")
+		if e := cmp.Or(e1, e2); e != nil {
+			a.fail(e)
+			continue
+		}
+		// The leading space keeps it out of history where the shell ignores such lines.
+		a.report(a.P.Send(id, " if [ -n \"$ZSH_VERSION\" ]; then "+strings.TrimSpace(zsh)+"; elif [ -n \"$BASH_VERSION\" ]; then "+strings.TrimSpace(bash)+"; fi\r"), "")
+	}
+	c.After(300 * time.Millisecond)
+}
+
+// promptShown is true when the screen's last line looks like a shell prompt.
+func promptShown(screen string) bool {
+	lines := strings.Split(strings.TrimRight(screen, " \n"), "\n")
+	last := strings.TrimSpace(lines[len(lines)-1])
+	return last != "" && strings.ContainsAny(last[len(last)-1:], "$#%>")
 }
 
 type tabDrag string

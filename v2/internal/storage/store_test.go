@@ -370,3 +370,30 @@ func TestFolderNamesAndDepth(t *testing.T) {
 		t.Fatal("invisible depth accepted")
 	}
 }
+
+func TestHostPinsListForgetAndUIState(t *testing.T) {
+	s, e := Open(":memory:")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	s.PinHost("b.example:22", "SHA256:b")
+	s.PinHost("a.example:22", "SHA256:a")
+	s.SaveUIState("tabs", `["local"]`)
+	keys, e := s.HostPins()
+	if e != nil || len(keys) != 2 || keys[0].Address != "a.example:22" || keys[0].Fingerprint != "SHA256:a" {
+		t.Fatal(keys, e)
+	}
+	if e = s.DeleteHostPin("a.example:22"); e != nil {
+		t.Fatal(e)
+	}
+	if pin, _ := s.HostPin("a.example:22"); pin != "" {
+		t.Fatal("not forgotten")
+	}
+	if v, _ := s.UIState("tabs"); v != `["local"]` {
+		t.Fatal(v)
+	}
+	if v, e := s.UIState("missing"); v != "" || e != nil {
+		t.Fatal(v, e)
+	}
+}

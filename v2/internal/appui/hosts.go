@@ -64,6 +64,8 @@ func (a *App) connect(cc model.Connection) {
 		a.hosts.connecting[cc.ID] = true
 		delete(a.hosts.failed, cc.ID)
 		a.hosts.recent = append([]string{cc.ID}, remove(a.hosts.recent, cc.ID)...)
+		a.hosts.recent = a.hosts.recent[:min(len(a.hosts.recent), 20)]
+		a.report(a.P.SaveUIState("recent", strings.Join(a.hosts.recent, "\n")), "")
 	}
 	a.P.Connect(cc)
 }

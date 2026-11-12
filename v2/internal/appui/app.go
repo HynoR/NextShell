@@ -86,6 +86,7 @@ func New(p Platform) *App {
 	a.settings.load(a.Prefs)
 	a.tabs.started = map[string]time.Time{}
 	a.hosts.init()
+	a.hosts.recent = strings.Fields(p.UIState("recent"))
 	a.files.init()
 	a.monitor.init()
 	a.snippets.init()
@@ -238,6 +239,8 @@ func (a *App) View(c *ui.Context) {
 			}
 		}
 	}
+	a.restoreTabs()
+	a.injectShellHooks(c)
 	a.refreshTitles()
 	a.shortcuts(c)
 	a.mainWindow(c)
@@ -311,6 +314,12 @@ func (a *App) addSession(s *Session) {
 		delete(a.hosts.failed, s.Connection.ID)
 	}
 	a.tabs.started[s.ID] = time.Now()
+	if !s.Local && s.Replaces == "" && a.Prefs.ShellIntegration == "auto" {
+		if a.tabs.hooks == nil {
+			a.tabs.hooks = map[string]time.Time{}
+		}
+		a.tabs.hooks[s.ID] = time.Now().Add(10 * time.Second)
+	}
 	for i, old := range a.Tabs {
 		if s.Replaces == old.ID {
 			a.P.CloseSession(old.ID)

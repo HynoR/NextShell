@@ -123,7 +123,7 @@ func (a *App) paletteItems() []paletteItem {
 			{"清屏", func() { s.Terminal.ClearScreen() }},
 			{"清除滚动缓冲", func() { s.Terminal.ClearScrollback() }},
 		}...)
-		if !s.Local {
+		if !s.Local && a.Prefs.ShellIntegration != "off" {
 			for _, shell := range []string{"bash", "zsh"} {
 				actions = append(actions, struct {
 					title string

@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -324,4 +325,40 @@ func TestRecycleBinRestoresTheChosenHosts(t *testing.T) {
 		}
 	}
 	has(t, st, "已恢复 2 个主机", "恢复所选 0 个")
+}
+
+type keysPlatform struct {
+	*fakePlatform
+	keys []model.HostKey
+}
+
+func (p *keysPlatform) HostKeys() ([]model.HostKey, error) { return p.keys, nil }
+func (p *keysPlatform) ForgetHostKey(address string) error {
+	p.keys = slices.DeleteFunc(p.keys, func(k model.HostKey) bool { return k.Address == address })
+	return nil
+}
+
+func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
+	p := &keysPlatform{fakePlatform: newPlatform(t), keys: []model.HostKey{{Address: "db.example:22", Fingerprint: "SHA256:abc"}}}
+	a := appui.New(p)
+	st := ui.NewTester(a.SettingsView, 880, 1400)
+	click(t, st, "SSH")
+	has(t, st, "已信任的主机密钥", "db.example:22", "SHA256:abc")
+	click(t, st, "移除 db.example:22")
+	click(t, st, "移除密钥")
+	if keys, _ := p.HostKeys(); len(keys) != 0 {
+		t.Fatal("not forgotten", keys)
+	}
+	has(t, st, "还没有信任过的主机")
+	click(t, st, "通用")
+	flip(t, st, "关闭窗口时确认")
+	flip(t, st, "启动时恢复标签")
+	if v := p.Preferences(); !v.NoCloseConfirm || !v.RestoreTabs {
+		t.Fatal("window prefs", v.NoCloseConfirm, v.RestoreTabs)
+	}
+	click(t, st, "终端")
+	click(t, st, "关闭")
+	if v := p.Preferences(); v.ShellIntegration != "off" {
+		t.Fatal("shell integration", v.ShellIntegration)
+	}
 }

@@ -31,7 +31,13 @@ type Preferences struct {
 	KeepaliveEnabled bool    `json:"keepaliveEnabled"`
 	KeepaliveSeconds int     `json:"keepaliveSeconds"`
 	NexttracePath    string  `json:"nexttracePath"`
+	NoCloseConfirm   bool    `json:"noCloseConfirm"`   // zero value: confirm closing with open tabs
+	RestoreTabs      bool    `json:"restoreTabs"`      // reopen last run's hosts and local shells
+	ShellIntegration string  `json:"shellIntegration"` // "" manual, "auto" or "off"
 }
+
+// HostKey is a trusted server key fingerprint.
+type HostKey struct{ Address, Fingerprint string }
 
 func DefaultPreferences() Preferences {
 	return Preferences{HyperlinkConfirm: true, Appearance: "跟随系统", FontSize: 14, LineHeight: 1.2, TerminalTheme: "跟随外观", Background: "#0b1220", Foreground: "#d8e3f0", Cursor: "block", CursorBlink: true, ScrollbackMiB: 10, TitleUpdates: true, Notifications: true, UploadDir: "~", DownloadDir: "~/Downloads", KeepaliveEnabled: true, KeepaliveSeconds: 15}
@@ -61,12 +67,15 @@ func (p Preferences) Validate() error {
 		return fmt.Errorf("滚动缓冲需为1..256 MiB（不是行数）")
 	}
 	if p.KeepaliveSeconds < 5 || p.KeepaliveSeconds > 600 {
-		return fmt.Errorf("keepalive间隔需为5..600秒")
+		return fmt.Errorf("心跳间隔需为5..600秒")
 	}
 	for _, s := range []string{p.LocalShell, p.EditorCommand, p.NexttracePath, p.UploadDir, p.DownloadDir, p.FontFamily} {
 		if strings.ContainsAny(s, "\x00\r\n") {
 			return fmt.Errorf("路径和字体不得含控制字符")
 		}
+	}
+	if p.ShellIntegration != "" && p.ShellIntegration != "auto" && p.ShellIntegration != "off" {
+		return fmt.Errorf("无效 Shell 集成模式")
 	}
 	if p.UploadDir == "" || p.DownloadDir == "" {
 		return fmt.Errorf("默认目录不得为空")

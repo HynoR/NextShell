@@ -236,6 +236,14 @@ func (a *App) generalSettings(c *ui.Context) {
 			}
 		}).FillWidth()
 	})
+	group(c, "窗口", func() {
+		confirm := !v.NoCloseConfirm
+		if toggle(c, "关闭窗口时确认", &confirm) {
+			v.NoCloseConfirm = !confirm
+		}
+		toggle(c, "启动时恢复标签", &v.RestoreTabs)
+		muted(c, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
+	})
 	group(c, "文件", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
 		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
@@ -277,6 +285,19 @@ func (a *App) terminalSettings(c *ui.Context) {
 		toggle(c, "服务器读取剪贴板时询问", &v.ClipboardReadAsk)
 		muted(c, "剪贴板选项在新会话生效")
 	})
+	group(c, "Shell 集成", func() {
+		modes := []string{"auto", "", "off"}
+		i := max(0, indexOf(modes, v.ShellIntegration))
+		ui.Field(c, "目录跟踪", func() {
+			if ui.Segmented(c, &i, "自动", "手动", "关闭").Label("目录跟踪").Changed() {
+				v.ShellIntegration = modes[i]
+			}
+		}).Description([]string{
+			"新的 bash / zsh 会话出现提示符后自动注入目录跟踪脚本，文件面板可跟随终端目录",
+			"需要时在命令面板执行「插入目录跟踪脚本」",
+			"不注入，命令面板里也不提供",
+		}[i]).FillWidth()
+	})
 	if s.err != "" {
 		ui.Text(c, s.err).TextColor(c.Theme().Danger)
 	}
@@ -307,6 +328,7 @@ func (a *App) sshSettings(c *ui.Context) {
 	group(c, "本地终端", func() {
 		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: "/bin", Hidden: true})
 	})
+	a.hostKeySettings(c)
 	if s.err != "" {
 		ui.Text(c, s.err).TextColor(c.Theme().Danger)
 	}
@@ -323,6 +345,33 @@ func (a *App) aboutSettings(c *ui.Context) {
 		}
 		for i := len(a.logs) - 1; i >= 0; i-- {
 			ui.Text(c.Key(fmt.Sprint("log-", i)), a.logs[i]).FontSize(12).Selectable()
+		}
+	})
+}
+
+// hostKeySettings lists the trusted server keys; forgetting one makes the
+// next connection ask again.
+func (a *App) hostKeySettings(c *ui.Context) {
+	t := c.Theme()
+	keys, e := a.P.HostKeys()
+	group(c, "已信任的主机密钥", func() {
+		if e != nil {
+			ui.Text(c, e.Error()).TextColor(t.Danger)
+		} else if len(keys) == 0 {
+			muted(c, "还没有信任过的主机。首次连接时核对指纹后会记在这里。")
+		}
+		for _, k := range keys {
+			ui.Row(c.Key("hostkey-"+k.Address)).FillWidth().Padding(8).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Border(1, t.Border).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+					ui.Text(c, k.Address).Bold().SingleLine()
+					ui.Text(c, k.Fingerprint).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine().Selectable()
+				})
+				if ghost(c, "移除", "").Label("移除 "+k.Address).Clicked() {
+					a.confirm("移除主机密钥", k.Address+"\n下次连接时会重新显示指纹并询问是否信任。", "移除密钥", func() {
+						a.report(a.P.ForgetHostKey(k.Address), "已移除 "+k.Address+" 的主机密钥")
+					})
+				}
+			})
 		}
 	})
 }

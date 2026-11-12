@@ -13,6 +13,7 @@ import (
 	"nextshell.dev/v2/internal/security"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -388,6 +389,49 @@ func (s *Store) HostPin(address string) (string, error) {
 		return "", nil
 	}
 	return fp, e
+}
+
+// HostPins lists the trusted host keys, by address.
+func (s *Store) HostPins() ([]model.HostKey, error) {
+	rows, e := s.db.Query("SELECT key, value FROM app_settings WHERE key LIKE 'host:%' ORDER BY key")
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	var out []model.HostKey
+	for rows.Next() {
+		var k model.HostKey
+		if e = rows.Scan(&k.Address, &k.Fingerprint); e != nil {
+			return nil, e
+		}
+		k.Address = strings.TrimPrefix(k.Address, "host:")
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// DeleteHostPin forgets a host key: the next connection asks to trust it again.
+func (s *Store) DeleteHostPin(address string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, e := s.db.Exec("DELETE FROM app_settings WHERE key=?", "host:"+address)
+	return e
+}
+
+// UIState is a small value the UI keeps between runs ("" when unset).
+func (s *Store) UIState(key string) (string, error) {
+	var v string
+	e := s.db.QueryRow("SELECT value FROM app_settings WHERE key=?", "ui:"+key).Scan(&v)
+	if errors.Is(e, sql.ErrNoRows) {
+		return "", nil
+	}
+	return v, e
+}
+func (s *Store) SaveUIState(key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, e := s.db.Exec("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "ui:"+key, value)
+	return e
 }
 
 // DuplicateConnection copies encrypted credentials via the vault, never via UI plaintext.

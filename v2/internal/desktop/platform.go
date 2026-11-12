@@ -135,7 +135,14 @@ func (p *Platform) Snapshot() (appui.Snapshot, error) {
 func (p *Platform) SaveConnection(c model.Connection, secret *string) error {
 	return p.store.SaveConnection(c, secret)
 }
-func (p *Platform) SaveFolder(f model.Folder) error          { return p.store.SaveFolder(f) }
+func (p *Platform) SaveFolder(f model.Folder) error     { return p.store.SaveFolder(f) }
+func (p *Platform) HostKeys() ([]model.HostKey, error)  { return p.store.HostPins() }
+func (p *Platform) ForgetHostKey(address string) error  { return p.store.DeleteHostPin(address) }
+func (p *Platform) SaveUIState(key, value string) error { return p.store.SaveUIState(key, value) }
+func (p *Platform) UIState(key string) string {
+	v, _ := p.store.UIState(key)
+	return v
+}
 func (p *Platform) SaveProxy(a model.Proxy, s *string) error { return p.store.SaveProxy(a, s) }
 func (p *Platform) SaveKey(k model.Key) error {
 	pub, e := sshclient.InspectKey(k.Private, k.Passphrase)
