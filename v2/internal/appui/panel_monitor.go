@@ -3,6 +3,7 @@ package appui
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,10 +19,11 @@ type monitorState struct {
 	session, watching             string
 	snap                          monitor.Snapshot
 	page                          int // 概览, 历史, 进程, 网络
-	filter                        string
+	filter, netFilter             string
 	processList, networkList      ui.ListState
 	processRow, networkRow        int
 	processSort                   ui.SortOrder
+	detail                        int // PID shown in the process drawer
 	historyDisk, historyInterface string
 }
 
@@ -375,6 +377,9 @@ func (a *App) processTable(c *ui.Context, id string, processes []monitor.Process
 			return
 		}
 		v := rows[row]
+		if m.Item("详细信息").Chosen() {
+			s.detail = v.PID
+		}
 		if m.Item("复制命令").Chosen() {
 			a.P.CopyText(v.Command)
 		}
@@ -389,18 +394,24 @@ func (a *App) processTable(c *ui.Context, id string, processes []monitor.Process
 		})
 	}
 	cols := []ui.TableColumn{{Title: "PID", Width: 60, Sortable: true}, {Title: "CPU", Width: 68, Sortable: true, Align: ui.End}, {Title: "内存", Width: 68, Sortable: true, Align: ui.End}, {Title: "命令", Sortable: true}}
-	ui.Table(c.Key("process-table"), &s.processList, cols, len(rows), func(row, col int) {
+	table := ui.Table(c.Key("process-table"), &s.processList, cols, len(rows), func(row, col int) {
 		v := rows[row]
 		text := []string{strconv.Itoa(v.PID), fmt.Sprintf("%.1f%%", v.CPU), fmt.Sprintf("%.0fM", v.MemoryMB), v.Command}[col]
 		ui.Text(c, text).SingleLine().FontSize(12).Tooltip(v.User)
 	}).Grow(1).FillWidth()
-	muted(c, fmt.Sprintf("%d / %d 个进程 · 右键发送信号", len(rows), len(processes))).Padding(4, 10)
+	if table.Submitted() && s.processRow >= 0 && s.processRow < len(rows) {
+		s.detail = rows[s.processRow].PID
+	}
+	if s.detail != 0 {
+		a.processDrawer(c, id, processes)
+	}
+	muted(c, fmt.Sprintf("%d / %d 个进程 · 双击查看详情，右键发送信号", len(rows), len(processes))).Padding(4, 10)
 }
 func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 	s := &a.monitor
-	ui.SearchField(c, &s.filter).Label("过滤网络连接").Placeholder("端口、地址或进程").Margin(4, 8)
+	ui.SearchField(c, &s.netFilter).Label("过滤网络连接").Placeholder("端口、地址或进程").Margin(4, 8)
 	var rows []monitor.Network
-	q := strings.ToLower(strings.TrimSpace(s.filter))
+	q := strings.ToLower(strings.TrimSpace(s.netFilter))
 	for _, v := range network {
 		if strings.Contains(strings.ToLower(fmt.Sprintf("%s %s %s:%d %s:%d %d %s", v.Protocol, v.State, v.LocalIP, v.LocalPort, v.RemoteIP, v.RemotePort, v.PID, v.Process)), q) {
 			rows = append(rows, v)
@@ -418,4 +429,60 @@ func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 		ui.Text(c, text).SingleLine().FontSize(12).Tooltip(fmt.Sprintf("%d 个连接 · %d 个对端", v.Connections, v.UniqueIPs))
 	}).Grow(1).FillWidth()
 	muted(c, fmt.Sprintf("%d / %d 条", len(rows), len(network))).Padding(4, 10)
+}
+
+// processDrawer details one process under the table; it follows the PID
+// across samples and says so when the process is gone.
+func (a *App) processDrawer(c *ui.Context, id string, processes []monitor.Process) {
+	s := &a.monitor
+	t := c.Theme()
+	i := slices.IndexFunc(processes, func(v monitor.Process) bool { return v.PID == s.detail })
+	ui.Column(c).FillWidth().MaxHeight(260).Padding(10).Gap(6).Background(t.Surface).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Label("进程详情").Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, fmt.Sprintf("进程 %d", s.detail)).Bold().Grow(1)
+			if iconButton(c, "关闭详情", "close").Clicked() {
+				s.detail = 0
+			}
+		})
+		if i < 0 {
+			muted(c, "进程已退出")
+			return
+		}
+		v := processes[i]
+		ui.Scroll(c).FillWidth().MaxHeight(72).Children(func() {
+			ui.Text(c, v.Command).Font("monospace").FontSize(12).Wrap().Selectable().Label("命令行")
+		})
+		started := s.snap.At.Add(-time.Duration(v.Elapsed) * time.Second)
+		for _, kv := range [][2]string{
+			{"用户", v.User},
+			{"启动时间", started.Format("2006-01-02 15:04:05") + "（已运行 " + uptime(time.Duration(v.Elapsed)*time.Second) + "）"},
+			{"CPU / 内存", fmt.Sprintf("%.1f%% / %.0f MB（%.1f%%）", v.CPU, v.MemoryMB, v.MemoryPercent)},
+			{"父进程 · 状态", fmt.Sprintf("%d · %s · nice %d", v.PPID, v.State, v.Nice)},
+		} {
+			ui.Row(c).FillWidth().Gap(8).Children(func() {
+				ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(84)
+				ui.Text(c, kv[1]).FontSize(12).SingleLine().Grow(1).MinWidth(0)
+			})
+		}
+		ui.Row(c).Gap(8).Children(func() {
+			if ui.Button(c, "复制命令行").Clicked() {
+				a.P.CopyText(v.Command)
+				a.toast("已复制命令行")
+			}
+			if ui.Button(c, "结束进程…").Clicked() {
+				a.confirm(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
+			}
+		})
+	})
+}
+func uptime(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%d 秒", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%d 分钟", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%d 小时 %d 分钟", int(d.Hours()), int(d.Minutes())%60)
+	}
+	return fmt.Sprintf("%d 天", int(d.Hours()/24))
 }

@@ -20,7 +20,7 @@ printf '\n---NS_CPUSTAT---\n'; head -n 1 /proc/stat
 printf '\n---NS_MEMINFO---\n'; cat /proc/meminfo
 printf '\n---NS_NETDEV---\n'; cat /proc/net/dev
 printf '\n---NS_DISK---\n'; df -Pk
-printf '\n---NS_PROCESSES---\n'; ps -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,comm --no-headers --sort=-pcpu
+printf '\n---NS_PROCESSES---\n'; ps -ww -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,args --no-headers --sort=-pcpu
 if command -v ss >/dev/null 2>&1; then printf '\n---NS_NETWORK_SS---\n'; ss -tunap; elif command -v netstat >/dev/null 2>&1; then printf '\n---NS_NETWORK_NETSTAT---\n'; netstat -tunap; else printf '\n---NS_NETWORK_UNAVAILABLE---\n'; echo 'ss/netstat unavailable'; fi
 printf '\n---NS_PROBE_END---\n'`
 

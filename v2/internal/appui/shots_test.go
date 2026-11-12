@@ -49,7 +49,7 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 func monitorSnapshot(at time.Time, i int) monitor.Snapshot {
 	return monitor.Snapshot{At: at, Info: "Ubuntu 24.04 LTS · 4 核 · 运行 12 天", Load: "0.42 0.38 0.35", HasDelta: true, HasNetworkDelta: true, CPUPercent: float64(20 + i*3%40), MemoryTotal: 8 << 30, MemoryAvailable: uint64(3+i%2) << 30, SwapTotal: 2 << 30, SwapFree: 2 << 30, RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000),
 		Disks:     []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 41 << 20, UsedPercent: 51}},
-		Processes: []monitor.Process{{PID: 812, User: "www", CPU: 12.5, MemoryMB: 140, Command: "nginx: worker process"}, {PID: 1, User: "root", CPU: 0.1, MemoryMB: 12, Command: "/sbin/init"}, {PID: 2201, User: "postgres", CPU: 4.2, MemoryMB: 610, Command: "postgres: checkpointer"}},
+		Processes: []monitor.Process{{PID: 812, User: "www", CPU: 12.5, MemoryMB: 140, Command: "nginx: worker process"}, {PID: 1, User: "root", CPU: 0.1, MemoryMB: 12, Command: "/sbin/init"}, {PID: 2201, User: "postgres", CPU: 4.2, MemoryMB: 610, Command: "postgres: checkpointer", Elapsed: 7260, PPID: 2190, State: "Ss", MemoryPercent: 3.8}},
 		Network:   []monitor.Network{{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 443, PID: 812, Process: "nginx", Connections: 32, UniqueIPs: 9}, {Protocol: "tcp", State: "ESTAB", LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.9.4", RemotePort: 51022, PID: 990, Process: "sshd", Connections: 1, UniqueIPs: 1}}}
 }
 
