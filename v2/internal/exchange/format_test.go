@@ -184,3 +184,15 @@ func TestKeyFingerprintPrecedesUniqueNameSpec(t *testing.T) {
 		t.Fatal("fingerprint should have precedence over unique name")
 	}
 }
+
+func TestImportMonitorDefaultsOn(t *testing.T) {
+	for in, want := range map[string]bool{`{"name":"a","host":"h","port":22,"username":"u","authType":"agent"}`: true, `{"name":"a","host":"h","port":22,"username":"u","authType":"agent","monitorSession":false}`: false} {
+		var e Entry
+		if err := json.Unmarshal([]byte(in), &e); err != nil {
+			t.Fatal(err)
+		}
+		if got := FromEntry(e, nil).Monitor; got != want {
+			t.Fatalf("%s: %v", in, got)
+		}
+	}
+}

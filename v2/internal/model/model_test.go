@@ -1,7 +1,9 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -51,5 +53,21 @@ func TestProxyValidation(t *testing.T) {
 		if e := p.Validate(); e == nil {
 			t.Fatal(p)
 		}
+	}
+}
+
+func TestMonitorDefaultsOnUnlessSaidOff(t *testing.T) {
+	for in, want := range map[string]bool{`{"id":"a"}`: true, `{"id":"a","monitorSession":true}`: true, `{"id":"a","monitorSession":false}`: false} {
+		var c Connection
+		if e := json.Unmarshal([]byte(in), &c); e != nil || c.Monitor != want {
+			t.Fatalf("%s: monitor %v, %v", in, c.Monitor, e)
+		}
+	}
+	b, _ := json.Marshal(Connection{})
+	if !strings.Contains(string(b), `"monitorSession":false`) {
+		t.Fatalf("an off switch must be written: %s", b)
+	}
+	if c, _ := QuickConnect("root@10.0.0.1"); !c.Monitor {
+		t.Fatal("quick connect samples by default")
 	}
 }

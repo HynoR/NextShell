@@ -471,7 +471,7 @@ func (a *App) folderMenu(e ui.Element, f model.Folder) {
 // newHost, editHost and editFolder open their dialog in the connection manager.
 func (a *App) newHost(folder string) {
 	a.openManager()
-	a.hosts.editor = hostEditor{open: true, edit: model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, FolderID: folder}, port: "22", keepaliveMode: keepaliveGlobal, keepalive: strconv.Itoa(model.DefaultKeepaliveSeconds), inheritOrig: true}
+	a.hosts.editor = hostEditor{open: true, edit: model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, FolderID: folder, Monitor: true}, port: "22", keepaliveMode: keepaliveGlobal, keepalive: strconv.Itoa(model.DefaultKeepaliveSeconds), inheritOrig: true}
 }
 func (a *App) editHost(c model.Connection) {
 	a.openManager()

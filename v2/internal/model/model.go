@@ -2,6 +2,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -42,7 +43,7 @@ type Connection struct {
 	Favorite              bool     `json:"favorite,omitempty"`
 	Backspace             string   `json:"backspaceMode,omitempty"`
 	DeleteMode            string   `json:"deleteMode,omitempty"`
-	Monitor               bool     `json:"monitorSession,omitempty"`
+	Monitor               bool     `json:"monitorSession"` // sample the server's status; on unless a record says otherwise
 	NeedsKeyRebind        bool     `json:"needsKeyRebind,omitempty"`
 	OriginalAuth          string   `json:"originalAuth,omitempty"`
 	ID                    string   `json:"id"`
@@ -61,6 +62,17 @@ type Connection struct {
 	Deleted               bool     `json:"deleted,omitempty"`
 }
 
+// UnmarshalJSON reads a record without monitorSession (saved before the switch worked, or by an older app)
+// as monitoring on; only an explicit false turns it off. New records are written with the field always.
+func (c *Connection) UnmarshalJSON(b []byte) error {
+	type plain Connection
+	v := plain{Monitor: true}
+	if e := json.Unmarshal(b, &v); e != nil {
+		return e
+	}
+	*c = Connection(v)
+	return nil
+}
 func (c Connection) Address() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
 func (c Connection) Validate() error {
 	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.Host) == "" || strings.TrimSpace(c.User) == "" {
@@ -131,7 +143,7 @@ func (p Proxy) Validate() error {
 	return nil
 }
 func QuickConnect(s string) (Connection, error) {
-	c := Connection{Name: s, Port: 22, Auth: "password", Encoding: "utf-8", Keepalive: 30}
+	c := Connection{Name: s, Port: 22, Auth: "password", Encoding: "utf-8", Keepalive: 30, Monitor: true}
 	s = strings.TrimSpace(strings.TrimPrefix(s, "ssh://"))
 	i := strings.LastIndex(s, "@")
 	if i < 1 {

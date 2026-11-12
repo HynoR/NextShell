@@ -223,7 +223,7 @@ func ToEntry(c model.Connection, folder string, key *model.Key) Entry {
 	return e
 }
 func FromEntry(e Entry, keys []model.Key) model.Connection {
-	c := model.Connection{KeepaliveEnabled: e.KeepAliveEnabled, KeepaliveIntervalSec: e.KeepAliveIntervalSec, Name: e.Name, Host: e.Host, Port: e.Port, User: e.Username, Auth: e.AuthType, Tags: e.Tags, Notes: e.Notes, Favorite: e.Favorite, Encoding: e.Encoding, Backspace: e.Backspace, DeleteMode: e.Delete, Monitor: e.Monitor, NeedsKeyRebind: e.NeedsKeyRebind}
+	c := model.Connection{KeepaliveEnabled: e.KeepAliveEnabled, KeepaliveIntervalSec: e.KeepAliveIntervalSec, Name: e.Name, Host: e.Host, Port: e.Port, User: e.Username, Auth: e.AuthType, Tags: e.Tags, Notes: e.Notes, Favorite: e.Favorite, Encoding: e.Encoding, Backspace: e.Backspace, DeleteMode: e.Delete, Monitor: e.Monitor || !e.Has("monitorSession"), NeedsKeyRebind: e.NeedsKeyRebind}
 	if e.Password != nil {
 		c.Secret = *e.Password
 	}
