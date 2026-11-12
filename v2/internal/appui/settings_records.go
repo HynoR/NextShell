@@ -228,8 +228,21 @@ func (a *App) trashSettings(c *ui.Context) {
 			muted(c, "回收站是空的。删除的主机会先放在这里。")
 			return
 		}
+		if a.settings.trash == nil {
+			a.settings.trash = map[string]bool{}
+		}
+		var picked []model.Connection
+		for _, cc := range deleted {
+			if a.settings.trash[cc.ID] {
+				picked = append(picked, cc)
+			}
+		}
 		for _, cc := range deleted {
 			ui.Row(c.Key("trash-"+cc.ID)).FillWidth().Padding(8).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Border(1, t.Border).Children(func() {
+				on := a.settings.trash[cc.ID]
+				if ui.Checkbox(c, &on, "").Label("选择 " + cc.Name).Changed() {
+					a.settings.trash[cc.ID] = on
+				}
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, cc.Name).Bold()
 					muted(c, cc.User+"@"+cc.Address())
@@ -247,7 +260,21 @@ func (a *App) trashSettings(c *ui.Context) {
 				}
 			})
 		}
-		actions(c, func() { a.emptyTrashButton(c, deleted) })
+		actions(c, func() {
+			if ui.Button(c, fmt.Sprintf("恢复所选 %d 个", len(picked))).Disabled(len(picked) == 0).Clicked() {
+				for _, cc := range picked {
+					cc.Deleted = false
+					if e := a.P.SaveConnection(cc, nil); e != nil {
+						a.fail(e)
+						break
+					}
+					delete(a.settings.trash, cc.ID)
+				}
+				a.toast(fmt.Sprintf("已恢复 %d 个主机", len(picked)))
+				a.reload()
+			}
+			a.emptyTrashButton(c, deleted)
+		})
 	})
 }
 func (a *App) emptyTrashButton(c *ui.Context, deleted []model.Connection) {

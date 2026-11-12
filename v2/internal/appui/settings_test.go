@@ -304,3 +304,24 @@ func TestImportPreviewOpensSettingsAndExportUsesChosenHosts(t *testing.T) {
 		t.Fatal("clear")
 	}
 }
+
+func TestRecycleBinRestoresTheChosenHosts(t *testing.T) {
+	p := newPlatform(t)
+	for _, n := range []string{"r1", "r2", "r3"} {
+		saveHost(t, p, model.Connection{Name: n, Host: n, User: "u", Deleted: true})
+	}
+	a, _ := start(p)
+	st := ui.NewTester(a.SettingsView, 880, 900)
+	click(t, st, "回收站")
+	has(t, st, "恢复所选 0 个")
+	click(t, st, "选择 r1")
+	click(t, st, "选择 r3")
+	click(t, st, "恢复所选 2 个")
+	snap, _ := p.Snapshot()
+	for _, c := range snap.Connections {
+		if c.Deleted != (c.Name == "r2") {
+			t.Fatal("restore chosen", c.Name, c.Deleted)
+		}
+	}
+	has(t, st, "已恢复 2 个主机", "恢复所选 0 个")
+}

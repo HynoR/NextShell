@@ -18,6 +18,7 @@ type settingsState struct {
 	size, lineHeight, scrollback, keepalive string
 	err                                     string
 	hosts                                   map[string]bool // chosen for export and cloud copy
+	trash                                   map[string]bool // chosen in the recycle bin
 
 	keys    keysState
 	proxies proxiesState

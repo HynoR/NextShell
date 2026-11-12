@@ -342,6 +342,7 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 		}
 	})
 }
+
 // hostDrag is a host dragged onto a folder's section.
 type hostDrag string
 
