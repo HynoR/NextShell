@@ -12,6 +12,7 @@
     "comment": "Native SSH client",
     "categories": ["Network", "Utility"],
     "webview": false,
+    "command": "nextshell",
     "formats": ["deb", "rpm"]
   }
 }
