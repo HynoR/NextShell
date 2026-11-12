@@ -31,7 +31,8 @@ func desktopFixture(t *testing.T) *Platform {
 }
 func awaitEvent(t *testing.T, p *Platform, pick func(appui.Event) bool) appui.Event {
 	t.Helper()
-	timer := time.NewTimer(5 * time.Second)
+	// The first terminal of a fresh Linux container downloads libghostty-vt: seconds, depending on the network.
+	timer := time.NewTimer(30 * time.Second)
 	defer timer.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
