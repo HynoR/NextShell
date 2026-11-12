@@ -49,3 +49,20 @@ func TestConnectingIsShownForQuickConnectAndASecondConnection(t *testing.T) {
 		t.Fatal("the chip stayed", len(a.Tabs))
 	}
 }
+
+// A host that logs in with a shared credential has no user of its own: the connecting page names the
+// credential's user, not 「@host」.
+func TestConnectingPageNamesTheCredentialsUser(t *testing.T) {
+	p := newPlatform(t)
+	ops := model.Credential{ID: p.NewID(), Name: "运维账号", User: "ops", Auth: "password"}
+	if e := p.SaveCredential(ops, nil); e != nil {
+		t.Fatal(e)
+	}
+	saveHost(t, p, model.Connection{Name: "bastion", Host: "jump.example.com", CredentialID: ops.ID})
+	_, tt := start(p)
+	click(t, tt, "bastion")
+	has(t, tt, "正在连接 bastion…", "ops@jump.example.com:22")
+	if tt.HasText(" @jump") || exactText(tt, "@jump.example.com:22") {
+		t.Fatal("the host's own, empty user", tt.Texts())
+	}
+}

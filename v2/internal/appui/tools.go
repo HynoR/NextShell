@@ -203,7 +203,7 @@ func (a *App) connectingView(c *ui.Context, pending []model.Connection) {
 	ui.Column(c).Grow(1).FillWidth().MinHeight(0).Center().Gap(10).Children(func() {
 		ui.Spinner(c)
 		ui.Text(c, "正在连接 "+pending[0].Name+"…").Bold()
-		muted(c, pending[0].User+"@"+pending[0].Address())
+		muted(c, a.login(pending[0]))
 		if ui.Button(c, "取消").Label("取消连接").Clicked() || c.Shortcut(0, ui.KeyEscape) {
 			a.later(func() { a.cancelConnect(pending[0].ID) })
 		}
