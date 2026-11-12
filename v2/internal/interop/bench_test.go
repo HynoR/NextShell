@@ -280,3 +280,52 @@ func BenchmarkSFTPLatency(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkSmallFiles uploads 100 files x 4 KiB: one SFTP upload per file (what CopyTree / a per-file
+// queue does: stat, open, write, close, chmod, link/rename, remove-temp = ~8 round trips each) against one
+// packed tar.gz stream. Per-file cost is paid in round trips, so it explodes with latency.
+func BenchmarkSmallFiles(b *testing.B) {
+	c := Shared(b, Debian)
+	root := filepath.Join(b.TempDir(), "tree")
+	os.MkdirAll(root, 0755)
+	payload := make([]byte, 4096)
+	for i := 0; i < 100; i++ {
+		crand.Read(payload)
+		os.WriteFile(filepath.Join(root, fmt.Sprintf("f%03d", i)), payload, 0644)
+	}
+	for _, rtt := range []time.Duration{0, 20 * time.Millisecond} {
+		p := newTCPProxy(b, c.Addr(22), rtt/2)
+		s := Dial(b, viaProxy(c.Options(), p))
+		sf, cleanup, err := s.OpenSFTPContext(context.Background())
+		if err != nil {
+			b.Fatal(err)
+		}
+		defer cleanup()
+		sc := &sftpfs.Client{Client: sf}
+		b.Run(fmt.Sprintf("rtt=%v/sftp-per-file", rtt), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				Sh(b, s, "rm -rf ~/small && mkdir ~/small")
+				b.StartTimer()
+				for j := 0; j < 100; j++ {
+					name := fmt.Sprintf("f%03d", j)
+					if err := sc.Upload(context.Background(), filepath.Join(root, name), "/home/tester/small/"+name, false, nil); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Milliseconds())/float64(b.N)/100, "ms/file")
+		})
+		b.Run(fmt.Sprintf("rtt=%v/packed", rtt), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				Sh(b, s, "rm -rf ~/small")
+				b.StartTimer()
+				if err := transfer.UploadPacked(context.Background(), s, root, "/home/tester/small", nil); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportMetric(float64(b.Elapsed().Milliseconds())/float64(b.N)/100, "ms/file")
+		})
+	}
+}

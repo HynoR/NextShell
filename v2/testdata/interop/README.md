@@ -4,7 +4,7 @@ Behind the `interop` build tag, so a plain `go test ./...` never runs them. Need
 (OrbStack / Docker Desktop); tests skip cleanly when the daemon is unreachable.
 
 ```sh
-# one line, from v2/ — everything (tests, ~4 min cold: first run builds the images)
+# one line, from v2/ — everything (~1.5 min warm; the first run also builds the images, a few minutes more)
 GOTOOLCHAIN=auto go test -tags interop ./internal/interop/ -count=1 -timeout 30m -v
 
 # benchmarks (docker ones, then the storage/SFTP baselines that need no docker)
