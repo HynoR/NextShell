@@ -26,16 +26,20 @@ Cmd+W:主窗口关当前标签,设置/远程编辑器窗口关自己(菜单里�
 流程在 `.github/workflows/v2-release.yml`,产物都是**未签名**的预发布包:macOS ad-hoc、Windows 无签名、不公证、不配自动更新(没有 `updates`、没有密钥)。
 
 1. 改 `v2/mygo.json` 的 `version`(如 `2.0.0-rc1`),在 `v2/CHANGELOG.md` 加 `## 2.0.0-rc1` 一节(整节原样成为 release 说明,写给用户看)。
+   **同时更新 URL 里的 tag 和桥版本**:`nextshell-plugin/.mcp.json`、`nextshell-plugin/README.md`、`packages/mcp/README.md` 和 CHANGELOG 里都有 `…/releases/download/v<版本>/nextshell-mcp-<桥版本>.tgz`。桥版本是 `packages/mcp/package.json` 的 `version`,改了桥(含 `tools.generated.json`)要先升它。tag 运行会检查 `.mcp.json` 的 URL(不符立即失败),`packages/mcp` 的测试检查它与桥版本一致。
 2. 推到分支 `v2`。改动了工作流、`v2/mygo.json` 或 `v2/packaging/**` 的推送会跑**只构建**模式:`go vet` + `go test`,再在三个原生 runner 上打包,包留在这次运行的 artifacts 里(保留 7 天),不创建 release。打 tag 之前先在这里看一遍包。
 3. 打 tag 并推送:`git tag v2.0.0-rc1 && git push origin v2.0.0-rc1`。tag 必须是 `v` + `mygo.json` 的版本,不符立即失败(`packaging/check-version.sh`,本机可跑:`packaging/check-version.sh v2.0.0-rc1`)。
 
-tag 运行的顺序:版本检查 → `go vet` + `go test ./...`(Linux)→ 三平台并行打包 → 全部成功后才发布(`gh release create --prerelease --latest=false`,说明取自 CHANGELOG 对应小节,附 `SHA256SUMS.txt`)。上传期间 release 是草稿,上传完才公开。
+tag 运行的顺序:版本检查(含插件 URL)→ `go vet` + `go test ./...`(Linux)→ 三平台和 MCP 桥并行打包 → 全部成功后才发布(`gh release create --prerelease --latest=false`,说明取自 CHANGELOG 对应小节,附 `SHA256SUMS.txt`)。上传期间 release 是草稿,上传完才公开。
 
 | 平台 | runner | 产物 |
 |---|---|---|
 | macOS | `macos-latest` | `NextShell-<版本>-macos-universal.dmg`、`.zip`(`ditto -c -k --keepParent`) |
 | Windows | `windows-latest`(mygo 自己下载 NSIS) | `NextShell-<版本>-windows-{amd64,arm64}-setup.exe`、`NextShell-<版本>-windows-{amd64,arm64}.zip`(`NextShell.exe` + `ghostty-vt.dll`) |
-| Linux | `ubuntu-latest` | `NextShell-<版本>-linux-amd64.{tar.gz,deb,rpm}`(不出 PKGBUILD,不带 `install.sh`) |
+| Linux | `ubuntu-latest` | `NextShell-<版本>-linux-amd64.{tar.gz,deb,rpm}`(不出 PKGBUILD,不带 `install.sh`);deb/rpm 装 `/usr/bin/nextshell`(`linux.command`) |
+| MCP 桥 | `ubuntu-latest` | `nextshell-mcp-<桥版本>.tgz`(`packages/mcp` 构建后 `npm pack`,发布前用 `npx -y ./file.tgz --help` 冒烟) |
+
+`@nextshell/mcp` 不在 npm 上,桥作为 release 附件发布,插件用 URL 运行它:`npx --allow-remote=root -y <URL>`。`--allow-remote=root` 不能省:npm 12 默认(`allow-remote=none`)拒绝 URL 包(`EALLOWREMOTE`),root 只放行命令行上的这一个;npm 10/11 接受这个选项。注意 npm 把 `./file.tgz` 按仓库根的 `package.json` 解析,本机试 tgz 要在仓库外的目录里。
 
 文件名由工作流统一成纯 ASCII(mygo 给 deb/rpm 的版本是 `2.0.0~rc1`,GitHub 可能改写 `~`)。某一步缺文件会让该任务失败,不会默默少发。
 

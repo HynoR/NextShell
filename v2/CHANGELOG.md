@@ -20,16 +20,27 @@ NextShell 2 是**全新的产品**,用 Go 和原生界面重写(不是 Electron,
 - **服务器监控**:CPU、内存、网络、磁盘,进程和网络连接。
 - **命令片段**:搜索、一键发送、带参数的模板。
 - **远程编辑**:远程文件在独立窗口里编辑、保存回服务器,也可交给外部编辑器。
-- **给 AI Agent 用的 MCP 端点**:默认关闭;开启后需要令牌,应用把端口和令牌写入用户配置目录下的 `mcp.json`,配套的 `@nextshell/mcp`(0.2.0 起)自动读取,不用手工配置。
+- **给 AI Agent 用的 MCP 端点**:默认关闭;开启后需要令牌,应用把端口和令牌写入用户配置目录下的 `mcp.json`,配套的 MCP 桥自动读取,不用手工配置。桥不在 npm 上,随本版本以 `nextshell-mcp-0.2.0.tgz` 发布(需要 Node.js 24+)。
 - **三级命令策略**:禁止(永不执行)/ 风险(始终手动批准)/ 其余(可自动批准,有时限,重启即关闭)。命令输出自动脱敏。这是防误操作的护栏,不是安全沙箱,只在信任当前 Agent 任务时开启自动批准。
 - **不打扰**:每次运行最多提示一次,之后 Agent 在后台标签里干活,不抢焦点、不切标签;你正在输入时它不会往里写。
 - **主机指纹**:首次连接需确认,指纹变化直接拒绝并提示。
+
+### 接入 Claude Code
+
+装 Claude Code 插件(`/plugin marketplace add HynoR/NextShell`,`/plugin install nextshell`),或不装插件直接添加:
+
+```sh
+claude mcp add nextshell -- npx --allow-remote=root -y https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz
+```
+
+`--allow-remote=root` 不能省:npm 12 起默认禁止从 URL 安装,这个选项只放行命令行上的这个地址。其他支持 MCP 的客户端同理,命令是 `npx --allow-remote=root -y <上面的地址>`。
 
 ### 下载
 
 - macOS(Intel / Apple 芯片通用,12 及以上):`.dmg` 拖进「应用程序」,或 `.zip`。
 - Windows(x64 / ARM64):`-setup.exe` 安装到当前用户目录,无需管理员;或 `.zip` 解压即用。
-- Linux(x64):`.deb`、`.rpm`、`.tar.gz`。
+- Linux(x64):`.deb`、`.rpm`(装好后命令是 `nextshell`)、`.tar.gz`。
+- `nextshell-mcp-0.2.0.tgz`:给 AI Agent 用的 MCP 桥,见上。
 - `SHA256SUMS.txt` 是全部文件的校验值。
 
 ### 已知限制
