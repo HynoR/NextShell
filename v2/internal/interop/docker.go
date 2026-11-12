@@ -342,6 +342,18 @@ func (c *Container) TryExec(script string) (string, error) {
 	return docker(ctx, nil, "exec", c.Name, "sh", "-c", script)
 }
 
+// IP returns the container's address on a docker network.
+func (c *Container) IP(t testing.TB, network string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := docker(ctx, nil, "inspect", "-f", "{{(index .NetworkSettings.Networks \""+network+"\").IPAddress}}", c.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
 // HostFingerprints lists the SHA256 fingerprints of every host key the container offers.
 func (c *Container) HostFingerprints(t testing.TB) []string {
 	t.Helper()
@@ -464,13 +476,23 @@ func (x *Term) WaitFor(substr string, d time.Duration) (string, bool) {
 	}
 }
 
-// Sync proves the remote shell is processing input again: it echoes a number computed remotely,
-// so the echoed command line itself cannot satisfy the match.
+// Sync proves the remote shell is processing input again: it echoes a number computed remotely, so the
+// echoed command line itself cannot satisfy the match. Full-screen programs discard unread input when
+// they restore the tty on exit, so the probe is resent until it gets through or d runs out.
 func (x *Term) Sync(t testing.TB, d time.Duration) {
 	t.Helper()
 	n := 1000 + int(seq.Add(1))
-	x.Send(fmt.Sprintf("echo SYNC$((%d+1))\n", n-1))
-	x.Expect(t, fmt.Sprintf("SYNC%d", n), d)
+	want := fmt.Sprintf("SYNC%d", n)
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		x.Send(fmt.Sprintf("echo SYNC$((%d+1))\n", n-1))
+		if _, ok := x.WaitFor(want, min(time.Second, time.Until(deadline))); ok {
+			return
+		}
+	}
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	t.Fatalf("shell did not respond within %v (err=%v); last output: %q", d, x.err, tail(x.buf, 600))
 }
 func (x *Term) Err() error { x.mu.Lock(); defer x.mu.Unlock(); return x.err }
 func (x *Term) Output() string {
