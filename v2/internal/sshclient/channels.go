@@ -3,8 +3,10 @@ package sshclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/text/transform"
 	"io"
 	"sync"
 )
@@ -88,6 +90,25 @@ func (d *detachable) Write(p []byte) (int, error) {
 	return d.w.Write(p)
 }
 func (d *detachable) detach() { d.mu.Lock(); d.w = nil; d.mu.Unlock() }
+
+// RunText is Run for text a person or a model reads: the command goes out in the host's encoding and
+// stdout and stderr come back decoded from it, like the interactive session. Run itself stays byte-exact
+// for streams such as tar. A command the encoding cannot represent is refused rather than altered.
+func (s *Session) RunText(ctx context.Context, command string, out, stderr io.Writer) error {
+	if s.enc == nil {
+		return s.Run(ctx, command, nil, out, stderr)
+	}
+	command, e := s.enc.NewEncoder().String(command)
+	if e != nil {
+		return fmt.Errorf("command has characters the host encoding cannot represent: %w", e)
+	}
+	decoded := func(w io.Writer) *transform.Writer { return transform.NewWriter(w, s.enc.NewDecoder()) }
+	o, r := decoded(out), decoded(stderr)
+	e = s.Run(ctx, command, nil, o, r)
+	o.Close() // flush a character the output ended in the middle of
+	r.Close()
+	return e
+}
 
 type limitedBuffer struct {
 	mu    sync.Mutex

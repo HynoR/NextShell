@@ -122,6 +122,7 @@ type Session struct {
 	writeMu sync.Mutex
 	waitMu  sync.Mutex
 	waitErr error
+	enc     encoding.Encoding // the host's text encoding; nil for UTF-8
 }
 
 func (s *Session) Read(b []byte) (int, error) { return s.out.Read(b) }
@@ -273,6 +274,7 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 	conn.SetDeadline(time.Time{})
 	s := &Session{client: client, session: ss, in: in, out: r, pipe: r, done: make(chan struct{})}
 	if enc := Encoding(c.Encoding); enc != nil {
+		s.enc = enc
 		s.out = transform.NewReader(r, enc.NewDecoder())
 		s.in = &encodedWriter{Writer: transform.NewWriter(in, enc.NewEncoder()), closer: in}
 	}

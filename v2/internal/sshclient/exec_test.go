@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -11,14 +12,17 @@ import (
 	"nextshell.dev/v2/internal/testutil"
 )
 
-func session(t *testing.T) (*sshclient.Session, *testutil.Server) {
+func session(t *testing.T) (*sshclient.Session, *testutil.Server) { return sessionWith(t, "utf-8") }
+func sessionWith(t *testing.T, encoding string) (*sshclient.Session, *testutil.Server) {
 	t.Helper()
 	server, e := testutil.New(t.TempDir())
 	if e != nil {
 		t.Fatal(e)
 	}
 	t.Cleanup(server.Close)
-	s, e := sshclient.Dial(context.Background(), server.Options())
+	o := server.Options()
+	o.Connection.Encoding = encoding
+	s, e := sshclient.Dial(context.Background(), o)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -77,5 +81,54 @@ func TestRunStillReturnsOutputAndExitStatus(t *testing.T) {
 	}
 	if b, e := s.Output(context.Background(), "echo hi", 64); e != nil || string(b) != "hi\n" {
 		t.Fatalf("%q %v", b, e)
+	}
+}
+
+func TestRunTextUsesTheHostEncoding(t *testing.T) {
+	for _, tc := range []struct{ encoding, text, wire string }{
+		{"gbk", "中文", "d6d0cec4"},
+		{"big5", "中文", "a4a4a4e5"},
+		{"utf-8", "中文", "e4b8ade69687"},
+	} {
+		t.Run(tc.encoding, func(t *testing.T) {
+			server, e := testutil.New(t.TempDir())
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer server.Close()
+			o := server.Options()
+			o.Connection.Encoding = tc.encoding
+			s, e := sshclient.Dial(context.Background(), o)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer s.Close()
+			// The command carries a non-ASCII argument: the server must receive it in the host encoding
+			// (od shows the bytes), and what printf writes back must be decoded to UTF-8.
+			var out, stderr bytes.Buffer
+			command := "printf '" + tc.text + "' | od -An -tx1 | tr -d ' \\n'; echo; printf '" + tc.text + "'; printf '" + tc.text + "' >&2"
+			if e := s.RunText(context.Background(), command, &out, &stderr); e != nil {
+				t.Fatal(e)
+			}
+			if want := tc.wire + "\n" + tc.text; out.String() != want || stderr.String() != tc.text {
+				t.Fatalf("stdout %q stderr %q, want %q and %q", out.String(), stderr.String(), want, tc.text)
+			}
+		})
+	}
+}
+
+func TestRunTextDecodesAcrossWritesAndMarksInvalidBytes(t *testing.T) {
+	s, _ := sessionWith(t, "gbk")
+	var out bytes.Buffer
+	// the first byte of a two-byte character is flushed alone, then 0xff (invalid) ends the output
+	command := `printf '\326'; sleep 0.2; printf '\320\377'`
+	if e := s.RunText(context.Background(), command, &out, io.Discard); e != nil {
+		t.Fatal(e)
+	}
+	if out.String() != "中�" {
+		t.Fatalf("%q", out.String())
+	}
+	if e := s.RunText(context.Background(), "echo '\U0001F600'", io.Discard, io.Discard); e == nil {
+		t.Fatal("a command the host encoding cannot represent was sent")
 	}
 }
