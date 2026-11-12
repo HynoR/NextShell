@@ -120,7 +120,7 @@ func TestAgentDisabledByDefaultAndOfficialTerminalCallbacks(t *testing.T) {
 		t.Fatal("notification controls not stripped")
 	}
 	callbacks.OnBell()
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.Contains(e.Message, "BEL") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.Contains(e.Message, "响铃") })
 }
 
 func TestCloudLoginDoesNotBlockStatusUIAndShutdownCancels(t *testing.T) {

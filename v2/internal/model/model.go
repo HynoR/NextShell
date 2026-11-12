@@ -4,7 +4,6 @@ package model
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -199,7 +198,7 @@ func QuickConnect(s string) (Connection, error) {
 	s = strings.TrimSpace(strings.TrimPrefix(s, "ssh://"))
 	i := strings.LastIndex(s, "@")
 	if i < 1 {
-		return c, fmt.Errorf("快连格式为 user@host[:port]")
+		return c, errors.New("请输入 用户名@主机[:端口]")
 	}
 	c.User = s[:i]
 	a := s[i+1:]

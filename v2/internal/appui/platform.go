@@ -203,6 +203,10 @@ type MonitorResult struct {
 	Session  string
 	Snapshot monitor.Snapshot
 	Latency  time.Duration // the round trip to the server; 0 when unknown
+	// Err is set when this sample failed (Snapshot is empty then). It is not a toast: sampling repeats every
+	// 2 s, so the panels count the failures and say so in place. monitor.ErrUnsupported marks a server that
+	// can never be read.
+	Err error
 }
 type ImportPreview struct {
 	Targets                                     []string

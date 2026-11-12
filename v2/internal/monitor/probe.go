@@ -12,6 +12,12 @@ import (
 	"time"
 )
 
+// ErrUnsupported marks a probe that cannot work on this server at all (not Linux, or no /proc), as opposed to
+// one that failed this time: a dropped connection or a timeout.
+var ErrUnsupported = errors.New("server is not supported")
+
+const notLinux = 44 // the exit status lightProbe leaves with
+
 // lightProbe is everything cheap enough to run every 2 s: the Linux guard, static info, and /proc counters.
 // Every rate-relevant counter is read here, before any slow command, so the light and full probes sample at the same moment.
 const lightProbe = `export LC_ALL=C
@@ -265,9 +271,17 @@ func Collect(ctx context.Context, r Runner, previous *Snapshot, detail bool) (Sn
 	at := time.Now()
 	b, e := r.Output(ctx, command, 8<<20) // df alone can be large on a host with thousands of mounts
 	if e != nil {
+		var exit interface{ ExitStatus() int } // the probe's own refusal: it is not Linux
+		if errors.As(e, &exit) && exit.ExitStatus() == notLinux {
+			e = fmt.Errorf("%w: %w", ErrUnsupported, e)
+		}
 		return Snapshot{}, e
 	}
-	return Parse(string(b), at, previous)
+	s, e := Parse(string(b), at, previous)
+	if e != nil {
+		e = fmt.Errorf("%w: %w", ErrUnsupported, e) // it ran, but there is no /proc to read
+	}
+	return s, e
 }
 func ParseProcesses(raw string) []Process {
 	var out []Process

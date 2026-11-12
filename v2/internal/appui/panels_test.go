@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -234,7 +235,7 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	_, p, tt := fixture(t)
 	tt.SetSize(1280, 1100) // room for the process drawer
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	has(t, tt, "系统监控", "正在采样…（仅支持 Linux 服务器）")
+	has(t, tt, "系统监控", "正在读取服务器状态…")
 	if !p.watching["one"] || p.detailed["one"] {
 		t.Fatal("the left column samples lightly", p.watching, p.detailed)
 	}
@@ -252,7 +253,7 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	if !p.detailed["one"] {
 		t.Fatal("process tab without the full probe")
 	}
-	has(t, tt, "进程 · one", "正在采样…（仅支持 Linux 服务器）")
+	has(t, tt, "进程 · one", "正在读取服务器状态…")
 	if tt.HasText("0 / 0 个进程") {
 		t.Fatal("a light sample showed as no processes")
 	}
@@ -282,7 +283,7 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	has(t, tt, "进程 2201")
 	// The network manager is a tab of its own; both keep the full probe until they close.
 	click(t, tt, "网络管理器")
-	has(t, tt, "网络 · one", "tcp LISTEN")
+	has(t, tt, "网络 · one", "tcp 监听")
 	tt.Key(appMod(), ui.KeyW) // closes the tool tab shown, not the host's session
 	if tt.HasText("网络 · one") || !tt.HasText("进程 · one") || !p.detailed["one"] || len(p.closed) != 0 {
 		t.Fatal("the process tab still needs the full probe", p.detailed, p.closed)
@@ -321,6 +322,103 @@ func TestMonitorKeepsCachedDataPerHost(t *testing.T) {
 	}
 	tt.Key(ui.Cmd, ui.Key1)
 	has(t, tt, "0.42 0.38 0.35") // back on the first host: its last sample, at once
+}
+
+// A server the probe cannot read (not Linux, a router) fails every sample. That is said in place, not toasted every
+// 2 s; after three failures in a row the server is left alone, with a way to turn its monitoring off.
+func TestMonitorUnreadableServerStopsSamplingAndCanBeTurnedOff(t *testing.T) {
+	_, p, tt := fixture(t)
+	host := saveHost(t, p, model.Connection{Name: "router", Host: "router.example", User: "admin"})
+	p.events = append(p.events, appui.Event{Message: "saved"}) // a reload, as after any save
+	session(t, p, tt, "one", "one", host)
+	fail := func(err error, n int) {
+		for range n {
+			p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Err: err}})
+		}
+		tt.Frame()
+	}
+	unsupported := fmt.Errorf("%w: Process exited with status 44", monitor.ErrUnsupported)
+	fail(unsupported, 2)
+	if !p.watching["one"] || !tt.HasText("正在读取服务器状态…") || tt.HasText("无法读取此服务器的状态（目前只支持 Linux）") {
+		t.Fatal("two failures already gave up", p.watching, tt.Texts())
+	}
+	fail(unsupported, 1)
+	has(t, tt, "无法读取此服务器的状态（目前只支持 Linux）", "关闭此服务器的监控", "重试")
+	if p.watching["one"] || tt.HasText("正在读取服务器状态…") || tt.HasText("Process exited") {
+		t.Fatal("still sampling, or showed the raw error", p.watching, tt.Texts())
+	}
+	// The 系统信息 tab says the same.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
+	has(t, tt, "无法读取此服务器的状态（目前只支持 Linux）")
+	// 重试 samples again, and gives up again after three more.
+	click(t, tt, "重试")
+	tt.Frame()
+	if !p.watching["one"] || tt.HasText("关闭此服务器的监控") {
+		t.Fatal("retry did not resume", p.watching, tt.Texts())
+	}
+	fail(errors.New("context deadline exceeded"), 3)
+	has(t, tt, "无法读取此服务器的状态（连接不稳定或服务器没有响应）")
+	// 关闭此服务器的监控 is saved with the host, and the panel says it is off.
+	click(t, tt, "关闭此服务器的监控")
+	tt.Frame()
+	has(t, tt, "此服务器的监控已关闭")
+	if snap, _ := p.Snapshot(); len(snap.Connections) != 1 || snap.Connections[0].Monitor {
+		t.Fatal("the switch was not saved", snap.Connections)
+	}
+	if p.watching["one"] {
+		t.Fatal("sampling a host whose monitoring went off")
+	}
+}
+
+// A good sample ends the count; so does a reconnect, which is a new session.
+func TestMonitorFailureCountResets(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	err := errors.New("timeout")
+	send := func(session string, e error, n int) {
+		for i := range n {
+			r := &appui.MonitorResult{Session: session, Err: e}
+			if e == nil {
+				r.Snapshot = monitorSnapshot(time.Now().Add(time.Duration(i)*time.Second), 0)
+			}
+			p.events = append(p.events, appui.Event{Monitor: r})
+		}
+		tt.Frame()
+	}
+	send("one", err, 2)
+	send("one", nil, 1)
+	send("one", err, 2)
+	if !p.watching["one"] || tt.HasText("关闭此服务器的监控") {
+		t.Fatal("failures that were not in a row stopped it")
+	}
+	send("one", err, 1)
+	has(t, tt, "关闭此服务器的监控")
+	// The same host, a new session: sampled again, from a clean count.
+	session(t, p, tt, "two", "two", remoteHost("one"))
+	if !p.watching["two"] || tt.HasText("关闭此服务器的监控") {
+		t.Fatal("a reconnected host stayed given up on", p.watching, tt.Texts())
+	}
+}
+
+// The process and network tabs share the host's samples: they stop with it, and say why.
+func TestMonitorToolTabsShowTheFailure(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: monitorSnapshot(time.Now(), 0)}})
+	tt.Frame()
+	click(t, tt, "进程管理器")
+	if !p.detailed["one"] {
+		t.Fatal("no full probe for the process tab")
+	}
+	for range 3 {
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Err: monitor.ErrUnsupported}})
+	}
+	tt.Frame()
+	tt.Frame()
+	has(t, tt, "进程 · one", "无法读取此服务器的状态（目前只支持 Linux）")
+	if p.detailed["one"] || p.watching["one"] || tt.HasText("个进程") {
+		t.Fatal("the tab kept sampling or showed old rows", p.detailed, p.watching)
+	}
 }
 
 func TestMonitorOffStopsSampling(t *testing.T) {

@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"fmt"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -176,7 +177,7 @@ func TestScreenshots(t *testing.T) {
 	click(t, tt, "进程管理器")
 	shot(tt, "04-process-manager-tab")
 	click(t, tt, "网络管理器")
-	click(t, tt, "tcp ESTAB")
+	click(t, tt, "tcp 已建立")
 	shot(tt, "04a-network-manager-tab")
 	click(t, tt, "进程 · prod-web-01")
 	dblclick(t, tt, "postgres: checkpointer")
@@ -209,6 +210,17 @@ func TestScreenshots(t *testing.T) {
 	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: "traceroute to 10.0.0.1, 30 hops max\n 1  192.168.1.1     1.21 ms\n 2  10.255.0.1      4.80 ms\n 3  203.0.113.9    12.40 ms\n 4  10.0.0.1       18.10 ms"}})
 	ptt.Frame()
 	shot(ptt, "02g-route-trace-drawer")
+	// A server the probe cannot read (not Linux): after three failed samples it is left alone, said in the left
+	// column and in the 系统信息 tab, with the way to turn its monitoring off.
+	_, bp, btt := fixture(t)
+	btt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	router := saveHost(t, bp, model.Connection{Name: "edge-router", Host: "10.0.0.254", User: "admin"})
+	session(t, bp, btt, "s9", "edge-router", router)
+	for range 3 {
+		bp.events = append(bp.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s9", Err: fmt.Errorf("%w: Process exited with status 44", monitor.ErrUnsupported)}})
+	}
+	btt.Key(ui.Cmd|ui.Shift, ui.KeyM)
+	shot(btt, "02h-monitor-unreadable")
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
 	shot(tt, "05-snippets")
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
