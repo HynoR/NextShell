@@ -1,6 +1,6 @@
 {
   "name": "@nextshell/mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "NextShell MCP stdio entry point with offline tool discovery",
   "type": "module",
   "license": "GPL-3.0-only",

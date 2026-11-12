@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -8,21 +7,30 @@ import {
   type CallToolResult,
   type Tool
 } from "@modelcontextprotocol/sdk/types.js";
-import { agentToolDefinitions, AGENT_INSTRUCTIONS } from "../../shared/src/mcp-tools";
+import { MissingTokenError, SETUP_HINT, type Credentials } from "./credentials";
+import { INSTRUCTIONS, toolDefinitions } from "./tools";
 import { version } from "../package.json";
 
 export const CONNECTION_TIMEOUT_MS = 3_000;
-// The app permits a 3600s background command; approvals may take another 5 minutes.
-export const CALL_TIMEOUT_MS = 3_910_000;
+// The app caps a command at 120s; approvals are polled with short follow-up calls.
+export const CALL_TIMEOUT_MS = 130_000;
 
-const failure = (code: string, message: string): CallToolResult => {
+/** Where the bridge gets its port and bearer token. Called on every (re)connect, never at startup. */
+export type CredentialSource = () => Promise<Credentials>;
+
+const unauthorized = () =>
+  failure(
+    "unauthorized",
+    `NextShell 拒绝了 token（可能已被轮换或指向另一个配置）。${SETUP_HINT}，必要时用 --config 指向正确的 mcp.json；下次调用会重新读取。`
+  );
+function failure(code: string, message: string): CallToolResult {
   const payload = { ok: false, error: { code, message } };
   return {
     isError: true,
     content: [{ type: "text", text: JSON.stringify(payload) }],
     structuredContent: payload
   };
-};
+}
 
 interface Connection {
   client: Client;
@@ -30,14 +38,13 @@ interface Connection {
   tools: Tool[];
 }
 
-export function createStdioServer(port: number) {
-  const server = new McpServer(
-    { name: "nextshell", version },
-    { instructions: AGENT_INSTRUCTIONS }
-  );
+export function createStdioServer(credentials: CredentialSource) {
+  const server = new McpServer({ name: "nextshell", version }, { instructions: INSTRUCTIONS });
   let current: Connection | undefined;
   let connecting: Promise<Connection> | undefined;
   let closed = false;
+  let rejected = false; // the app answered 401: wrong, stale or rotated token
+  let port = 0; // last resolved port, for error messages only
 
   const discard = async (connection: Connection) => {
     if (current === connection) current = undefined;
@@ -50,17 +57,27 @@ export function createStdioServer(port: number) {
     if (current) return current;
     connecting = (async () => {
       const deadline = AbortSignal.timeout(CONNECTION_TIMEOUT_MS);
+      const resolved = await credentials();
+      const token = resolved.token;
+      port = resolved.port;
       const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
-        // Never follow redirects away from the local application or replay requests.
-        fetch: (url, init) =>
-          fetch(url, {
+        // Every request carries the token. Never follow redirects away from the local application
+        // (the token must not leave it) or replay requests.
+        fetch: async (url, init) => {
+          const headers = new Headers(init?.headers);
+          headers.set("Authorization", `Bearer ${token}`);
+          const response = await fetch(url, {
             ...init,
+            headers,
             redirect: "error",
             signal: AbortSignal.any([
               ...(init?.signal ? [init.signal] : []),
               ...(init?.method === "DELETE" ? [AbortSignal.timeout(1_000)] : [])
             ])
-          }),
+          });
+          if (response.status === 401) rejected = true;
+          return response;
+        },
         reconnectionOptions: {
           maxRetries: 0,
           initialReconnectionDelay: 1000,
@@ -106,47 +123,48 @@ export function createStdioServer(port: number) {
     }
   };
 
-  for (const [name, definition] of Object.entries(agentToolDefinitions)) {
-    const inputSchema = z.object(definition.inputSchema);
-    const outputSchema = z.object(definition.outputSchema);
-    const expectedInput = z.toJSONSchema(inputSchema, { target: "draft-7", io: "input" });
-    const expectedOutput = z.toJSONSchema(outputSchema, { target: "draft-7", io: "output" });
-    server.registerTool(name, { ...definition, inputSchema, outputSchema }, async (args, extra) => {
-      let connection: Connection;
-      try {
-        connection = await connect();
-      } catch {
-        return failure(
-          "app_unavailable",
-          `无法连接 NextShell。请启动应用、启用 Agent MCP 并检查端口 ${port}；稍后调用会重新连接。`
-        );
+  for (const [name, definition] of Object.entries(toolDefinitions)) {
+    // No outputSchema: the app's `{ ok, data?, error? }` reply is forwarded exactly as received.
+    server.registerTool(
+      name,
+      { ...definition, inputSchema: z.object(definition.inputSchema) },
+      async (args, extra) => {
+        rejected = false;
+        let connection: Connection;
+        try {
+          connection = await connect();
+        } catch (error) {
+          if (error instanceof MissingTokenError) return failure("token_missing", error.message);
+          if (rejected) return unauthorized();
+          return failure(
+            "app_unavailable",
+            `无法连接 NextShell。请启动应用、${SETUP_HINT}并检查端口${port ? ` ${port}` : ""}；稍后调用会重新连接。`
+          );
+        }
+        if (!connection.tools.some((tool) => tool.name === name)) {
+          return failure(
+            "incompatible_version",
+            "NextShell 与 MCP 包的工具定义不兼容，请更新应用及 @nextshell/mcp 后重启 MCP。"
+          );
+        }
+        try {
+          return CallToolResultSchema.parse(
+            await connection.client.callTool({ name, arguments: args }, CallToolResultSchema, {
+              timeout: CALL_TIMEOUT_MS,
+              signal: extra.signal
+            })
+          );
+        } catch {
+          await discard(connection);
+          // A 401 means the app refused the request before running anything.
+          if (rejected) return unauthorized();
+          return failure(
+            "connection_lost",
+            "调用未完成，执行结果可能未知；请检查 NextShell 中的执行状态，不要自动重复命令。下次调用会重新连接。"
+          );
+        }
       }
-      const remote = connection.tools.find((tool) => tool.name === name);
-      if (
-        !remote ||
-        !isDeepStrictEqual(remote.inputSchema, expectedInput) ||
-        !isDeepStrictEqual(remote.outputSchema, expectedOutput)
-      ) {
-        return failure(
-          "incompatible_version",
-          "NextShell 与 MCP 包的工具定义不兼容，请更新应用及 @nextshell/mcp 后重启 MCP。"
-        );
-      }
-      try {
-        return CallToolResultSchema.parse(
-          await connection.client.callTool({ name, arguments: args }, CallToolResultSchema, {
-            timeout: CALL_TIMEOUT_MS,
-            signal: extra.signal
-          })
-        );
-      } catch {
-        await discard(connection);
-        return failure(
-          "connection_lost",
-          "调用未完成，执行结果可能未知；请检查 NextShell 中的执行状态，不要自动重复命令。下次调用会重新连接。"
-        );
-      }
-    });
+    );
   }
 
   const close = async () => {

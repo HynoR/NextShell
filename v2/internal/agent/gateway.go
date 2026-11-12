@@ -99,10 +99,22 @@ type Pending struct {
 	decision                          int
 }
 type Activity struct{ Tool, State, At string }
+
+// UntilExit passed to SetAutoApprove keeps auto-approval on until the app exits or is halted.
+const UntilExit time.Duration = -1
+
+// AutoApproval is the observable state of the opt-in approval bypass.
+type AutoApproval struct {
+	On        bool
+	UntilExit bool      // On without an expiry
+	Expires   time.Time // zero unless On with a deadline
+}
 type Gateway struct {
 	backend   Backend
 	mu        sync.Mutex
 	halted    bool
+	auto      AutoApproval
+	autoTimer *time.Timer
 	pending   map[string]*Pending
 	activity  []Activity
 	blacklist []string
@@ -136,6 +148,7 @@ func (g *Gateway) Halt(h bool) {
 	g.mu.Lock()
 	g.halted = h
 	if h {
+		g.setAutoLocked(AutoApproval{}) // emergency stop: never resumes with auto-approval still on
 		for _, cancel := range g.running {
 			cancel()
 		}
@@ -145,6 +158,55 @@ func (g *Gateway) Halt(h bool) {
 	}
 	g.mu.Unlock()
 	g.record("global", map[bool]string{true: "halted", false: "resumed"}[h])
+}
+func (g *Gateway) setAutoLocked(a AutoApproval) {
+	if g.autoTimer != nil {
+		g.autoTimer.Stop()
+		g.autoTimer = nil
+	}
+	g.auto = a
+}
+
+// SetAutoApprove skips the in-app approval prompt for mutating calls. d>0 expires after d,
+// UntilExit lasts until the app exits, 0 turns it off. State is memory-only, never persisted.
+// Calls that are risky (sensitive files) or blocked (dangerous, blacklisted) are never covered.
+func (g *Gateway) SetAutoApprove(d time.Duration) error {
+	if d < 0 && d != UntilExit {
+		return errors.New("invalid auto-approve duration")
+	}
+	g.mu.Lock()
+	if d != 0 && g.halted {
+		g.mu.Unlock()
+		return errors.New("agent access is halted")
+	}
+	switch {
+	case d == 0:
+		g.setAutoLocked(AutoApproval{})
+	case d == UntilExit:
+		g.setAutoLocked(AutoApproval{On: true, UntilExit: true})
+	default:
+		until := g.now().Add(d)
+		g.setAutoLocked(AutoApproval{On: true, Expires: until})
+		// The deadline is enforced by AutoApproval(); the timer only tells the UI to repaint.
+		g.autoTimer = time.AfterFunc(d, func() {
+			if !g.AutoApproval().On {
+				g.record("global", "auto-approve expired")
+			}
+		})
+	}
+	g.mu.Unlock()
+	g.record("global", map[bool]string{true: "auto-approve on", false: "auto-approve off"}[d != 0])
+	return nil
+}
+
+// AutoApproval reports whether auto-approval is active, expiring it first if its deadline passed.
+func (g *Gateway) AutoApproval() AutoApproval {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.auto.On && !g.auto.UntilExit && !g.now().Before(g.auto.Expires) {
+		g.setAutoLocked(AutoApproval{})
+	}
+	return g.auto
 }
 func (g *Gateway) SetBlacklist(lines []string) error {
 	for _, line := range lines {
@@ -252,9 +314,10 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 			}
 		}
 	}
+	risky := false // risky calls always get a manual prompt, even under auto-approve
 	switch tool {
 	case "session_list":
-		sessions := g.backend.Sessions()
+		sessions := append([]Session{}, g.backend.Sessions()...) // [] not null for clients
 		if len(sessions) > 500 {
 			sessions = sessions[:500]
 		}
@@ -268,7 +331,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if e != nil {
 			return fail("internal")
 		}
-		var out []Host
+		out := []Host{}
 		query := strings.ToLower(a.Query)
 		for _, h := range hosts {
 			if query == "" || strings.Contains(strings.ToLower(h.Name+" "+h.Host+" "+strings.Join(h.Tags, " ")), query) {
@@ -292,7 +355,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if limit <= 0 || limit > 200 {
 			limit = 30
 		}
-		var out []Command
+		out := []Command{}
 		for _, c := range commands {
 			if strings.Contains(strings.ToLower(c.Name+" "+c.Command), strings.ToLower(a.Query)) {
 				c.Command = Redact(c.Command)
@@ -351,7 +414,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		if Dangerous(a.Command, blacklist) {
 			return fail("forbidden")
 		}
-		if Sensitive(a.Command) && !a.AllowSensitive {
+		if risky = Sensitive(a.Command); risky && !a.AllowSensitive {
 			return fail("consent_required")
 		}
 	case "session_open":
@@ -391,7 +454,11 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 	default:
 		return fail("invalid_argument")
 	}
-	if mutates && !approved {
+	auto := mutates && !approved && !risky && g.AutoApproval().On
+	if auto {
+		g.record(tool, "auto-approved")
+	}
+	if mutates && !approved && !auto {
 		g.mu.Lock()
 		for id, p := range g.pending {
 			if !p.ExpiresAt.After(g.now()) {

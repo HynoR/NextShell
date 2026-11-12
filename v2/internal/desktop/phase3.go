@@ -3,8 +3,10 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/egoist/mygo/plugins/terminal"
 	"golang.org/x/crypto/ssh"
+	neturl "net/url"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/cloudhttp"
@@ -14,6 +16,9 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/shellintegration"
 	"nextshell.dev/v2/internal/storage"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -177,11 +182,7 @@ func (p *Platform) AgentEndpoint(on bool) error {
 	p.featureMu.Lock()
 	defer p.featureMu.Unlock()
 	if !on {
-		if p.endpoint != nil {
-			p.endpoint.Close()
-		}
-		p.endpoint = nil
-		p.endpointURL = ""
+		p.stopEndpointLocked()
 		return nil
 	}
 	if p.endpoint != nil {
@@ -195,14 +196,88 @@ func (p *Platform) AgentEndpoint(on bool) error {
 	if e != nil {
 		return e
 	}
-	url, e := endpoint.Start("41777")
+	url, e := endpoint.Start(p.agentPort)
 	if e != nil {
+		return e
+	}
+	port, e := portOf(url)
+	if e == nil {
+		e = p.publishTokenLocked(port, token)
+	}
+	if e != nil {
+		endpoint.Close()
 		return e
 	}
 	p.endpoint = endpoint
 	p.endpointURL = url
+	p.endpointPort = port
 	p.gateway.Halt(false)
 	return nil
+}
+func portOf(endpointURL string) (int, error) {
+	u, e := neturl.Parse(endpointURL)
+	if e != nil {
+		return 0, e
+	}
+	return strconv.Atoi(u.Port())
+}
+
+// stopEndpointLocked closes the endpoint and removes the discovery file that carries its token.
+func (p *Platform) stopEndpointLocked() {
+	if p.endpoint != nil {
+		p.endpoint.Close()
+		if path, e := p.discoveryPathLocked(); e == nil {
+			mcpendpoint.RemoveDiscovery(path)
+		}
+	}
+	p.endpoint = nil
+	p.endpointURL = ""
+}
+func (p *Platform) publishTokenLocked(port int, token string) error {
+	path, e := p.discoveryPathLocked()
+	if e != nil {
+		return e
+	}
+	return mcpendpoint.WriteDiscovery(path, port, token)
+}
+
+// MCPConfigPath is where the {port, token} discovery file is written while MCP is enabled.
+func (p *Platform) MCPConfigPath() (string, error) {
+	p.featureMu.Lock()
+	defer p.featureMu.Unlock()
+	return p.discoveryPathLocked()
+}
+
+// SetAgentPort changes the MCP listen port for the next enable; "0" picks a free one (tests).
+func (p *Platform) SetAgentPort(port string) {
+	p.featureMu.Lock()
+	p.agentPort = port
+	p.featureMu.Unlock()
+}
+
+// discoveryPathLocked puts mcp.json next to the profile database, so the default profile uses
+// <user config dir>/NextShell-v2/mcp.json and a test profile never touches the real one.
+// An in-memory profile gets a private temp directory, announced on stderr.
+func (p *Platform) discoveryPathLocked() (string, error) {
+	if p.mcpPath != "" {
+		return p.mcpPath, nil
+	}
+	if p.dbPath == ":memory:" {
+		dir, e := os.MkdirTemp("", "nextshell-mcp-")
+		if e != nil {
+			return "", e
+		}
+		p.mcpTemp = dir
+		p.mcpPath = filepath.Join(dir, mcpendpoint.DiscoveryFile)
+		fmt.Fprintln(os.Stderr, "NextShell MCP discovery file:", p.mcpPath)
+		return p.mcpPath, nil
+	}
+	abs, e := filepath.Abs(p.dbPath)
+	if e != nil {
+		return "", e
+	}
+	p.mcpPath = filepath.Join(filepath.Dir(abs), mcpendpoint.DiscoveryFile)
+	return p.mcpPath, nil
 }
 func (p *Platform) AgentToken(rotate bool) (string, error) {
 	p.featureMu.Lock()
@@ -212,11 +287,20 @@ func (p *Platform) AgentToken(rotate bool) (string, error) {
 		return "", e
 	}
 	if rotate && p.endpoint != nil {
-		e = p.endpoint.Rotate(token)
+		if e = p.endpoint.Rotate(token); e == nil {
+			e = p.publishTokenLocked(p.endpointPort, token)
+		}
 	}
 	return token, e
 }
-func (p *Platform) AgentHalt(h bool) { p.gateway.Halt(h) }
+
+// AgentAutoApprove skips the approval prompt for mutating agent calls: d>0 for that long,
+// agent.UntilExit until the app exits, 0 off. It is never persisted and fails while halted.
+func (p *Platform) AgentAutoApprove(d time.Duration) error { return p.gateway.SetAutoApprove(d) }
+
+// AgentAutoApproval is the state for a status indicator (on/off, expiry).
+func (p *Platform) AgentAutoApproval() agent.AutoApproval { return p.gateway.AutoApproval() }
+func (p *Platform) AgentHalt(h bool)                      { p.gateway.Halt(h) }
 func (p *Platform) AgentRespond(id string, approve bool) {
 	p.gateway.Respond(id, approve)
 	p.Invalidate()
@@ -239,15 +323,14 @@ func (p *Platform) closeFeatures() {
 	p.featureMu.Lock()
 	services := p.clouds
 	p.clouds = map[string]*cloudsync.Service{}
-	endpoint := p.endpoint
-	p.endpoint = nil
-	p.endpointURL = ""
+	p.stopEndpointLocked()
+	temp := p.mcpTemp
 	p.featureMu.Unlock()
 	for _, service := range services {
 		service.Stop()
 	}
-	if endpoint != nil {
-		endpoint.Close()
+	if temp != "" {
+		os.Remove(temp) // empty once the discovery file is gone
 	}
 	p.gateway.Halt(true)
 }

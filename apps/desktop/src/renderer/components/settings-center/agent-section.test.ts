@@ -57,11 +57,11 @@ test("stdio config is versioned and includes the configured port", async () => {
     mcpServers: {
       nextshell: {
         command: "npx",
-        args: ["-y", "@nextshell/mcp@0.1.0", "--port", "5000"]
+        args: ["-y", "@nextshell/mcp@0.2.0", "--port", "5000"]
       }
     }
   });
   expect(buildClaudeAddCommand(5000)).toBe(
-    "claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.1.0 --port 5000"
+    "claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.2.0 --port 5000"
   );
 });

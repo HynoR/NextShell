@@ -2,4 +2,14 @@
 
 package main
 
+import (
+	"flag"
+	"io"
+	"nextshell.dev/v2/internal/desktop"
+)
+
 const developmentInspector = false
+
+func registerDevFlags(*flag.FlagSet, *options)                 {}
+func checkDevFlags(options) error                              { return nil }
+func startDevMode(*desktop.Platform, options, io.Writer) error { return nil }

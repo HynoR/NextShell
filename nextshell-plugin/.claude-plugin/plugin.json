@@ -1,7 +1,7 @@
 {
   "name": "nextshell",
-  "version": "0.3.0",
-  "description": "Drive the server tabs you already opened in NextShell: read the screen, run commands, type into TUIs \u2014 with zero credentials in the agent config.",
+  "version": "0.4.0",
+  "description": "Drive the servers you saved and the tabs you opened in NextShell 2: run commands, read the screen, with zero credentials in the agent config.",
   "author": {
     "name": "HynoR"
   },

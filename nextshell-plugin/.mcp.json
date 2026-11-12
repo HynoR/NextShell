@@ -2,7 +2,7 @@
   "mcpServers": {
     "nextshell": {
       "command": "npx",
-      "args": ["-y", "@nextshell/mcp@0.1.0", "--port", "41777"]
+      "args": ["-y", "@nextshell/mcp@0.2.0"]
     }
   }
 }

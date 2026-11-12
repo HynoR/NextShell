@@ -1,78 +1,82 @@
 # @nextshell/mcp
 
-NextShell supports **stdio and Streamable HTTP**. Both use the same tools and the
-same in-app authorization, command restrictions and activity reporting.
+stdio bridge from MCP clients (Claude Code, Codex, …) to the local **NextShell 2** app.
+The app keeps its own policy: every change needs approval in the app (unless the user turned
+on auto-approve for a while), dangerous commands are blocked, output is redacted.
 
-## stdio: offline discovery
+## Setup
 
-Requires Node.js 24+. After `@nextshell/mcp@0.1.0` is published:
-
-```json
-{
-  "mcpServers": {
-    "nextshell": {
-      "command": "npx",
-      "args": ["-y", "@nextshell/mcp@0.1.0", "--port", "41777"]
-    }
-  }
-}
-```
-
-The first download requires network access. The harness starts this small process;
-initialization, tool discovery and ping do not contact or launch NextShell.
-When a tool is called, open NextShell and enable 设置 → Agent 接入. If unavailable,
-the tool returns `app_unavailable`; after opening the app the next call reconnects.
-A lost response returns `connection_lost`: execution may already have happened.
-Inspect the terminal before retrying; the bridge never replays the command.
-An `incompatible_version` error means the app and package tool schemas differ:
-update both and restart the MCP process. Client-side tool timeouts may need to be
-increased for long commands; the bridge accommodates the app's one-hour limit.
-
-`--port` defaults to 41777 and accepts integers 1–65535. The host is always
-127.0.0.1; redirects and background reconnect loops are disabled. Use the port
-configured in NextShell. No credential or application path belongs in the config.
-
-## HTTP: direct connection
-
-No Node.js required. Start NextShell and enable Agent access **before connecting**:
+1. In NextShell: 设置 → Agent → 开启 MCP. While MCP is on, the app writes
+   `mcp.json` (`{"port":41777,"token":"…"}`, mode 0600) to its config directory and removes
+   it when MCP is turned off or the app exits.
+2. Add the bridge to your client. No token or port belongs in the config:
 
 ```json
 {
   "mcpServers": {
-    "nextshell": { "type": "http", "url": "http://127.0.0.1:41777/mcp" }
+    "nextshell": { "command": "npx", "args": ["-y", "@nextshell/mcp@0.2.0"] }
   }
 }
 ```
 
-HTTP is a fully supported alternative, not deprecated. Different clients can use
-both methods concurrently. Usually choose one method per harness to avoid duplicate
-tools. Stdio-only clients should use the stdio configuration above.
+```sh
+claude mcp add --transport stdio nextshell -- npx -y @nextshell/mcp@0.2.0
+```
 
-## Development and release
+Requires Node.js 24+. The harness can start the bridge, initialize and list tools while
+NextShell is closed; only a tool call contacts the app, and it re-reads the token every time it
+reconnects, so starting the app later or rotating the token needs no restart.
+
+## Token and port
+
+The bridge sends `Authorization: Bearer <token>` on every request. Token source, first match wins:
+
+1. `--token <token>` (visible to other local users in the process list; prefer the next two)
+2. `NEXTSHELL_MCP_TOKEN`
+3. `--config <path>`: a file in the `mcp.json` format
+4. the default `mcp.json` of the OS (same directory the app uses, `NextShell-v2/mcp.json` under):
+   - macOS: `~/Library/Application Support`
+   - Linux: `$XDG_CONFIG_HOME` (absolute) or `~/.config`
+   - Windows: `%AppData%`
+
+Port: `--port <n>` if given, else the `port` in the file that was read, else 41777. The host is
+always 127.0.0.1; redirects are refused so the token never leaves the machine. The token is never
+logged or put in an error message.
+
+An app started with a different profile (`--db <path>`) writes `mcp.json` next to that database;
+point the bridge at it with `--config <dir>/mcp.json`.
+
+## Errors
+
+Tool failures come back as `{ ok: false, error: { code, message } }`:
+
+| code                   | meaning                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `token_missing`        | no token found; enable MCP in NextShell 设置 → Agent or pass a token source  |
+| `unauthorized`         | the app refused the token (rotated?); nothing ran, the next call re-reads it |
+| `app_unavailable`      | app not running or MCP off; the next call reconnects                         |
+| `connection_lost`      | response lost, the command may have run: inspect the terminal, do not retry  |
+| `incompatible_version` | the app lacks a tool this package expects: update both                       |
+
+App-side codes (`denied`, `forbidden`, `consent_required`, `busy`, …) are passed through unchanged.
+A call that returns `{ status: "pending", requestId }` is waiting for the user: call the same tool
+again with only that `requestId`. The bridge never replays a call.
+
+## Development
 
 From the repository root:
 
 ```sh
 pnpm --filter @nextshell/mcp run build
 pnpm exec vitest run packages/mcp/src
-pnpm --filter @nextshell/mcp run smoke:pack
+pnpm --filter @nextshell/mcp run typecheck
+pnpm --filter @nextshell/mcp run smoke:pack   # needs npm registry access
 ```
 
-`smoke:pack` packs and installs into an isolated temporary directory, then starts
-the installed bin over stdio and verifies discovery with no application running.
-It requires npm registry access and removes its temporary directory on completion.
+Tests run the bridge against `src/fake-app.ts`, a loopback stand-in for the app's endpoint that
+enforces the bearer token. To try the real app, build it with `-tags nextshell_devtools` and run
+`nextshell --agent-test --db <tmp>/t.db`: MCP and auto-approve are on from the start and the path of
+`mcp.json` is printed on stderr (`--config <that path>`).
 
-Release order:
-
-1. Confirm publishing rights for the `@nextshell` npm scope. No publishing credential
-   is stored in this repository. The package is prepared locally, not automatically published.
-2. Keep the package version, `MCP_PACKAGE_SPEC`, and plugin config aligned; run CI
-   and the packed-install smoke check.
-3. Publish from `packages/mcp` with `npm publish --access public` after building.
-4. Verify `npm view @nextshell/mcp@0.1.0 version`, then release the desktop/plugin
-   configurations that refer to that version. Do not ship an unpublished default.
-
-Acceptance: unit/integration tests cover offline discovery, reconnection, schema
-compatibility, concurrent HTTP/stdio access, policy result forwarding and no replay.
-Real app approval/terminal flows and harness launch on macOS, Windows and Linux
-require separate platform smoke testing; unit tests do not establish that acceptance.
+The package is prepared locally and is not published automatically. Keep `package.json`, `MCP_PACKAGE_SPEC`
+(`packages/shared/src/mcp-config.ts`) and `nextshell-plugin/.mcp.json` on the same version; a test checks it.
