@@ -55,6 +55,7 @@ func main() {
 		log.Fatal(e)
 	}
 	a := appui.New(p)
+	a.Cloud = cloudUI
 	end := &shutdown{cleanup: func() {
 		if !opts.smoke {
 			a.SaveOpenTabs() // before the store closes

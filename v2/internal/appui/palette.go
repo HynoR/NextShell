@@ -92,7 +92,6 @@ func (a *App) paletteItems() []paletteItem {
 		{"导出连接", func() { a.openSettings("导入导出") }},
 		{"密钥管理", func() { a.openSettings("密钥") }},
 		{"代理管理", func() { a.openSettings("代理") }},
-		{"云同步", func() { a.openSettings("同步") }},
 		{"Agent 与 MCP", func() { a.openSettings("Agent") }},
 		{"回收站", func() { a.openSettings("回收站") }},
 		{"网络诊断（Ping / 路由追踪）", func() { a.openSettings("网络诊断") }},
@@ -104,6 +103,12 @@ func (a *App) paletteItems() []paletteItem {
 		{"监控面板", func() { a.showPanel(panelMonitor) }},
 		{"命令片段面板", func() { a.showPanel(panelSnippets) }},
 		{"传输列表", func() { a.layout.transfersOpen = true }},
+	}
+	if a.Cloud {
+		actions = append(actions, struct {
+			title string
+			run   func()
+		}{"云同步", func() { a.openSettings("同步") }})
 	}
 	if len(a.editor.documents) > 0 {
 		actions = append(actions, struct {

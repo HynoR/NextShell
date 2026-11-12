@@ -252,7 +252,7 @@ func TestScreenshots(t *testing.T) {
 	shot(kst, "22-settings-ssh-host-keys")
 
 	st := ui.NewTester(a.SettingsView, 880, 640)
-	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "同步", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
+	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
 		click(t, st, section)
 		shot(st, "20-settings-"+string(rune('a'+i))+"-"+section)
 	}

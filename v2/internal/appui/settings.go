@@ -157,6 +157,9 @@ func (a *App) SettingsView(c *ui.Context) {
 		ui.Column(c).Width(180).FillHeight().Padding(8).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 			ui.Sidebar(c.Key("settings-nav"), &s.section, func() {
 				for _, v := range settingsSections {
+					if v.id == "同步" && !a.Cloud {
+						continue
+					}
 					ui.SidebarItem(c, v.id, appIcons[v.icon], v.id)
 				}
 			}).Label("设置分类").Grow(1).FillWidth()

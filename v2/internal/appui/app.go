@@ -34,6 +34,9 @@ type App struct {
 	RaiseWindow func(focus bool)
 	// Clock is the time source for agent activity and rate limits; nil means time.Now.
 	Clock func() time.Time
+	// Cloud shows the cloud sync UI: the 同步 settings page, its palette action, the status-bar indicator and
+	// the host menu's copy action. The host sets it for development builds only: no sync server exists yet.
+	Cloud bool
 	// ShowEditor opens (or raises) the remote editor window, which EditorView
 	// builds; HideEditor closes it. Without ShowEditor the editor is a dialog.
 	ShowEditor, HideEditor func()
@@ -671,6 +674,9 @@ func since(at time.Time) string {
 
 // syncLabel reads the profile at most every two seconds: the status bar builds every frame.
 func (a *App) syncLabel() string {
+	if !a.Cloud {
+		return ""
+	}
 	if time.Since(a.sync.at) > 2*time.Second {
 		a.sync.label, a.sync.at = a.syncState(), time.Now()
 	}

@@ -347,7 +347,7 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 		if m.Item("导出…").Chosen() {
 			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("导入导出") })
 		}
-		if m.Item("复制到云工作区…").Chosen() {
+		if a.Cloud && m.Item("复制到云工作区…").Chosen() {
 			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("同步") })
 		}
 		m.Separator()

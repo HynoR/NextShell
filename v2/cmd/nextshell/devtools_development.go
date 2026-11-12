@@ -15,6 +15,9 @@ import (
 
 const developmentInspector = true
 
+// cloudUI shows the cloud sync UI: no production sync server exists yet, so only development builds do.
+const cloudUI = true
+
 func registerDevFlags(fs *flag.FlagSet, o *options) {
 	fs.BoolVar(&o.agentTest, "agent-test", false, "enable MCP with auto-approve until exit (requires --db; development builds only)")
 	fs.BoolVar(&o.trustNewHosts, "trust-new-hosts", false, "with --agent-test: trust the host key of a server seen for the first time without asking; a changed key still asks (development builds only)")

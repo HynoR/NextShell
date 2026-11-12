@@ -9,6 +9,7 @@ import (
 )
 
 const developmentInspector = false
+const cloudUI = false
 
 func registerDevFlags(*flag.FlagSet, *options)                 {}
 func checkDevFlags(options) error                              { return nil }

@@ -213,7 +213,9 @@ func TestSettingsKeysAndProxies(t *testing.T) {
 }
 
 func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
-	_, p, tt, st := settingsFixture(t)
+	a, p, tt, st := settingsFixture(t)
+	a.Cloud = true
+	st.Frame()
 	id := "11111111-1111-4111-8111-111111111111"
 	p.cloud = appui.CloudOverview{Workspaces: []storage.Workspace{{ID: id, Name: "团队"}}, Statuses: []cloudsync.Status{{WorkspaceID: id, State: "conflict"}}}
 	p.events = append(p.events, appui.Event{WorkspaceID: id})
@@ -245,6 +247,57 @@ func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
 		click(t, st, label)
 		if p.responses[len(p.responses)-1] != approve || len(p.sent) != 0 {
 			t.Fatal("consent", p.responses)
+		}
+	}
+}
+
+// Release builds have no sync server to talk to: nothing a user can see may mention sync, and the
+// development flag brings all of it back.
+func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
+	cloudTexts := []string{"同步", "云", "☁", "工作区"}
+	for _, enabled := range []bool{false, true} {
+		id := "11111111-1111-4111-8111-111111111111"
+		p := &servicesPlatform{fakePlatform: newPlatform(t)}
+		p.cloud = appui.CloudOverview{Workspaces: []storage.Workspace{{ID: id, Name: "团队"}}, Statuses: []cloudsync.Status{{WorkspaceID: id, State: "conflict"}}}
+		saveHost(t, p.fakePlatform, model.Connection{ID: "h1", Name: "box", Host: "10.0.0.5", User: "u"})
+		a := appui.New(p)
+		a.Cloud = enabled
+		a.ShowSettings = func() { p.settingsShown++ }
+		tt, st := ui.NewTester(a.View, 1280, 800), ui.NewTester(a.SettingsView, 880, 1400)
+		shows := func(tt *ui.Tester) bool {
+			for _, s := range tt.Texts() {
+				for _, bad := range cloudTexts {
+					if strings.Contains(s, bad) {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		sections := []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"}
+		for _, section := range sections {
+			click(t, st, section)
+			if shows(st) != enabled { // the sidebar lists 同步 when enabled
+				t.Errorf("enabled=%v: settings %s: %q", enabled, section, st.Texts())
+			}
+		}
+		if shows(tt) != enabled {
+			t.Errorf("enabled=%v: main window: %q", enabled, tt.Texts())
+		}
+		if (st.Click("同步") == nil) != enabled {
+			t.Errorf("enabled=%v: 同步 section", enabled)
+		}
+		if e := tt.RightClick("box"); e != nil {
+			t.Fatal(e)
+		}
+		if (tt.ChooseMenuItem("复制到云工作区…") == nil) != enabled {
+			t.Errorf("enabled=%v: host menu", enabled)
+		}
+		tt.Key(appMod(), ui.KeyK)
+		tt.Type("云同步")
+		tt.Key(0, ui.KeyEnter)
+		if (p.settingsShown > 0) != enabled {
+			t.Errorf("enabled=%v: palette action ran %d times", enabled, p.settingsShown)
 		}
 	}
 }
