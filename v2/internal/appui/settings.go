@@ -301,7 +301,7 @@ func (a *App) terminalSettings(c *ui.Context) {
 		field(c, "滚动缓冲（MiB）", &s.scrollback).Description("1–256，新会话生效")
 	})
 	group(c, "行为", func() {
-		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("只影响本地终端。SSH 标签始终显示连接名称，程序设置的标题在标签的悬停提示和状态栏里；手动重命名优先").FillWidth()
+		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("只影响本地终端。SSH 标签始终显示连接名称，程序设置的标题在标签的悬停提示和左栏会话卡里；手动重命名优先").FillWidth()
 		toggle(c, "响铃与通知", &v.Notifications)
 		toggle(c, "打开链接前确认", &v.HyperlinkConfirm)
 		toggle(c, "允许服务器写入剪贴板", &v.ClipboardWrite)
@@ -316,7 +316,7 @@ func (a *App) terminalSettings(c *ui.Context) {
 				v.ShellIntegration = modes[i]
 			}
 		}).Description([]string{
-			"会在服务器上写入 ~/.cache/nextshell/osc7.sh，新的 bash / zsh 会话出现提示符后再执行一行 . ~/.cache/nextshell/osc7.sh；文件面板可跟随终端目录。其他 shell 不处理",
+			"会在服务器上安装一小段目录跟踪脚本，新的 bash / zsh 会话自动加载；文件面板可跟随终端目录。其他 shell 不受影响",
 			"默认。不写服务器文件；需要时在命令面板执行「插入目录跟踪脚本」，只对当前会话生效",
 			"不注入，命令面板里也不提供",
 		}[i]).FillWidth()

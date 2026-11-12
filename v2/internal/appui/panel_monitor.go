@@ -335,7 +335,7 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 	t := c.Theme()
 	switch {
 	case sess.Local:
-		muted(c, "本地终端不采样")
+		muted(c, "本地终端不显示服务器状态")
 		return
 	case !a.monitorOn(sess):
 		muted(c, "此服务器的监控已关闭")
@@ -344,7 +344,7 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 	}
 	exited := a.P.Exited(sess.ID)
 	if exited {
-		muted(c, "连接断开后不再采样")
+		muted(c, "连接断开后不再更新")
 	}
 	if a.monitorStopped(sess) {
 		a.monitorUnreadable(c, sess)
@@ -390,8 +390,8 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 	if m.Info != "" {
 		muted(c, m.Info).FontSize(11).Tooltip(m.Info)
 	}
-	for _, w := range m.Warnings {
-		ui.Text(c, w).FontSize(11).TextColor(t.Warning)
+	if len(m.Warnings) > 0 {
+		ui.Text(c, "部分信息无法读取").FontSize(11).TextColor(t.Warning).Tooltip(strings.Join(m.Warnings, "\n"))
 	}
 	if exited {
 		return
@@ -511,7 +511,7 @@ func (a *App) monitorHistory(c *ui.Context, host *hostMonitor) {
 		muted(c, "还没有历史数据")
 		return
 	}
-	muted(c, fmt.Sprintf("最近 %d 次采样，不保存到磁盘", len(h.Points)))
+	muted(c, fmt.Sprintf("最近 %d 次读数，不保存到磁盘", len(h.Points)))
 	interfaces, disks := []string{"全部网卡"}, []string{}
 	knownNet, knownDisk := map[string]bool{}, map[string]bool{}
 	for _, p := range h.Points {
