@@ -48,7 +48,19 @@ type Server struct {
 	// Killed counts exec commands ended by a "signal" request, like sshd's session_signal_req.
 	Killed atomic.Int64
 	once   sync.Once
+	// maxStartups drops a connection at once while that many others have not finished authenticating, like
+	// sshd's MaxStartups; authDelay makes the authentication take a while so that they overlap.
+	maxStartups atomic.Int32
+	authDelay   atomic.Int64
+	unauth      atomic.Int32
+	Refused     atomic.Int64 // connections dropped because of maxStartups
 }
+
+// SetMaxStartups limits the connections that may be authenticating at once (0: no limit).
+func (s *Server) SetMaxStartups(n int) { s.maxStartups.Store(int32(n)) }
+
+// SetAuthDelay makes every password check take d.
+func (s *Server) SetAuthDelay(d time.Duration) { s.authDelay.Store(int64(d)) }
 
 func New(root string) (*Server, error) {
 	_, key, e := ed25519.GenerateKey(rand.Reader)
@@ -66,6 +78,7 @@ func New(root string) (*Server, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{Root: root, Address: l.Addr().String(), Signer: signer, listener: l, accepted: make(chan struct{}), ctx: ctx, cancel: cancel}
 	config := &ssh.ServerConfig{PasswordCallback: func(meta ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
+		time.Sleep(time.Duration(s.authDelay.Load()))
 		if meta.User() == "tester" && string(password) == "test-password" {
 			return nil, nil
 		}
@@ -80,12 +93,20 @@ func New(root string) (*Server, error) {
 				return
 			}
 			s.conns.Store(c, true)
+			if limit := s.maxStartups.Load(); limit > 0 && s.unauth.Load() >= limit {
+				s.Refused.Add(1)
+				s.conns.Delete(c)
+				c.Close() // the client sees EOF in its handshake
+				continue
+			}
+			s.unauth.Add(1)
 			s.wg.Add(1)
 			go func() {
 				defer s.wg.Done()
 				defer s.conns.Delete(c)
 				defer c.Close()
 				conn, channels, requests, e := ssh.NewServerConn(c, config)
+				s.unauth.Add(-1)
 				if e != nil {
 					return
 				}

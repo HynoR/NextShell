@@ -318,6 +318,8 @@ func openError(e error) error {
 		return agent.Coded("denied", e)
 	case strings.Contains(m, "等待输入超时"):
 		return agent.Coded("timeout", e)
+	case strings.Contains(m, "handshake failed") && (strings.HasSuffix(m, "eof") || strings.Contains(m, "connection reset")):
+		return agent.Coded("refused", errors.New("服务器在握手时断开（可能是连接数限制或代理拒绝）"))
 	case strings.Contains(m, "connection refused"):
 		return agent.Coded("refused", e)
 	case strings.Contains(m, "no route to host") || strings.Contains(m, "network is unreachable") || strings.Contains(m, "no such host") || strings.Contains(m, "i/o timeout") || strings.Contains(m, "host is down") || strings.Contains(m, "dial tcp") || strings.Contains(m, "proxy"):

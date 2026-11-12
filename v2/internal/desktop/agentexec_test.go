@@ -262,3 +262,52 @@ func TestExecOnAConnectionThatDropsIsDisconnected(t *testing.T) {
 		t.Fatal("exec on a dead connection:", e)
 	}
 }
+
+// Twenty tabs opened at once on one server all connect, although the server drops connections beyond
+// its MaxStartups: handshakes towards one endpoint are limited.
+func TestParallelOpensToOneServerStayWithinItsMaxStartups(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	server.SetMaxStartups(8)
+	server.SetAuthDelay(100 * time.Millisecond)
+	const tabs = 20
+	for i := range tabs {
+		c := server.Options().Connection
+		c.ID, c.Name = "", "tab"+strconv.Itoa(i)
+		p.Connect(c)
+	}
+	opened, failed := 0, ""
+	deadline := time.After(30 * time.Second)
+	for opened < tabs && failed == "" {
+		select {
+		case <-deadline:
+			t.Fatalf("only %d of %d tabs opened", opened, tabs)
+		case <-time.After(10 * time.Millisecond):
+		}
+		for _, e := range p.Poll() {
+			switch {
+			case e.Session != nil:
+				opened++
+				id := e.Session.ID
+				t.Cleanup(func() { p.CloseSession(id) })
+			case e.Message != "":
+				failed = e.Message
+			}
+		}
+	}
+	if failed != "" || server.Refused.Load() != 0 {
+		t.Fatalf("%d opened, %d connections refused by the server; failure: %s", opened, server.Refused.Load(), failed)
+	}
+}
+
+func TestHandshakeEOFIsReportedAsRefused(t *testing.T) {
+	for _, msg := range []string{"ssh: handshake failed: EOF", "ssh: handshake failed: read tcp 1.2.3.4:5->6.7.8.9:22: read: connection reset by peer"} {
+		e := openError(errors.New(msg))
+		if codeOf(e) != "refused" || !strings.Contains(e.Error(), "服务器在握手时断开") {
+			t.Fatal(msg, e)
+		}
+	}
+	if codeOf(openError(errors.New("dial tcp 1.2.3.4:22: connect: connection refused"))) != "refused" || codeOf(openError(errors.New("ssh: handshake failed: ssh: unable to authenticate"))) != "auth_failed" {
+		t.Fatal("other codes changed")
+	}
+}

@@ -39,7 +39,8 @@ type Platform struct {
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
-	tar              map[string]bool // whether each session's server has tar
+	dialSlots        map[string]chan struct{} // handshake limiter per endpoint; see dial
+	tar              map[string]bool          // whether each session's server has tar
 	queue            *transfer.Queue
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
@@ -318,7 +319,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		}
 		o.KnownHostsFile = filepath.Join(home, ".ssh", "known_hosts")
 	}
-	s, e := sshclient.Dial(ctx, o)
+	s, e := p.dial(ctx, o)
 	var changed *sshclient.HostKeyError
 	if errors.As(e, &changed) && changed.Changed {
 		// The user compares both keys; only an explicit confirmation replaces the pin.
@@ -335,7 +336,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 			}
 		}
 		o.Connection.Fingerprint = changed.Fingerprint
-		s, e = sshclient.Dial(ctx, o)
+		s, e = p.dial(ctx, o)
 	}
 	// A rejected password asks again, at most three times in all.
 	for tries := 1; tries < 3 && c.Auth == "password" && isAuthFailure(e); tries++ {
@@ -343,7 +344,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 			return err
 		}
 		o.Connection.Secret = c.Secret
-		s, e = sshclient.Dial(ctx, o)
+		s, e = p.dial(ctx, o)
 	}
 	if e != nil {
 		return e
@@ -359,6 +360,34 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 	}
 	p.registerFrom(fromAgent(ctx), t, c, false, replace, s)
 	return nil
+}
+
+// dialLimit is how many connections may be in their handshake at once towards one endpoint. OpenSSH drops
+// unauthenticated connections beyond MaxStartups (default 10:30:100), so an agent opening twenty tabs at
+// one server would see most of them fail with "handshake failed: EOF".
+const dialLimit = 6
+
+// dial is sshclient.Dial limited to dialLimit concurrent attempts per endpoint (host:port, and the
+// proxy it goes through); the others wait their turn.
+func (p *Platform) dial(ctx context.Context, o sshclient.Options) (*sshclient.Session, error) {
+	key := o.Connection.Address() + "|" + o.Connection.ProxyID
+	p.mu.Lock()
+	slots := p.dialSlots[key]
+	if slots == nil {
+		if p.dialSlots == nil {
+			p.dialSlots = map[string]chan struct{}{}
+		}
+		slots = make(chan struct{}, dialLimit)
+		p.dialSlots[key] = slots
+	}
+	p.mu.Unlock()
+	select {
+	case slots <- struct{}{}:
+		defer func() { <-slots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return sshclient.Dial(ctx, o)
 }
 func isAuthFailure(e error) bool {
 	return e != nil && strings.Contains(e.Error(), "unable to authenticate")
