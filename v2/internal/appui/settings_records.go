@@ -39,7 +39,7 @@ func (a *App) trashSettings(c *ui.Context) {
 				}
 				ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 					ui.Text(c, cc.Name).Bold()
-					muted(c, cc.User+"@"+cc.Address())
+					muted(c, a.login(cc)) // who it connects as: its credential's user, not the host's own
 				})
 				if ghost(c, "恢复", "").Clicked() {
 					cc.Deleted = false

@@ -12,6 +12,7 @@ import (
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
+	"nextshell.dev/v2/internal/model"
 )
 
 // pixel is the color the window shows at x, y (DIPs; the testers render at scale 1).
@@ -416,4 +417,19 @@ func TestImportPreviewNotesAreInChinese(t *testing.T) {
 	if info, ok := mt.AccessByRole(ui.RoleText, "部分内容无法导入"); !ok || info.Description != "decoder exploded" {
 		t.Fatal("the original wording is not the tooltip", info.Description)
 	}
+}
+
+// The recycle bin names the user a host connects as: its credential's, not the empty one of its own.
+func TestRecycleBinShowsTheCredentialUser(t *testing.T) {
+	p := newPlatform(t)
+	demo(t, p)
+	cr := model.Credential{ID: p.NewID(), Name: "运维", User: "ops", Auth: "password"}
+	if e := p.SaveCredential(cr, nil); e != nil {
+		t.Fatal(e)
+	}
+	saveHost(t, p, model.Connection{Name: "gone-box", Host: "10.7.7.7", CredentialID: cr.ID, Deleted: true})
+	a := appui.New(p)
+	st := ui.NewTester(a.SettingsView, 880, 640)
+	click(t, st, "回收站")
+	has(t, st, "gone-box", "ops@10.7.7.7:22")
 }
