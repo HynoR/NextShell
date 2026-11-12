@@ -33,6 +33,7 @@ func remote(t *testing.T, shell string) (*sshclient.Session, string, *testutil.S
 }
 
 func TestInstallDetectsTheLoginShell(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	for _, v := range []struct {
 		shell string
 		ok    bool
@@ -52,6 +53,7 @@ func TestInstallDetectsTheLoginShell(t *testing.T) {
 }
 
 func TestInstallWritesTheFileOnceWithPrivateModes(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	s, root, server := remote(t, "/bin/bash")
 	dir, file := filepath.Join(root, ".cache/nextshell"), filepath.Join(root, ".cache/nextshell/osc7.sh")
 	if e := Install(context.Background(), s); e != nil {
@@ -100,6 +102,7 @@ func TestInstallWritesTheFileOnceWithPrivateModes(t *testing.T) {
 }
 
 func TestInstallFailureLeavesNothingBehind(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	s, root, _ := remote(t, "/bin/zsh")
 	// A directory where the file should go: the write fails, no hook is installed.
 	if e := os.MkdirAll(filepath.Join(root, ".cache/nextshell/osc7.sh"), 0o700); e != nil {
@@ -116,28 +119,32 @@ func TestInstallFailureLeavesNothingBehind(t *testing.T) {
 
 // The file the line sources works in each shell and, sourced again, hooks once.
 func TestFileSourcesInBashAndZsh(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "osc7.sh")
 	if e := os.WriteFile(file, []byte(File()), 0o600); e != nil {
 		t.Fatal(e)
 	}
-	for _, shell := range []string{"bash", "zsh"} {
-		path, e := exec.LookPath(shell)
-		if e != nil {
-			t.Logf("UNVERIFIED: %s is not installed", shell)
-			continue
-		}
-		cmd := exec.Command(path, "-c", ". "+file+"; . "+file)
+	check := func(t *testing.T, args ...string) {
+		t.Helper()
+		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Dir = dir
-		if shell == "bash" {
-			cmd.Args = []string{path, "--noprofile", "--norc", "-c", ". " + file + "; . " + file + `; [[ "$PROMPT_COMMAND" == *__nextshell_emit_cwd* ]] || exit 3; [[ "${PROMPT_COMMAND/__nextshell_emit_cwd/}" != *__nextshell_emit_cwd* ]] || exit 4`}
-		} else {
-			cmd.Args = []string{path, "-f", "-c", ". " + file + "; . " + file + `; [[ ${#precmd_functions[@]} == 1 ]] || exit 3`}
-		}
 		out, e := cmd.CombinedOutput()
 		if e != nil || strings.Count(string(out), "\x1b]7;file://localhost") != 2 {
-			t.Fatal(shell, e, string(out))
+			t.Fatal(e, string(out))
 		}
+	}
+	for _, bash := range bashes(t) {
+		t.Run(bash.name(), func(t *testing.T) {
+			check(t, bash.path, "--noprofile", "--norc", "-c", ". "+file+"; . "+file+`; [[ "$PROMPT_COMMAND" == *__nextshell_emit_cwd* ]] || exit 3; [[ "${PROMPT_COMMAND/__nextshell_emit_cwd/}" != *__nextshell_emit_cwd* ]] || exit 4`)
+		})
+	}
+	if zsh, e := exec.LookPath("zsh"); e != nil {
+		t.Log("UNVERIFIED: zsh is not installed")
+	} else {
+		t.Run("zsh", func(t *testing.T) {
+			check(t, zsh, "-f", "-c", ". "+file+"; . "+file+`; [[ ${#precmd_functions[@]} == 1 ]] || exit 3`)
+		})
 	}
 }
 

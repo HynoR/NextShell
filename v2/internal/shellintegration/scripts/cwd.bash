@@ -4,7 +4,8 @@ __nextshell_emit_cwd() {
   for ((i=0; i<${#PWD}; i++)); do
     ch=${PWD:i:1}
     case "$ch" in [a-zA-Z0-9/._~-]) out+="$ch";;
-      *) printf -v hex '%%%02X' "'$ch"; out+="$hex";; esac
+      # bash 3.2 (macOS) sign-extends bytes >= 0x80 to 16 digits; the low two are the byte.
+      *) printf -v hex '%02X' "'$ch"; out+="%${hex: -2}";; esac
   done
   printf '\033]7;file://localhost%s\007' "$out"
 }
