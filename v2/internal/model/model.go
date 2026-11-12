@@ -58,6 +58,7 @@ type Connection struct {
 	ProxyID               string   `json:"proxyId,omitempty"`
 	CredentialID          string   `json:"credentialId,omitempty"` // when set, user and auth come from the credential
 	Fingerprint           string   `json:"fingerprint,omitempty"`
+	Color                 string   `json:"color,omitempty"` // #rrggbb marking the host on tabs and tiles; "" picks one
 	Encoding              string   `json:"encoding"`
 	Keepalive             int      `json:"keepalive"`
 	Deleted               bool     `json:"deleted,omitempty"`
@@ -90,6 +91,9 @@ func (c Connection) Validate() error {
 	// An imported host whose key is not here yet stays key auth until one is bound (MissingKey).
 	if c.Auth == "key" && c.KeyID == "" && !c.NeedsKeyRebind && c.CredentialID == "" {
 		return errors.New("请选择密钥")
+	}
+	if c.Color != "" && !hexColor.MatchString(c.Color) {
+		return errors.New("颜色格式需为 #RRGGBB")
 	}
 	switch strings.ToLower(c.Encoding) {
 	case "", "utf-8", "utf8", "gb18030", "gbk", "big5", "shift_jis":

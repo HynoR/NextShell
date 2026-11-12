@@ -131,3 +131,23 @@ func terminalPalette(dark bool) *terminal.Theme {
 	}
 	return t
 }
+
+// swatches chooses one of the colors (#rrggbb; "" is a hollow swatch) into *id; names label them.
+func swatches(c *ui.Context, label string, id *string, ids, names, colors []string) {
+	t := c.Theme()
+	ui.Field(c, label, func() {
+		ui.RadioGroup(c, func() {
+			for i, v := range ids {
+				sw := ui.RadioBase(c, id, v).Size(22, 22).Radius(11).Label(names[i]).Tooltip(names[i])
+				if colors[i] == "" {
+					sw.Border(1, t.TextMuted)
+				} else {
+					sw.Background(ui.Hex(colors[i]))
+				}
+				if *id == v {
+					sw.Border(2, t.Text)
+				}
+			}
+		}).Row().Gap(8).Label(label)
+	}).FillWidth()
+}

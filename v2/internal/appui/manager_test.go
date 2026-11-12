@@ -2,6 +2,7 @@ package appui_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/appui"
@@ -176,5 +177,26 @@ func TestAuthFailureRetryWritesBack(t *testing.T) {
 	}
 	if len(p.connects) != 1 || p.connects[0].User != "root" {
 		t.Fatal("no retry", p.connects)
+	}
+}
+
+// A color picked in the host form is saved with the host.
+func TestHostColorFromForm(t *testing.T) {
+	p := newPlatform(t)
+	saveHost(t, p, model.Connection{Name: "c1", Host: "c1.example", User: "u"})
+	a, _ := start(p)
+	mt := ui.NewTester(a.ManagerView, 960, 1000)
+	if e := mt.RightClick("c1"); e != nil {
+		t.Fatal(e)
+	}
+	if e := mt.ChooseMenuItem("编辑…"); e != nil {
+		t.Fatal(e)
+	}
+	click(t, mt, "标签与备注")
+	mt.Advance(time.Second)
+	click(t, mt, "绿")
+	click(t, mt, "保存")
+	if c := stored(t, p, "c1"); c.Color != "#22c55e" {
+		t.Fatal("color not saved", c.Color)
 	}
 }

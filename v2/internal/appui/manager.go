@@ -256,6 +256,7 @@ func (a *App) hostTile(c *ui.Context, cc model.Connection) {
 	}
 	a.hostMenu(tile, cc)
 	tile.Children(func() {
+		ui.Box(c).Size(3, 30).Radius(1.5).Background(hostColor(cc))
 		// The icon is the handle that drags the host onto a folder: the rest of the tile takes clicks.
 		ui.Icon(c, appIcons["server"]).Label("拖动 " + cc.Name).Tooltip("拖到左侧目录即可移动").FontSize(18).TextColor(t.TextMuted).Drag(hostDrag(cc.ID))
 		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
