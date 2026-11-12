@@ -171,18 +171,41 @@ func tierLabel(tier string) string {
 	return ""
 }
 
-// pendingTooltip names what waits for approval: the first request's tier, target and command.
-func pendingTooltip(pending []agent.Pending) string {
-	p := pending[0]
-	line := orDefault(p.TargetName, p.Target) + " · " + p.Summary
-	if label := tierLabel(p.Tier); label != "" {
-		line = label + " · " + line
-	}
-	if r := []rune(line); len(r) > 160 {
-		line = string(r[:160]) + "…"
-	}
-	return line
+// pendingCard shows a request waiting for the user, with its deny and approve buttons.
+func (a *App) pendingCard(c *ui.Context, p agent.Pending) {
+	t := c.Theme()
+	ui.Column(c.Key("consent-"+p.ID)).FillWidth().Padding(10).Gap(4).Radius(t.Radius).Border(1, t.Warning).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, p.Client+" · "+p.Tool).Bold()
+			if label := tierLabel(p.Tier); label != "" {
+				ui.Row(c).Padding(0, 6).Radius(3).Background(t.Warning.Alpha(.18)).Children(func() {
+					ui.Text(c, label).FontSize(12).Bold().TextColor(t.Warning)
+				})
+			}
+		})
+		ui.Text(c, "目标 "+orDefault(p.TargetName, p.Target)).FontSize(12)
+		if p.Reason != "" {
+			ui.Text(c, "原因 "+p.Reason).FontSize(12)
+		}
+		ui.Text(c, p.Summary).Font("monospace").FontSize(12).Selectable()
+		if p.Tier != "" {
+			muted(c, "即使开启自动批准，这类请求也必须手动批准："+orDefault(p.Why, "需要人工确认"))
+		}
+		muted(c, "到期 "+p.ExpiresAt.Local().Format("15:04:05"))
+		ui.Row(c).Gap(8).Children(func() {
+			if ui.Button(c.Key(p.ID+"-deny"), "拒绝").Clicked() {
+				a.P.AgentRespond(p.ID, false)
+			}
+			if ui.PrimaryButton(c.Key(p.ID+"-approve"), "批准").Clicked() {
+				a.P.AgentRespond(p.ID, true)
+			}
+		})
+	})
 }
+
+// agentStates names the states of the agent's log.
+var agentStates = map[string]string{"halted": "已停止", "resumed": "已恢复", "completed": "完成", "pending": "等待批准", "failed": "失败",
+	"user_action_required": "等待用户操作", "auto-approve on": "开启自动批准", "auto-approve off": "关闭自动批准", "auto-approve expired": "自动批准已到期", "auto-approved": "已自动批准"}
 
 func (a *App) agentSettings(c *ui.Context) {
 	s := &a.settings.agent
@@ -278,33 +301,7 @@ func (a *App) agentSettings(c *ui.Context) {
 			muted(c, "没有待批准的请求")
 		}
 		for _, p := range state.Pending {
-			ui.Column(c.Key("consent-"+p.ID)).FillWidth().Padding(10).Gap(4).Radius(t.Radius).Border(1, t.Warning).Children(func() {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, p.Client+" · "+p.Tool).Bold()
-					if label := tierLabel(p.Tier); label != "" {
-						ui.Row(c).Padding(0, 6).Radius(3).Background(t.Warning.Alpha(.18)).Children(func() {
-							ui.Text(c, label).FontSize(12).Bold().TextColor(t.Warning)
-						})
-					}
-				})
-				ui.Text(c, "目标 "+orDefault(p.TargetName, p.Target)).FontSize(12)
-				if p.Reason != "" {
-					ui.Text(c, "原因 "+p.Reason).FontSize(12)
-				}
-				ui.Text(c, p.Summary).Font("monospace").FontSize(12).Selectable()
-				if p.Tier != "" {
-					muted(c, "即使开启自动批准，这类请求也必须手动批准："+orDefault(p.Why, "需要人工确认"))
-				}
-				muted(c, "到期 "+p.ExpiresAt.Local().Format("15:04:05"))
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c.Key(p.ID+"-deny"), "拒绝").Clicked() {
-						a.P.AgentRespond(p.ID, false)
-					}
-					if ui.PrimaryButton(c.Key(p.ID+"-approve"), "批准").Clicked() {
-						a.P.AgentRespond(p.ID, true)
-					}
-				})
-			})
+			a.pendingCard(c, p)
 		}
 	})
 	group(c, "命令黑名单", func() {
@@ -322,15 +319,13 @@ func (a *App) agentSettings(c *ui.Context) {
 		if len(state.Activity) == 0 {
 			muted(c, "暂无记录")
 		}
-		states := map[string]string{"halted": "已停止", "resumed": "已恢复", "completed": "完成", "pending": "等待批准", "failed": "失败",
-			"user_action_required": "等待用户操作", "auto-approve on": "开启自动批准", "auto-approve off": "关闭自动批准", "auto-approve expired": "自动批准已到期", "auto-approved": "已自动批准"}
 		for i := len(state.Activity) - 1; i >= 0; i-- {
 			ev := state.Activity[i]
 			tool := ev.Tool
 			if tool == "global" {
 				tool = "Agent"
 			}
-			muted(c.Key(fmt.Sprint("activity-", i)), ev.At+" · "+tool+" · "+orDefault(states[ev.State], ev.State))
+			muted(c.Key(fmt.Sprint("activity-", i)), ev.At+" · "+tool+" · "+orDefault(agentStates[ev.State], ev.State))
 		}
 	})
 }

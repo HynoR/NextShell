@@ -233,7 +233,7 @@ func (a *App) generalSettings(c *ui.Context) {
 	group(c, "文件", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
 		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
-		a.localPath(c, "外部编辑器", "未选择", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传")
+		a.localPath(c, "外部编辑器", "系统文本编辑器", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
 	})
 }
 

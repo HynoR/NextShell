@@ -255,10 +255,10 @@ func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
 		p.agent = appui.AgentOverview{Pending: []agent.Pending{{ID: "r", Client: "client", Tool: "exec", Target: "s", Summary: "pwd", ExpiresAt: time.Now().Add(time.Minute)}}}
 		tt.Frame()
 		has(t, tt, "Agent 待批准 1")
-		click(t, tt, "Agent 待批准 1") // the folded activity column opens, then its entry opens the settings
-		click(t, st, "Agent")
+		click(t, tt, "Agent 待批准 1") // the folded activity column opens on the request
 		label := map[bool]string{true: "批准", false: "拒绝"}[approve]
-		click(t, st, label)
+		click(t, tt, label)
+		click(t, tt, "收起活动栏")
 		if p.responses[len(p.responses)-1] != approve || len(p.sent) != 0 {
 			t.Fatal("consent", p.responses)
 		}

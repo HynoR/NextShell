@@ -336,6 +336,14 @@ func TestScreenshots(t *testing.T) {
 	shot(stt, "15-auto-approve-status")
 	click(t, stt, "Agent 待批准 1")
 	shot(stt, "15b-agent-activity")
+	// The activity bar: badges when folded, the agent's feed with a request to approve, and the live edits.
+	ap, att := newActivity(t)
+	att.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	shot(att, "24a-activity-strip-badges")
+	click(t, att, "Agent 待批准 1")
+	shot(att, "24b-activity-agent-feed")
+	ap.agent = appui.AgentOverview{URL: ap.agent.URL}
+	shot(att, "24c-activity-live-edits")
 	sst := ui.NewTester(sa.SettingsView, 880, 900)
 	click(t, sst, "Agent")
 	shot(sst, "21-settings-agent-auto-approve")

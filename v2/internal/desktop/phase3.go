@@ -337,6 +337,7 @@ func (p *Platform) closeFeatures() {
 		os.Remove(temp) // empty once the discovery file is gone
 	}
 	p.gateway.Halt(true)
+	p.edits.Close()
 }
 func cleanTerminalText(s string, limit int) string {
 	s = agent.Redact(s)

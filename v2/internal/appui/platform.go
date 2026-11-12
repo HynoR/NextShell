@@ -153,7 +153,14 @@ type Platform interface {
 	// and a failure's Message is ForEditor.
 	ReloadRemote(session, path string)
 	SaveRemote(session string, doc remoteedit.Document, text string)
+	// ExternalEdit opens path in an outside editor (none: the system's text editor) and keeps every save
+	// in sync until StopLiveEdit, whether or not the editor keeps running.
 	ExternalEdit(session, path, executable string, args []string)
+	LiveEdits() []remoteedit.Live
+	StopLiveEdit(id string) // "" stops all
+	// ResolveLiveEdit settles a conflict: overwrite replaces the server's file, otherwise the local copy is reloaded.
+	ResolveLiveEdit(id string, overwrite bool)
+	SaveLiveEditCopy(id, dest string) error
 	Diagnose(kind, target string) string
 	CancelDiagnostic()
 	RefreshMonitor(session string)

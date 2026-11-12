@@ -556,8 +556,11 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	p.events = append(p.events, appui.Event{Message: "外部编辑器已关闭"})
 	expect("other event", "外部编辑器已关闭", true, false, false)
 	// A toast raised while the editor window builds.
+	click(t, ed, "外部编辑器参数")
+	ed.Type("--wait")
 	click(t, ed, "用外部编辑器打开")
-	expect("editor action", "请先在设置的「通用」里选择外部编辑器", false, true, false)
+	expect("editor action", "编辑器参数须为 JSON 字符串数组，如 [\"--wait\"]", false, true, false)
+	ed.Advance(7 * time.Second) // the toast times out
 	// An error's details open in the window that showed the error.
 	p.events = append(p.events, appui.Event{Message: "dial tcp: connection refused", ForEditor: true})
 	expect("editor error", "连接被拒绝：服务器没有在这个端口提供 SSH 服务", false, true, false)
