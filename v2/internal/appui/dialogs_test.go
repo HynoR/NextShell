@@ -133,14 +133,14 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	cmd := model.Command{ID: p.NewID(), Name: "uptime-snippet", Group: "默认", Text: "uptime"}
 	p.SaveCommand(cmd)
 	a, tt := start(p)
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	has(t, tt, "主机", "操作", "新建主机")
 	tt.Type("ops@10.2.2.2:2201")
 	tt.Key(0, ui.KeyEnter)
 	if len(p.connects) != 1 || p.connects[0].Port != 2201 || p.connects[0].User != "ops" {
 		t.Fatal("quick connect", p.connects)
 	}
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("webpal")
 	tt.Key(0, ui.KeyEnter)
 	if len(p.connects) != 2 || p.connects[1].Name != "web-palette" {
@@ -148,19 +148,19 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	}
 	session(t, p, tt, "s1", "first", remoteHost("first"))
 	session(t, p, tt, "s2", "second", remoteHost("second"))
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("first")
 	tt.Key(0, ui.KeyEnter)
 	if a.Active != 0 {
 		t.Fatal("tab switch")
 	}
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("uptime-sn")
 	tt.Key(0, ui.KeyEnter)
 	if len(p.sent) != 1 || p.sent[0] != "uptime" {
 		t.Fatal("snippet", p.sent)
 	}
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("uptime-sn")
 	tt.Key(ui.Alt, ui.KeyEnter)
 	has(t, tt, "发送到全部会话", "发送到 2 个会话")
@@ -168,14 +168,14 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	if len(p.sent) != 2 {
 		t.Fatal("broadcast", p.sent)
 	}
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("新建主机")
 	tt.Key(0, ui.KeyDown)
 	tt.Key(0, ui.KeyUp)
 	tt.Key(0, ui.KeyEnter)
 	has(t, tt, "常规", "认证", "高级")
 	tt.Key(0, ui.KeyEscape)
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("打开设置")
 	tt.Key(0, ui.KeyEnter)
 	if p.settingsShown != 1 {

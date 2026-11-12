@@ -43,6 +43,10 @@ func TestActualFirstPartyTypeScriptVectorByteCompatibility(t *testing.T) {
 	}
 }
 func TestGoExportsAcceptedByActualV1TypeScriptParserAndDecryptor(t *testing.T) {
+	// CI installs Node; a machine without it cannot run the real v1 parser, and must not pretend to.
+	if _, e := exec.LookPath("node"); e != nil {
+		t.Skip("node is not on PATH: cannot run the actual v1 TypeScript parser (CI installs Node 24)")
+	}
 	pass := "interop🔒"
 	secret := "secret🔑"
 	entry := Entry{Name: "go", Host: "localhost", Port: 22, Username: "u", AuthType: "password", Password: &secret, GroupPath: "/server/prod", Tags: []string{"tag"}, Encoding: "utf-8"}

@@ -162,7 +162,7 @@ func TestScreenshots(t *testing.T) {
 	shot(tt, "06-transfers")
 	tt.Key(0, ui.KeyEscape)
 
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("prod")
 	shot(tt, "07-palette")
 	tt.Key(0, ui.KeyEscape)

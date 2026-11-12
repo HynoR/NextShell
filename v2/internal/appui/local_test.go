@@ -34,7 +34,7 @@ func TestRealLocalTerminalSendCommand(t *testing.T) {
 	}
 	wait("local session", func() bool { return len(a.Tabs) == 1 })
 	has(t, tt, "本地终端")
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("发送命令")
 	tt.Key(0, ui.KeyEnter)
 	tt.Type("printf '\\nnextshell-ui-ok\\n'")

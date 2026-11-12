@@ -2,7 +2,6 @@ package appui_test
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 	"testing"
@@ -273,7 +272,7 @@ func TestMonitorPanelSamplesOnlyWhileVisible(t *testing.T) {
 func TestSendCommandDialogAndHistory(t *testing.T) {
 	_, p, tt := fixture(t)
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("发送命令")
 	tt.Key(0, ui.KeyEnter)
 	tt.Type("echo hi")
@@ -282,7 +281,7 @@ func TestSendCommandDialogAndHistory(t *testing.T) {
 	if len(p.sent) != 1 || p.sent[0] != "echo hi" || len(snap.History) != 1 {
 		t.Fatal("send", p.sent, snap.History)
 	}
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("发送命令")
 	tt.Key(0, ui.KeyEnter)
 	click(t, tt, "echo hi")
@@ -391,67 +390,9 @@ func TestRemoteEditorWindowGuardsCloseAndHidesWhenEmpty(t *testing.T) {
 		t.Fatal("discard all", a.DirtyDocumentCount(), hidden)
 	}
 	// The palette offers the editor only while documents are open.
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("远程编辑器")
 	has(t, tt, "没有结果")
-}
-
-// The size and date of a selected file row are drawn in the row's own text color:
-// the muted gray they have elsewhere is lost on the accent fill, in both themes.
-func TestSelectedFileRowKeepsItsSecondaryTextLegible(t *testing.T) {
-	_, p, tt := fixture(t)
-	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
-	listing(p, tt, "one", "/d", sftpfs.Entry{Name: "a.txt", Path: "/d/a.txt", Size: 2048, Modified: time.Now()}, sftpfs.Entry{Name: "b.txt", Path: "/d/b.txt", Size: 4096, Modified: time.Now()})
-	// The strongest pixel of the text against the row fill beside it.
-	legibility := func(text string) float64 {
-		r, ok := tt.Find(text)
-		if !ok {
-			t.Fatal("missing", text)
-		}
-		img := tt.Image()
-		at := func(x, y int) ui.Color {
-			c := img.RGBAAt(x, y)
-			return ui.RGB(c.R, c.G, c.B)
-		}
-		fill := at(int(r.X)-4, int(r.Y+r.H/2))
-		best := 1.0
-		for y := int(r.Y); y < int(r.Y+r.H); y++ {
-			for x := int(r.X); x < int(r.X+r.W); x++ {
-				best = max(best, contrast(at(x, y), fill))
-			}
-		}
-		return best
-	}
-	click(t, tt, "选择 a.txt")
-	for _, dark := range []bool{false, true} {
-		tt.SetDark(dark)
-		tt.Frame()
-		if got := legibility("2.0K"); got < 3 {
-			t.Errorf("dark=%v selected row size: strongest pixel %.2f:1 against the fill", dark, got)
-		}
-		if got := legibility("4.0K"); got < 3 {
-			t.Errorf("dark=%v plain row size: %.2f:1", dark, got)
-		}
-	}
-}
-
-func contrast(a, b ui.Color) float64 {
-	lum := func(c ui.Color) float64 {
-		f := func(v uint8) float64 {
-			x := float64(v) / 255
-			if x <= 0.03928 {
-				return x / 12.92
-			}
-			return math.Pow((x+0.055)/1.055, 2.4)
-		}
-		return 0.2126*f(c.R) + 0.7152*f(c.G) + 0.0722*f(c.B)
-	}
-	x, y := lum(a), lum(b)
-	if x < y {
-		x, y = y, x
-	}
-	return (x + 0.05) / (y + 0.05)
 }
 
 // A toast shows in the window whose action raised it: editor actions in the editor

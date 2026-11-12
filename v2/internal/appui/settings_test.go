@@ -145,7 +145,7 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 		t.Fatal("keepalive", p.Preferences().KeepaliveSeconds)
 	}
 	// The palette's appearance toggle and the settings window share one state.
-	tt.Key(ui.Cmd, ui.KeyK)
+	tt.Key(appMod(), ui.KeyK)
 	tt.Type("切换深浅色")
 	tt.Key(0, ui.KeyEnter)
 	st.Frame()
