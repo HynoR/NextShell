@@ -358,6 +358,17 @@ func (p *Platform) TerminalTitle(id string) string {
 	return cleanTerminalText(t.Title(), 120)
 }
 func (p *Platform) ShellCommand(shell string) (string, error) { return shellintegration.Command(shell) }
+func (p *Platform) InstallShellHook(session string) {
+	p.launch(func() {
+		ctx, cancel := context.WithTimeout(p.ctx, 20*time.Second)
+		defer cancel()
+		s, e := p.ssh(session)
+		if e == nil {
+			e = shellintegration.Install(ctx, s)
+		}
+		p.emit(appui.Event{ShellHook: &appui.ShellHookResult{Session: session, Line: shellintegration.SourceLine, Err: e}})
+	})
+}
 func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
 	prefs := p.Preferences()
 	o.Font = terminalFont(prefs)

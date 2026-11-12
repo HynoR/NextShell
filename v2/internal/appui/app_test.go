@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -358,26 +359,119 @@ func TestStartupRestoresTabsRecentsAndCloseConfirmPreference(t *testing.T) {
 	}
 }
 
-func TestAutoShellIntegrationWaitsForThePrompt(t *testing.T) {
+const sourceLine = " . ~/.cache/nextshell/osc7.sh\r"
+
+// remoteSession adds an SSH tab whose terminal shows text.
+func remoteSession(t *testing.T, p *fakePlatform, tt *ui.Tester, id, text string) *appui.Session {
+	t.Helper()
+	s := &appui.Session{ID: id, Title: id, Terminal: newTerminal(t, text), Connection: remoteHost(id)}
+	p.events = append(p.events, appui.Event{Session: s})
+	tt.Frame()
+	tt.Frame()
+	return s
+}
+
+func TestAutoShellIntegrationTypesOneShortLineOnceReadyAndAtThePrompt(t *testing.T) {
 	p := newPlatform(t)
 	prefs := p.Preferences()
 	prefs.ShellIntegration = "auto"
 	p.SavePreferences(prefs)
 	_, tt := start(p)
-	s := &appui.Session{ID: "r", Title: "r", Terminal: newTerminal(t, "Welcome to Ubuntu\r\n"), Connection: remoteHost("r")}
-	p.events = append(p.events, appui.Event{Session: s})
+	s := remoteSession(t, p, tt, "r", "Welcome to Ubuntu\r\n")
+	if len(p.hooks) != 1 || p.hooks[0] != "r" {
+		t.Fatal("the server was not asked to prepare the hook", p.hooks)
+	}
+	// Ready but no prompt yet: nothing typed.
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "r", Line: sourceLine}})
 	tt.Frame()
 	tt.Frame()
 	if len(p.sent) != 0 {
-		t.Fatal("injected before the prompt", p.sent)
+		t.Fatal("typed before the prompt", p.sent)
 	}
 	s.Terminal.Feed([]byte("u@r:~$ "))
 	tt.Frame()
-	if len(p.sent) != 1 || !strings.Contains(p.sent[0], "ZSH_VERSION") || !strings.HasSuffix(p.sent[0], "\r") || !strings.HasPrefix(p.sent[0], " ") {
-		t.Fatal("hook", p.sent)
+	if len(p.sent) != 1 || p.sent[0] != sourceLine {
+		t.Fatalf("typed %q, want the one short line", p.sent)
 	}
 	tt.Frame()
-	if len(p.sent) != 1 {
-		t.Fatal("injected twice")
+	tt.Frame()
+	if len(p.sent) != 1 || len(p.hooks) != 1 {
+		t.Fatal("injected twice", p.sent, p.hooks)
+	}
+}
+
+func TestAutoShellIntegrationWaitsForTheServerToo(t *testing.T) {
+	p := newPlatform(t)
+	prefs := p.Preferences()
+	prefs.ShellIntegration = "auto"
+	p.SavePreferences(prefs)
+	_, tt := start(p)
+	remoteSession(t, p, tt, "r", "u@r:~$ ")
+	if len(p.sent) != 0 {
+		t.Fatal("typed before the file was written", p.sent)
+	}
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "r", Line: sourceLine}})
+	tt.Frame()
+	if len(p.sent) != 1 || p.sent[0] != sourceLine {
+		t.Fatal(p.sent)
+	}
+}
+
+func TestAutoShellIntegrationTypesNothingWhenThePlatformFails(t *testing.T) {
+	p := newPlatform(t)
+	prefs := p.Preferences()
+	prefs.ShellIntegration = "auto"
+	p.SavePreferences(prefs)
+	a, tt := start(p)
+	s := remoteSession(t, p, tt, "r", "u@r:~$ ")
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "r", Err: errors.New(`login shell "fish" is not bash or zsh`)}})
+	tt.Frame()
+	s.Terminal.Feed([]byte("\r\nu@r:~$ "))
+	tt.Frame()
+	tt.Frame()
+	if len(p.sent) != 0 {
+		t.Fatal("typed after a failure", p.sent)
+	}
+	if tt.HasText("login shell") {
+		t.Fatal("a failure is logged quietly, not toasted")
+	}
+	// It is in the activity list under 关于.
+	st := ui.NewTester(a.SettingsView, 880, 640)
+	click(t, st, "关于")
+	if !st.HasText("Shell 集成未启用") {
+		t.Fatal(st.Texts())
+	}
+}
+
+func TestShellIntegrationIsManualByDefault(t *testing.T) {
+	p := newPlatform(t)
+	if v := p.Preferences().ShellIntegration; v != "" {
+		t.Fatal("default preference", v)
+	}
+	a, tt := start(p)
+	remoteSession(t, p, tt, "r", "u@r:~$ ")
+	session(t, p, tt, "l", "本地", model.Connection{})
+	if len(p.hooks) != 0 || len(p.sent) != 0 {
+		t.Fatal("manual mode touched the server or the terminal", p.hooks, p.sent)
+	}
+	st := ui.NewTester(a.SettingsView, 880, 1400)
+	click(t, st, "终端")
+	has(t, st, "默认。不写服务器文件；需要时在命令面板执行「插入目录跟踪脚本」，只对当前会话生效")
+	click(t, st, "自动")
+	has(t, st, "会在服务器上写入 ~/.cache/nextshell/osc7.sh，新的 bash / zsh 会话出现提示符后再执行一行 . ~/.cache/nextshell/osc7.sh；文件面板可跟随终端目录。其他 shell 不处理")
+	if v := p.Preferences().ShellIntegration; v != "auto" {
+		t.Fatal("not saved", v)
+	}
+}
+
+func TestAutoShellIntegrationSkipsLocalShells(t *testing.T) {
+	p := newPlatform(t)
+	prefs := p.Preferences()
+	prefs.ShellIntegration = "auto"
+	p.SavePreferences(prefs)
+	_, tt := start(p)
+	session(t, p, tt, "l", "本地", model.Connection{})
+	if len(p.hooks) != 0 {
+		t.Fatal(p.hooks)
 	}
 }

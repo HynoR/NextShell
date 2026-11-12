@@ -53,10 +53,18 @@ type Event struct {
 	Monitor              *MonitorResult
 	Import               *ImportPreview
 	ShellMark            *PromptEvent // reserved: no producer while OSC 133 waits on upstream
+	ShellHook            *ShellHookResult
 	Session              *Session
 	Failed               string // ID of the saved connection whose connect failed
 	Message              string
 	Prompt               *Prompt
+}
+
+// ShellHookResult answers Platform.InstallShellHook: the hook is in place and
+// Line sources it, or Err says why the session was left alone.
+type ShellHookResult struct {
+	Session, Line string
+	Err           error
 }
 type TerminalCapabilities struct{ OSC7, ScreenText, OSC133 bool }
 
@@ -153,6 +161,10 @@ type Platform interface {
 	MCPConfigPath() (string, error)
 	TerminalTitle(string) string
 	ShellCommand(shell string) (string, error)
+	// InstallShellHook asks a remote session's server to get the directory hook
+	// ready (login shell check, ~/.cache/nextshell/osc7.sh) and answers with an
+	// Event.ShellHook. It types nothing.
+	InstallShellHook(session string)
 	Shutdown()
 }
 

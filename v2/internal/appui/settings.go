@@ -293,8 +293,8 @@ func (a *App) terminalSettings(c *ui.Context) {
 				v.ShellIntegration = modes[i]
 			}
 		}).Description([]string{
-			"新的 bash / zsh 会话出现提示符后自动注入目录跟踪脚本，文件面板可跟随终端目录",
-			"需要时在命令面板执行「插入目录跟踪脚本」",
+			"会在服务器上写入 ~/.cache/nextshell/osc7.sh，新的 bash / zsh 会话出现提示符后再执行一行 . ~/.cache/nextshell/osc7.sh；文件面板可跟随终端目录。其他 shell 不处理",
+			"默认。不写服务器文件；需要时在命令面板执行「插入目录跟踪脚本」，只对当前会话生效",
 			"不注入，命令面板里也不提供",
 		}[i]).FillWidth()
 	})

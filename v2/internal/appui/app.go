@@ -285,6 +285,9 @@ func (a *App) poll() bool {
 		if e.Session != nil {
 			a.addSession(e.Session)
 		}
+		if e.ShellHook != nil {
+			a.shellHookReady(e.ShellHook)
+		}
 		if e.Failed != "" {
 			delete(a.hosts.connecting, e.Failed)
 			a.hosts.failed[e.Failed] = true
@@ -316,9 +319,10 @@ func (a *App) addSession(s *Session) {
 	a.tabs.started[s.ID] = time.Now()
 	if !s.Local && s.Replaces == "" && a.Prefs.ShellIntegration == "auto" {
 		if a.tabs.hooks == nil {
-			a.tabs.hooks = map[string]time.Time{}
+			a.tabs.hooks = map[string]*shellHook{}
 		}
-		a.tabs.hooks[s.ID] = time.Now().Add(10 * time.Second)
+		a.tabs.hooks[s.ID] = &shellHook{until: time.Now().Add(10 * time.Second)}
+		a.P.InstallShellHook(s.ID)
 	}
 	for i, old := range a.Tabs {
 		if s.Replaces == old.ID {
