@@ -11,6 +11,7 @@ import (
 	"nextshell.dev/v2/internal/sftpfs"
 	"nextshell.dev/v2/internal/storage"
 	"nextshell.dev/v2/internal/transfer"
+	"time"
 )
 
 type Session struct {
@@ -122,6 +123,14 @@ type Platform interface {
 	AgentHalt(bool)
 	AgentRespond(id string, approve bool)
 	AgentBlacklist(string)
+	// AgentAutoApprove skips the approval prompt for mutating agent calls: d>0 for that long,
+	// agent.UntilExit until the app exits, 0 off. Never persisted; errors while MCP is halted/off.
+	// Risky calls (sensitive files, dangerous or blacklisted commands) still need manual approval.
+	AgentAutoApprove(d time.Duration) error
+	// AgentAutoApproval reports on/off and the expiry for a status indicator. Halting turns it off.
+	AgentAutoApproval() agent.AutoApproval
+	// MCPConfigPath is the mcp.json discovery file (port + token) written while MCP is enabled.
+	MCPConfigPath() (string, error)
 	TerminalTitle(string) string
 	ShellCommand(shell string) (string, error)
 	Shutdown()

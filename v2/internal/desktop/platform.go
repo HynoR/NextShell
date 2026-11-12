@@ -31,6 +31,11 @@ type Platform struct {
 	gateway          *agent.Gateway
 	endpoint         *mcpendpoint.Endpoint
 	endpointURL      string
+	endpointPort     int
+	agentPort        string // listen port; tests use "0"
+	dbPath           string
+	mcpPath          string // discovery file; see discoveryPathLocked
+	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
 	queue            *transfer.Queue
 	imports          map[string]importPlan
@@ -61,7 +66,7 @@ func Open(path string) (*Platform, error) {
 		return nil, e
 	}
 	ctx, c := context.WithCancel(context.Background())
-	p := &Platform{preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
+	p := &Platform{dbPath: path, agentPort: mcpendpoint.DefaultPort, preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
 	p.sshSessions = map[string]*sshclient.Session{}
 	p.imports = map[string]importPlan{}
 	p.monitorPrevious = map[string]monitor.Snapshot{}
