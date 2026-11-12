@@ -2,8 +2,11 @@ name: Release Electron App
 
 on:
   push:
-    tags:
-      - "*"
+    # Every tag except NextShell 2's (v2.*, built and published by v2-release.yml). GitHub runs
+    # the workflow file of the tagged commit, so without this a v2.* tag would also start this
+    # 1.x Electron release. 1.x tags (v0.*) are unaffected.
+    tags-ignore:
+      - "v2.*"
 
 concurrency:
   group: release-${{ github.ref }}
