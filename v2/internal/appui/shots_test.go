@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
+	"nextshell.dev/v2/internal/remoteedit"
 	"nextshell.dev/v2/internal/sftpfs"
 	"nextshell.dev/v2/internal/transfer"
 )
@@ -32,6 +34,8 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 	saveHost(t, p, model.Connection{Name: "test-01", Host: "10.1.0.5", User: "dev", FolderID: test.ID})
 	saveHost(t, p, model.Connection{Name: "redis-01", Host: "10.0.3.1", User: "root", FolderID: cache.ID})
 	saveHost(t, p, model.Connection{Name: "bastion", Host: "jump.example.com", User: "ops"})
+	saveHost(t, p, model.Connection{Name: "old-jump", Host: "10.9.0.1", User: "ops", Deleted: true})
+	saveHost(t, p, model.Connection{Name: "staging-02", Host: "10.1.0.9", User: "dev", Deleted: true})
 	for _, c := range []model.Command{
 		{Name: "重启 nginx", Group: "Web", Text: "sudo systemctl restart nginx"},
 		{Name: "查看日志", Group: "Web", Text: "tail -f /var/log/nginx/error.log"},
@@ -95,6 +99,14 @@ func TestScreenshots(t *testing.T) {
 	tt.Frame()
 	tt.Key(0, ui.KeyEscape)
 	now := time.Now()
+	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
+		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		{Name: "access.log.10", Path: "/var/log/nginx/access.log.10", Size: 900000, Mode: "-rw-r-----", Modified: now.Add(-240 * time.Hour)},
+		{Name: "access.log.2", Path: "/var/log/nginx/access.log.2", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-48 * time.Hour)},
+		{Name: "access.log", Path: "/var/log/nginx/access.log", Size: 5100000, Mode: "-rw-r-----", Modified: now.Add(-time.Minute)},
+		{Name: "error.log", Path: "/var/log/nginx/error.log", Size: 81000, Mode: "-rw-r-----", Modified: now.Add(-2 * time.Hour)},
+	}}})
+	tt.Frame()
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log", Entries: []sftpfs.Entry{
 		{Name: "nginx", Path: "/var/log/nginx", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
 		{Name: "apt", Path: "/var/log/apt", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-50 * time.Hour)},
@@ -109,17 +121,29 @@ func TestScreenshots(t *testing.T) {
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	tt.Frame()
 	shot(tt, "02-main-files")
+	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
+		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		{Name: "access.log.10", Path: "/var/log/nginx/access.log.10", Size: 900000, Mode: "-rw-r-----", Modified: now.Add(-240 * time.Hour)},
+		{Name: "access.log.2", Path: "/var/log/nginx/access.log.2", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-48 * time.Hour)},
+		{Name: "access.log", Path: "/var/log/nginx/access.log", Size: 5100000, Mode: "-rw-r-----", Modified: now.Add(-time.Minute)},
+	}}})
+	tt.Frame()
+	shot(tt, "02b-files-breadcrumbs-natural-order")
 	click(t, tt, "监控")
 	shot(tt, "03-main-monitor")
 	click(t, tt, "进程")
 	shot(tt, "04-main-monitor-processes")
+	dblclick(t, tt, "postgres: checkpointer")
+	shot(tt, "04b-process-drawer")
+	click(t, tt, "关闭详情")
 	click(t, tt, "片段")
 	shot(tt, "05-main-snippets")
 
 	p.jobs = []transfer.Job{
-		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
+		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Total: 120 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
 		{ID: "2", Label: "下载 /var/log/syslog", State: "done", Bytes: 2200000, Attempt: 1, Started: now.Add(-time.Minute), Finished: now.Add(-50 * time.Second)},
-		{ID: "3", Label: "上传 config.yaml → /etc/app", State: "failed", Error: "权限不足", Attempt: 1},
+		{ID: "3", Label: "上传 config.yaml → /etc/app", State: "failed", Error: "sftp: \"permission denied\" (SSH_FX_PERMISSION_DENIED)", Attempt: 1},
+		{ID: "4", Label: "下载 /var/log/journal → ~/Downloads", State: "running", Bytes: 9 << 20, Attempt: 1, Started: now.Add(-5 * time.Second)},
 	}
 	tt.Frame()
 	click(t, tt, "传输列表")
@@ -159,6 +183,32 @@ func TestScreenshots(t *testing.T) {
 	tt.Frame()
 	shot(tt, "13-password")
 	click(t, tt, "取消")
+
+	shown := 0
+	a.ShowEditor = func() { shown++ }
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/nginx/nginx.conf", Text: "user www-data;\nworker_processes auto;\n\nevents {\n    worker_connections 768;\n}\n"}}})
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/hosts", Text: "127.0.0.1 localhost\n"}}})
+	tt.Frame()
+	ed := ui.NewTester(a.EditorView, 960, 640)
+	ed.Type("# edited\n")
+	shot(ed, "14-editor-window")
+	if a.EditorMayClose() {
+		t.Fatal("dirty editor closed")
+	}
+	shot(ed, "14b-editor-close-guard")
+
+	sp := &servicesPlatform{fakePlatform: p, auto: agent.AutoApproval{On: true, Expires: now.Add(42 * time.Minute)}}
+	sa := appui.New(sp)
+	stt := ui.NewTester(sa.View, 1280, 800)
+	session(t, p, stt, "s9", "prod-web-01", web)
+	shot(stt, "15-auto-approve-status")
+	sst := ui.NewTester(sa.SettingsView, 880, 900)
+	click(t, sst, "Agent")
+	shot(sst, "21-settings-agent-auto-approve")
+	kp := &keysPlatform{fakePlatform: p, keys: []model.HostKey{{Address: "10.0.0.1:22", Fingerprint: "SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8"}, {Address: "jump.example.com:22", Fingerprint: "SHA256:Q2V4Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"}}}
+	kst := ui.NewTester(appui.New(kp).SettingsView, 880, 900)
+	click(t, kst, "SSH")
+	shot(kst, "22-settings-ssh-host-keys")
 
 	st := ui.NewTester(a.SettingsView, 880, 640)
 	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "同步", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {

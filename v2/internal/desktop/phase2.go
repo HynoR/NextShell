@@ -280,6 +280,10 @@ func (p *Platform) SaveRemote(session string, doc remoteedit.Document, text stri
 }
 func (p *Platform) ExternalEdit(session, remote, executable string, args []string) {
 	args = append([]string{}, args...)
+	if strings.HasSuffix(executable, ".app") { // a macOS bundle chosen in the settings' panel
+		args = append([]string{"-W", "-a", executable}, args...)
+		executable = "/usr/bin/open"
+	}
 	p.launch(func() {
 		e := p.withSFTP(p.ctx, session, func(c *sftpfs.Client) error {
 			doc, e := remoteedit.Open(c, remote)
