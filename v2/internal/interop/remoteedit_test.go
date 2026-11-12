@@ -61,8 +61,19 @@ func TestRemoteEditCRLFRoundTrip(t *testing.T) {
 		if _, err = remoteedit.Open(sc, "/home/tester/bin.dat"); err == nil {
 			t.Error("opened a binary file")
 		}
-		if _, err = remoteedit.Open(sc, "/home/tester/edit-link"); err == nil {
-			t.Error("opened a symlink (a save would replace the link)")
+		// a link is edited through: the save lands in the target and the link stays a link
+		link, err := remoteedit.Open(sc, "/home/tester/edit-link")
+		if err != nil {
+			t.Fatalf("open through a link: %v", err)
+		}
+		if _, err = remoteedit.Save(ctx, sc, link, "through the link\n"); err != nil {
+			t.Fatalf("save through a link: %v", err)
+		}
+		if got := Sh(t, s, "cat "+file); got != "through the link\n" {
+			t.Fatalf("the target did not get the save: %q", got)
+		}
+		if got := strings.TrimSpace(Sh(t, s, "readlink ~/edit-link")); got != "edit-crlf.txt" {
+			t.Fatalf("the link was replaced: readlink = %q", got)
 		}
 		if _, err = remoteedit.Open(sc, "/home/tester/missing"); err == nil {
 			t.Error("opened a missing file")
