@@ -71,10 +71,11 @@ func titled(t *testing.T, shot func(*ui.Tester, string)) {
 
 func monitorSnapshot(at time.Time, i int) monitor.Snapshot {
 	return monitor.Snapshot{At: at, Info: "Ubuntu 24.04 LTS · 4 核 · 运行 12 天", Load: "0.42 0.38 0.35", HasDelta: true, HasNetworkDelta: true, CPUPercent: float64(20 + i*3%40), MemoryTotal: 8 << 30, MemoryAvailable: uint64(3+i%2) << 30, SwapTotal: 2 << 30, SwapFree: 1843 << 20, RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000),
-		Disks:     []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 59 << 20, UsedPercent: 74}},
-		Detail:    true,
-		Processes: []monitor.Process{{PID: 812, User: "www", CPU: 12.5, MemoryMB: 140, Command: "nginx: worker process"}, {PID: 1, User: "root", CPU: 0.1, MemoryMB: 12, Command: "/sbin/init"}, {PID: 2201, User: "postgres", CPU: 4.2, MemoryMB: 610, Command: "postgres: checkpointer", Elapsed: 7260, PPID: 2190, State: "Ss", MemoryPercent: 3.8}},
-		Network:   []monitor.Network{{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 443, PID: 812, Process: "nginx", Connections: 32, UniqueIPs: 9}, {Protocol: "tcp", State: "ESTAB", LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.9.4", RemotePort: 51022, PID: 990, Process: "sshd", Connections: 1, UniqueIPs: 1}}}
+		Interfaces: map[string]monitor.InterfaceRate{"eth0": {RXPerSecond: float64(120000 + i*9000), TXPerSecond: float64(40000 + i*3000), HasDelta: true}, "docker0": {RXPerSecond: 1500, TXPerSecond: 800, HasDelta: true}},
+		Disks:      []monitor.Disk{{Device: "/dev/sda1", Mount: "/", TotalKB: 80 << 20, UsedKB: 59 << 20, UsedPercent: 74}},
+		Detail:     true,
+		Processes:  []monitor.Process{{PID: 812, User: "www", CPU: 12.5, MemoryMB: 140, Command: "nginx: worker process"}, {PID: 1, User: "root", CPU: 0.1, MemoryMB: 12, Command: "/sbin/init"}, {PID: 2201, User: "postgres", CPU: 4.2, MemoryMB: 610, Command: "postgres: checkpointer", Elapsed: 7260, PPID: 2190, State: "Ss", MemoryPercent: 3.8}},
+		Network:    []monitor.Network{{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 443, PID: 812, Process: "nginx", Connections: 32, UniqueIPs: 9}, {Protocol: "tcp", State: "ESTAB", LocalIP: "10.0.0.1", LocalPort: 22, RemoteIP: "10.0.9.4", RemotePort: 51022, PID: 990, Process: "sshd", Connections: 1, UniqueIPs: 1}}}
 }
 
 // TestScreenshots renders every main screen, light and dark, into $NEXTSHELL_SHOTS.
@@ -131,7 +132,7 @@ func TestScreenshots(t *testing.T) {
 		{Name: "dpkg.log", Path: "/var/log/dpkg.log", Size: 12400, Mode: "-rw-r--r--", Modified: now.AddDate(0, 0, -3)},
 	}}})
 	for i := range 12 {
-		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s1", Snapshot: monitorSnapshot(now.Add(time.Duration(i-12)*2*time.Second), i)}})
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s1", Snapshot: monitorSnapshot(now.Add(time.Duration(i-12)*2*time.Second), i), Latency: 18 * time.Millisecond}})
 	}
 	tt.Frame()
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
@@ -161,15 +162,43 @@ func TestScreenshots(t *testing.T) {
 	tt.Key(0, ui.KeyEscape)
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
 	shot(tt, "03-sysinfo-history")
-	click(t, tt, "进程")
-	shot(tt, "04-sysinfo-processes")
-	click(t, tt, "网络")
+	// The process manager is a tab of its own, beside the host's terminal; the network manager too.
+	click(t, tt, "进程管理器")
+	shot(tt, "04-process-manager-tab")
+	click(t, tt, "网络管理器")
 	click(t, tt, "tcp ESTAB")
-	shot(tt, "04a-sysinfo-network-selected")
-	click(t, tt, "进程")
+	shot(tt, "04a-network-manager-tab")
+	click(t, tt, "进程 · prod-web-01")
 	dblclick(t, tt, "postgres: checkpointer")
 	shot(tt, "04b-process-drawer")
 	click(t, tt, "关闭详情")
+	click(t, tt, "关闭标签 进程 · prod-web-01")
+	click(t, tt, "关闭标签 网络 · prod-web-01")
+	// Another host that has not sent anything for minutes: its last data, labeled, until a fresh sample.
+	for i := range 12 {
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s2", Snapshot: monitorSnapshot(now.Add(-6*time.Minute+time.Duration(i)*2*time.Second), i+5), Latency: 42 * time.Millisecond}})
+	}
+	tt.Frame()
+	a.Active = 1
+	tt.Frame()
+	shot(tt, "02e-monitor-cached")
+	a.Active = 0
+	tt.Frame()
+	// The route trace opens from the PING card.
+	ping := &servicesPlatform{fakePlatform: p}
+	pa := appui.New(ping)
+	ptt := ui.NewTester(pa.View, 1280, 800)
+	ptt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, p, ptt, "s1", "prod-web-01", web)
+	for i := range 12 {
+		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s1", Snapshot: monitorSnapshot(time.Now().Add(time.Duration(i-12)*2*time.Second), i), Latency: 18 * time.Millisecond}})
+	}
+	ptt.Frame()
+	shot(ptt, "02f-ping-card")
+	click(t, ptt, "PING 延迟 18 ms，点击路由追踪")
+	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: "traceroute to 10.0.0.1, 30 hops max\n 1  192.168.1.1     1.21 ms\n 2  10.255.0.1      4.80 ms\n 3  203.0.113.9    12.40 ms\n 4  10.0.0.1       18.10 ms"}})
+	ptt.Frame()
+	shot(ptt, "02g-route-trace-drawer")
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
 	shot(tt, "05-snippets")
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
@@ -279,7 +308,7 @@ func TestScreenshots(t *testing.T) {
 
 	a.Version, a.ProfilePath = "2.0.0-rc1", "/Users/me/Library/Application Support/NextShell-v2/nextshell.db"
 	st := ui.NewTester(a.SettingsView, 880, 640)
-	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
+	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络工具", "关于"} {
 		click(t, st, section)
 		shot(st, "20-settings-"+string(rune('a'+i))+"-"+section)
 	}
