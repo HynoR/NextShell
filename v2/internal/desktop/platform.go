@@ -531,7 +531,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 				c = old.Connection
 			}
 			if e := p.connect(c, old.ID); e != nil {
-				p.emit(appui.Event{Message: e.Error()})
+				p.emit(appui.Event{Message: e.Error(), Failed: old.Connection.ID})
 			}
 			return
 		}
