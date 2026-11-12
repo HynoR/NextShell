@@ -122,7 +122,7 @@ func TestDeletingAFolderCountsFirstThenRemovesWithProgress(t *testing.T) {
 	}
 	p.events = append(p.events, appui.Event{Removal: &appui.RemovalCount{Session: "one", Targets: []appui.RemovalTally{{Path: "/d/src", Files: 12, Dirs: 3}}}})
 	tt.Frame()
-	has(t, tt, "删除远程文件", "src\n将删除 12 个文件、3 个文件夹，删除后无法恢复。")
+	has(t, tt, "删除 one 上的文件", "src\n将删除 12 个文件、3 个文件夹，删除后无法恢复。")
 	if tt.HasText("只能删除") {
 		t.Fatal("the old limit is still in the copy")
 	}
@@ -182,7 +182,7 @@ func TestFileKeysDeleteRenameAndParent(t *testing.T) {
 	listing(p, tt, "one", "/srv/app", sftpfs.Entry{Name: "a.txt", Path: "/srv/app/a.txt"}, sftpfs.Entry{Name: "b.txt", Path: "/srv/app/b.txt"})
 	click(t, tt, "选择 a.txt")
 	tt.Key(0, ui.KeyDelete)
-	has(t, tt, "删除远程文件", "a.txt\n删除后无法恢复。")
+	has(t, tt, "删除 one 上的文件", "a.txt\n删除后无法恢复。")
 	click(t, tt, "删除 1 项")
 	if len(p.actions) != 1 || p.actions[0] != [3]string{"remove", "/srv/app/a.txt", ""} {
 		t.Fatal("delete key", p.actions)
@@ -202,7 +202,7 @@ func TestFileKeysDeleteRenameAndParent(t *testing.T) {
 	n := len(p.listed)
 	tt.Key(0, ui.KeyBackspace)
 	tt.Key(0, ui.KeyDelete)
-	if len(p.listed) != n || tt.HasText("删除远程文件") {
+	if len(p.listed) != n || tt.HasText("删除 one 上的文件") {
 		t.Fatal("Backspace and Delete in the name acted on the list", p.listed[n:])
 	}
 	tt.Key(0, ui.KeyEscape)
@@ -274,5 +274,23 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 	click(t, tt, "跟随终端目录")
 	if p.listed[len(p.listed)-1] != "one:/var/www" || tt.HasText("暂时无法跟随") {
 		t.Fatal("follow", p.listed)
+	}
+}
+
+func TestDeleteConfirmNamesTheServerEvenAfterATabSwitch(t *testing.T) {
+	p, tt := removalFixture(t)
+	deleteRow(t, tt, "打开 src")
+	has(t, tt, "正在统计要删除的内容…")
+	// The count takes a while; meanwhile another server's tab comes to the front.
+	session(t, p.fakePlatform, tt, "two", "db-master", remoteHost("two"))
+	p.events = append(p.events, appui.Event{Removal: &appui.RemovalCount{Session: "one", Targets: []appui.RemovalTally{{Path: "/d/src", Files: 4, Dirs: 1}}}})
+	tt.Frame()
+	has(t, tt, "删除 one 上的文件", "src\n将删除 4 个文件、1 个文件夹，删除后无法恢复。")
+	if tt.HasText("删除 db-master 上的文件") {
+		t.Fatal("the confirm names the tab in front, not the server the files are on")
+	}
+	click(t, tt, "删除 1 项")
+	if len(p.queued) != 1 || p.queued[0].Session != "one" {
+		t.Fatal("deleted on", p.queued)
 	}
 }

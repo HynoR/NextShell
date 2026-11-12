@@ -224,7 +224,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 // sessionTitle is the tab title of session id, for lists that name a host.
 func (a *App) sessionTitle(id string) string {
 	if i := a.tabIndex(id); i >= 0 {
-		return a.Tabs[i].Title
+		return a.tabTitle(a.Tabs[i])
 	}
 	return "已关闭的会话"
 }

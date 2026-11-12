@@ -187,7 +187,8 @@ func (s *filesState) counted(a *App, r *RemovalCount) {
 	for _, v := range r.Targets {
 		files, dirs = files+v.Files, dirs+v.Dirs
 	}
-	a.confirm("删除远程文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs), fmt.Sprintf("删除 %d 项", len(n.targets)), func() {
+	// The count may end after the tab was switched: the title names the server the files are on.
+	a.confirm("删除 "+a.sessionTitle(r.Session)+" 上的文件", fmt.Sprintf("%s\n将删除 %d 个文件、%d 个文件夹，删除后无法恢复。", fileNames(n.targets), files, dirs), fmt.Sprintf("删除 %d 项", len(n.targets)), func() { // danger
 		for _, v := range r.Targets {
 			id, e := a.P.QueueTransfer(TransferRequest{Session: r.Session, Kind: "remove", Remote: v.Path, Items: v.Files + v.Dirs})
 			if e != nil {
@@ -216,7 +217,7 @@ func fileNames(files []sftpfs.Entry) string {
 func (a *App) askRemove(id string, targets []sftpfs.Entry) {
 	s := &a.files
 	if !slices.ContainsFunc(targets, func(f sftpfs.Entry) bool { return f.Directory && !f.Symlink }) {
-		a.confirm("删除远程文件", fileNames(targets)+"\n删除后无法恢复。", fmt.Sprintf("删除 %d 项", len(targets)), func() {
+		a.confirm("删除 "+a.sessionTitle(id)+" 上的文件", fileNames(targets)+"\n删除后无法恢复。", fmt.Sprintf("删除 %d 项", len(targets)), func() { // danger
 			for _, v := range targets {
 				a.P.FileAction(id, "remove", v.Path, "")
 			}
@@ -912,7 +913,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 					for _, t := range a.Tabs {
 						if !t.Local && t.ID != id {
 							ids = append(ids, t.ID)
-							names = append(names, t.Title)
+							names = append(names, a.tabTitle(t))
 						}
 					}
 					pick(c, "目标会话", "（选择会话）", &d.text, ids, names)

@@ -1,11 +1,14 @@
 package appui_test
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
 )
 
@@ -124,5 +127,78 @@ func TestSnippetOfSeveralLinesWaitsForItsSendButton(t *testing.T) {
 	click(t, tt, "发送 清理") // selected, so its button shows
 	if !slices.Equal(p.sent, []string{"cd /tmp\nrm -rf cache"}) {
 		t.Fatal(p.sent)
+	}
+}
+
+// broadcastPlatform records what each session was sent, and refuses the sessions named in refuse.
+type broadcastPlatform struct {
+	*fakePlatform
+	sentTo map[string][]string
+	refuse map[string]bool
+}
+
+func (p *broadcastPlatform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
+	if p.refuse[session] {
+		return errors.New("会话已关闭")
+	}
+	p.sentTo[session] = append(p.sentTo[session], text)
+	return nil
+}
+
+func TestSendToAllNamesTheTabsSkipsDisconnectedOnesAndReportsByName(t *testing.T) {
+	p := &broadcastPlatform{fakePlatform: newPlatform(t), sentTo: map[string][]string{}, refuse: map[string]bool{}}
+	if e := p.SaveCommand(model.Command{ID: p.NewID(), Name: "重启 nginx", Group: "Web", Text: "sudo systemctl restart nginx"}); e != nil {
+		t.Fatal(e)
+	}
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 900)
+	session(t, p.fakePlatform, tt, "web", "prod-web-01", remoteHost("web"))
+	session(t, p.fakePlatform, tt, "db", "db-master", remoteHost("db"))
+	session(t, p.fakePlatform, tt, "loc", "本地终端", model.Connection{})
+	gone := session(t, p.fakePlatform, tt, "gone", "legacy-box", remoteHost("gone"))
+	gone.Terminal.Close()
+	<-gone.Terminal.Done()
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	tt.RightClick("片段 重启 nginx")
+	if e := tt.ChooseMenuItem("发送到全部会话…"); e != nil {
+		t.Fatal(e)
+	}
+	// The confirm lists who gets it, by tab title, and counts the disconnected one it leaves out.
+	has(t, tt, "· prod-web-01\n· db-master\n· 本地终端", "sudo systemctl restart nginx", "已跳过 1 个已断开的会话", "发送到 3 个会话")
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "legacy-box") && strings.Contains(s, "sudo systemctl") {
+			t.Fatal("a disconnected tab is listed as a target:", s)
+		}
+	}
+	// A tab that closes between the confirm and the click is reported by its name, not its ID.
+	p.refuse["db"] = true
+	click(t, tt, "发送到 3 个会话")
+	if len(p.sentTo["web"]) != 1 || len(p.sentTo["loc"]) != 1 || len(p.sentTo["gone"]) != 0 || len(p.sentTo["db"]) != 0 {
+		t.Fatal("sent to", p.sentTo)
+	}
+	has(t, tt, "1 个会话没有收到：db-master")
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "db:") || strings.Contains(s, "web") && strings.Contains(s, "会话已") {
+			t.Fatal("an ID reached the user:", s)
+		}
+	}
+}
+
+func TestSendToAllWithNoLiveSessionSaysSo(t *testing.T) {
+	p := &broadcastPlatform{fakePlatform: newPlatform(t), sentTo: map[string][]string{}, refuse: map[string]bool{}}
+	if e := p.SaveCommand(model.Command{ID: p.NewID(), Name: "x", Group: "Web", Text: "ls"}); e != nil {
+		t.Fatal(e)
+	}
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 900)
+	gone := session(t, p.fakePlatform, tt, "gone", "legacy-box", remoteHost("gone"))
+	gone.Terminal.Close()
+	<-gone.Terminal.Done()
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	tt.RightClick("片段 x")
+	tt.ChooseMenuItem("发送到全部会话…")
+	has(t, tt, "没有可发送的会话")
+	if tt.HasText("发送到 0 个会话") {
+		t.Fatal("a confirm for nobody")
 	}
 }
