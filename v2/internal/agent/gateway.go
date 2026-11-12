@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Host struct {
@@ -854,6 +855,33 @@ func (g *Gateway) cancel(owner, id string) Result {
 
 const readPoll = 150 * time.Millisecond
 
+// redactContext is how much output before a cursor is judged together with what comes after it.
+const redactContext = 8 << 10 // more than any private key
+
+// freshText returns what o.Data holds after the cursor since, cleaned and redacted as part of the whole
+// text so that a secret split across two reads is still masked. The redacted text before the cursor
+// is taken away again; lost reports that the output the cursor points at is no longer kept.
+func freshText(o Output, since int64) (text string, lost bool) {
+	cut := since - (o.Cursor - int64(len(o.Data))) // where the cursor falls in o.Data
+	if lost = cut < 0; lost {
+		cut = 0
+	}
+	cut = min(cut, int64(len(o.Data)))
+	whole := Redact(CleanOutput(o.Data))
+	if cut == 0 {
+		return whole, lost
+	}
+	head := Redact(CleanOutput(o.Data[:cut]))
+	n := 0
+	for n < len(head) && n < len(whole) && head[n] == whole[n] {
+		n++
+	}
+	for n > 0 && n < len(whole) && !utf8.RuneStart(whole[n]) {
+		n--
+	}
+	return whole[n:], lost
+}
+
 func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 	lines := clamp(a.Lines, 1, 2000, 200)
 	if a.Mode != "" && a.Mode != "screen" {
@@ -943,17 +971,25 @@ func (g *Gateway) read(ctx context.Context, a Arguments) Result {
 	if since < 0 {
 		since = probe.Cursor // wait for output that arrives from now on
 	}
+	var clean string
+	var lost bool
+	total := int64(-1)
 	for {
-		o, e := g.backend.Output(a.Target, since)
+		// Fetch some output from before the cursor too: a key or token that began in an earlier read is
+		// masked only when its start is in view.
+		o, e := g.backend.Output(a.Target, max(0, since-redactContext))
 		if e != nil {
 			return failErr(e)
 		}
-		clean := Redact(CleanOutput(o.Data))
+		if o.Cursor != total { // redacting is not free: only when something arrived
+			clean, lost = freshText(o, since)
+			total = o.Cursor
+		}
 		matched := wait && matches(clean)
 		timedOut := wait && !matched && !time.Now().Before(deadline)
 		if !wait || matched || timedOut {
 			content, truncated := tail(clean, lines)
-			data := map[string]any{"sessionId": a.Target, "content": content, "mode": "output", "truncated": truncated, "lost": o.Lost, "cursor": strconv.FormatInt(o.Cursor, 10)}
+			data := map[string]any{"sessionId": a.Target, "content": content, "mode": "output", "truncated": truncated, "lost": lost, "cursor": strconv.FormatInt(o.Cursor, 10)}
 			if wait {
 				data["matched"], data["timedOut"] = matched, timedOut
 			}

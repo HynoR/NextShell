@@ -725,3 +725,67 @@ func TestSpecsMatchTheGateway(t *testing.T) {
 	}
 	_ = g
 }
+
+// A secret that begins in one read and ends in the next is still masked: redaction sees the output
+// before the cursor too.
+func TestIncrementalReadsRedactSecretsSplitAcrossReads(t *testing.T) {
+	b := newRich()
+	g := New(b, nil)
+	read := func(since string) (string, string) {
+		d := data(t, call(g, "o", "session_read", m{"target": "s1", "sinceCursor": since}))
+		return d["content"].(string), d["cursor"].(string)
+	}
+	body := "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZWQyNTUxOQ"
+	b.feed("$ cat key\r\n-----BEGIN OPENSSH PRIVATE KEY-----\r\n" + body[:30])
+	first, cursor := read("0")
+	b.feed(body[30:] + "\r\n" + body + "\r\n-----END OPENSSH PRIVATE KEY-----\r\nafter the key\r\n")
+	second, _ := read(cursor)
+	for _, got := range []string{first, second} {
+		if strings.Contains(got, body[:8]) || strings.Contains(got, body[30:50]) || strings.Contains(got, "END OPENSSH") {
+			t.Fatalf("private key leaked: %q", got)
+		}
+	}
+	if !strings.Contains(first, redacted) || !strings.Contains(second, "after the key") {
+		t.Fatalf("the key is masked once and what follows it still comes back: %q %q", first, second)
+	}
+
+	b2 := newRich()
+	g = New(b2, nil)
+	b2.feed("token is ghp_AbCdEf")
+	first, cursor = read("0")
+	if !strings.Contains(first, "token is") {
+		t.Fatal(first)
+	}
+	b2.feed("0123456789abcdefghijKLMN done\r\n")
+	second, _ = read(cursor)
+	if strings.Contains(second, "0123456789") || strings.Contains(second, "AbCdEf") || !strings.Contains(second, redacted+" done") {
+		t.Fatalf("token split across reads leaked: %q", second)
+	}
+	// a secret that never reaches the second read changes nothing
+	b2.feed("plain line\r\n")
+	if got, _ := read(cursor); !strings.HasSuffix(got, "plain line\n") {
+		t.Fatal(got)
+	}
+}
+
+func TestFreshTextSlicesAtTheCursor(t *testing.T) {
+	for _, tc := range []struct {
+		o     Output
+		since int64
+		want  string
+		lost  bool
+	}{
+		{Output{Data: "hello world", Cursor: 11}, 6, "world", false},
+		{Output{Data: "hello world", Cursor: 11}, 0, "hello world", false},
+		{Output{Data: "hello", Cursor: 105}, 3, "hello", true}, // the cursor is older than what is kept
+		{Output{Data: "abc", Cursor: 3}, 99, "", false},        // a cursor from the future
+		{Output{Data: "中文字", Cursor: 9}, 4, "文字", false},
+		{Output{Data: "\x1b[31mred\x1b[0m text", Cursor: 17}, 8, "text", false},        // the escape before the cursor is gone
+		{Output{Data: "a password=hunter2\n", Cursor: 19}, 11, redacted + "\n", false}, // the value is cut off from its key by the cursor
+	} {
+		got, lost := freshText(tc.o, tc.since)
+		if strings.TrimSpace(got) != strings.TrimSpace(tc.want) || lost != tc.lost {
+			t.Errorf("%+v since %d: got %q lost=%v, want %q lost=%v", tc.o, tc.since, got, lost, tc.want, tc.lost)
+		}
+	}
+}
