@@ -51,6 +51,7 @@ func waitQueue(t *testing.T, p *Platform, id string) {
 	}
 }
 func TestPhase2PlatformRealSSHWorkflow(t *testing.T) {
+	testutil.RequireLinuxRemote(t)
 	p := desktopFixture(t)
 	session, root := phase2SSH(t, p)
 	os.WriteFile(filepath.Join(root, "text"), []byte("initial"), 0600)

@@ -13,10 +13,22 @@ import (
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sshclient"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"testing"
 )
+
+// RequireLinuxRemote skips t unless this machine can stand in for a Linux
+// remote: the server runs exec requests locally, while the product probes
+// /proc and uses GNU tools (mv -T, ps --sort) on the remote.
+func RequireLinuxRemote(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS != "linux" {
+		t.Skipf("needs a Linux host to act as the remote (/proc, GNU coreutils); running on %s", runtime.GOOS)
+	}
+}
 
 type Server struct {
 	Root, Address string

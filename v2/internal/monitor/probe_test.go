@@ -84,6 +84,7 @@ udp 0 0 0.0.0.0:68 0.0.0.0:* -`
 	}
 }
 func TestRealSSHProbeExecCancelAndProcessSignal(t *testing.T) {
+	testutil.RequireLinuxRemote(t)
 	server, e := testutil.New(t.TempDir())
 	if e != nil {
 		t.Fatal(e)

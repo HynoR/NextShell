@@ -58,6 +58,7 @@ func TestPackedArchiveSafety(t *testing.T) {
 	}
 }
 func TestRealSSHPackedTransferAndQuote(t *testing.T) {
+	testutil.RequireLinuxRemote(t)
 	root := t.TempDir()
 	server, e := testutil.New(root)
 	if e != nil {
