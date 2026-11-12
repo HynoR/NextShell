@@ -43,10 +43,10 @@ Direct HTTP also works for clients that can set headers: `http://127.0.0.1:41777
 
 ## What's inside
 
-| Path                        | What it is                                                    |
-| --------------------------- | ------------------------------------------------------------- |
-| `.mcp.json`                 | Versioned stdio entry; no token, no port                      |
-| `skills/nextshell/SKILL.md` | Workflow: `session_list` → `exec` → `session_read`, approvals |
+| Path                        | What it is                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `.mcp.json`                 | Versioned stdio entry; no token, no port                                                   |
+| `skills/nextshell/SKILL.md` | Workflow: `session_list` → `exec` / `session_send_text` → `session_read`, approvals, tiers |
 
 ## Trust model
 
@@ -55,6 +55,15 @@ Direct HTTP also works for clients that can set headers: `http://127.0.0.1:41777
 - Credentials never cross the MCP boundary: the agent gets session ids and redacted output.
 - The endpoint listens on 127.0.0.1 only and requires the bearer token. The token file is readable by
   your user only (mode 0600); anything running as you can read it, like any other program you run.
-- Obvious destructive commands (`rm -rf /`, `mkfs`, `dd` to a device, fork bombs, …) and your own
-  blacklist patterns are refused outright, even under auto-approve; commands touching `.env`
-  files always need a manual click.
+- Commands fall into three tiers. **Forbidden** ones never run, even under auto-approve (wiping disks
+  or `/` or home, power off, `kill -9 -1`, overwriting `/etc/passwd`, your own blacklist patterns).
+  **Risky** ones (`sudo`, `rm -r`, piping into a shell, writes to `/etc`, package and service
+  changes, …) and anything touching credential files (`.env*`, ssh keys, `.aws/credentials`, …) or the
+  environment always need a manual click, even under auto-approve. Everything else follows your
+  approval or auto-approve setting. The pending list in 设置 → Agent shows the tier, the agent's
+  reason, the host or tab name and the full command.
+- Agents do not interrupt you: the first change per app run raises the window once with a notice;
+  afterwards no raising, no tab switching, no keyboard focus. Tabs an agent opens stay in the
+  background with an Agent badge; `session_focus` is the explicit hand-over (at most one raise per
+  minute). An agent cannot type into a tab you pressed a key in during the last 3 seconds. The status
+  bar shows 「Agent 活动中」 for two minutes after any change and the count of pending approvals.

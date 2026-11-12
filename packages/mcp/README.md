@@ -58,9 +58,26 @@ Tool failures come back as `{ ok: false, error: { code, message } }`:
 | `connection_lost`      | response lost, the command may have run: inspect the terminal, do not retry  |
 | `incompatible_version` | the app lacks a tool this package expects: update both                       |
 
-App-side codes (`denied`, `forbidden`, `consent_required`, `busy`, …) are passed through unchanged.
-A call that returns `{ status: "pending", requestId }` is waiting for the user: call the same tool
-again with only that `requestId`. The bridge never replays a call.
+App-side codes (`denied`, `forbidden`, `consent_required`, `busy`, `disconnected`, `auth_failed`,
+`host_key`, `refused`, `unreachable`, `user_typing`, …) are passed through unchanged, with a short
+redacted cause in `message`. A call that returns `{ status: "pending", requestId }` is waiting for the
+user: call the same tool again with the same arguments (or only that `requestId`). `session_open` can
+also answer `{ status: "user_action_required", reason }` while a dialog waits for the user. The bridge
+never replays a call.
+
+## Tools
+
+`host_list`, `session_list`, `session_read` (`sinceCursor`, `waitFor`), `session_history`,
+`command_search`, `session_open`, `command_save`, `exec`, `session_send_text`, `session_send_signal`,
+`session_focus`, `session_close`, `agent_status`, `request_cancel`. The list, descriptions and JSON
+Schemas come from the app itself: `src/tools.generated.json` is generated from the app's tool
+metadata (`v2/internal/agent/tools.go`) and a Go test fails when it is stale. After changing a tool:
+
+```sh
+cd v2 && NEXTSHELL_UPDATE_TOOLS=1 go test ./internal/mcpendpoint -run Snapshot
+```
+
+The bridge serves that list while the app is closed and does not validate arguments itself.
 
 ## Development
 
@@ -75,8 +92,9 @@ pnpm --filter @nextshell/mcp run smoke:pack   # needs npm registry access
 
 Tests run the bridge against `src/fake-app.ts`, a loopback stand-in for the app's endpoint that
 enforces the bearer token. To try the real app, build it with `-tags nextshell_devtools` and run
-`nextshell --agent-test --db <tmp>/t.db`: MCP and auto-approve are on from the start and the path of
-`mcp.json` is printed on stderr (`--config <that path>`).
+`nextshell --agent-test --db <tmp>/t.db [--import hosts.json]`: MCP and auto-approve are on from the
+start, the path of `mcp.json` is printed on stderr (`--config <that path>`), and `--import` loads a
+`nextshell-connections` v1 JSON (plain) as saved hosts.
 
 The package is prepared locally and is not published automatically. Keep `package.json`, `MCP_PACKAGE_SPEC`
 (`packages/shared/src/mcp-config.ts`) and `nextshell-plugin/.mcp.json` on the same version; a test checks it.
