@@ -285,29 +285,6 @@ func (p *Platform) SaveRemote(session string, doc remoteedit.Document, text stri
 		})
 	})
 }
-func (p *Platform) ExternalEdit(session, remote, executable string, args []string) {
-	args = append([]string{}, args...)
-	if strings.HasSuffix(executable, ".app") { // a macOS bundle chosen in the settings' panel
-		args = append([]string{"-W", "-a", executable}, args...)
-		executable = "/usr/bin/open"
-	}
-	p.launch(func() {
-		e := p.withSFTP(p.ctx, session, func(c *sftpfs.Client) error {
-			doc, e := remoteedit.Open(c, remote)
-			if e != nil {
-				return e
-			}
-			return remoteedit.External(p.ctx, c, doc, watchEditor, executable, func(next remoteedit.Document) {
-				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "外部编辑器的修改已保存到远程", ForEditor: true})
-			}, args...)
-		})
-		if e != nil {
-			p.emit(appui.Event{Message: e.Error(), ForEditor: true})
-		} else {
-			p.emit(appui.Event{Message: "外部编辑器已关闭", ForEditor: true})
-		}
-	})
-}
 func (p *Platform) RefreshMonitor(session string) {
 	p.mu.Lock()
 	if p.monitorBusy[session] || p.closed {

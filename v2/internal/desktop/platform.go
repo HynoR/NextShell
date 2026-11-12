@@ -14,6 +14,7 @@ import (
 	"nextshell.dev/v2/internal/mcpendpoint"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
+	"nextshell.dev/v2/internal/remoteedit"
 	"nextshell.dev/v2/internal/sshclient"
 	"nextshell.dev/v2/internal/storage"
 	"nextshell.dev/v2/internal/transfer"
@@ -46,6 +47,7 @@ type Platform struct {
 	trustNewHosts    atomic.Bool              // development builds only (see devtrust_development.go): pin first-seen host keys without asking
 	tar              map[string]bool          // whether each session's server has tar
 	queue            *transfer.Queue
+	edits            *remoteedit.LiveEdits // files open in an outside editor; see ExternalEdit
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
 	monitorBusy      map[string]bool
@@ -90,6 +92,7 @@ func Open(path string) (*Platform, error) {
 	p.gateway.SetNotify(func(n agent.Notice) { p.emit(appui.Event{Agent: &appui.AgentNotice{Tool: n.Tool, Pending: n.Pending}}) })
 	p.gateway.Halt(true)
 	p.queue = transfer.New(2, p.Invalidate)
+	p.edits = newLiveEdits(p)
 	return p, nil
 }
 func DefaultPath() (string, error) {
@@ -542,6 +545,7 @@ func (p *Platform) registerFrom(byAgent bool, t *terminal.Terminal, c model.Conn
 	if local {
 		title = "本地终端"
 	}
+	p.edits.Move(replace, id) // a reconnect keeps the session's live edits
 	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local, ByAgent: byAgent}})
 	// A reconnect is a new shell too: it needs the line again (the file is already on the server).
 	if len(sshConn) > 0 && p.Preferences().ShellIntegration == "auto" {
@@ -560,6 +564,7 @@ func (p *Platform) Local() {
 }
 func (p *Platform) CloseSession(id string) {
 	p.agentIO.stopExecs(id) // before the connection goes: an agent's command is killed on the server
+	p.edits.StopSession(id)
 	p.mu.Lock()
 	t := p.sessions[id]
 	p.forgetAgentIO(id, t, p.sshSessions[id])

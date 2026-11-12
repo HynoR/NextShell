@@ -55,12 +55,9 @@ func (a *App) openEditor(session, remote string) {
 	}
 	a.P.OpenRemote(session, remote)
 }
+
+// externalEdit opens remote in the chosen editor, or the system's text editor, and lists it under 实时编辑.
 func (a *App) externalEdit(session, remote string) {
-	if a.Prefs.EditorCommand == "" {
-		a.toast("请先在设置的「通用」里选择外部编辑器")
-		a.openSettings("通用")
-		return
-	}
 	var args []string
 	if s := a.editor.externalArgs; s != "" {
 		if err := json.Unmarshal([]byte(s), &args); err != nil {
@@ -69,6 +66,7 @@ func (a *App) externalEdit(session, remote string) {
 		}
 	}
 	a.P.ExternalEdit(session, remote, a.Prefs.EditorCommand, args)
+	a.layout.rightOpen = true // its state shows in the activity bar
 }
 
 // syncText reads the buffer back; WriteTo (not String) keeps the buffer's CRLF.
