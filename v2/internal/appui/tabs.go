@@ -113,7 +113,10 @@ func (a *App) tabStrip(c *ui.Context) {
 		if len(a.Tabs) == 0 {
 			return
 		}
-		tabs := ui.TabsBase(c, &a.Active, len(a.Tabs))
+		// The widget keeps a selection inside the strip; a window with tabs but none active (an agent opened
+		// the only one in the background) must stay that way, so it gets a copy and a.Active only follows a click.
+		selected := a.Active
+		tabs := ui.TabsBase(c, &selected, len(a.Tabs))
 		tabs.List.Height(40).AlignItems(ui.Center).Gap(2).Padding(5, 0).Children(func() {
 			for i, s := range a.Tabs {
 				exited := a.P.Exited(s.ID)
@@ -121,6 +124,9 @@ func (a *App) tabStrip(c *ui.Context) {
 				a.tabMenu(tab, s)
 				if x, ok := ui.Drop[tabDrag](tab); ok {
 					a.moveTab(string(x), i)
+				}
+				if a.Active < 0 && tab.Clicked() { // the strip's own selection cannot be "none": the click picks the tab
+					a.later(func() { a.activateTab(i) })
 				}
 				if tab.DoubleClicked() {
 					a.startRename(s)
@@ -139,6 +145,7 @@ func (a *App) tabStrip(c *ui.Context) {
 					if exited {
 						ui.Text(c, "⟳").FontSize(12).TextColor(t.TextMuted)
 					}
+					a.agentBadge(c, s)
 					if a.tabs.renaming == s.ID {
 						in := ui.TextInput(c.Key("rename-"+s.ID), &a.tabs.renameText).Label("标签名称").Width(140).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
 							if k.Key == ui.KeyEscape {
@@ -166,7 +173,7 @@ func (a *App) tabStrip(c *ui.Context) {
 			}
 		})
 		if tabs.List.Changed() {
-			a.activateTab(a.Active)
+			a.activateTab(selected)
 		}
 	})
 }

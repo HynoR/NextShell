@@ -29,6 +29,11 @@ type App struct {
 	// PickFiles shows a native open/save panel and calls done on the UI
 	// thread with the chosen paths (none when cancelled). Nil means no panels.
 	PickFiles func(o FilePick, done func([]string))
+	// RaiseWindow brings the main window forward for the agent: focus=false shows it without taking the
+	// keyboard (the host also bounces the Dock icon), focus=true is the hand-over of session_focus. Optional.
+	RaiseWindow func(focus bool)
+	// Clock is the time source for agent activity and rate limits; nil means time.Now.
+	Clock func() time.Time
 	// ShowEditor opens (or raises) the remote editor window, which EditorView
 	// builds; HideEditor closes it. Without ShowEditor the editor is a dialog.
 	ShowEditor, HideEditor func()
@@ -44,6 +49,7 @@ type App struct {
 	editor   editorState
 	settings settingsState
 	dialogs  dialogState
+	agent    agentUI
 
 	actions []func()
 	// toasts waits per window until that window's view builds and shows them;
@@ -318,8 +324,18 @@ func (a *App) poll() bool {
 		if e.Editor != nil {
 			a.receiveDocument(e.Editor)
 		}
+		if e.Agent != nil {
+			a.agentActed(e.Agent)
+		}
 		if e.FocusID != "" {
-			a.selectTabID(e.FocusID)
+			if e.Handover {
+				a.handover(e.FocusID)
+			} else {
+				a.selectTabID(e.FocusID)
+			}
+		}
+		if e.CloseID != "" {
+			a.closeTabID(e.CloseID)
 		}
 		if e.Session != nil {
 			a.addSession(e.Session)
@@ -369,6 +385,10 @@ func (a *App) addSession(s *Session) {
 		}
 		a.tabs.hooks[s.ID] = &shellHook{until: time.Now().Add(10 * time.Second)}
 		a.P.InstallShellHook(s.ID)
+	}
+	if s.ByAgent && s.Replaces == "" {
+		a.addAgentTab(s)
+		return
 	}
 	for i, old := range a.Tabs {
 		if s.Replaces == old.ID {
@@ -458,7 +478,7 @@ func (a *App) mainWindow(c *ui.Context) {
 
 // workArea is the terminal (or the welcome page) and the context panel.
 func (a *App) workArea(c *ui.Context) {
-	if len(a.Tabs) == 0 {
+	if a.current() == nil { // no tabs, or only background tabs an agent opened
 		ui.Column(c).Fill().Children(func() { a.welcomeView(c) })
 		return
 	}
@@ -596,9 +616,17 @@ func (a *App) statusBar(c *ui.Context) {
 				a.openSettings("Agent")
 			}
 		}
-		if n := len(a.P.AgentOverview().Pending); n > 0 {
-			b := ui.ButtonBase(c).Label("Agent 待批准").Padding(0, 6).Children(func() {
-				ui.Text(c, fmt.Sprintf("Agent 待批准 %d", n)).FontSize(12).TextColor(t.Warning)
+		if pending := a.P.AgentOverview().Pending; len(pending) > 0 {
+			b := ui.ButtonBase(c).Label("Agent 待批准").Tooltip(pendingTooltip(pending)).Padding(0, 6).Children(func() {
+				ui.Text(c, fmt.Sprintf("Agent 待批准 %d", len(pending))).FontSize(12).TextColor(t.Warning)
+			})
+			if b.Clicked() {
+				a.openSettings("Agent")
+			}
+		} else if a.agentActive() {
+			c.After(a.agent.lastAt.Add(agentActiveFor).Sub(a.now()) + time.Second)
+			b := ui.ButtonBase(c).Label("Agent 活动中").Padding(0, 6).Tooltip("最近有 Agent 在操作 NextShell，点击查看").Children(func() {
+				ui.Text(c, "Agent 活动中").FontSize(12).TextColor(t.TextMuted)
 			})
 			if b.Clicked() {
 				a.openSettings("Agent")
