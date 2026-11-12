@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/commandtemplate"
@@ -12,6 +13,8 @@ import (
 
 type snippetsState struct {
 	search, group string
+	selected      string    // the snippet clicked, whose text is in the command bar
+	doubled       time.Time // when a row was double clicked
 	// renaming is the group whose header is an inline text field.
 	renaming, renameTo string
 
@@ -96,7 +99,7 @@ func (a *App) snippetsPanel(c *ui.Context) {
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Padding(4, 8).Gap(2).Children(func() {
 			if len(a.Data.Commands) == 0 {
-				emptyState(c, "还没有命令片段", "把常用命令存成片段，单击即可发送到当前会话。")
+				emptyState(c, "还没有命令片段", "把常用命令存成片段，单击填入命令输入栏，双击发送到当前会话。")
 				return
 			}
 			visible := 0
@@ -110,18 +113,7 @@ func (a *App) snippetsPanel(c *ui.Context) {
 					last = v.Group
 				}
 				visible++
-				row := ui.ButtonBase(c.Key(v.ID)).Label("片段 "+v.Name).FillWidth().Padding(6, 8).Gap(1).Radius(t.Radius).Tooltip(v.Text)
-				if row.Hovered() {
-					row.Background(t.SurfaceHover)
-				}
-				a.snippetMenu(row, v)
-				row.Column().AlignItems(ui.Start).Children(func() {
-					ui.Text(c, v.Name).SingleLine()
-					ui.Text(c, firstLine(v.Text)).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine()
-				})
-				if row.Clicked() {
-					a.runSnippet(v, false)
-				}
+				a.snippetRow(c, v)
 			}
 			if visible == 0 {
 				muted(c, "没有匹配的片段").Padding(8)
@@ -137,6 +129,62 @@ func (a *App) snippetsPanel(c *ui.Context) {
 			a.snippets.commandOpen = true
 		}
 	})
+}
+
+// snippetRow is a snippet of the list. A click selects it and fills the command bar, which sends nothing;
+// the ▶ button on the row under the pointer (or the selected one) and a double click send it, to the
+// session whose name the button's tooltip says.
+func (a *App) snippetRow(c *ui.Context, v model.Command) {
+	t := c.Theme()
+	s := &a.snippets
+	selected := s.selected == v.ID
+	row := ui.ButtonBase(c.Key(v.ID)).Label("片段 "+v.Name).FillWidth().Padding(6, 6, 6, 8).Gap(6).AlignItems(ui.Center).Radius(t.Radius).Tooltip(v.Text)
+	switch {
+	case selected:
+		row.Background(t.Accent.Alpha(.15))
+	case row.Hovered():
+		row.Background(t.SurfaceHover)
+	}
+	a.snippetMenu(row, v)
+	var send ui.Element
+	row.Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(1).AlignItems(ui.Start).Children(func() {
+			ui.Text(c, v.Name).SingleLine()
+			ui.Text(c, firstLine(v.Text)).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine()
+		})
+		if selected || row.Hovered() {
+			tip := "请先打开一个会话"
+			if cur := a.current(); cur != nil {
+				tip = "发送到 " + cur.Title
+			}
+			send = ui.ButtonBase(c.Key("send-"+v.ID)).Label("发送 "+v.Name).Tooltip(tip).Size(26, 26).Radius(t.Radius).Center().TextColor(accentInk(t)).Disabled(a.current() == nil)
+			if send.Hovered() {
+				send.Background(t.SurfaceHover)
+			}
+			send.Children(func() { ui.Icon(c, appIcons["play"]).FontSize(14) })
+		}
+	})
+	switch {
+	case row.DoubleClicked():
+		s.doubled = a.now() // the release of this click comes in a frame of its own
+		a.later(func() { a.sendSnippet(v) })
+	case send.Clicked():
+		a.later(func() { a.sendSnippet(v) })
+	case row.Clicked() && a.now().Sub(s.doubled) > 400*time.Millisecond:
+		a.later(func() {
+			s.selected = v.ID
+			a.fillCommandBar(v)
+		})
+	}
+}
+
+// sendSnippet sends v to the active session, and takes it out of the command bar, where it waited.
+func (a *App) sendSnippet(v model.Command) {
+	if b := &a.cmdbar; b.snippet != nil && b.snippet.ID == v.ID && b.text == v.Text {
+		b.text, b.snippet = "", nil
+	}
+	a.snippets.selected = v.ID
+	a.runSnippet(v, false)
 }
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")

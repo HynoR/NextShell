@@ -73,4 +73,18 @@ func TestScreenshotsUX7(t *testing.T) {
 	shot(rt, "ux7-2c-delete-progress")
 	click(t, rt, "展开活动栏")
 	shot(rt, "ux7-2d-delete-in-queue")
+
+	// Snippets: a click fills the command bar, the row under the pointer has ▶, whose tooltip names the target.
+	sp := newPlatform(t)
+	web, _ := demo(t, sp)
+	_, st := start(sp)
+	st.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	st.SetSize(1280, 900)
+	session(t, sp, st, "s1", "prod-web-01", web)
+	st.Key(ui.Cmd|ui.Shift, ui.KeyS)
+	click(t, st, "片段 重启 nginx")
+	hover(t, st, "片段 查看日志")
+	shot(st, "ux7-3a-snippet-hover")
+	hover(t, st, "发送 查看日志")
+	shot(st, "ux7-3b-snippet-send-target")
 }

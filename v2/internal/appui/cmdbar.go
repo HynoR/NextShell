@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/commandtemplate"
+	"nextshell.dev/v2/internal/model"
 )
 
 // cmdbarState is the command bar under the terminal and its find bar.
@@ -13,7 +15,9 @@ type cmdbarState struct {
 	at          int // the history entry shown, counted from the newest (1); 0 is the line being typed
 	finding     bool
 	find        string
-	searched    string // the session and the text last searched
+	searched    string         // the session and the text last searched
+	snippet     *model.Command // the snippet last put in the bar, until a line is sent
+	focus       bool           // the next frame moves the keyboard focus into the bar
 }
 
 // commandBar sends a line to the session; ↑/↓ walk the saved history, as a shell does.
@@ -51,6 +55,10 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 			}
 			return false
 		})
+		if b.focus {
+			b.focus = false
+			in.Focus()
+		}
 		if ghost(c, "发送", "").Disabled(strings.TrimSpace(b.text) == "").Clicked() {
 			a.sendLine(s, b.text)
 			b.text = ""
@@ -66,11 +74,31 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 	})
 }
 
-// sendLine types text and Return into the session and keeps it in the history.
+// fillCommandBar puts a snippet in the bar to be read, edited and sent from there. A snippet of several
+// lines does not fit the bar: it waits for its send button.
+func (a *App) fillCommandBar(v model.Command) {
+	b := &a.cmdbar
+	if strings.Contains(strings.TrimSpace(v.Text), "\n") {
+		return
+	}
+	b.text, b.at, b.draft, b.snippet, b.focus = v.Text, 0, "", &v, true
+}
+
+// sendLine types text and Return into the session and keeps it in the history. A snippet with parameters
+// first asks for them, whatever was changed around them.
 func (a *App) sendLine(s *Session, text string) {
-	a.cmdbar.at, a.cmdbar.draft = 0, ""
+	b := &a.cmdbar
+	b.at, b.draft = 0, ""
 	if strings.TrimSpace(text) == "" {
 		return
+	}
+	if v := b.snippet; v != nil {
+		b.snippet = nil
+		if len(commandtemplate.Keys(text)) > 0 {
+			v.Text = text
+			a.runSnippet(*v, false)
+			return
+		}
 	}
 	if e := a.P.ExecuteCommand(s.ID, text, false, true); e != nil {
 		a.fail(e)

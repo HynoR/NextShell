@@ -195,11 +195,11 @@ func TestSnippetsPanelSendParamsCreateAndDelete(t *testing.T) {
 	_, tt := start(p)
 	session(t, p, tt, "one", "one", remoteHost("one"))
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
-	click(t, tt, "片段 plain")
+	dblclick(t, tt, "片段 plain")
 	if len(p.sent) != 1 || p.sent[0] != "uptime" {
 		t.Fatal(p.sent)
 	}
-	click(t, tt, "片段 grep")
+	dblclick(t, tt, "片段 grep")
 	has(t, tt, "参数原样替换，不做 shell 转义")
 	tt.Type("nginx")
 	has(t, tt, "ps aux | grep nginx")
