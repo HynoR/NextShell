@@ -2,8 +2,6 @@ package appui
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -345,9 +343,9 @@ func (a *App) sshSettings(c *ui.Context) {
 func programDir(shell bool) string {
 	switch {
 	case runtime.GOOS == "windows" && shell:
-		return filepath.Join(os.Getenv("SystemRoot"), "System32")
+		return `C:\Windows\System32` // a starting point for the panel, not a lookup
 	case runtime.GOOS == "windows":
-		return os.Getenv("ProgramFiles")
+		return `C:\Program Files`
 	case shell:
 		return "/bin"
 	case runtime.GOOS == "darwin":
