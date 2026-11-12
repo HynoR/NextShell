@@ -312,7 +312,11 @@ func (a *App) windowSettings(c *ui.Context) {
 	group(c, "窗口", func() {
 		if a.TrayAvailable {
 			switchField(c, "最小化到托盘", &v.MinimizeToTray, "最小化时把窗口收进系统托盘，点击托盘图标就能找回")
-			switchField(c, "关闭窗口时最小化到托盘", &v.CloseToTray, "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」")
+			help := "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」"
+			if osName == "linux" { // some desktops show no tray icons: opening the app again is the way back
+				help += "\n看不到托盘图标时，再次打开 NextShell 即可显示窗口"
+			}
+			switchField(c, "关闭窗口时最小化到托盘", &v.CloseToTray, help)
 		}
 		confirm := !v.NoCloseConfirm
 		closing := ui.Field(c, "关闭窗口时确认", func() {

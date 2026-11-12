@@ -165,3 +165,20 @@ func TestTrayIconIsABlackTemplateImage(t *testing.T) {
 		t.Fatal("the mark covers", inked, "pixels")
 	}
 }
+
+// Where a desktop may show no tray icons (Linux), the close option says how to get the window back.
+func TestCloseToTrayExplainsTheWayBackOnLinuxOnly(t *testing.T) {
+	const hint = "看不到托盘图标时，再次打开 NextShell 即可显示窗口"
+	for goos, want := range map[string]bool{"linux": true, "darwin": false, "windows": false} {
+		restore := appui.SetOS(goos)
+		p := newPlatform(t)
+		a, _ := start(p)
+		a.TrayAvailable = true
+		st := ui.NewTester(a.SettingsView, 880, 900)
+		if got := st.HasText(hint); got != want {
+			t.Errorf("%s: hint shown=%v, want %v", goos, got, want)
+		}
+		has(t, st, "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」")
+		restore()
+	}
+}

@@ -49,6 +49,15 @@ func main() {
 		log.Fatal(e)
 	}
 	defer p.Shutdown()
+	// With a tray option on the window can hide where no icon shows (a Linux desktop without a tray host):
+	// launching the app again then brings it back. A trial profile (--db) runs beside the real one.
+	tr := &tray{create: newTrayIcon, show: func() {}}
+	if wantsSingleInstance(p.Preferences(), opts) {
+		mygo.App.OnSecondInstance(tr.secondInstance(mygo.RunOnMain))
+		if !mygo.App.RequestSingleInstanceLock() {
+			return // handed over to the running instance, which shows its window
+		}
+	}
 	if e = startDevMode(p, opts, os.Stderr); e != nil {
 		log.Fatal(e)
 	}
@@ -163,7 +172,7 @@ func main() {
 			mygo.App.Quit()
 		})
 	}, 10*time.Second, os.Exit)
-	tr := &tray{app: a, create: newTrayIcon, terminating: end.Terminating, show: func() {}}
+	tr.app, tr.terminating = a, end.Terminating
 	a.PreferencesChanged = tr.Sync
 	// Every way of quitting closes the windows one by one: until the quit is cancelled, the main window's
 	// closing is part of it, and must not hide the window into the tray.

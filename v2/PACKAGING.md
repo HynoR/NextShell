@@ -4,7 +4,7 @@
 cd v2 && go tool mygo build -skip-dmg    # -> dist/darwin-arm64/NextShell.app(本机自用,约 25 MB)
 ```
 
-- CLI 是 `go.mod` 里的 Go tool(mygo v0.9.0),配置在 `mygo.json`:名称 `NextShell`,标识 `io.github.hynor.nextshell`,版本(见下「发布」),入口 `./cmd/nextshell`,macOS ad-hoc 签名,Linux 包只依赖 GTK 3(`linux.webview: false`,不依赖 WebKitGTK;托盘图标用 libayatana-appindicator3,运行时按需加载,没有它时设置里不出现托盘选项)。
+- CLI 是 `go.mod` 里的 Go tool(mygo v0.9.0),配置在 `mygo.json`:名称 `NextShell`,标识 `io.github.hynor.nextshell`,版本(见下「发布」),入口 `./cmd/nextshell`,macOS ad-hoc 签名,Linux 包只依赖 GTK 3(`linux.webview: false`,不依赖 WebKitGTK;托盘图标用 libayatana-appindicator3,运行时按需加载,没有它时设置里不出现托盘选项;托盘选项开着且没有 `--db` 时,应用取 mygo 的单实例锁(socket 在临时目录),再次启动只会把第一个实例的窗口显示出来,以免窗口隐藏后在没有托盘宿主的桌面上找不回)。
 - `dist/` 已被 git 忽略。发布构建由 mygo 自动加 `-tags mygo_nodownload,mygo_noinspector`,不带 `nextshell_devtools`,所以没有 DevTools/`--agent-test`。
 - 图标 `packaging/icon.png` 由 `go run packaging/icon.go`(在 `v2/` 下)生成;mygo 从它生成 `.icns`。
 - 窗口、菜单栏(About / 设置 ⌘, / Hide / Quit)、退出确认与 `go run` 一致;默认 profile 仍是 `~/Library/Application Support/NextShell-v2/nextshell.db`。

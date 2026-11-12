@@ -271,3 +271,48 @@ func TestClosingHidesOnlyWhenNothingIsQuitting(t *testing.T) {
 		t.Fatal("the two options mix up")
 	}
 }
+
+// The single-instance lock is taken only when a tray option may hide the window, and not for a trial
+// profile, which runs beside the real one.
+func TestSingleInstanceLockOnlyForTheRealProfileWithATrayOption(t *testing.T) {
+	prefs := func(minimize, closing bool) model.Preferences {
+		p := model.DefaultPreferences()
+		p.MinimizeToTray, p.CloseToTray = minimize, closing
+		return p
+	}
+	for _, c := range []struct {
+		what  string
+		prefs model.Preferences
+		db    string
+		want  bool
+	}{
+		{"both options off", prefs(false, false), "", false},
+		{"close to tray", prefs(false, true), "", true},
+		{"minimize to tray", prefs(true, false), "", true},
+		{"both", prefs(true, true), "", true},
+		{"trial profile", prefs(true, true), "/tmp/trial.db", false},
+		{"trial profile, options off", prefs(false, false), "/tmp/trial.db", false},
+	} {
+		if got := wantsSingleInstance(c.prefs, options{db: c.db}); got != c.want {
+			t.Errorf("%s: %v, want %v", c.what, got, c.want)
+		}
+	}
+}
+
+// A later launch shows the window of the one that holds the lock, as the tray's 显示窗口 does, on the main
+// thread: the window made after the handler was registered is the one shown.
+func TestSecondLaunchShowsTheWindow(t *testing.T) {
+	f := newTrayFixture(t)
+	ran := 0
+	handler := f.tray.secondInstance(func(fn func()) { ran++; fn() })
+	handler([]string{"--some-arg"}, "/somewhere")
+	if ran != 1 || f.shown != 1 {
+		t.Fatal("ran", ran, "shown", f.shown)
+	}
+	late := 0
+	f.tray.show = func() { late++ } // the main window is made after the handler is registered
+	handler(nil, "")
+	if late != 1 {
+		t.Fatal("the window made later was not shown", late)
+	}
+}
