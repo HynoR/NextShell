@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -222,7 +223,7 @@ func (a *App) hostTree(c *ui.Context, parent string, depth int) {
 	// Beside sections, hosts outside folders get a section of their own.
 	if parent == "" && len(direct) > 0 && sections {
 		open := !a.hosts.collapsed[""]
-		ui.SidebarSection(c.Key("ungrouped"), "未分组", &open, hosts)
+		a.hostDropTarget(c, ui.SidebarSection(c.Key("ungrouped"), "未分组", &open, hosts), "")
 		a.hosts.collapsed[""] = !open
 	} else {
 		hosts()
@@ -237,6 +238,7 @@ func (a *App) hostTree(c *ui.Context, parent string, depth int) {
 			section.PaddingStart(12) // nests inside the parent's section, so it adds up per depth
 		}
 		a.folderMenu(section, f)
+		a.hostDropTarget(c, section, f.ID)
 		a.hosts.collapsed[f.ID] = !open
 	}
 }
@@ -270,7 +272,7 @@ func (a *App) folderTree(root string) map[string]bool {
 }
 
 func (a *App) hostItem(c *ui.Context, cc model.Connection, where string) {
-	item := ui.SidebarItem(c.Key(where+cc.ID), cc.ID, appIcons["server"], cc.Name).Tooltip(cc.User + "@" + cc.Address())
+	item := ui.SidebarItem(c.Key(where+cc.ID), cc.ID, appIcons["server"], cc.Name).Tooltip(cc.User + "@" + cc.Address()).Drag(hostDrag(cc.ID))
 	a.hostMenu(item, cc)
 	if color, ok := a.hostStatus(c, cc.ID); ok {
 		item.Children(func() { dot(c, color) })
@@ -340,6 +342,50 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 		}
 	})
 }
+// hostDrag is a host dragged onto a folder's section.
+type hostDrag string
+
+func (a *App) hostDropTarget(c *ui.Context, e ui.Element, folder string) {
+	if _, over := ui.DragOver[hostDrag](e); over {
+		e.Background(c.Theme().SurfaceHover)
+	}
+	if id, ok := ui.Drop[hostDrag](e); ok {
+		if cc, found := a.host(string(id)); found && cc.FolderID != folder {
+			a.moveHost(cc, folder)
+		}
+	}
+}
+
+// folderSiblings is f's parent's folders in order, and f's place among them.
+func (a *App) folderSiblings(f model.Folder) ([]model.Folder, int) {
+	var out []model.Folder
+	for _, v := range a.Data.Folders {
+		if v.ParentID == f.ParentID {
+			out = append(out, v)
+		}
+	}
+	return out, slices.IndexFunc(out, func(v model.Folder) bool { return v.ID == f.ID })
+}
+
+// shiftFolder moves f up (-1) or down (+1) among its siblings.
+func (a *App) shiftFolder(f model.Folder, by int) {
+	siblings, i := a.folderSiblings(f)
+	if i < 0 || i+by < 0 || i+by >= len(siblings) {
+		return
+	}
+	siblings[i], siblings[i+by] = siblings[i+by], siblings[i]
+	for n, v := range siblings {
+		if v.SortIndex != n {
+			v.SortIndex = n
+			if e := a.P.SaveFolder(v); e != nil {
+				a.fail(e)
+				break
+			}
+		}
+	}
+	a.reload()
+}
+
 func (a *App) moveHost(cc model.Connection, folder string) {
 	cc.FolderID = folder
 	a.report(a.P.SaveConnection(cc, nil), "")
@@ -374,6 +420,13 @@ func (a *App) folderMenu(e ui.Element, f model.Folder) {
 		}
 		if m.Item("重命名 / 移动…").Chosen() {
 			a.later(func() { a.editFolder(f) })
+		}
+		siblings, i := a.folderSiblings(f)
+		if m.Item("上移").Disabled(i <= 0).Chosen() {
+			a.later(func() { a.shiftFolder(f, -1) })
+		}
+		if m.Item("下移").Disabled(i >= len(siblings)-1).Chosen() {
+			a.later(func() { a.shiftFolder(f, 1) })
 		}
 		if m.Item("批量设置认证…").Chosen() {
 			a.later(func() { a.hosts.batch = batchAuth{open: true, folder: f.ID, auth: "password"} })

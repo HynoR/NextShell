@@ -270,3 +270,54 @@ func TestHandshakeEOFThroughProxyBlamesTheProxy(t *testing.T) {
 	tt.Frame()
 	has(t, tt, "服务器不支持此认证方式")
 }
+
+func drag(t *testing.T, tt *ui.Tester, from, to string) {
+	t.Helper()
+	a, ok := tt.Find(from)
+	b, ok2 := tt.Find(to)
+	if !ok || !ok2 {
+		t.Fatal("drag ends", from, ok, to, ok2)
+	}
+	x, y := a.X+a.W/2, a.Y+a.H/2
+	tt.Press(x, y)
+	for i := 1; i <= 8; i++ {
+		tt.Move(x+(b.X+20-x)*float32(i)/8, y+(b.Y+b.H/2-y)*float32(i)/8)
+		tt.Frame()
+	}
+	tt.Release(b.X+20, b.Y+b.H/2)
+	tt.Frame()
+	tt.Frame()
+}
+
+func TestDragHostIntoFolderAndMoveFoldersUp(t *testing.T) {
+	p := newPlatform(t)
+	for i, name := range []string{"甲", "乙", "丙"} {
+		if e := p.SaveFolder(model.Folder{ID: name, Name: name, SortIndex: i}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	h := saveHost(t, p, model.Connection{Name: "web-1", Host: "w", Port: 22, User: "u", Auth: "agent", FolderID: "甲"})
+	_, tt := start(p)
+	session(t, p, tt, "local", "local", model.Connection{}) // hides the welcome page's host cards
+	drag(t, tt, "web-1", "丙  0")
+	snap, _ := p.Snapshot()
+	for _, c := range snap.Connections {
+		if c.ID == h.ID && c.FolderID != "丙" {
+			t.Fatal("host not moved", c.FolderID)
+		}
+	}
+	if e := tt.RightClick("丙  1"); e != nil {
+		t.Fatal(e)
+	}
+	tt.ChooseMenuItem("上移")
+	tt.RightClick("丙  1")
+	tt.ChooseMenuItem("上移")
+	snap, _ = p.Snapshot()
+	order := map[string]int{}
+	for _, f := range snap.Folders {
+		order[f.ID] = f.SortIndex
+	}
+	if !(order["丙"] < order["甲"] && order["甲"] < order["乙"]) {
+		t.Fatal("folder order", order)
+	}
+}
