@@ -217,7 +217,11 @@ func (l *lexer) run() {
 		case c == '(' || c == ')':
 			l.endSeg(string(c))
 			l.i++
-		case c == '<' && next == '<' && !strings.HasPrefix(s[l.i:], "<<<"):
+		case c == '<' && strings.HasPrefix(s[l.i:], "<<<"): // a here-string, not a heredoc
+			l.word.WriteString("<<<")
+			l.inWord = true
+			l.i += 3
+		case c == '<' && next == '<':
 			l.heredocStart()
 		default:
 			l.add(c)
@@ -285,7 +289,7 @@ type redirect struct {
 
 func (r redirect) writes() bool { return strings.HasPrefix(r.op, ">") || strings.HasPrefix(r.op, "&>") }
 
-var redirWord = regexp.MustCompile(`^(?:[0-9]+|&)?(&>>|&>|>>|>\||>&|>|<<<|<<-?|<&|<>|<)(.*)$`)
+var redirWord = regexp.MustCompile(`(?s)^(?:[0-9]+|&)?(&>>|&>|>>|>\||>&|>|<<<|<<-?|<&|<>|<)(.*)$`)
 
 // splitRedirects separates redirection operators and their targets from the arguments.
 func splitRedirects(words []string) (args []string, redirs []redirect) {
