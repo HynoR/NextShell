@@ -320,7 +320,11 @@ func (a *App) dataSettings(c *ui.Context) {
 				s.format = formats[i]
 			}
 		}).FillWidth()
-		field(c, "文件或目录", &s.path).Description("NextShell 1.x 导出的连接文件，或 FinalShell 的配置目录")
+		if s.format == "finalshell" {
+			a.localPath(c, "配置目录", "未选择", &s.path, FilePick{Directory: true, Hidden: true}).Description("FinalShell 的配置目录")
+		} else {
+			a.localPath(c, "连接文件", "未选择", &s.path, FilePick{}).Description("NextShell 1.x 导出的连接文件")
+		}
 		password(c, "解密口令", &s.password).Description("导出时没有加密就留空")
 		a.folderPick(c, "导入到目录", &s.folder)
 		policies := []string{"skip", "rename-copy", "overwrite"}
@@ -374,7 +378,7 @@ func (a *App) exportSettings(c *ui.Context) {
 	group(c, "导出", func() {
 		muted(c, "不勾选则导出全部主机。私钥永远不会导出。")
 		ids := a.hostChecklist(c, func(model.Connection) bool { return true })
-		field(c, "保存到", &s.exportPath).Description("新文件的完整路径，不会覆盖已有文件")
+		a.localPath(c, "保存到", "未选择", &s.exportPath, FilePick{Save: true, DefaultPath: "~/nextshell-hosts.json"}).Description("不会覆盖已有文件")
 		toggle(c, "加密并包含密码", &s.encrypt)
 		if s.encrypt {
 			password(c, "加密口令", &s.exportPassword)
@@ -434,6 +438,6 @@ func (a *App) diagnosticSettings(c *ui.Context) {
 		}
 	})
 	group(c, "设置", func() {
-		field(c, "nexttrace 程序", &v.NexttracePath).Description("留空则在 PATH 中查找")
+		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &v.NexttracePath, FilePick{})
 	})
 }

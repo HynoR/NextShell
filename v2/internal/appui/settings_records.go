@@ -90,7 +90,7 @@ func (a *App) keySettings(c *ui.Context) {
 		})
 	})
 	group(c, "导入私钥", func() {
-		field(c, "私钥文件", &s.path).Description("如 ~/.ssh/id_ed25519 的完整路径")
+		a.localPath(c, "私钥文件", "未选择", &s.path, FilePick{DefaultPath: "~/.ssh", Hidden: true})
 		password(c, "口令", &s.passphrase).Description("私钥没有口令时留空")
 		ui.Field(c, "或粘贴私钥", func() { ui.TextArea(c, &s.pem).Label("粘贴私钥").Font("monospace").Height(90).Grow(1) }).FillWidth()
 		actions(c, func() { a.importKeyButton(c) })

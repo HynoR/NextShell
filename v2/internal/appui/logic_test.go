@@ -135,3 +135,19 @@ func TestHostDraftKeepaliveModes(t *testing.T) {
 		t.Fatal("bad port accepted")
 	}
 }
+
+func TestHumanizeInteropErrorsAndNaturalOrder(t *testing.T) {
+	for msg, want := range map[string]string{
+		"ssh: handshake failed: EOF": "服务器不支持此认证方式",
+		"ssh: handshake failed: ssh: unexpected message type 51 (expected 60)": "服务器不支持此认证方式",
+		"wait: remote command exited without exit status or exit signal":       "连接已断开",
+		"dial tcp 10.0.0.1:22: connect: connection refused":                    "连接被拒绝：服务器没有在这个端口提供 SSH 服务",
+	} {
+		if got, ok := humanize(msg); !ok || got != want {
+			t.Errorf("%q → %q", msg, got)
+		}
+	}
+	if naturalCompare("file2", "File10") >= 0 || naturalCompare("a01", "a1") != 0 && naturalCompare("a01", "a2") >= 0 || naturalCompare("b", "a") <= 0 {
+		t.Fatal("natural order")
+	}
+}

@@ -254,3 +254,19 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	click(t, tt, "保存目录")
 	has(t, tt, "改名  1")
 }
+
+func TestHandshakeEOFThroughProxyBlamesTheProxy(t *testing.T) {
+	p := newPlatform(t)
+	if e := p.SaveProxy(model.Proxy{ID: "px", Name: "跳板", Kind: "socks5", Host: "127.0.0.1", Port: 1080}, nil); e != nil {
+		t.Fatal(e)
+	}
+	direct := saveHost(t, p, model.Connection{Name: "direct", Host: "d.example", Port: 22, User: "u", Auth: "agent"})
+	proxied := saveHost(t, p, model.Connection{Name: "proxied", Host: "p.example", Port: 22, User: "u", Auth: "agent", ProxyID: "px"})
+	_, tt := start(p)
+	p.events = append(p.events, appui.Event{Failed: proxied.ID, Message: "ssh: handshake failed: EOF"})
+	tt.Frame()
+	has(t, tt, "代理连接被关闭")
+	p.events = append(p.events, appui.Event{Failed: direct.ID, Message: "ssh: handshake failed: EOF"})
+	tt.Frame()
+	has(t, tt, "服务器不支持此认证方式")
+}

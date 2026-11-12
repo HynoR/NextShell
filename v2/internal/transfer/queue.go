@@ -25,6 +25,7 @@ func SetTotal(ctx context.Context, n int64) {
 		set(n)
 	}
 }
+
 type item struct {
 	job    Job
 	work   Work

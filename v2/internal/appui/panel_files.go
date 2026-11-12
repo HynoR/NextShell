@@ -1,20 +1,28 @@
 package appui
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/transfer"
 )
 
 type filesState struct {
 	session, path, pathInput string
 	requested, followed      string
+	editingPath              bool
+	crumb                    int
+	sort, sorted             ui.SortOrder
 	paths                    map[string]string // last directory per session
 	entries                  []sftpfs.Entry
 	selection                ui.Selection[string]
@@ -33,11 +41,11 @@ type remoteClipboard struct {
 
 // fileDialog asks what a file operation needs: a name, a local path or a target.
 type fileDialog struct {
-	open              bool
-	kind              string // upload, download, cross, mkdir, create, rename
-	entry             sftpfs.Entry
-	text, target      string
-	overwrite, packed bool
+	open         bool
+	kind         string // upload, download, cross, mkdir, create, rename
+	entry        sftpfs.Entry
+	text, target string
+	overwrite    bool
 }
 
 func (s *filesState) init() {
@@ -56,6 +64,64 @@ func (s *filesState) handle(a *App, e Event) {
 	s.session, s.path, s.pathInput = e.Files.Session, e.Files.Path, e.Files.Path
 	s.paths[s.session] = s.path
 	s.entries = e.Files.Entries
+	s.sortEntries()
+}
+
+// sortEntries keeps folders first, then orders by the chosen column with
+// names in natural order (file2 before file10); the server's order is arbitrary.
+func (s *filesState) sortEntries() {
+	s.sorted = s.sort
+	slices.SortStableFunc(s.entries, func(x, y sftpfs.Entry) int {
+		if x.Directory != y.Directory {
+			if x.Directory {
+				return -1
+			}
+			return 1
+		}
+		r := 0
+		switch s.sort.Column {
+		case "size":
+			r = cmp.Compare(x.Size, y.Size)
+		case "modified":
+			r = x.Modified.Compare(y.Modified)
+		}
+		if r == 0 {
+			r = naturalCompare(x.Name, y.Name)
+		}
+		if s.sort.Descending {
+			r = -r
+		}
+		return r
+	})
+}
+
+// naturalCompare compares case-insensitively, digit runs by their value.
+func naturalCompare(a, b string) int {
+	for a != "" && b != "" {
+		da, db := digits(a), digits(b)
+		if da > 0 && db > 0 {
+			na, nb := strings.TrimLeft(a[:da], "0"), strings.TrimLeft(b[:db], "0")
+			if r := cmp.Or(cmp.Compare(len(na), len(nb)), strings.Compare(na, nb)); r != 0 {
+				return r
+			}
+			a, b = a[da:], b[db:]
+			continue
+		}
+		ra, sa := utf8.DecodeRuneInString(a)
+		rb, sb := utf8.DecodeRuneInString(b)
+		if r := cmp.Compare(unicode.ToLower(ra), unicode.ToLower(rb)); r != 0 {
+			return r
+		}
+		a, b = a[sa:], b[sb:]
+	}
+	return cmp.Compare(len(a), len(b))
+}
+func digits(s string) int {
+	n := 0
+	for n < len(s) && s[n] >= '0' && s[n] <= '9' {
+		n++
+	}
+	return n
 }
 func (a *App) listFiles(id, dir string) {
 	a.files.requested = id
@@ -84,10 +150,7 @@ func (a *App) filesPanel(c *ui.Context) {
 		if iconButton(c, "上级目录", "up").Clicked() && s.session == id {
 			a.listFiles(id, path.Dir(s.path))
 		}
-		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Grow(1).MinWidth(0).Height(26).FontSize(12)
-		if in.Submitted() {
-			a.listFiles(id, strings.TrimSpace(s.pathInput))
-		}
+		a.pathBar(c, id)
 		if iconButton(c, "刷新", "refresh").Clicked() {
 			a.listFiles(id, orDefault(s.path, "."))
 		}
@@ -99,8 +162,8 @@ func (a *App) filesPanel(c *ui.Context) {
 	}
 	zone := ui.Column(c).Grow(1).FillWidth().MinHeight(0)
 	zone.ContextMenu(func(m *ui.Menu) { a.filesMenuItems(m, id) })
-	for _, local := range zone.DroppedFiles() {
-		a.queue(TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(s.path, filepath.Base(local))})
+	if dropped := zone.DroppedFiles(); dropped != nil {
+		a.upload(id, dropped)
 	}
 	if zone.FileDragOver() {
 		zone.Border(2, t.Accent)
@@ -110,6 +173,10 @@ func (a *App) filesPanel(c *ui.Context) {
 			emptyState(c, "空目录", "把本地文件拖到这里即可上传。")
 			return
 		}
+		if s.sort != s.sorted {
+			s.sortEntries()
+		}
+		s.list.Sort = &s.sort
 		s.list.Selected = &s.row
 		s.list.Selection = &s.selection
 		s.list.Key = func(i int) any { return s.entries[i].Path }
@@ -119,7 +186,7 @@ func (a *App) filesPanel(c *ui.Context) {
 				a.fileMenuItems(m, id, s.entries[row])
 			}
 		}
-		cols := []ui.TableColumn{{Title: "名称"}, {Title: "大小", Width: 64, Align: ui.End}, {Title: "修改时间", Width: 84}}
+		cols := []ui.TableColumn{{Title: "名称", ID: "name", Sortable: true}, {Title: "大小", ID: "size", Width: 64, Align: ui.End, Sortable: true}, {Title: "修改时间", ID: "modified", Width: 84, Sortable: true}}
 		table := ui.Table(c.Key("files-"+id), &s.list, cols, len(s.entries), func(row, col int) {
 			f := s.entries[row]
 			switch col {
@@ -172,6 +239,88 @@ func (a *App) filesPanel(c *ui.Context) {
 	})
 }
 
+// pathBar shows the directory as breadcrumbs; a click jumps to a parent,
+// and a double click (or the last segment) edits the path as text.
+func (a *App) pathBar(c *ui.Context, id string) {
+	s := &a.files
+	if s.editingPath {
+		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Grow(1).MinWidth(0).Height(26).FontSize(12).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+			if k.Key == ui.KeyEscape {
+				s.editingPath = false
+				return true
+			}
+			return false
+		})
+		if in.Submitted() {
+			s.editingPath = false
+			a.listFiles(id, strings.TrimSpace(s.pathInput))
+		}
+		if in.FocusLeft() {
+			s.editingPath = false
+		}
+		return
+	}
+	parts := crumbs(s.path)
+	s.crumb = len(parts) - 1
+	box := ui.Row(c).Grow(1).MinWidth(0).Height(26).AlignItems(ui.Center).Label("远程目录 " + s.path)
+	box.Children(func() {
+		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").Grow(1).MinWidth(0).Changed() {
+			a.listFiles(id, crumbPath(parts, s.crumb))
+		}
+		if iconButton(c, "编辑路径", "edit").Clicked() {
+			s.editingPath, s.pathInput = true, s.path
+		}
+	})
+	if box.DoubleClicked() {
+		s.editingPath, s.pathInput = true, s.path
+	}
+}
+func crumbs(dir string) []string {
+	if dir == "" {
+		return []string{"/"}
+	}
+	out := []string{"/"}
+	for _, p := range strings.Split(strings.Trim(dir, "/"), "/") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+func crumbPath(parts []string, i int) string { return "/" + strings.Join(parts[1:i+1], "/") }
+
+// pick asks the host for a native panel; without one (tests, browsers) it says so.
+func (a *App) pick(o FilePick, done func([]string)) {
+	if a.PickFiles == nil {
+		a.toast("此环境不支持系统文件选择框")
+		return
+	}
+	a.PickFiles(o, func(paths []string) {
+		if len(paths) > 0 {
+			done(paths)
+		}
+	})
+}
+func (a *App) upload(id string, locals []string) {
+	for _, local := range locals {
+		a.queue(TransferRequest{Session: id, Kind: "upload", Local: local, Remote: path.Join(a.files.path, filepath.Base(local))})
+	}
+}
+
+// downloadTo asks where to put files: a save panel for one file, a folder otherwise.
+func (a *App) downloadTo(id string, files []sftpfs.Entry) {
+	if len(files) == 1 && !files[0].Directory {
+		f := files[0]
+		a.pick(FilePick{Title: "下载到", DefaultPath: filepath.Join(a.Prefs.DownloadDir, f.Name), Save: true}, func(p []string) { a.download(id, f, p[0], true) })
+		return
+	}
+	a.pick(FilePick{Title: "下载到文件夹", DefaultPath: a.Prefs.DownloadDir, Directory: true}, func(p []string) {
+		for _, f := range files {
+			a.download(id, f, filepath.Join(p[0], f.Name), false)
+		}
+	})
+}
+
 func emptyState(c *ui.Context, title, sub string) {
 	ui.Column(c).Fill().Padding(24).Gap(6).Center().Children(func() {
 		ui.Text(c, title).Bold()
@@ -209,7 +358,12 @@ func shortTime(at time.Time) string {
 func (a *App) filesMenuItems(m *ui.Menu, id string) {
 	s := &a.files
 	if m.Item("上传文件…").Chosen() {
-		a.later(func() { a.openFileDialog("upload", sftpfs.Entry{}) })
+		a.later(func() { a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) }) })
+	}
+	if m.Item("上传文件夹…").Chosen() {
+		a.later(func() {
+			a.pick(FilePick{Title: "上传文件夹", Directory: true}, func(p []string) { a.upload(id, p) })
+		})
 	}
 	if m.Item("新建文件夹…").Chosen() {
 		a.later(func() { a.openFileDialog("mkdir", sftpfs.Entry{}) })
@@ -269,11 +423,20 @@ func (a *App) fileMenuItems(m *ui.Menu, id string, f sftpfs.Entry) {
 		}
 	}
 	if !f.Symlink {
-		if m.Item("下载到默认目录").Chosen() {
-			a.later(func() { a.download(id, f, filepath.Join(a.Prefs.DownloadDir, f.Name), false) })
+		targets := a.selectedFiles(&f)
+		label := ""
+		if len(targets) > 1 {
+			label = fmt.Sprintf("（%d 项）", len(targets))
 		}
-		if m.Item("下载到…").Chosen() {
-			a.later(func() { a.openFileDialog("download", f) })
+		if m.Item("下载到默认目录" + label).Chosen() {
+			a.later(func() {
+				for _, v := range targets {
+					a.download(id, v, filepath.Join(a.Prefs.DownloadDir, v.Name), false)
+				}
+			})
+		}
+		if m.Item("下载到…" + label).Chosen() {
+			a.later(func() { a.downloadTo(id, targets) })
 		}
 	}
 	m.Separator()
@@ -321,11 +484,7 @@ func (a *App) download(id string, f sftpfs.Entry, local string, overwrite bool) 
 		a.fail(err)
 		return
 	}
-	kind := "download"
-	if f.Directory {
-		kind = "download-packed"
-	}
-	a.queue(TransferRequest{Session: id, Kind: kind, Remote: f.Path, Local: local, Overwrite: overwrite})
+	a.queue(TransferRequest{Session: id, Kind: "download", Remote: f.Path, Local: local, Overwrite: overwrite})
 }
 func (a *App) queue(req TransferRequest) {
 	_, e := a.P.QueueTransfer(req)
@@ -335,8 +494,6 @@ func (a *App) queue(req TransferRequest) {
 func (a *App) openFileDialog(kind string, f sftpfs.Entry) {
 	d := fileDialog{open: true, kind: kind, entry: f}
 	switch kind {
-	case "download":
-		d.text = filepath.Join(a.Prefs.DownloadDir, f.Name)
 	case "rename":
 		d.text = f.Name
 	case "cross":
@@ -351,7 +508,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 		return
 	}
 	id := sess.ID
-	titles := map[string]string{"upload": "上传文件", "download": "下载到…", "cross": "发送到其他服务器", "mkdir": "新建文件夹", "create": "新建文件", "rename": "重命名文件"}
+	titles := map[string]string{"cross": "发送到其他服务器", "mkdir": "新建文件夹", "create": "新建文件", "rename": "重命名文件"}
 	dialog(c, &d.open, func() {
 		ui.Column(c).Width(460).Gap(16).Children(func() {
 			ui.Text(c, titles[d.kind]).FontSize(17).Bold()
@@ -361,17 +518,6 @@ func (a *App) fileDialogView(c *ui.Context) {
 			var ok string
 			ui.Form(c, func() {
 				switch d.kind {
-				case "upload":
-					ui.Field(c, "本地路径", func() {
-						ui.TextInput(c, &d.text).Label("本地路径").Placeholder("/Users/me/file.txt").AutoFocus().Grow(1)
-					}).Description("也可以直接把文件拖到文件列表上").FillWidth()
-					toggle(c, "作为文件夹打包上传", &d.packed)
-					toggle(c, "覆盖同名文件", &d.overwrite)
-					ok = "上传到 " + a.files.path
-				case "download":
-					ui.Field(c, "保存到", func() { ui.TextInput(c, &d.text).Label("本地路径").AutoFocus().Grow(1) }).FillWidth()
-					toggle(c, "覆盖同名文件", &d.overwrite)
-					ok = "下载"
 				case "cross":
 					var ids, names []string
 					for _, t := range a.Tabs {
@@ -405,14 +551,6 @@ func (a *App) runFileDialog(id string) {
 	dir := a.files.path
 	text := strings.TrimSpace(d.text)
 	switch d.kind {
-	case "upload":
-		kind := "upload"
-		if d.packed {
-			kind = "upload-packed"
-		}
-		a.queue(TransferRequest{Session: id, Kind: kind, Local: text, Remote: path.Join(dir, filepath.Base(text)), Overwrite: d.overwrite && !d.packed})
-	case "download":
-		a.download(id, d.entry, text, d.overwrite)
 	case "cross":
 		a.queue(TransferRequest{Session: id, TargetSession: text, Kind: "cross", Remote: d.entry.Path, Destination: d.target, Overwrite: d.overwrite})
 	case "mkdir", "create":
@@ -559,9 +697,12 @@ func (a *App) transferList(c *ui.Context) {
 							}
 						})
 						if j.State == "running" {
-							ui.Progress(c, -1).FillWidth()
+							ui.Progress(c, transferFraction(j)).FillWidth()
 						}
 						detail := states[j.State] + " · " + humanSize(j.Bytes)
+						if j.Total > 0 {
+							detail = fmt.Sprintf("%s · %d%% · %s / %s", states[j.State], int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
+						}
 						if elapsed := j.Finished.Sub(j.Started); !j.Started.IsZero() && !j.Finished.IsZero() && elapsed > 0 {
 							detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
 						} else if !j.Started.IsZero() && j.Finished.IsZero() {
@@ -574,7 +715,13 @@ func (a *App) transferList(c *ui.Context) {
 						}
 						muted(c, detail)
 						if j.Error != "" {
-							ui.Text(c, j.Error).FontSize(12).TextColor(t.Danger)
+							ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+								title, _ := humanize(j.Error)
+								ui.Text(c, title).FontSize(12).TextColor(t.Danger).SingleLine().Grow(1).MinWidth(0)
+								if ghost(c, "详情", "").Clicked() {
+									a.dialogs.detail = j.Error
+								}
+							})
 						}
 					})
 				}
@@ -584,4 +731,12 @@ func (a *App) transferList(c *ui.Context) {
 			a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
 		}
 	})
+}
+
+// transferFraction is the share done, or -1 (indeterminate) when the size is unknown.
+func transferFraction(j transfer.Job) float64 {
+	if j.Total <= 0 {
+		return -1
+	}
+	return min(1, float64(j.Bytes)/float64(j.Total))
 }

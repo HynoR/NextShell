@@ -1,6 +1,8 @@
 package appui_test
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +20,10 @@ func listing(p *fakePlatform, tt *ui.Tester, id, dir string, entries ...sftpfs.E
 }
 
 func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
-	_, p, tt := fixture(t)
+	a, p, tt := fixture(t)
+	var picks []appui.FilePick
+	var answer []string
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { picks = append(picks, o); done(answer) }
 	session(t, p, tt, "one", "one", remoteHost("one"))
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
 	if len(p.listed) != 1 || p.listed[0] != "one:." {
@@ -86,11 +91,29 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 		t.Fatal("mkdir", p.actions)
 	}
 	click(t, tt, "更多")
+	answer = []string{"/tmp/report.pdf", "/tmp/b.txt"}
 	click(t, tt, "上传文件…")
-	tt.Type("/tmp/report.pdf")
-	click(t, tt, "上传到 /dest")
-	if last := p.queued[len(p.queued)-1]; last.Kind != "upload" || last.Remote != "/dest/report.pdf" {
-		t.Fatal("upload", last)
+	if last := p.queued[len(p.queued)-1]; len(picks) != 1 || !picks[0].Multiple || last.Kind != "upload" || last.Local != "/tmp/b.txt" || p.queued[len(p.queued)-2].Remote != "/dest/report.pdf" {
+		t.Fatal("upload", picks, last)
+	}
+	click(t, tt, "更多")
+	answer = []string{"/Users/me/site"}
+	click(t, tt, "上传文件夹…")
+	if last := p.queued[len(p.queued)-1]; !picks[1].Directory || last.Kind != "upload" || last.Remote != "/dest/site" {
+		t.Fatal("folder upload", picks, last)
+	}
+	answer = []string{"/Users/me/saved.log"}
+	tt.RightClick("old.log")
+	tt.ChooseMenuItem("下载到…")
+	if last := p.queued[len(p.queued)-1]; !picks[2].Save || last.Local != "/Users/me/saved.log" || !last.Overwrite {
+		t.Fatal("download to", picks, last)
+	}
+	n := len(p.queued)
+	answer = nil // cancelled
+	tt.RightClick("old.log")
+	tt.ChooseMenuItem("下载到…")
+	if len(p.queued) != n {
+		t.Fatal("cancelled pick queued", p.queued[n:])
 	}
 	r, _ := tt.Find("old.log")
 	if !tt.DropFiles(r.X+20, r.Y+r.H/2, "/tmp/dropped.bin") {
@@ -99,6 +122,20 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	tt.Frame()
 	if last := p.queued[len(p.queued)-1]; last.Kind != "upload" || last.Local != "/tmp/dropped.bin" || last.Remote != "/dest/dropped.bin" {
 		t.Fatal("drop upload", last)
+	}
+	// Breadcrumbs jump to a parent; the path stays editable.
+	listing(p, tt, "two", "/var/log/nginx")
+	has(t, tt, "var", "log", "nginx")
+	click(t, tt, "log")
+	if p.listed[len(p.listed)-1] != "two:/var/log" {
+		t.Fatal("crumb", p.listed)
+	}
+	click(t, tt, "编辑路径")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("/opt")
+	tt.Key(0, ui.KeyEnter)
+	if p.listed[len(p.listed)-1] != "two:/opt" {
+		t.Fatal("typed path", p.listed)
 	}
 	// A local tab has no file panel.
 	session(t, p, tt, "local", "local", model.Connection{})
@@ -230,5 +267,39 @@ func TestSendCommandDialogAndHistory(t *testing.T) {
 	click(t, tt, "发送到 1 个会话")
 	if len(p.sent) != 2 {
 		t.Fatal("broadcast", p.sent)
+	}
+}
+
+func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	listing(p, tt, "one", "/d",
+		sftpfs.Entry{Name: "file10", Path: "/d/file10", Size: 1},
+		sftpfs.Entry{Name: "zeta", Path: "/d/zeta", Directory: true},
+		sftpfs.Entry{Name: "File2", Path: "/d/File2", Size: 9},
+		sftpfs.Entry{Name: "alpha", Path: "/d/alpha", Directory: true})
+	order := func() string {
+		var out []string
+		for _, n := range []string{"alpha", "zeta", "File2", "file10"} {
+			r, ok := tt.Find(n)
+			if !ok {
+				t.Fatal("missing", n)
+			}
+			out = append(out, fmt.Sprintf("%s@%04.0f", n, r.Y))
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i][strings.Index(out[i], "@"):] < out[j][strings.Index(out[j], "@"):] })
+		for i := range out {
+			out[i] = out[i][:strings.Index(out[i], "@")]
+		}
+		return strings.Join(out, " ")
+	}
+	if got := order(); got != "alpha zeta File2 file10" {
+		t.Fatal("default order", got)
+	}
+	click(t, tt, "大小")
+	click(t, tt, "大小") // descending
+	if got := order(); got != "zeta alpha File2 file10" {
+		t.Fatal("size descending", got)
 	}
 }

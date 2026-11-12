@@ -8,6 +8,8 @@ import (
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -59,6 +61,25 @@ func main() {
 		}
 		settings = mygo.NewWindow(mygo.WindowOptions{Title: "设置", Width: 880, Height: 640, MinWidth: 680, MinHeight: 440, StateKey: "settings", Content: ui.View(a.SettingsView)})
 		settings.OnClosed(func() { settings = nil })
+	}
+	a.PickFiles = func(o appui.FilePick, done func([]string)) {
+		if rest, ok := strings.CutPrefix(o.DefaultPath, "~/"); ok {
+			if home, e := os.UserHomeDir(); e == nil {
+				o.DefaultPath = filepath.Join(home, rest)
+			}
+		}
+		parent := mygo.FocusedWindow()
+		go func() {
+			var paths []string
+			if o.Save {
+				if path, e := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: parent, Title: o.Title, DefaultPath: o.DefaultPath, CreateDirectories: true, ShowHiddenFiles: o.Hidden}); e == nil && path != "" {
+					paths = []string{path}
+				}
+			} else {
+				paths, _ = mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: parent, Title: o.Title, DefaultPath: o.DefaultPath, Directory: o.Directory, Multiple: o.Multiple, CreateDirectories: o.Directory, ShowHiddenFiles: o.Hidden})
+			}
+			mygo.RunOnMain(func() { done(paths); p.Invalidate() })
+		}()
 	}
 	mygo.App.WhenReady(func() {
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})

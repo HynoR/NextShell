@@ -26,6 +26,9 @@ type App struct {
 	ConfirmExit, ExitConfirmed bool
 	// ShowSettings opens the settings window. The host sets it; SettingsView builds it.
 	ShowSettings func()
+	// PickFiles shows a native open/save panel and calls done on the UI
+	// thread with the chosen paths (none when cancelled). Nil means no panels.
+	PickFiles func(o FilePick, done func([]string))
 
 	layout   layoutState
 	tabs     tabsState
@@ -98,9 +101,13 @@ func (a *App) fail(e error) {
 	if e == nil {
 		return
 	}
-	msg := e.Error()
+	title, _ := humanize(e.Error())
+	a.failAs(title, e.Error())
+}
+
+// failAs shows title with the original message msg in its details.
+func (a *App) failAs(title, msg string) {
 	a.log(msg)
-	title, _ := humanize(msg)
 	if r := []rune(title); len(r) > 60 {
 		title = string(r[:60]) + "…"
 	}
@@ -113,6 +120,9 @@ func humanize(msg string) (string, bool) {
 	m := strings.ToLower(msg)
 	for _, v := range []struct{ match, text string }{
 		{"unable to authenticate", "认证失败：用户名、密码或密钥不正确"},
+		{"handshake failed: eof", "服务器不支持此认证方式"},
+		{"unexpected message type 51", "服务器不支持此认证方式"},
+		{"exited without exit status or exit signal", "连接已断开"},
 		{"connection refused", "连接被拒绝：服务器没有在这个端口提供 SSH 服务"},
 		{"no route to host", "无法访问主机"},
 		{"network is unreachable", "网络不可达"},
@@ -270,7 +280,9 @@ func (a *App) poll() bool {
 		}
 		if e.Message != "" {
 			a.reload()
-			if _, known := humanize(e.Message); e.Failed != "" || known {
+			if e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof") {
+				a.failAs("代理连接被关闭", e.Message)
+			} else if _, known := humanize(e.Message); e.Failed != "" || known {
 				a.fail(fmt.Errorf("%s", e.Message))
 			} else {
 				a.toast(e.Message)
@@ -636,6 +648,33 @@ func muted(c *ui.Context, s string) ui.Element {
 func field(c *ui.Context, label string, value *string) ui.Element {
 	return ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Grow(1) }).FillWidth()
 }
+
+// localPath shows a local path chosen with a native panel; nothing is typed.
+// Optional paths can be cleared back to the default.
+func (a *App) localPath(c *ui.Context, label, empty string, value *string, o FilePick) ui.Element {
+	t := c.Theme()
+	return ui.Field(c, label, func() {
+		ui.Row(c).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Children(func() {
+			shown, color := *value, t.Text
+			if shown == "" {
+				shown, color = empty, t.TextMuted
+			}
+			ui.Text(c, shown).Label(label + " " + *value).SingleLine().Grow(1).MinWidth(0).TextColor(color).Tooltip(*value)
+			if *value != "" && empty != "" && ghost(c, "清除", "").Label("清除"+label).Clicked() {
+				*value = ""
+			}
+			if ui.Button(c, "选择…").Label("选择" + label).Clicked() {
+				if o.Title == "" {
+					o.Title = label
+				}
+				if *value != "" {
+					o.DefaultPath = *value
+				}
+				a.pick(o, func(p []string) { *value = p[0] })
+			}
+		})
+	}).FillWidth()
+}
 func password(c *ui.Context, label string, value *string) ui.Element {
 	return ui.Field(c, label, func() { ui.TextInput(c, value).Label(label).Password().Grow(1) }).FillWidth()
 }
@@ -703,4 +742,11 @@ func (a *App) folderPath(id string) string {
 		}
 	}
 	return strings.Join(parts, " / ")
+}
+
+// FilePick describes a native file panel.
+type FilePick struct {
+	Title                             string
+	DefaultPath                       string // "~/" means the home directory
+	Save, Directory, Multiple, Hidden bool
 }

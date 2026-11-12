@@ -759,3 +759,7 @@ func (a *App) applyBatch(targets []model.Connection) {
 	a.reload()
 	a.toast(fmt.Sprintf("已更新 %d 个主机", len(targets)))
 }
+func (a *App) viaProxy(id string) bool {
+	h, ok := a.host(id)
+	return ok && h.ProxyID != ""
+}

@@ -236,9 +236,9 @@ func (a *App) generalSettings(c *ui.Context) {
 		}).FillWidth()
 	})
 	group(c, "文件", func() {
-		field(c, "默认下载目录", &v.DownloadDir)
+		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
 		field(c, "默认上传目录", &v.UploadDir).Description("远程服务器上的目录，文件面板的「前往默认上传目录」使用")
-		field(c, "外部编辑器", &v.EditorCommand).Description("可执行文件路径，如 /usr/local/bin/code；编辑结束后自动上传")
+		a.localPath(c, "外部编辑器", "系统默认程序", &v.EditorCommand, FilePick{DefaultPath: "/Applications"}).Description("保存后自动上传")
 	})
 }
 
@@ -304,7 +304,7 @@ func (a *App) sshSettings(c *ui.Context) {
 		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
 	})
 	group(c, "本地终端", func() {
-		field(c, "本地 Shell", &v.LocalShell).Description("可执行文件路径，留空使用系统默认")
+		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: "/bin", Hidden: true})
 	})
 	if s.err != "" {
 		ui.Text(c, s.err).TextColor(c.Theme().Danger)
