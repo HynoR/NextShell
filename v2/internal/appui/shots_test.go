@@ -110,6 +110,8 @@ func TestScreenshots(t *testing.T) {
 	web, db := demo(t, p)
 	a, tt := start(p)
 	shot(tt, "01-welcome")
+	_, _, empty := fixture(t) // a profile with no hosts: the first run
+	shot(empty, "01b-welcome-first-run")
 
 	one := session(t, p, tt, "s1", "prod-web-01", web)
 	session(t, p, tt, "s2", "db-master", db)
@@ -251,6 +253,7 @@ func TestScreenshots(t *testing.T) {
 	click(t, kst, "SSH")
 	shot(kst, "22-settings-ssh-host-keys")
 
+	a.Version, a.ProfilePath = "2.0.0-rc1", "/Users/me/Library/Application Support/NextShell-v2/nextshell.db"
 	st := ui.NewTester(a.SettingsView, 880, 640)
 	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
 		click(t, st, section)
