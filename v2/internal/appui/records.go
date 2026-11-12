@@ -230,6 +230,7 @@ func (a *App) keyDialog(c *ui.Context) {
 	if !d.open {
 		return
 	}
+	enter := false // Enter in a field, or ⌘S, saves
 	dialog(c, &d.open, func() {
 		ui.Column(c).Width(500).Gap(14).Children(func() {
 			title := "新建密钥"
@@ -250,7 +251,7 @@ func (a *App) keyDialog(c *ui.Context) {
 			}
 			ui.Form(c, func() {
 				if d.replace == "" {
-					field(c, "名称", &d.name)
+					field(c, "名称", &d.name, &enter)
 				}
 				if !d.importing {
 					choice(c, "算法", &d.algorithm, []string{"ed25519", "rsa-2048", "rsa-4096"})
@@ -258,7 +259,7 @@ func (a *App) keyDialog(c *ui.Context) {
 				}
 				a.localPath(c, "私钥文件", "未选择", &d.path, FilePick{DefaultPath: "~/.ssh", Hidden: true})
 				ui.Field(c, "或粘贴私钥", func() { ui.TextArea(c, &d.pem).Label("粘贴私钥").Font("monospace").Height(90).Grow(1) }).FillWidth()
-				password(c, "口令", &d.passphrase).Description("私钥没有口令时留空")
+				password(c, "口令", &d.passphrase, &enter).Description("私钥没有口令时留空")
 			}).FillWidth().Gap(FormGap)
 			if d.err != "" {
 				ui.Text(c, d.err).TextColor(c.Theme().Danger)
@@ -274,7 +275,7 @@ func (a *App) keyDialog(c *ui.Context) {
 				if d.replace != "" {
 					label = "替换私钥"
 				}
-				if ui.PrimaryButton(c, label).Clicked() {
+				if ui.PrimaryButton(c, label).Clicked() || enter || c.Shortcut(ui.Cmd, ui.KeyS) {
 					a.saveKeyDialog()
 				}
 			})
@@ -399,6 +400,7 @@ func (a *App) proxyDialog(c *ui.Context) {
 	if !s.open {
 		return
 	}
+	enter := false // Enter in a field, or ⌘S, saves
 	dialog(c, &s.open, func() {
 		ui.Column(c).Width(440).Gap(14).Children(func() {
 			title := "新建代理"
@@ -407,11 +409,11 @@ func (a *App) proxyDialog(c *ui.Context) {
 			}
 			ui.Text(c, title).FontSize(17).Bold()
 			ui.Form(c, func() {
-				field(c, "名称", &s.proxy.Name)
+				field(c, "名称", &s.proxy.Name, &enter)
 				choice(c, "类型", &s.proxy.Kind, []string{"socks5", "socks4"})
-				field(c, "主机", &s.proxy.Host)
-				field(c, "端口", &s.port)
-				field(c, "用户名", &s.proxy.User)
+				field(c, "主机", &s.proxy.Host, &enter)
+				field(c, "端口", &s.port, &enter)
+				field(c, "用户名", &s.proxy.User, &enter)
 				if s.proxy.ID != "" && !s.replaceSecret {
 					ui.Field(c, "密码", func() {
 						if ui.Button(c, "修改已保存的密码").Clicked() {
@@ -419,7 +421,7 @@ func (a *App) proxyDialog(c *ui.Context) {
 						}
 					}).FillWidth()
 				} else {
-					password(c, "密码", &s.password)
+					password(c, "密码", &s.password, &enter)
 				}
 			}).FillWidth().Gap(FormGap)
 			if s.err != "" {
@@ -429,7 +431,7 @@ func (a *App) proxyDialog(c *ui.Context) {
 				if ui.Button(c, "取消").Clicked() {
 					s.open = false
 				}
-				if ui.PrimaryButton(c, "保存代理").Clicked() {
+				if ui.PrimaryButton(c, "保存代理").Clicked() || enter || c.Shortcut(ui.Cmd, ui.KeyS) {
 					a.saveProxy()
 				}
 			})
@@ -534,6 +536,7 @@ func (a *App) credentialDialog(c *ui.Context) {
 	if !s.open {
 		return
 	}
+	enter := false // Enter in a field, or ⌘S, saves
 	dialog(c, &s.open, func() {
 		ui.Column(c).Width(500).Gap(14).Children(func() {
 			title := "新建凭据"
@@ -542,8 +545,8 @@ func (a *App) credentialDialog(c *ui.Context) {
 			}
 			ui.Text(c, title).FontSize(17).Bold()
 			ui.Form(c, func() {
-				field(c, "名称", &s.cred.Name)
-				field(c, "用户名", &s.cred.User)
+				field(c, "名称", &s.cred.Name, &enter)
+				field(c, "用户名", &s.cred.User, &enter)
 				authKind(c, &s.cred.Auth)
 				switch s.cred.Auth {
 				case "password":
@@ -554,7 +557,7 @@ func (a *App) credentialDialog(c *ui.Context) {
 							}
 						}).FillWidth()
 					} else {
-						password(c, "密码", &s.password).Description("留空则在连接时询问")
+						password(c, "密码", &s.password, &enter).Description("留空则在连接时询问")
 					}
 				case "key":
 					a.keyPick(c, &s.cred.KeyID)
@@ -567,7 +570,7 @@ func (a *App) credentialDialog(c *ui.Context) {
 				if ui.Button(c, "取消").Clicked() {
 					s.open = false
 				}
-				if ui.PrimaryButton(c, "保存凭据").Clicked() {
+				if ui.PrimaryButton(c, "保存凭据").Clicked() || enter || c.Shortcut(ui.Cmd, ui.KeyS) {
 					a.saveCredential()
 				}
 			})
@@ -709,7 +712,7 @@ func (a *App) exportDialog(c *ui.Context) {
 				label = fmt.Sprintf("导出 %d 个主机", len(s.exportIDs))
 			}
 			ui.Text(c, label).FontSize(17).Bold()
-			muted(c, "私钥永远不会导出；使用凭据的主机会带上凭据。在主机磁贴上按住 ⌘ 多选，可以只导出所选。")
+			muted(c, "私钥永远不会导出；使用凭据的主机会带上凭据。在主机磁贴上按住 "+modifierName()+" 多选，可以只导出所选。")
 			ui.Form(c, func() {
 				a.localPath(c, "保存到", "未选择", &s.exportPath, FilePick{Save: true, DefaultPath: "~/nextshell-hosts.json"}).Description("不会覆盖已有文件")
 				toggle(c, "加密并包含密码", &s.encrypt)

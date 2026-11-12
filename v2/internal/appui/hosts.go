@@ -3,6 +3,7 @@ package appui
 import (
 	"fmt"
 	"hash/fnv"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -48,7 +49,20 @@ type hostEditor struct {
 	keepalive                  string
 	keepaliveMode              string
 	replaceSecret, inheritOrig bool
-	more                       [4]bool // the open sections: 安全, 网络, 终端, 标签与备注
+	more                       [4]bool     // the open sections: 安全, 网络, 终端, 标签与备注
+	enter                      bool        // Enter was pressed in a field this frame
+	orig                       *hostEditor // the form as it first showed, to tell whether it changed
+}
+
+// form is what the user can change in the editor, without its own bookkeeping.
+func (e hostEditor) form() hostEditor {
+	e.open, e.err, e.more, e.enter, e.orig = false, "", [4]bool{}, false, nil
+	return e
+}
+
+// dirty reports whether the open form holds edits that are not saved.
+func (e *hostEditor) dirty() bool {
+	return e.open && e.orig != nil && !reflect.DeepEqual(e.form(), *e.orig)
 }
 
 const (
@@ -372,6 +386,7 @@ func (a *App) moveHost(cc model.Connection, folder string) {
 	a.reload()
 }
 func (a *App) trashHosts(cs []model.Connection) {
+	var done []model.Connection
 	for _, v := range cs {
 		v.Deleted = true
 		if e := a.P.SaveConnection(v, nil); e != nil {
@@ -379,18 +394,26 @@ func (a *App) trashHosts(cs []model.Connection) {
 			break
 		}
 		a.hosts.picked.Remove(v.ID)
+		done = append(done, v)
 	}
 	a.reload()
-	if len(cs) == 1 {
-		restore := cs[0]
-		a.addToast(ui.Toast{Title: "已移入回收站：" + restore.Name, Action: "撤销", OnAction: func() {
-			restore.Deleted = false
-			a.report(a.P.SaveConnection(restore, nil), "")
-			a.reload()
-		}})
-	} else {
-		a.toast(fmt.Sprintf("已将 %d 个主机移入回收站", len(cs)))
+	if len(done) == 0 {
+		return
 	}
+	title := "已移入回收站：" + done[0].Name
+	if len(done) > 1 {
+		title = fmt.Sprintf("已将 %d 个主机移入回收站", len(done))
+	}
+	a.addToast(ui.Toast{Title: title, Action: "撤销", OnAction: func() {
+		for _, v := range done {
+			v.Deleted = false
+			if e := a.P.SaveConnection(v, nil); e != nil {
+				a.fail(e)
+				break
+			}
+		}
+		a.reload()
+	}})
 }
 
 func (a *App) folderMenu(e ui.Element, f model.Folder) {
@@ -437,11 +460,9 @@ func hostIDs(cs []model.Connection) []string {
 
 // Host editor.
 
-// newHost and editHost open the form in the connection manager. A new host starts with the
-// authentication the last saved one used.
+// newHost and editHost open the form in the connection manager, after asking about the edits of the
+// form that is open. A new host starts with the authentication the last saved one used.
 func (a *App) newHost(folder string) {
-	a.openManager()
-	a.hosts.page = managerHosts
 	c := model.Connection{Auth: "password", Encoding: "utf-8", Port: 22, FolderID: folder, Monitor: true}
 	if a.P != nil {
 		last := strings.Split(a.P.UIState("lastAuth"), "\n")
@@ -458,12 +479,9 @@ func (a *App) newHost(folder string) {
 			}
 		}
 	}
-	a.hosts.editor = hostEditor{open: true, edit: c, port: "22", keepaliveMode: keepaliveGlobal, keepalive: strconv.Itoa(model.DefaultKeepaliveSeconds), inheritOrig: true}
+	a.showHostForm(hostEditor{open: true, edit: c, port: "22", keepaliveMode: keepaliveGlobal, keepalive: strconv.Itoa(model.DefaultKeepaliveSeconds), inheritOrig: true}, "")
 }
 func (a *App) editHost(c model.Connection) {
-	a.openManager()
-	a.hosts.page = managerHosts
-	a.hosts.selected = c.ID
 	e := hostEditor{open: true, edit: c, port: strconv.Itoa(c.Port), tags: strings.Join(c.Tags, ", "), keepalive: strconv.Itoa(c.EffectiveKeepalive())}
 	switch {
 	case c.KeepaliveEnabled == nil && c.Keepalive == 0:
@@ -475,7 +493,63 @@ func (a *App) editHost(c model.Connection) {
 	default:
 		e.keepaliveMode = keepaliveCustom
 	}
-	a.hosts.editor = e
+	a.showHostForm(e, c.ID)
+}
+
+// showHostForm shows e in the manager's host column, selecting host if there is one; with unsaved edits in
+// the form that is open, it first asks whether to drop them.
+func (a *App) showHostForm(e hostEditor, host string) {
+	a.openManager()
+	a.hosts.page = managerHosts
+	a.confirmDiscard(func() {
+		h := &a.hosts
+		if host != "" { // the tile of the host being edited is the chosen one, so choosing another is a change
+			h.selected = host
+			h.picked.Clear()
+			if h.chosen = slices.IndexFunc(a.shownHosts(), func(cc model.Connection) bool { return cc.ID == host }); h.chosen >= 0 {
+				h.picked.Add(host)
+			}
+		}
+		h.editor = e
+	})
+}
+
+// confirmDiscard runs next at once, or, when the host form holds edits that are not saved, after the user
+// agrees to drop them. The question shows in the manager, where the edits are.
+func (a *App) confirmDiscard(next func()) {
+	e := &a.hosts.editor
+	if !e.dirty() {
+		next()
+		return
+	}
+	name := orDefault(strings.TrimSpace(e.edit.Name), "新主机")
+	a.confirmWith("放弃未保存的修改？", "「"+name+"」的修改还没有保存，放弃后无法恢复。", "放弃", "继续编辑", next)
+	a.dialogs.pendingIn = managerWindow
+}
+
+// cancelHostEdit closes the host form, unless the user wants to keep editing.
+func (a *App) cancelHostEdit() {
+	a.confirmDiscard(func() { a.hosts.editor.open = false })
+}
+
+// ManagerMayClose guards closing the connection manager window: with unsaved edits it asks in the window
+// and returns false; the host closes the window again through HideManager once they are dropped.
+func (a *App) ManagerMayClose() bool {
+	e := &a.hosts.editor
+	if !e.dirty() {
+		e.open = false
+		return true
+	}
+	a.confirmDiscard(func() {
+		e.open = false
+		if a.HideManager != nil {
+			a.HideManager()
+		}
+	})
+	if a.wakeManager != nil {
+		a.wakeManager()
+	}
+	return false
 }
 
 // bindAuth clears the key of a host that no longer logs in with one, and ends the wait of an
@@ -554,74 +628,113 @@ func (a *App) saveHost() (model.Connection, bool) {
 }
 
 // hostForm is the host editor, in the order of the 1.x form: the address, then who logs in and how,
-// then the folded sections.
+// then the folded sections. All its fields are in one form, so they share one column of labels and their
+// inputs start at the same edge; the column is as wide as the widest label showing, so no label is longer
+// than four characters, and it keeps its width as the sections open. Its buttons are hostFooter's.
 func (a *App) hostForm(c *ui.Context) {
 	e := &a.hosts.editor
 	t := c.Theme()
+	e.enter = false
 	title := "新建主机"
 	if e.edit.ID != "" {
 		title = "编辑主机"
 	}
 	ui.Text(c, title).FontSize(17).Bold()
 	ui.Form(c, func() {
-		ui.Field(c, "名称", func() { ui.TextInput(c, &e.edit.Name).Label("名称").Placeholder("prod-web-01").AutoFocus().Grow(1) }).FillWidth()
-		field(c, "主机", &e.edit.Host)
-		field(c, "端口", &e.port)
+		ui.Field(c, "名称", func() {
+			if ui.TextInput(c, &e.edit.Name).Label("名称").Placeholder("prod-web-01").AutoFocus().Grow(1).Submitted() {
+				e.enter = true
+			}
+		}).FillWidth()
+		field(c, "主机", &e.edit.Host, &e.enter)
+		field(c, "端口", &e.port, &e.enter)
 		a.credentialPick(c, &e.edit.CredentialID)
 		if cr, ok := a.credential(e.edit.CredentialID); ok {
 			ui.Field(c, "用户名", func() { ui.Text(c, cr.User).TextColor(t.TextMuted) }).FillWidth()
 			ui.Field(c, "认证", func() { ui.Text(c, authLabel(a, cr.Auth, cr.KeyID)).TextColor(t.TextMuted) }).Description("来自凭据，修改凭据即对所有使用它的主机生效").FillWidth()
 		} else {
-			field(c, "用户名", &e.edit.User)
+			field(c, "用户名", &e.edit.User, &e.enter)
 			a.authFields(c, e)
 		}
 		a.folderPick(c, "目录", &e.edit.FolderID)
+		disclosure(c, "安全", &e.more[0], func() {
+			ui.Field(c, "已知主机", func() { ui.Switch(c, &e.edit.UseKnownHosts).Label("已知主机") }).Description("同时使用 ~/.ssh/known_hosts 校验").FillWidth()
+			field(c, "主机指纹", &e.edit.Fingerprint, &e.enter).Description("可选，固定后只信任这个指纹，如 SHA256:…")
+		})
+		disclosure(c, "网络", &e.more[1], func() {
+			a.proxyPick(c, &e.edit.ProxyID, "")
+			ui.Field(c, "心跳", func() {
+				if ui.Select(c, &e.keepaliveMode, []string{keepaliveGlobal, keepaliveCustom, keepaliveOff}).Label("心跳").Grow(1).Changed() {
+					e.inheritOrig = false
+				}
+			}).FillWidth()
+			if e.keepaliveMode == keepaliveCustom {
+				field(c, "间隔", &e.keepalive, &e.enter).Description("单位秒，1–3600")
+			}
+		})
+		disclosure(c, "终端", &e.more[2], func() {
+			choice(c, "字符编码", &e.edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
+			pick(c, "退格键", "退格（^H）", &e.edit.Backspace, []string{"ascii-delete"}, []string{"删除（^?）"})
+			pick(c, "删除键", "删除（ESC [3~）", &e.edit.DeleteMode, []string{"ascii-delete", "ascii-backspace"}, []string{"删除（^?）", "退格（^H）"})
+			toggle(c, "监控状态", &e.edit.Monitor)
+		})
+		disclosure(c, "标签与备注", &e.more[3], func() {
+			field(c, "标签", &e.tags, &e.enter).Description("用逗号分隔")
+			toggle(c, "收藏", &e.edit.Favorite)
+			swatches(c, "颜色", &e.edit.Color, append([]string{""}, hostColors...), append([]string{"自动"}, hostColorNames...), append([]string{""}, hostColors...))
+			ui.Field(c, "备注", func() { ui.TextArea(c, &e.edit.Notes).Label("备注").Height(60).Grow(1) }).FillWidth()
+		})
 	}).FillWidth().Gap(FormGap)
-	section := func(i int, title string, fn func()) {
-		ui.Collapsible(c, title, &e.more[i], func() { ui.Form(c, fn).FillWidth().Gap(FormGap) }).FillWidth()
+	if e.orig == nil { // what the controls made of the values on their first frame is what the form opened with
+		form := e.form()
+		e.orig = &form
 	}
-	section(0, "安全", func() {
-		toggle(c, "使用 ~/.ssh/known_hosts", &e.edit.UseKnownHosts)
-		field(c, "固定主机指纹", &e.edit.Fingerprint).Description("可选，如 SHA256:…")
-	})
-	section(1, "网络", func() {
-		a.proxyPick(c, &e.edit.ProxyID, "")
-		ui.Field(c, "心跳", func() {
-			if ui.Select(c, &e.keepaliveMode, []string{keepaliveGlobal, keepaliveCustom, keepaliveOff}).Label("心跳").Grow(1).Changed() {
-				e.inheritOrig = false
+}
+
+// hostFooter is the form's buttons, below the scrolling fields: 保存 is also ⌘S and Enter in a field.
+func (a *App) hostFooter(c *ui.Context) {
+	e := &a.hosts.editor
+	t := c.Theme()
+	ui.Column(c).FillWidth().Padding(10, 18).Gap(8).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
+		if e.err != "" {
+			ui.Text(c, e.err).FontSize(12).TextColor(t.Danger).FillWidth()
+		}
+		ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+			if ui.Button(c, "取消").Clicked() {
+				a.cancelHostEdit()
 			}
-		}).FillWidth()
-		if e.keepaliveMode == keepaliveCustom {
-			field(c, "间隔（秒）", &e.keepalive)
-		}
-	})
-	section(2, "终端", func() {
-		choice(c, "字符编码", &e.edit.Encoding, []string{"utf-8", "gb18030", "gbk", "big5", "shift_jis"})
-		pick(c, "Backspace 键", "退格（^H）", &e.edit.Backspace, []string{"ascii-delete"}, []string{"删除（^?）"})
-		pick(c, "Delete 键", "删除（ESC [3~）", &e.edit.DeleteMode, []string{"ascii-delete", "ascii-backspace"}, []string{"删除（^?）", "退格（^H）"})
-		toggle(c, "监控服务器状态", &e.edit.Monitor)
-	})
-	section(3, "标签与备注", func() {
-		field(c, "标签", &e.tags).Description("用逗号分隔")
-		toggle(c, "收藏", &e.edit.Favorite)
-		swatches(c, "颜色", &e.edit.Color, append([]string{""}, hostColors...), append([]string{"自动"}, hostColorNames...), append([]string{""}, hostColors...))
-		ui.Field(c, "备注", func() { ui.TextArea(c, &e.edit.Notes).Label("备注").Height(60).Grow(1) }).FillWidth()
-	})
-	if e.err != "" {
-		ui.Text(c, e.err).TextColor(t.Danger)
-	}
-	ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
-		if ui.Button(c, "取消").Clicked() {
-			e.open = false
-		}
-		if ui.Button(c, "保存").Clicked() {
-			a.saveHost()
-		}
-		if ui.PrimaryButton(c, "保存并连接").Clicked() {
-			if cc, ok := a.saveHost(); ok {
-				a.connect(cc)
+			save := ui.Button(c, "保存").KeyShortcuts(ui.Cmd, ui.KeyS).Clicked()
+			if save || e.enter || c.Shortcut(ui.Cmd, ui.KeyS) {
+				a.saveHost()
 			}
+			if ui.PrimaryButton(c, "保存并连接").Clicked() {
+				if cc, ok := a.saveHost(); ok {
+					a.connect(cc)
+				}
+			}
+		})
+	})
+}
+
+// disclosure is ui.Collapsible with its panel at the left edge of the form around it, not indented, so
+// the fields inside share the form's label column and their inputs line up with those above it.
+func disclosure(c *ui.Context, title string, open *bool, fn func()) {
+	t := c.Theme()
+	ui.Column(c.Key("section-" + title)).FillWidth().Children(func() { // keyed: the fields above come and go
+		p := ui.CollapsibleBase(c, open)
+		tr := p.Trigger.AlignSelf(ui.Start).AlignItems(ui.Center).Gap(4).Padding(4, 8, 4, 2).Radius(t.Radius)
+		if tr.Hovered() {
+			tr.Background(t.SurfaceHover)
 		}
+		tr.Children(func() {
+			icon := "chevron-right"
+			if *open {
+				icon = "chevron-down"
+			}
+			ui.Icon(c, appIcons[icon]).FontSize(14).TextColor(t.TextMuted)
+			ui.Text(c, title).SingleLine()
+		})
+		p.Panel(fn).Padding(FormGap, 0, 0, 0).Gap(FormGap)
 	})
 }
 
@@ -797,6 +910,7 @@ func (a *App) folderDialog(c *ui.Context) {
 	if !e.open {
 		return
 	}
+	enter := false
 	dialog(c, &e.open, func() {
 		ui.Column(c).Width(400).Gap(16).Children(func() {
 			title := "新建目录"
@@ -805,7 +919,7 @@ func (a *App) folderDialog(c *ui.Context) {
 			}
 			ui.Text(c, title).FontSize(17).Bold()
 			ui.Form(c, func() {
-				ui.Field(c, "名称", func() { ui.TextInput(c, &e.folder.Name).Label("目录名称").AutoFocus().Grow(1) }).FillWidth()
+				ui.Field(c, "名称", func() { enter = ui.TextInput(c, &e.folder.Name).Label("目录名称").AutoFocus().Grow(1).Submitted() }).FillWidth()
 				a.folderPick(c, "上级目录", &e.folder.ParentID)
 			}).FillWidth().Gap(FormGap)
 			if e.err != "" {
@@ -815,7 +929,7 @@ func (a *App) folderDialog(c *ui.Context) {
 				if ui.Button(c, "取消").Clicked() {
 					e.open = false
 				}
-				if ui.PrimaryButton(c, "保存目录").Clicked() {
+				if ui.PrimaryButton(c, "保存目录").Clicked() || enter || c.Shortcut(ui.Cmd, ui.KeyS) {
 					a.saveFolder()
 				}
 			})
