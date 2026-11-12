@@ -84,6 +84,10 @@ func (a *App) centreColumn(c *ui.Context) {
 	if len(a.Tabs) > 0 || len(pending) > 0 || len(a.documentsIn(false)) > 0 {
 		a.tabBar(c)
 	}
+	if a.gridShown() {
+		a.gridView(c)
+		return
+	}
 	if a.current() == nil { // no tabs, or only background tabs an agent opened
 		if d := a.activeEditor(); d != nil { // an unsaved document whose host has no session left
 			ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { a.editorTab(c, d) })

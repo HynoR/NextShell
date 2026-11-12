@@ -68,6 +68,7 @@ type App struct {
 	agent    agentUI
 	// transfers tells which transfers finished since the last frame, for their toasts.
 	transfers transferWatch
+	grid      gridState // 监视网格 (grid.go)
 
 	actions []func()
 	// toasts waits per window until that window's view builds and shows them;
@@ -467,7 +468,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	if key(ui.KeyO) {
 		a.openManager()
 	}
-	if key(ui.KeyL) && a.current() != nil && a.activeTool() == nil && a.activeEditor() == nil {
+	if key(ui.KeyL) && a.current() != nil && a.activeTool() == nil && a.activeEditor() == nil && !a.grid.on {
 		a.cmdbar.focus = true // the command bar takes the keyboard in this frame; Esc in it goes back to the terminal
 	}
 	for _, v := range []struct {
@@ -478,7 +479,7 @@ func (a *App) shortcuts(c *ui.Context) {
 			a.showBench(v.bench)
 		}
 	}
-	if s := a.current(); s != nil && a.activeTool() == nil && a.activeEditor() == nil && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
+	if s := a.current(); s != nil && a.activeTool() == nil && a.activeEditor() == nil && !a.grid.on && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
 		a.toggleFind(s)
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
