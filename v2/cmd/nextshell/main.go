@@ -129,6 +129,7 @@ func main() {
 	// OnQuit is the last hook the OS session's end leaves time for; Run may never return then.
 	mygo.App.OnQuit(end.Finish)
 	mygo.App.WhenReady(func() {
+		mygo.App.SetMenu(appMenu(func() { a.ShowSettings() }))
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		// An agent never takes the keyboard: the first action shows the window without focus (and bounces
 		// the Dock icon); only session_focus, the hand-over, focuses it.
