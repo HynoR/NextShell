@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/testutil"
 )
 
@@ -227,5 +229,19 @@ func TestAgentOpenCancelledDialogReportsToTheUserAndAllowsANewAttempt(t *testing
 	b.Open(again, c.ID)
 	if next := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt; !next.ByAgent {
 		t.Fatal("a fresh attempt should ask again")
+	}
+}
+
+// Events wait for the window's next frame; a hidden window draws none, so periodic ones must not pile up.
+func TestMonitorSnapshotsDoNotPileUpWhileNoFrameDrainsThem(t *testing.T) {
+	p := desktopFixture(t)
+	for i := range 500 {
+		p.emit(appui.Event{Monitor: &appui.MonitorResult{Session: "a", Snapshot: monitor.Snapshot{Load: strconv.Itoa(i)}}})
+		p.emit(appui.Event{Monitor: &appui.MonitorResult{Session: "b"}})
+	}
+	p.emit(appui.Event{Message: "kept"})
+	events := p.Poll()
+	if len(events) != 3 || events[0].Monitor.Session != "a" || events[0].Monitor.Snapshot.Load != "499" || events[2].Message != "kept" {
+		t.Fatalf("%d events, first %+v", len(events), events[0].Monitor)
 	}
 }

@@ -152,40 +152,6 @@ func TestCloudAuthenticationTokenCannotBeReusedAsEncryptionPassword(t *testing.T
 	}
 }
 
-// InstallShellHook answers with the line to type once the server has the file, and types nothing itself.
-func TestInstallShellHookWritesTheFileAndReportsTheLine(t *testing.T) {
-	t.Setenv("SHELL", "/usr/bin/zsh")
-	p := desktopFixture(t)
-	session, root := phase2SSH(t, p)
-	hook := func() *appui.ShellHookResult {
-		p.InstallShellHook(session)
-		return awaitEvent(t, p, func(e appui.Event) bool { return e.ShellHook != nil }).ShellHook
-	}
-	file := filepath.Join(root, ".cache/nextshell/osc7.sh")
-	if r := hook(); r.Err != nil || r.Session != session || r.Line != " . ~/.cache/nextshell/osc7.sh\r" {
-		t.Fatalf("%+v", r)
-	}
-	if b, e := os.ReadFile(file); e != nil || !strings.Contains(string(b), "__nextshell_emit_cwd") {
-		t.Fatal("hook file", e)
-	}
-	if text := strings.TrimSpace(p.ScreenText(session)); text != "" {
-		t.Fatal("installing typed into the terminal:", text)
-	}
-
-	t.Setenv("SHELL", "/usr/bin/fish")
-	os.RemoveAll(filepath.Join(root, ".cache"))
-	if r := hook(); r.Err == nil || !strings.Contains(r.Err.Error(), "not bash or zsh") {
-		t.Fatalf("%+v", r)
-	}
-	if _, e := os.Stat(file); !os.IsNotExist(e) {
-		t.Fatal("fish got the file", e)
-	}
-	p.CloseSession(session)
-	if r := hook(); r.Err == nil {
-		t.Fatal("closed session")
-	}
-}
-
 // What the editor window does answers with ForEditor, so the UI shows it there;
 // opening a file from the main window's panel does not.
 func TestEditorActionsAreTaggedForTheEditorWindow(t *testing.T) {

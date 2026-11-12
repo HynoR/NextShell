@@ -98,6 +98,11 @@ func (p *Platform) emit(e appui.Event) {
 		p.mu.Unlock()
 		return
 	}
+	if m := e.Monitor; m != nil {
+		// Only frames drain the queue, and a hidden window draws none while a watched panel adds a snapshot
+		// every few seconds: the newest per session is all anyone sees.
+		p.events = slices.DeleteFunc(p.events, func(o appui.Event) bool { return o.Monitor != nil && o.Monitor.Session == m.Session })
+	}
 	p.events = append(p.events, e)
 	f := p.wake
 	p.mu.Unlock()
@@ -395,6 +400,9 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 		title = "本地终端"
 	}
 	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local}})
+	if len(sshConn) > 0 && replace == "" && p.Preferences().ShellIntegration == "auto" {
+		p.integrateShell(id, t, sshConn[0])
+	}
 }
 func (p *Platform) Local() {
 	p.launch(func() {

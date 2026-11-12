@@ -14,14 +14,6 @@ type tabsState struct {
 	renaming, renameText string
 	term                 ui.Handle
 	restored             bool
-	hooks                map[string]*shellHook // sessions awaiting the automatic shell hook
-}
-
-// shellHook is a new remote session waiting for its server to get the hook
-// ready (line is set then) and for its prompt; it is dropped at until.
-type shellHook struct {
-	until time.Time
-	line  string
 }
 
 // ExitNeedsConfirm says whether closing the main window should ask first.
@@ -59,50 +51,6 @@ func (a *App) restoreTabs() {
 			a.connect(cc)
 		}
 	}
-}
-
-// injectShellHooks types the short line that sources the directory hook into
-// new remote sessions, once the server has it ready and the prompt shows, when
-// Shell 集成 is 自动. Sessions that cannot get there within ten seconds are
-// left alone.
-func (a *App) injectShellHooks(c *ui.Context) {
-	if len(a.tabs.hooks) == 0 {
-		return
-	}
-	for id, h := range a.tabs.hooks {
-		switch {
-		case a.tabIndex(id) < 0:
-			delete(a.tabs.hooks, id)
-		case time.Now().After(h.until):
-			delete(a.tabs.hooks, id)
-			a.log("Shell 集成：十秒内没有等到提示符或服务器没有准备好，已跳过")
-		case h.line != "" && promptShown(a.P.ScreenText(id)):
-			delete(a.tabs.hooks, id)
-			a.report(a.P.Send(id, h.line), "")
-		}
-	}
-	c.After(300 * time.Millisecond)
-}
-
-// shellHookReady records the server's answer: the line to type, or why the session is left alone.
-func (a *App) shellHookReady(r *ShellHookResult) {
-	h := a.tabs.hooks[r.Session]
-	if h == nil {
-		return
-	}
-	if r.Err != nil {
-		delete(a.tabs.hooks, r.Session)
-		a.log("Shell 集成未启用：" + r.Err.Error())
-		return
-	}
-	h.line = r.Line
-}
-
-// promptShown is true when the screen's last line looks like a shell prompt.
-func promptShown(screen string) bool {
-	lines := strings.Split(strings.TrimRight(screen, " \n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
-	return last != "" && strings.ContainsAny(last[len(last)-1:], "$#%>")
 }
 
 type tabDrag string

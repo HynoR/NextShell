@@ -21,7 +21,6 @@ type fakePlatform struct {
 	connects                   []model.Connection
 	local, cloned, reconnected int
 	closed, listed, sent       []string
-	hooks                      []string // sessions asked to get the shell hook ready
 	reloaded                   []string
 	queued                     []appui.TransferRequest
 	actions                    [][3]string
@@ -46,7 +45,6 @@ func (p *fakePlatform) Local()                        { p.local++ }
 func (p *fakePlatform) CloneSession(s *appui.Session) { p.cloned++ }
 func (p *fakePlatform) Reconnect(s *appui.Session)    { p.reconnected++ }
 func (p *fakePlatform) CloseSession(id string)        { p.closed = append(p.closed, id) }
-func (p *fakePlatform) InstallShellHook(id string)    { p.hooks = append(p.hooks, id) }
 func (p *fakePlatform) ListFiles(session, path string) {
 	p.listed = append(p.listed, session+":"+path)
 }

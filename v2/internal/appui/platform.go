@@ -62,11 +62,12 @@ type Event struct {
 	Prompt               *Prompt
 }
 
-// ShellHookResult answers Platform.InstallShellHook: the hook is in place and
-// Line sources it, or Err says why the session was left alone.
+// ShellHookResult says why the platform's automatic shell integration left a session alone
+// (it has nothing to report when it types the line). The platform does the work itself: see
+// Preferences.ShellIntegration.
 type ShellHookResult struct {
-	Session, Line string
-	Err           error
+	Session string
+	Err     error
 }
 type TerminalCapabilities struct{ OSC7, ScreenText, OSC133 bool }
 
@@ -166,10 +167,6 @@ type Platform interface {
 	MCPConfigPath() (string, error)
 	TerminalTitle(string) string
 	ShellCommand(shell string) (string, error)
-	// InstallShellHook asks a remote session's server to get the directory hook
-	// ready (login shell check, ~/.cache/nextshell/osc7.sh) and answers with an
-	// Event.ShellHook. It types nothing.
-	InstallShellHook(session string)
 	Shutdown()
 }
 

@@ -275,7 +275,6 @@ func (a *App) View(c *ui.Context) {
 		}
 	}
 	a.restoreTabs()
-	a.injectShellHooks(c)
 	a.refreshTitles()
 	a.shortcuts(c)
 	a.mainWindow(c)
@@ -324,8 +323,8 @@ func (a *App) poll() bool {
 		if e.Session != nil {
 			a.addSession(e.Session)
 		}
-		if e.ShellHook != nil {
-			a.shellHookReady(e.ShellHook)
+		if e.ShellHook != nil && e.ShellHook.Err != nil {
+			a.log("Shell 集成未启用：" + e.ShellHook.Err.Error())
 		}
 		if e.Failed != "" {
 			delete(a.hosts.connecting, e.Failed)
@@ -363,13 +362,6 @@ func (a *App) addSession(s *Session) {
 		delete(a.hosts.failed, s.Connection.ID)
 	}
 	a.tabs.started[s.ID] = time.Now()
-	if !s.Local && s.Replaces == "" && a.Prefs.ShellIntegration == "auto" {
-		if a.tabs.hooks == nil {
-			a.tabs.hooks = map[string]*shellHook{}
-		}
-		a.tabs.hooks[s.ID] = &shellHook{until: time.Now().Add(10 * time.Second)}
-		a.P.InstallShellHook(s.ID)
-	}
 	for i, old := range a.Tabs {
 		if s.Replaces == old.ID {
 			a.P.CloseSession(old.ID)

@@ -359,8 +359,6 @@ func TestStartupRestoresTabsRecentsAndCloseConfirmPreference(t *testing.T) {
 	}
 }
 
-const sourceLine = " . ~/.cache/nextshell/osc7.sh\r"
-
 // remoteSession adds an SSH tab whose terminal shows text.
 func remoteSession(t *testing.T, p *fakePlatform, tt *ui.Tester, id, text string) *appui.Session {
 	t.Helper()
@@ -371,53 +369,7 @@ func remoteSession(t *testing.T, p *fakePlatform, tt *ui.Tester, id, text string
 	return s
 }
 
-func TestAutoShellIntegrationTypesOneShortLineOnceReadyAndAtThePrompt(t *testing.T) {
-	p := newPlatform(t)
-	prefs := p.Preferences()
-	prefs.ShellIntegration = "auto"
-	p.SavePreferences(prefs)
-	_, tt := start(p)
-	s := remoteSession(t, p, tt, "r", "Welcome to Ubuntu\r\n")
-	if len(p.hooks) != 1 || p.hooks[0] != "r" {
-		t.Fatal("the server was not asked to prepare the hook", p.hooks)
-	}
-	// Ready but no prompt yet: nothing typed.
-	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "r", Line: sourceLine}})
-	tt.Frame()
-	tt.Frame()
-	if len(p.sent) != 0 {
-		t.Fatal("typed before the prompt", p.sent)
-	}
-	s.Terminal.Feed([]byte("u@r:~$ "))
-	tt.Frame()
-	if len(p.sent) != 1 || p.sent[0] != sourceLine {
-		t.Fatalf("typed %q, want the one short line", p.sent)
-	}
-	tt.Frame()
-	tt.Frame()
-	if len(p.sent) != 1 || len(p.hooks) != 1 {
-		t.Fatal("injected twice", p.sent, p.hooks)
-	}
-}
-
-func TestAutoShellIntegrationWaitsForTheServerToo(t *testing.T) {
-	p := newPlatform(t)
-	prefs := p.Preferences()
-	prefs.ShellIntegration = "auto"
-	p.SavePreferences(prefs)
-	_, tt := start(p)
-	remoteSession(t, p, tt, "r", "u@r:~$ ")
-	if len(p.sent) != 0 {
-		t.Fatal("typed before the file was written", p.sent)
-	}
-	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "r", Line: sourceLine}})
-	tt.Frame()
-	if len(p.sent) != 1 || p.sent[0] != sourceLine {
-		t.Fatal(p.sent)
-	}
-}
-
-func TestAutoShellIntegrationTypesNothingWhenThePlatformFails(t *testing.T) {
+func TestShellIntegrationFailureIsLoggedQuietlyAndTheWindowNeverTypes(t *testing.T) {
 	p := newPlatform(t)
 	prefs := p.Preferences()
 	prefs.ShellIntegration = "auto"
@@ -430,7 +382,7 @@ func TestAutoShellIntegrationTypesNothingWhenThePlatformFails(t *testing.T) {
 	tt.Frame()
 	tt.Frame()
 	if len(p.sent) != 0 {
-		t.Fatal("typed after a failure", p.sent)
+		t.Fatal("the window typed into the session", p.sent)
 	}
 	if tt.HasText("login shell") {
 		t.Fatal("a failure is logged quietly, not toasted")
@@ -451,8 +403,8 @@ func TestShellIntegrationIsManualByDefault(t *testing.T) {
 	a, tt := start(p)
 	remoteSession(t, p, tt, "r", "u@r:~$ ")
 	session(t, p, tt, "l", "本地", model.Connection{})
-	if len(p.hooks) != 0 || len(p.sent) != 0 {
-		t.Fatal("manual mode touched the server or the terminal", p.hooks, p.sent)
+	if len(p.sent) != 0 {
+		t.Fatal("manual mode typed into the terminal", p.sent)
 	}
 	st := ui.NewTester(a.SettingsView, 880, 1400)
 	click(t, st, "终端")
@@ -461,17 +413,5 @@ func TestShellIntegrationIsManualByDefault(t *testing.T) {
 	has(t, st, "会在服务器上写入 ~/.cache/nextshell/osc7.sh，新的 bash / zsh 会话出现提示符后再执行一行 . ~/.cache/nextshell/osc7.sh；文件面板可跟随终端目录。其他 shell 不处理")
 	if v := p.Preferences().ShellIntegration; v != "auto" {
 		t.Fatal("not saved", v)
-	}
-}
-
-func TestAutoShellIntegrationSkipsLocalShells(t *testing.T) {
-	p := newPlatform(t)
-	prefs := p.Preferences()
-	prefs.ShellIntegration = "auto"
-	p.SavePreferences(prefs)
-	_, tt := start(p)
-	session(t, p, tt, "l", "本地", model.Connection{})
-	if len(p.hooks) != 0 {
-		t.Fatal(p.hooks)
 	}
 }
