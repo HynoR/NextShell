@@ -78,6 +78,20 @@ mygo 自带签名、公证、DMG、NSIS、更新(见 mygo `docs/distribution.md`
 
 端口转发、跳板机、分屏、会话录制。
 
+## 决策记录(2026-11-12)
+
+- **范围**:本轮做到 M3,加上 M4 里的 MCP 部分(MCP 能让 agent 驱动应用,加速 M3 测试)。云同步服务端、OSC 133 不在本轮。
+- **MCP token 发现**:应用开启 MCP 时写 `<系统配置目录>/NextShell-v2/mcp.json`(`{"port","token"}`,权限 0600),关闭时删除、轮换时重写。`nextshell-mcp` 按 `--token` > `NEXTSHELL_MCP_TOKEN` > 该文件的顺序取 token,用户无需手动配置。
+- **自动批准**:Agent 设置里提供「自动批准」开关,时长可选 15 分钟 / 1 小时 / 直到退出;重启后一律关闭;风险命令和黑名单命中仍需手动批准;开启期间状态栏常驻提示。
+- **Agent 测试模式**:仅 `nextshell_devtools` 构建提供 `--agent-test` 参数,启动即开启 MCP 和自动批准,配合 `--db` 使用临时 profile;发布构建不含此参数。
+- **互操作测试**:用 Docker 起真实 OpenSSH 容器,测试放在 `interop` 构建标签下,默认 `go test` 不跑。
+
+## 分工
+
+- Opus(high):M1、M2 的界面大改。
+- Sonnet(xhigh):MCP 与桥、CI、互操作和性能测试等通用任务。
+- 主会话:规划、决策、合并、验收。
+
 ## 工作方式
 
 - 规划和验收:主会话。机械性改动派子 agent,每次给清晰范围。
