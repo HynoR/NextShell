@@ -88,6 +88,25 @@ func TestScreenshotsUX7(t *testing.T) {
 	hover(t, st, "发送 查看日志")
 	shot(st, "ux7-3b-snippet-send-target")
 
+	// A failed transfer: the red count on the folded strip, and the failed entries first when it opens.
+	ap := newPlatform(t)
+	aweb, _ := demo(t, ap)
+	_, at := start(ap)
+	at.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, ap, at, "s1", "prod-web-01", aweb)
+	listing(ap, at, "s1", "/srv/app", sftpfs.Entry{Name: "releases", Path: "/srv/app/releases", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "config.yaml", Path: "/srv/app/config.yaml", Size: 2048, Mode: "-rw-r--r--", Modified: now.Add(-time.Hour)})
+	ap.jobs = []transfer.Job{
+		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Total: 120 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
+		{ID: "2", Label: "下载 /var/log/syslog", State: "done", Bytes: 2200000, Attempt: 1, Started: now.Add(-time.Minute), Finished: now.Add(-50 * time.Second)},
+		{ID: "3", Label: "上传 config.yaml → /etc/app", State: "failed", Error: "sftp: \"permission denied\" (SSH_FX_PERMISSION_DENIED)", Attempt: 1},
+		{ID: "4", Label: "删除 /srv/app/cache", State: "failed", Items: true, Bytes: 310, Total: 1200, Error: "sftp: \"permission denied\" (SSH_FX_PERMISSION_DENIED)", Attempt: 1},
+	}
+	at.Frame()
+	shot(at, "ux7-5a-failed-badge-strip")
+	click(t, at, "2 个传输失败，1 个进行中")
+	shot(at, "ux7-5b-failed-transfers-open")
+
 	// Following the terminal's folder, which it has not told.
 	fp := newPlatform(t)
 	fweb, _ := demo(t, fp)

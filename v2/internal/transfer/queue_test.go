@@ -145,3 +145,42 @@ func TestSetTotalReachesTheJob(t *testing.T) {
 	}
 	t.Fatal("job did not finish")
 }
+
+func TestClearFailedDropsFailedAndCancelledOnly(t *testing.T) {
+	q := New(1, nil)
+	defer q.Close()
+	q.Add("done", func(context.Context, func(int64)) error { return nil })
+	q.Add("failed", func(context.Context, func(int64)) error { return errors.New("boom") })
+	q.Add("cancelled", func(context.Context, func(int64)) error { return context.Canceled })
+	waitJobs(t, q, func(js []Job) bool { return len(js) == 3 && js[2].State == "cancelled" })
+	entered := make(chan struct{})
+	q.Add("running", func(ctx context.Context, _ func(int64)) error { close(entered); <-ctx.Done(); return ctx.Err() })
+	<-entered
+	if n := q.ClearFailed(); n != 2 {
+		t.Fatal(n)
+	}
+	js := q.List()
+	if len(js) != 2 || js[0].Label != "done" || js[1].Label != "running" {
+		t.Fatal(js)
+	}
+	if n := q.ClearFailed(); n != 0 {
+		t.Fatal(n)
+	}
+}
+
+func TestItemsJobsStayItemsAfterRetry(t *testing.T) {
+	q := New(1, nil)
+	defer q.Close()
+	id, _ := q.AddItems("remove", func(context.Context, func(int64)) error { return errors.New("boom") })
+	waitJobs(t, q, func(js []Job) bool { return js[0].State == "failed" })
+	if !q.List()[0].Items {
+		t.Fatal("not an items job")
+	}
+	if e := q.Retry(id); e != nil {
+		t.Fatal(e)
+	}
+	waitJobs(t, q, func(js []Job) bool { return js[0].State == "failed" && js[0].Attempt == 2 })
+	if !q.List()[0].Items {
+		t.Fatal("a retry counted bytes")
+	}
+}

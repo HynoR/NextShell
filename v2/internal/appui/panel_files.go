@@ -1058,15 +1058,17 @@ func (a *App) fileClipboardKeys(e ui.Element, id string) {
 
 // Transfers: the queue in the activity column.
 
-func activeTransfers(jobs []transfer.Job) int {
+func transferCount(jobs []transfer.Job, states ...string) int {
 	n := 0
 	for _, j := range jobs {
-		if j.State == "queued" || j.State == "running" {
+		if slices.Contains(states, j.State) {
 			n++
 		}
 	}
 	return n
 }
+func activeTransfers(jobs []transfer.Job) int { return transferCount(jobs, "queued", "running") }
+func failedTransfers(jobs []transfer.Job) int { return transferCount(jobs, "failed") }
 
 func (a *App) transferSection(c *ui.Context) {
 	t := c.Theme()
@@ -1078,15 +1080,42 @@ func (a *App) transferSection(c *ui.Context) {
 			if activeTransfers(jobs) > 0 && ghost(c, "全部取消", "").Clicked() {
 				a.P.CancelAllTransfers()
 			}
-			if len(jobs) > activeTransfers(jobs) && ghost(c, "清除已完成", "").Clicked() {
+			if transferCount(jobs, "done") > 0 && ghost(c, "清除已完成", "").Clicked() {
 				a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
 			}
 		})
+		if failed, cancelled := failedTransfers(jobs), transferCount(jobs, "cancelled"); failed+cancelled > 0 {
+			// What went wrong comes first, with its reason; it stays until retried or cleared.
+			jobs = slices.SortedStableFunc(slices.Values(jobs), func(x, y transfer.Job) int {
+				return cmp.Compare(btoi(y.State == "failed"), btoi(x.State == "failed"))
+			})
+			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+				var parts []string
+				if failed > 0 {
+					parts = append(parts, fmt.Sprintf("%d 个传输失败", failed))
+				}
+				if cancelled > 0 {
+					parts = append(parts, fmt.Sprintf("%d 个已取消", cancelled))
+				}
+				color := t.TextMuted
+				if failed > 0 {
+					color = t.Danger
+				}
+				ui.Text(c, strings.Join(parts, "，")).FontSize(12).Bold().TextColor(color).Grow(1).MinWidth(0)
+				if ghost(c, "清除失败项", "").Clicked() {
+					a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearFailedTransfers()))
+				}
+			})
+		}
 		if len(jobs) == 0 {
 			muted(c, "没有传输任务。把文件拖到 SFTP 即可上传。")
 		}
 		for _, j := range jobs {
-			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
+			border := t.Border
+			if j.State == "failed" {
+				border = t.Danger.Alpha(.5)
+			}
+			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, border).Children(func() {
 				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, j.Label).FontSize(12).SingleLine().Grow(1).MinWidth(0).Tooltip(j.Label)
 					switch j.State {
@@ -1159,4 +1188,11 @@ func transferFraction(j transfer.Job) float64 {
 		return -1
 	}
 	return min(1, float64(j.Bytes)/float64(j.Total))
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/uuid"
+	"slices"
 	"sync"
 	"time"
 )
@@ -166,13 +167,17 @@ func (q *Queue) Retry(id string) error {
 func (q *Queue) Close() { q.mu.Lock(); q.closed = true; q.cancel(); q.mu.Unlock(); q.wg.Wait() }
 
 // ClearCompleted removes only successful jobs, retaining failures for retry and active work.
-func (q *Queue) ClearCompleted() int {
+func (q *Queue) ClearCompleted() int { return q.clear("done") }
+
+// ClearFailed removes the failed and cancelled jobs, which were kept for a retry.
+func (q *Queue) ClearFailed() int { return q.clear("failed", "cancelled") }
+func (q *Queue) clear(states ...string) int {
 	q.mu.Lock()
 	original := q.items
 	kept := original[:0]
 	n := 0
 	for _, it := range q.items {
-		if it.job.State == "done" {
+		if slices.Contains(states, it.job.State) {
 			n++
 		} else {
 			kept = append(kept, it)

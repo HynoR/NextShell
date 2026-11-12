@@ -15,7 +15,8 @@ import (
 // agents, live edits). Folded, it is a strip of icons with counts.
 func (a *App) activityColumn(c *ui.Context) {
 	t := c.Theme()
-	active := activeTransfers(a.P.Transfers())
+	jobs := a.P.Transfers()
+	active, failed := activeTransfers(jobs), failedTransfers(jobs)
 	pending := len(a.P.AgentOverview().Pending)
 	agentLabel := "Agent 活动"
 	switch {
@@ -44,16 +45,25 @@ func (a *App) activityColumn(c *ui.Context) {
 		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(8).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
 			open := iconButton(c, "展开活动栏", "panel-right").Clicked()
 			ui.Box(c).Width(20).Height(1).Background(t.Border)
-			transfers := "传输队列"
-			if active > 0 {
+			// A failure is what to look at: it takes the badge, in red, until it is retried or cleared.
+			transfers, badge, badgeColor := "传输队列", active, t.Accent
+			switch {
+			case failed > 0 && active > 0:
+				transfers = fmt.Sprintf("%d 个传输失败，%d 个进行中", failed, active)
+			case failed > 0:
+				transfers = fmt.Sprintf("%d 个传输失败", failed)
+			case active > 0:
 				transfers = fmt.Sprintf("%d 个传输进行中", active)
+			}
+			if failed > 0 {
+				badge, badgeColor = failed, t.Danger
 			}
 			for _, v := range []struct {
 				label, icon string
 				count       int
 				color       ui.Color
 				lit         bool
-			}{{transfers, "transfer", active, t.Accent, false}, {agentLabel, "agent", pending, t.Warning, agentLabel == "Agent 活动中"}, {editLabel, "edit", len(edits), editColor, editsBusy}} {
+			}{{transfers, "transfer", badge, badgeColor, active > 0}, {agentLabel, "agent", pending, t.Warning, agentLabel == "Agent 活动中"}, {editLabel, "edit", len(edits), editColor, editsBusy}} {
 				open = stripButton(c, v.label, v.icon, v.count, v.color, v.lit) || open
 			}
 			if open {

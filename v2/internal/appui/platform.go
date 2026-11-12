@@ -154,6 +154,8 @@ type Platform interface {
 	CancelTransfer(id string)
 	CancelAllTransfers()
 	ClearCompletedTransfers() int
+	// ClearFailedTransfers drops the failed and cancelled jobs, which stay for a retry until then.
+	ClearFailedTransfers() int
 	RetryTransfer(id string) error
 	OpenRemote(session, path string)
 	// ReloadRemote is OpenRemote for the editor's reload button: the same Editor event,

@@ -891,5 +891,6 @@ func (p *Platform) SessionDir(id string) string {
 
 func (p *Platform) CancelAllTransfers()          { p.queue.CancelAll() }
 func (p *Platform) ClearCompletedTransfers() int { return p.queue.ClearCompleted() }
+func (p *Platform) ClearFailedTransfers() int    { return p.queue.ClearFailed() }
 
 const packProbe = `command -v tar >/dev/null 2>&1 && d=$(mktemp -d 2>/dev/null) && { mv -T -n -- "$d" "$d.t" 2>/dev/null; r=$?; rm -rf -- "$d" "$d.t"; exit $r; }`
