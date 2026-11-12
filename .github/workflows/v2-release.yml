@@ -1,6 +1,7 @@
 name: NextShell 2 Release
 
-# Tag v2.* (e.g. v2.0.0-rc1): test, build every platform, then publish a GitHub prerelease.
+# Tag v2.* (e.g. v2.0.0-rc1): test, build every platform and the MCP bridge tarball, then publish
+# a GitHub prerelease.
 # Push to branch v2 that touches this file, v2/mygo.json or v2/packaging/**: build only, the
 # packages stay as artifacts of the run (this is how packaging is tried on the real runners;
 # workflow_dispatch is not usable while this file is not on the default branch).
@@ -134,11 +135,48 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # @nextshell/mcp is not on npm: the release carries the bridge as an npm tarball, which the
+  # plugin's .mcp.json runs by URL (check-version.sh makes a tag fail when the pin is stale).
+  bridge:
+    name: Build (MCP bridge)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The pnpm version comes from "packageManager" in package.json.
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Build and pack
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter "@nextshell/mcp..."
+          pnpm --filter @nextshell/mcp run build
+          mkdir assets
+          (cd packages/mcp && npm pack --ignore-scripts --pack-destination "$GITHUB_WORKSPACE/assets")
+          test -f "assets/nextshell-mcp-$(jq -er .version packages/mcp/package.json).tgz"
+      # What a user runs: install the tarball and start the bridge. Outside the checkout: inside
+      # it npm resolves ./file.tgz against the repository's package.json, not the directory.
+      - name: Smoke test
+        run: |
+          cp assets/*.tgz "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          npx -y ./nextshell-mcp-*.tgz --help
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-bridge
+          path: assets/*
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Publish prerelease
     # Only tags publish; pushes to branch v2 stop after the build.
     if: github.ref_type == 'tag'
-    needs: [test, build]
+    needs: [test, build, bridge]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
