@@ -54,7 +54,10 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	if strings.Contains(q, "@") {
 		if cc, e := model.QuickConnect(q); e == nil {
-			out = append(out, paletteItem{"连接", "连接 " + q, "密码会在随后的对话框里询问", func(ui.Modifiers) { a.connect(cc) }})
+			out = append(out, paletteItem{"连接", "连接 " + q, "密码会在随后的对话框里询问", func(ui.Modifiers) {
+				a.connect(cc)
+				a.toast("正在连接 " + a.login(cc) + "…") // an unsaved host has no 连接中 tab
+			}})
 		}
 	}
 	// An open tab comes before the host it is a session of, so Enter switches to it instead of opening another.

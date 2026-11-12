@@ -43,6 +43,7 @@ func (a *App) quickConnect(text string) bool {
 		return false
 	}
 	a.connect(cc)
+	a.toast("正在连接 " + a.login(cc) + "…") // an unsaved host has no 连接中 tab
 	return true
 }
 

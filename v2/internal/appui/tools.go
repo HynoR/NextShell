@@ -158,11 +158,12 @@ func (a *App) toolView(c *ui.Context, tool toolTab) {
 	})
 }
 
-// pendingTabs are the saved hosts connecting for the first time: no tab of theirs exists yet.
+// pendingTabs are the saved hosts being connected to that have no tab saying so: none exists yet, or
+// only live ones (a further connection is on its way). A tab that ended and is reconnecting says it itself.
 func (a *App) pendingTabs() []model.Connection {
 	var out []model.Connection
 	for id := range a.hosts.connecting {
-		if cc, ok := a.host(id); ok && !slices.ContainsFunc(a.Tabs, func(s *Session) bool { return s.Connection.ID == id }) {
+		if cc, ok := a.host(id); ok && !slices.ContainsFunc(a.Tabs, func(s *Session) bool { return s.Connection.ID == id && a.P.Exited(s.ID) }) {
 			out = append(out, cc)
 		}
 	}
