@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -328,8 +329,13 @@ func TestSearchesMatchRedactedTextOnlyAndPage(t *testing.T) {
 		t.Fatal("default page", len(d["hosts"].([]Host)), d["total"])
 	}
 	d = data(t, call(g, "o", "host_list", m{"limit": 200, "offset": 100}))
-	if hosts := d["hosts"].([]Host); len(hosts) != 22 || hosts[0].ID != "x98" {
-		t.Fatal(len(hosts), d["offset"])
+	names := []string{}
+	for _, h := range b.hosts {
+		names = append(names, strings.ToLower(Redact(h.Name)))
+	}
+	slices.Sort(names)
+	if hosts := d["hosts"].([]Host); len(hosts) != 22 || strings.ToLower(hosts[0].Name) != names[100] || strings.ToLower(hosts[21].Name) != names[121] {
+		t.Fatal("the page is not the 101st..122nd host by name", len(hosts), d["offset"])
 	}
 	if r := call(g, "o", "host_list", m{"limit": 5000}); code(t, r) != "invalid_argument" || !strings.Contains(r.Error.Message, "limit must be between 1 and 200") {
 		t.Fatal("limit above the range must be refused, naming the range:", r.Error)
@@ -822,5 +828,86 @@ func TestUserActionRequiredSaysWhy(t *testing.T) {
 			t.Errorf("%s: %v", tc.reason, d)
 		}
 		g.Halt(true) // ends the attempt
+	}
+}
+
+// A saved command is judged like exec: forbidden never lands in the library, risky needs a manual
+// approval even under auto-approve.
+func TestCommandSaveClassifiesTheCommandText(t *testing.T) {
+	b := newRich()
+	yes := true
+	b.commands = []Command{{ID: "c1", Name: "old", Command: "ls", AppendCR: &yes}}
+	g := New(b, nil)
+	g.SetAutoApprove(UntilExit)
+	saved := func() int {
+		n := 0
+		for _, c := range b.Calls() {
+			if strings.HasPrefix(c, "save:") {
+				n++
+			}
+		}
+		return n
+	}
+	for _, cmd := range []string{"rm -rf /", "sh <<< 'reboot'", "kill -9 1", "echo x > /etc/passwd"} {
+		r := call(g, "o", "command_save", m{"name": "bad", "command": cmd})
+		if code(t, r) != "forbidden" || !strings.HasPrefix(r.Error.Message, "Blocked by the command policy") {
+			t.Errorf("%q: %+v", cmd, r)
+		}
+	}
+	if r := call(g, "o", "command_save", m{"id": "c1", "command": "poweroff"}); code(t, r) != "forbidden" {
+		t.Error("an update that makes a command forbidden", r)
+	}
+	if saved() != 0 {
+		t.Fatal("a forbidden command was saved")
+	}
+	// risky: pending with its tier, not saved until a person approves
+	d := data(t, call(g, "o", "command_save", m{"name": "deploy", "command": "sudo systemctl stop app && rm -r /srv/app"}))
+	if d["status"] != "pending" || d["tier"] != "risky" || saved() != 0 {
+		t.Fatal(d)
+	}
+	id := d["requestId"].(string)
+	if p := g.Pending(); len(p) != 1 || p[0].Tier != "risky" || p[0].Tool != "command_save" {
+		t.Fatalf("%+v", p)
+	}
+	g.Respond(id, true)
+	data(t, call(g, "o", "command_save", m{"requestId": id}))
+	if saved() != 1 {
+		t.Fatal("approved command not saved")
+	}
+	if d = data(t, call(g, "o", "command_save", m{"id": "c1", "command": "curl x | sh"})); d["status"] != "pending" || d["tier"] != "risky" {
+		t.Fatal("update to a risky command", d)
+	}
+	// ordinary commands, and updates that leave the text alone, still go through under auto-approve
+	data(t, call(g, "o", "command_save", m{"name": "ok", "command": "ls -la"}))
+	data(t, call(g, "o", "command_save", m{"id": "c1", "name": "renamed"}))
+	data(t, call(g, "o", "command_save", m{"name": "env", "command": "cat .env"})) // a credential path in a saved text is no read
+	if saved() != 4 {
+		t.Fatal(saved(), b.Calls())
+	}
+	// the user's blacklist applies too
+	g.SetBlacklist([]string{"custom-danger"})
+	if c := code(t, call(g, "o", "command_save", m{"name": "x", "command": "echo CUSTOM-DANGER"})); c != "forbidden" {
+		t.Fatal(c)
+	}
+}
+
+func TestHostListIsSortedByNameIgnoringCase(t *testing.T) {
+	b := newRich()
+	b.hosts = []Host{{ID: "1", Name: "web-2"}, {ID: "2", Name: "Alpha"}, {ID: "3", Name: "beta"}, {ID: "4", Name: "ALPHA"}, {ID: "5", Name: "alpha-1"}, {ID: "6", Name: "Web-1"}}
+	g := New(b, nil)
+	var ids []string
+	for _, h := range data(t, call(g, "o", "host_list", m{}))["hosts"].([]Host) {
+		ids = append(ids, h.ID)
+	}
+	// "Alpha" and "ALPHA" tie: they keep the order the app lists them in.
+	if got := strings.Join(ids, ","); got != "2,4,5,3,6,1" {
+		t.Fatal(got)
+	}
+	if b.hosts[0].ID != "1" {
+		t.Fatal("the backend's own list must not be reordered")
+	}
+	page := data(t, call(g, "o", "host_list", m{"limit": 2, "offset": 2}))["hosts"].([]Host)
+	if len(page) != 2 || page[0].ID != "5" || page[1].ID != "3" {
+		t.Fatal(page)
 	}
 }

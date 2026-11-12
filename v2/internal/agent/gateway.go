@@ -10,6 +10,7 @@ import (
 	"nextshell.dev/v2/internal/cloudv2"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -562,14 +563,19 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		query := strings.ToLower(a.Query)
 		out := []Host{}
 		total, limit := 0, clamp(a.Limit, 1, 200, 50)
-		for _, h := range hosts {
-			// Match what the agent may see: redacted text only, so a query cannot probe a secret.
+		// Match what the agent may see: redacted text only, so a query cannot probe a secret.
+		hosts = slices.Clone(hosts)
+		for i, h := range hosts {
 			h.Name, h.Username = Redact(h.Name), Redact(h.Username)
 			tags := make([]string, len(h.Tags))
-			for i, t := range h.Tags {
-				tags[i] = Redact(t)
+			for j, t := range h.Tags {
+				tags[j] = Redact(t)
 			}
-			h.Tags = tags
+			hosts[i].Name, hosts[i].Username, hosts[i].Tags = h.Name, h.Username, tags
+		}
+		// By name, so that paging is stable and a host is easy to find in a long list.
+		slices.SortStableFunc(hosts, func(a, b Host) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+		for _, h := range hosts {
 			if query != "" && !strings.Contains(strings.ToLower(h.Name+" "+h.Host+" "+strings.Join(h.Tags, " ")), query) {
 				continue
 			}
@@ -657,6 +663,15 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		}
 		if _, e := g.mergeCommand(a); e != nil {
 			return failErr(e)
+		}
+		// A saved command is typed into a terminal later, possibly by the user without a second look: judge
+		// its text like exec does. Only the tiers matter here; a credential path in it is not a read.
+		if a.Command != "" {
+			v := Classify(a.Command, g.blacklistCopy())
+			if v.Forbidden {
+				return blocked(v)
+			}
+			verdict = Verdict{Risky: v.Risky, Why: v.Why}
 		}
 	case "session_send_signal":
 		if _, ok := controls[a.Signal]; !ok {
