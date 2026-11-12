@@ -101,6 +101,63 @@ func Copy(ctx context.Context, w io.Writer, r io.Reader, progress func(int64)) e
 		}
 	}
 }
+
+// ctxReader/ctxWriter make pkg/sftp's pipelined ReadFrom/WriteTo cancellable and observable. Those keep up
+// to 64 x 32 KiB requests in flight. The Read/Write loop this replaces waited one round trip per 32 KiB
+// (write) or per 128 KiB (read): at 20 ms RTT that was 1.4 MB/s up and 5.5 MB/s down instead of line rate.
+type ctxReader struct {
+	ctx      context.Context
+	r        io.Reader
+	n        int64
+	progress func(int64)
+}
+
+func (r *ctxReader) Read(p []byte) (int, error) {
+	if e := r.ctx.Err(); e != nil {
+		return 0, e
+	}
+	n, e := r.r.Read(p)
+	r.n += int64(n)
+	if n > 0 && r.progress != nil {
+		r.progress(r.n)
+	}
+	return n, e
+}
+
+type ctxWriter struct {
+	ctx      context.Context
+	w        io.Writer
+	n        int64
+	progress func(int64)
+}
+
+func (w *ctxWriter) Write(p []byte) (int, error) {
+	if e := w.ctx.Err(); e != nil {
+		return 0, e
+	}
+	n, e := w.w.Write(p)
+	w.n += int64(n)
+	if n > 0 && w.progress != nil {
+		w.progress(w.n)
+	}
+	return n, e
+}
+
+// push streams r into the remote file with pipelined writes. A remote source (*sftp.File, as in
+// CopyTree/Cross) is read through a pipe fed by its own pipelined WriteTo, so neither side waits a round
+// trip per chunk. Concurrent writes can leave holes after an error; the caller only publishes the file on
+// success and removes it otherwise.
+func push(ctx context.Context, f *sftp.File, r io.Reader, progress func(int64)) error {
+	if src, ok := r.(*sftp.File); ok {
+		pr, pw := io.Pipe()
+		done := make(chan struct{})
+		go func() { _, e := src.WriteTo(pw); pw.CloseWithError(e); close(done) }()
+		defer func() { pr.CloseWithError(context.Canceled); <-done }()
+		r = pr
+	}
+	_, e := f.ReadFromWithConcurrency(&ctxReader{ctx: ctx, r: r, progress: progress}, 0)
+	return e
+}
 func (c *Client) UploadReader(ctx context.Context, r io.Reader, remote string, overwrite bool, mode os.FileMode, progress func(int64)) error {
 	if e := CheckPath(remote); e != nil {
 		return e
@@ -121,7 +178,7 @@ func (c *Client) UploadReader(ctx context.Context, r io.Reader, remote string, o
 		return e
 	}
 	defer c.Remove(temp)
-	e = Copy(ctx, f, r, progress)
+	e = push(ctx, f, r, progress)
 	closeErr := f.Close()
 	if e != nil {
 		return e
@@ -186,7 +243,7 @@ func (c *Client) Download(ctx context.Context, remote, local string, overwrite b
 	}
 	tmp := temp.Name()
 	defer os.Remove(tmp)
-	e = Copy(ctx, temp, r, progress)
+	_, e = r.WriteTo(&ctxWriter{ctx: ctx, w: temp, progress: progress})
 	if ce := temp.Close(); e == nil {
 		e = ce
 	}
