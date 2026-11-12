@@ -4,6 +4,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,7 @@ func TestPreferencesConfigureOfficialTerminal(t *testing.T) {
 	}
 }
 func TestSFTPCreateDoesNotOverwrite(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	id, root := phase2SSH(t, p)
 	file := filepath.Join(root, "new file.txt")

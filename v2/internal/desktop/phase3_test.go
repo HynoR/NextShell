@@ -12,6 +12,7 @@ import (
 	"nextshell.dev/v2/internal/cloudhttp"
 	"nextshell.dev/v2/internal/cloudv2"
 	"nextshell.dev/v2/internal/remoteedit"
+	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,7 @@ import (
 )
 
 func TestAgentPlatformRealSSHExecCWDRedactionAndFocus(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	session, root := phase2SSH(t, p)
 	p.AgentHalt(false)
@@ -155,6 +157,7 @@ func TestCloudAuthenticationTokenCannotBeReusedAsEncryptionPassword(t *testing.T
 // What the editor window does answers with ForEditor, so the UI shows it there;
 // opening a file from the main window's panel does not.
 func TestEditorActionsAreTaggedForTheEditorWindow(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	session, root := phase2SSH(t, p)
 	text := filepath.Join(root, "text")

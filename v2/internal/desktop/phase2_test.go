@@ -9,6 +9,7 @@ import (
 	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -171,8 +172,9 @@ func TestPhase2PlatformImportPreviewExportAndFolderSpecs(t *testing.T) {
 	if e != nil || len(decoded.Connections) != 1 || *decoded.Connections[0].Password != secret || decoded.Connections[0].GroupPath != "/server/prod/empty" {
 		t.Fatal(decoded, e)
 	}
-	info, _ := os.Stat(export)
-	if info.Mode().Perm() != 0600 {
+	// Windows has no POSIX modes (Perm() reports 0666 whatever was asked for): there the export is as private
+	// as the directory's ACL, and what the product can still guarantee is the O_EXCL below.
+	if info, _ := os.Stat(export); runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("unsafe export mode")
 	}
 	p.ExportConnections(export, nil, nil)

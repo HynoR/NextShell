@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/testutil"
 )
 
 // inbox is awaitEvent that keeps the events a Poll returned beyond the one asked for: on a fast machine the
@@ -47,6 +48,7 @@ func autoIntegration(t *testing.T, mode string) *Platform {
 // The hook is installed and typed by the platform alone: this test has no window, so no frame ever runs.
 // (The old code did it from the window's frame loop, which a hidden window does not run.)
 func TestAutoShellIntegrationTypesTheLineAtThePromptWithoutAWindow(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	t.Setenv("SHELL", "/bin/bash")
 	p := autoIntegration(t, "auto")
 	server := testServer(t)
@@ -81,6 +83,7 @@ func TestAutoShellIntegrationTypesTheLineAtThePromptWithoutAWindow(t *testing.T)
 
 // A reconnect starts a new shell, so it gets the line again; the file is on the server already and is not rewritten.
 func TestAutoShellIntegrationRunsForReconnectedSessionsToo(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	t.Setenv("SHELL", "/bin/bash")
 	p := autoIntegration(t, "auto")
 	server := testServer(t)
@@ -120,6 +123,7 @@ func TestAutoShellIntegrationRunsForReconnectedSessionsToo(t *testing.T) {
 }
 
 func TestAutoShellIntegrationReportsAndTypesNothingWhenTheServerCannotOrNoPromptShows(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	for name, tc := range map[string]struct {
 		shell, want string
 		prompt      bool

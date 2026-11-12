@@ -2,12 +2,14 @@ package desktop
 
 import (
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestProductionQueueRecursiveCopyAndCut(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	src, root := phase2SSH(t, p)
 	dst, target := phase2SSH(t, p)
@@ -32,6 +34,7 @@ func TestProductionQueueRecursiveCopyAndCut(t *testing.T) {
 	}
 }
 func TestCrossFileExplicitOverwriteStillWorks(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	src, root := phase2SSH(t, p)
 	dst, target := phase2SSH(t, p)

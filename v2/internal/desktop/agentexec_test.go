@@ -42,6 +42,7 @@ func testServer(t *testing.T) *testutil.Server {
 
 // Output past the cap is cut and flagged, and the command still runs to its end.
 func TestAgentExecKeepsTheStartOfTooMuchOutput(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	s := connectAs(t, p, testServer(t), "big", "utf-8")
 	b := agentBackend{p}
@@ -86,6 +87,7 @@ func TestBoundedOutputCutsAtACharacter(t *testing.T) {
 // The host's encoding applies to exec like it does to the terminal: the command goes out in it,
 // the output comes back decoded.
 func TestAgentExecUsesTheHostEncoding(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	server := testServer(t)
 	s := connectAs(t, p, server, "gbk host", "gbk")
@@ -217,6 +219,7 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 // Closing a session (the tab, or session_close) ends the agent's command on the server first: it is
 // killed while the connection is still up, and the caller hears "disconnected", not a timeout.
 func TestClosingASessionKillsItsRunningExec(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	server := testServer(t)
 	s := connectAs(t, p, server, "closing", "utf-8")
@@ -242,6 +245,7 @@ func TestClosingASessionKillsItsRunningExec(t *testing.T) {
 
 // A connection that drops during a command is "disconnected", with a hint that the command may have run.
 func TestExecOnAConnectionThatDropsIsDisconnected(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	server := testServer(t)
 	s := connectAs(t, p, server, "dropping", "utf-8")
@@ -328,6 +332,7 @@ func trackDir(t *testing.T, p *Platform, id, dir string) {
 // The command runs as a whole in the tab's directory, whatever operators or comments it has; if the
 // directory is gone nothing runs at all and the caller is told which path is missing.
 func TestExecRunsInTheTabsDirectoryOrNotAtAll(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	server := testServer(t)
 	s := connectAs(t, p, server, "cwd", "utf-8")
@@ -373,6 +378,7 @@ func TestExecRunsInTheTabsDirectoryOrNotAtAll(t *testing.T) {
 
 // Quitting the app does not leave an agent's command running on the server either.
 func TestShuttingDownKillsRunningExecs(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	p := desktopFixture(t)
 	server := testServer(t)
 	s := connectAs(t, p, server, "quitting", "utf-8")
