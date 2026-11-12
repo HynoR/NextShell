@@ -150,6 +150,8 @@ type Platform interface {
 	CancelDiagnostic()
 	RefreshMonitor(session string)
 	WatchMonitor(session string, on bool)
+	// WatchMonitorDetail: while on, samples for that session use the full probe (processes + network connections); otherwise the light probe.
+	WatchMonitorDetail(session string, on bool)
 	SignalProcess(session string, pid int, signal string)
 	SaveCommand(model.Command) error
 	ExecuteCommand(session, text string, all bool, appendCR ...bool) error

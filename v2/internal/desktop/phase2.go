@@ -316,9 +316,19 @@ func (p *Platform) RefreshMonitor(session string) {
 	}
 	p.monitorBusy[session] = true
 	previous, have := p.monitorPrevious[session]
+	detail := p.monitorDetail[session]
 	p.mu.Unlock()
 	p.launch(func() {
-		defer func() { p.mu.Lock(); delete(p.monitorBusy, session); p.mu.Unlock() }()
+		light := false // this probe was light: if detail was switched on meanwhile, its refresh was refused as busy
+		defer func() {
+			p.mu.Lock()
+			delete(p.monitorBusy, session)
+			again := light && p.monitorDetail[session]
+			p.mu.Unlock()
+			if again {
+				p.RefreshMonitor(session)
+			}
+		}()
 		s, e := p.ssh(session)
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
@@ -328,16 +338,33 @@ func (p *Platform) RefreshMonitor(session string) {
 		if have {
 			old = &previous
 		}
-		next, e := monitor.Collect(p.ctx, s, old)
+		next, e := monitor.Collect(p.ctx, s, old, detail)
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 			return
 		}
 		p.mu.Lock()
 		p.monitorPrevious[session] = next
+		light = !next.Detail
 		p.mu.Unlock()
 		p.emit(appui.Event{Monitor: &appui.MonitorResult{Session: session, Snapshot: next}})
 	})
+}
+
+// WatchMonitorDetail makes this session's samples use the full probe (processes and connections) while on,
+// the light one otherwise. Turning it on refreshes at once; the 2 s ticker of WatchMonitor reads the flag per tick.
+func (p *Platform) WatchMonitorDetail(session string, on bool) {
+	p.mu.Lock()
+	was := p.monitorDetail[session]
+	if on {
+		p.monitorDetail[session] = true
+	} else {
+		delete(p.monitorDetail, session)
+	}
+	p.mu.Unlock()
+	if on && !was {
+		p.RefreshMonitor(session)
+	}
 }
 func (p *Platform) WatchMonitor(session string, on bool) {
 	p.mu.Lock()

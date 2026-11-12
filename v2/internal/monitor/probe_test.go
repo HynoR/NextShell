@@ -95,9 +95,12 @@ func TestRealSSHProbeExecCancelAndProcessSignal(t *testing.T) {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { s.Close() })
-	snapshot, e := Collect(context.Background(), s, nil)
-	if e != nil || snapshot.MemoryTotal == 0 || len(snapshot.Processes) == 0 || !strings.Contains(snapshot.Info, "Linux") {
+	snapshot, e := Collect(context.Background(), s, nil, true)
+	if e != nil || !snapshot.Detail || snapshot.MemoryTotal == 0 || len(snapshot.Processes) == 0 || !strings.Contains(snapshot.Info, "Linux") {
 		t.Fatal(snapshot, e)
+	}
+	if light, e := Collect(context.Background(), s, &snapshot, false); e != nil || light.Detail || light.Processes != nil || light.Network != nil || light.MemoryTotal == 0 {
+		t.Fatal(light, e)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
@@ -141,5 +144,148 @@ func TestUnsupportedPsExplainsEmptyProcessList(t *testing.T) {
 	}
 	if v, e = Parse(probe, time.Now(), nil); e != nil || strings.Contains(strings.Join(v.Warnings, "|"), "process list") {
 		t.Fatal("a probe without a process section must not warn about it:", v.Warnings, e)
+	}
+}
+
+// lightOut is what LightProbeCommand prints on a two-interface host; cpu and rx/tx are the counters under test.
+func lightOut(cpuBusy, cpuIdle, rx, tx int) string {
+	return fmt.Sprintf(`---NS_INFO---
+Linux box 6.1.0 #1 SMP x86_64 GNU/Linux
+box
+---NS_LOADAVG---
+0.10 0.20 0.30 1/100 42
+---NS_CPUSTAT---
+cpu %d 0 0 %d 0 0 0 0 0 0
+---NS_MEMINFO---
+MemTotal: 1024000 kB
+MemAvailable: 512000 kB
+SwapTotal: 2048 kB
+SwapFree: 1024 kB
+---NS_NETDEV---
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0
+  eth0: %d 10 0 0 0 0 0 0 %d 10 0 0 0 0 0 0
+  eth1: 500 1 0 0 0 0 0 0 700 1 0 0 0 0 0 0
+---NS_DISK---
+Filesystem 1024-blocks Used Available Capacity Mounted on
+/dev/vda1 102400 20480 81920 20%% /
+---NS_PROBE_END---`, cpuBusy, cpuIdle, rx, tx)
+}
+
+// fullOut adds the heavy sections the way ProbeCommand does, ahead of the end marker.
+func fullOut(light string) string {
+	return strings.Replace(light, "---NS_PROBE_END---", `---NS_PROCESSES---
+100 1 root S 0 20 1.5 2.5 2048 4096 60 /usr/sbin/sshd -D
+---NS_NETWORK_SS---
+Netid State Recv-Q Send-Q Local Address:Port Peer Address:Port Process
+tcp LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("sshd",pid=100,fd=3))
+---NS_PROBE_END---`, 1)
+}
+
+func TestLightProbeCommandIsLight(t *testing.T) {
+	for _, heavy := range []string{"ps ", "ss ", "netstat", "NS_PROCESSES", "NS_NETWORK"} {
+		if strings.Contains(LightProbeCommand, heavy) {
+			t.Errorf("light probe contains %q", heavy)
+		}
+		if !strings.Contains(ProbeCommand, heavy) {
+			t.Errorf("full probe lacks %q", heavy)
+		}
+	}
+	// Both keep the Linux guard and the same light sections; the full one only adds to it.
+	if !strings.Contains(LightProbeCommand, "exit 44") || !strings.HasPrefix(ProbeCommand, lightProbe) || !strings.HasPrefix(LightProbeCommand, lightProbe) {
+		t.Error("probes diverge in their light part")
+	}
+	for _, section := range []string{"INFO", "LOADAVG", "CPUSTAT", "MEMINFO", "NETDEV", "DISK"} {
+		if !strings.Contains(LightProbeCommand, "---NS_"+section+"---") {
+			t.Errorf("light probe lacks %s", section)
+		}
+	}
+}
+
+func TestParseLightOutputLeavesDetailEmpty(t *testing.T) {
+	s, e := Parse(lightOut(100, 900, 1000, 2000), time.Unix(100, 0), nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if s.Detail || s.Processes != nil || s.Network != nil || len(s.Warnings) != 0 {
+		t.Fatalf("light sample must say 'not sampled', quietly: detail=%v procs=%v net=%v warnings=%v", s.Detail, s.Processes, s.Network, s.Warnings)
+	}
+	if s.Load != "0.10 0.20 0.30 1/100 42" || !strings.HasPrefix(s.Info, "Linux box") || s.SwapTotal != 2048*1024 || s.SwapFree != 1024*1024 || len(s.Disks) != 1 || s.RX != 1500 || s.TX != 2700 || len(s.Interfaces) != 2 {
+		t.Fatalf("%+v", s)
+	}
+}
+
+func TestParseFullOutputFillsDetail(t *testing.T) {
+	s, e := Parse(fullOut(lightOut(100, 900, 1000, 2000)), time.Unix(100, 0), nil)
+	if e != nil || !s.Detail || len(s.Processes) != 1 || len(s.Network) != 1 || s.Network[0].LocalPort != 22 || len(s.Warnings) != 0 {
+		t.Fatalf("%+v %v", s, e)
+	}
+	// Sections printing nothing still count as sampled: "no processes" must not look like "not sampled".
+	empty := strings.Replace(lightOut(100, 900, 1000, 2000), "---NS_PROBE_END---", "---NS_PROCESSES---\n---NS_NETWORK_SS---\n---NS_PROBE_END---", 1)
+	if s, e = Parse(empty, time.Unix(100, 0), nil); e != nil || !s.Detail || len(s.Processes) != 0 || len(s.Network) != 0 {
+		t.Fatalf("%+v %v", s, e)
+	}
+	// Heavy sections present but neither ss nor netstat available: still a full sample, with the reason.
+	none := strings.Replace(fullOut(lightOut(100, 900, 1000, 2000)), "---NS_NETWORK_SS---", "---NS_NETWORK_UNAVAILABLE---", 1)
+	if s, e = Parse(none, time.Unix(100, 0), nil); e != nil || !s.Detail || len(s.Warnings) != 1 || !strings.Contains(s.Warnings[0], "network") {
+		t.Fatalf("%+v %v", s, e)
+	}
+}
+
+// Rates are computed from counters both probes print, so alternating kinds must not disturb them.
+func TestRatesSurviveLightFullLightSequence(t *testing.T) {
+	at := time.Unix(1000, 0)
+	a, e := Parse(lightOut(100, 900, 1000, 2000), at, nil)
+	if e != nil || a.HasDelta || a.HasNetworkDelta {
+		t.Fatal("first sample has no delta", a, e)
+	}
+	// +2 s: 100 busy of 200 ticks on cpu; eth0 +200 rx +400 tx.
+	b, e := Parse(fullOut(lightOut(200, 1000, 1200, 2400)), at.Add(2*time.Second), &a)
+	if e != nil || !b.Detail || !b.HasDelta || !b.HasNetworkDelta || math.Abs(b.CPUPercent-50) > 0.01 || b.RXPerSecond != 100 || b.TXPerSecond != 200 {
+		t.Fatalf("light->full: %+v %v", b, e)
+	}
+	if n := b.Interfaces["eth0"]; !n.HasDelta || n.RXPerSecond != 100 || n.TXPerSecond != 200 {
+		t.Fatalf("light->full eth0: %+v", n)
+	}
+	// +2 s: 150 busy of 200 ticks; rx +600 tx +200.
+	c, e := Parse(lightOut(350, 1050, 1800, 2600), at.Add(4*time.Second), &b)
+	if e != nil || c.Detail || c.Processes != nil || !c.HasDelta || !c.HasNetworkDelta || math.Abs(c.CPUPercent-75) > 0.01 || c.RXPerSecond != 300 || c.TXPerSecond != 100 {
+		t.Fatalf("full->light: %+v %v", c, e)
+	}
+	if n := c.Interfaces["eth0"]; !n.HasDelta || n.RXPerSecond != 300 || n.TXPerSecond != 100 {
+		t.Fatalf("full->light eth0: %+v", n)
+	}
+	var h History
+	for _, s := range []Snapshot{a, b, c} {
+		h.Append(s)
+	}
+	if len(h.Points) != 3 || h.Points[2].Value("cpu") != c.CPUPercent || h.Points[2].Value("rx") != 300/1024.0 {
+		t.Fatal(h.Points)
+	}
+}
+
+type fakeRunner struct{ commands []string }
+
+func (f *fakeRunner) Output(_ context.Context, command string, _ int) ([]byte, error) {
+	f.commands = append(f.commands, command)
+	if command == ProbeCommand {
+		return []byte(fullOut(lightOut(100, 900, 1000, 2000))), nil
+	}
+	return []byte(lightOut(100, 900, 1000, 2000)), nil
+}
+
+func TestCollectPicksProbeByDetail(t *testing.T) {
+	r := &fakeRunner{}
+	light, e := Collect(context.Background(), r, nil, false)
+	if e != nil || light.Detail {
+		t.Fatalf("%+v %v", light, e)
+	}
+	full, e := Collect(context.Background(), r, &light, true)
+	if e != nil || !full.Detail || len(full.Processes) != 1 {
+		t.Fatalf("%+v %v", full, e)
+	}
+	if len(r.commands) != 2 || r.commands[0] != LightProbeCommand || r.commands[1] != ProbeCommand {
+		t.Fatal("wrong commands run")
 	}
 }

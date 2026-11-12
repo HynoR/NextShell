@@ -97,13 +97,20 @@ func TestPhase2PlatformRealSSHWorkflow(t *testing.T) {
 	if got, _ := os.ReadFile(filepath.Join(home, "Downloads", "new", "upload")); string(got) != "queue upload" {
 		t.Fatal(string(got))
 	}
+	// Light probe by default; the detail flag switches to the full one, and turning it on refreshes at once.
 	p.RefreshMonitor(session)
 	snapshot := awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil }).Monitor.Snapshot
+	if snapshot.MemoryTotal == 0 || snapshot.Detail || snapshot.Processes != nil {
+		t.Fatal("default monitor sample is not light:", snapshot)
+	}
+	p.WatchMonitorDetail(session, true)
+	snapshot = awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil && e.Monitor.Snapshot.Detail }).Monitor.Snapshot
 	if snapshot.MemoryTotal == 0 || len(snapshot.Processes) == 0 {
 		t.Fatal(snapshot)
 	}
-	p.WatchMonitor(session, true)
-	awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil })
+	p.WatchMonitorDetail(session, false)
+	p.WatchMonitor(session, true) // the 2 s ticker reads the flag per tick, so the next sample is light again
+	awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil && !e.Monitor.Snapshot.Detail })
 	p.WatchMonitor(session, false)
 	command := model.Command{ID: p.NewID(), Name: "inspect", Group: "ops", Text: "printf hello-command"}
 	if e = p.SaveCommand(command); e != nil {
@@ -255,5 +262,27 @@ func TestPhase2FinalShellDirectoryPreviewAndImport(t *testing.T) {
 		if c.Name == "legacy-1" && (!c.NeedsKeyRebind || c.Auth != "keyboard") {
 			t.Fatal(c)
 		}
+	}
+}
+
+// WatchMonitorDetail is per-session state read by the next sample; no SSH needed to see it set, refresh and clear.
+func TestWatchMonitorDetailFlag(t *testing.T) {
+	p := desktopFixture(t)
+	detail := func() bool { p.mu.Lock(); defer p.mu.Unlock(); return p.monitorDetail["s"] }
+	p.WatchMonitorDetail("s", true)
+	if !detail() {
+		t.Fatal("flag not set")
+	}
+	if ev := awaitEventOrMessage(t, p); ev.Message == "" { // turning it on refreshes at once; "s" has no SSH session to refresh
+		t.Fatal("no immediate refresh:", ev)
+	}
+	p.WatchMonitorDetail("s", false)
+	if detail() {
+		t.Fatal("flag not cleared")
+	}
+	p.WatchMonitorDetail("s", true)
+	p.CloseSession("s")
+	if detail() {
+		t.Fatal("closing the session leaves its flag behind")
 	}
 }

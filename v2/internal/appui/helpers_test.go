@@ -58,6 +58,7 @@ func (p *fakePlatform) QueueTransfer(r appui.TransferRequest) (string, error) {
 func (p *fakePlatform) Transfers() []transfer.Job       { return p.jobs }
 func (p *fakePlatform) RefreshMonitor(string)           {}
 func (p *fakePlatform) WatchMonitor(id string, on bool) { p.watching[id] = on }
+func (p *fakePlatform) WatchMonitorDetail(string, bool) {}
 func (p *fakePlatform) OpenRemote(session, path string) { p.opened = append(p.opened, path) }
 func (p *fakePlatform) ReloadRemote(session, path string) {
 	p.reloaded = append(p.reloaded, path)

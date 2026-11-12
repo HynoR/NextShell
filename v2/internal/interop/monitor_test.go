@@ -16,16 +16,28 @@ func TestMonitorProbeGNU(t *testing.T) {
 		t.Run(v.Name, func(t *testing.T) {
 			s := Dial(t, Shared(t, v).Options())
 			ctx := context.Background()
-			first, err := monitor.Collect(ctx, s, nil)
+			first, err := monitor.Collect(ctx, s, nil, false)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if first.Detail || first.Processes != nil || first.Network != nil || len(first.Warnings) != 0 || first.MemoryTotal == 0 || len(first.Disks) == 0 || first.Load == "" || !strings.Contains(first.Info, "Linux") {
+				t.Fatalf("light sample: %+v", first)
 			}
 			Sh(t, s, "i=0; while [ $i -lt 300000 ]; do i=$((i+1)); done") // burn CPU so the delta is non-zero
 			time.Sleep(time.Second)
-			snap, err := monitor.Collect(ctx, s, &first)
+			snap, err := monitor.Collect(ctx, s, &first, true) // light -> full: the rates must still come out
 			if err != nil {
 				t.Fatal(err)
 			}
+			if !snap.Detail {
+				t.Fatal("full probe returned a light sample")
+			}
+			if back, err := monitor.Collect(ctx, s, &snap, false); err != nil || back.Detail || back.Processes != nil || back.Network != nil || !back.HasNetworkDelta {
+				t.Errorf("full -> light: err=%v %+v", err, back)
+			}
+			lightRaw, _ := TrySh(s, monitor.LightProbeCommand, 15*time.Second)
+			fullRaw, _ := TrySh(s, monitor.ProbeCommand, 15*time.Second)
+			t.Logf("%s: light probe %d bytes, full probe %d bytes", v.Name, len(lightRaw), len(fullRaw))
 			if snap.MemoryTotal == 0 || snap.MemoryAvailable == 0 || len(snap.Disks) == 0 || len(snap.Processes) < 3 {
 				t.Fatalf("thin snapshot: mem=%d disks=%d procs=%d", snap.MemoryTotal, len(snap.Disks), len(snap.Processes))
 			}
@@ -64,10 +76,21 @@ func TestMonitorProbeGNU(t *testing.T) {
 // BusyBox has no `ps --sort`/`etimes` and no ss. Records which parts of the probe survive.
 func TestMonitorProbeAlpineBusyBox(t *testing.T) {
 	s := Dial(t, Shared(t, Alpine).Options())
+	ctx := context.Background()
+	// The light probe touches only /proc, df and uname: BusyBox has all of those.
 	start := time.Now()
+	light, err := monitor.Collect(ctx, s, nil, false)
+	t.Logf("light probe on BusyBox: err=%v, took %v", err, time.Since(start).Round(time.Millisecond))
+	if err != nil {
+		t.Fatalf("light Collect failed on BusyBox: %v", err)
+	}
+	if light.Detail || light.Processes != nil || light.Network != nil || len(light.Warnings) != 0 || light.MemoryTotal == 0 || len(light.Disks) == 0 || len(light.Interfaces) == 0 {
+		t.Errorf("light sample on BusyBox: %+v", light)
+	}
+	start = time.Now()
 	raw, runErr := TrySh(s, monitor.ProbeCommand, 15*time.Second)
-	snap, err := monitor.Collect(context.Background(), s, nil)
-	t.Logf("probe on BusyBox: run err=%v, Collect err=%v, took %v", runErr, err, time.Since(start).Round(time.Millisecond))
+	snap, err := monitor.Collect(ctx, s, &light, true)
+	t.Logf("full probe on BusyBox: run err=%v, Collect err=%v, took %v", runErr, err, time.Since(start).Round(time.Millisecond))
 	if err != nil {
 		t.Logf("raw probe output:\n%s", raw)
 		t.Fatalf("Collect failed on BusyBox: %v", err)
@@ -75,7 +98,7 @@ func TestMonitorProbeAlpineBusyBox(t *testing.T) {
 	t.Logf("cpu/mem ok: mem=%dMiB disks=%d interfaces=%d", snap.MemoryTotal>>20, len(snap.Disks), len(snap.Interfaces))
 	t.Logf("processes=%d (ps --sort/etimes unsupported by BusyBox)", len(snap.Processes))
 	t.Logf("network sockets=%d warnings=%v", len(snap.Network), snap.Warnings)
-	if snap.MemoryTotal == 0 || len(snap.Disks) == 0 {
+	if !snap.Detail || snap.MemoryTotal == 0 || len(snap.Disks) == 0 {
 		t.Error("core metrics missing")
 	}
 	if len(snap.Processes) == 0 && !strings.Contains(strings.Join(snap.Warnings, "|"), "process list unavailable") {

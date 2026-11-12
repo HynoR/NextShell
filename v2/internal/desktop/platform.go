@@ -47,6 +47,7 @@ type Platform struct {
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
 	monitorBusy      map[string]bool
+	monitorDetail    map[string]bool // sessions whose samples use the full probe; see WatchMonitorDetail
 	monitorWatches   map[string]context.CancelFunc
 	quit             func()
 	credentials      map[string]model.Connection
@@ -80,6 +81,7 @@ func Open(path string) (*Platform, error) {
 	p.imports = map[string]importPlan{}
 	p.monitorPrevious = map[string]monitor.Snapshot{}
 	p.monitorBusy = map[string]bool{}
+	p.monitorDetail = map[string]bool{}
 	p.monitorWatches = map[string]context.CancelFunc{}
 	p.clouds = map[string]*cloudsync.Service{}
 	p.gateway = agent.New(agentBackend{p}, p.Invalidate)
@@ -475,6 +477,7 @@ func (p *Platform) CloseSession(id string) {
 		delete(p.monitorWatches, id)
 	}
 	delete(p.monitorPrevious, id)
+	delete(p.monitorDetail, id)
 	delete(p.credentials, id)
 	p.mu.Unlock()
 	if t != nil {

@@ -12,7 +12,9 @@ import (
 	"time"
 )
 
-const ProbeCommand = `export LC_ALL=C
+// lightProbe is everything cheap enough to run every 2 s: the Linux guard, static info, and /proc counters.
+// Every rate-relevant counter is read here, before any slow command, so the light and full probes sample at the same moment.
+const lightProbe = `export LC_ALL=C
 [ "$(uname -s)" = Linux ] || { echo 'Linux remote monitoring only'; exit 44; }
 printf '\n---NS_INFO---\n'; uname -a; hostname
 printf '\n---NS_LOADAVG---\n'; cat /proc/loadavg
@@ -20,11 +22,21 @@ printf '\n---NS_CPUSTAT---\n'; head -n 1 /proc/stat
 printf '\n---NS_MEMINFO---\n'; cat /proc/meminfo
 printf '\n---NS_NETDEV---\n'; cat /proc/net/dev
 printf '\n---NS_DISK---\n'; df -Pk
-printf '\n---NS_PROCESSES---\n'; ps -ww -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,args --no-headers --sort=-pcpu
-if command -v ss >/dev/null 2>&1; then printf '\n---NS_NETWORK_SS---\n'; ss -tunap; elif command -v netstat >/dev/null 2>&1; then printf '\n---NS_NETWORK_NETSTAT---\n'; netstat -tunap; else printf '\n---NS_NETWORK_UNAVAILABLE---\n'; echo 'ss/netstat unavailable'; fi
-printf '\n---NS_PROBE_END---\n'`
+`
 
-// No user-controlled shell text is interpolated into ProbeCommand.
+// heavyProbe is the part that forks ps and ss/netstat; only worth running while a process or network view is visible.
+const heavyProbe = `printf '\n---NS_PROCESSES---\n'; ps -ww -eo pid,ppid,user,stat,ni,pri,pcpu,pmem,rss,vsz,etimes,args --no-headers --sort=-pcpu
+if command -v ss >/dev/null 2>&1; then printf '\n---NS_NETWORK_SS---\n'; ss -tunap; elif command -v netstat >/dev/null 2>&1; then printf '\n---NS_NETWORK_NETSTAT---\n'; netstat -tunap; else printf '\n---NS_NETWORK_UNAVAILABLE---\n'; echo 'ss/netstat unavailable'; fi
+`
+const probeEnd = `printf '\n---NS_PROBE_END---\n'`
+
+// LightProbeCommand is the always-on 2 s sample: no ps, no ss/netstat.
+const LightProbeCommand = lightProbe + probeEnd
+
+// ProbeCommand is the full probe: the light sections plus processes and network connections.
+const ProbeCommand = lightProbe + heavyProbe + probeEnd
+
+// No user-controlled shell text is interpolated into either probe command.
 type Runner interface {
 	Output(context.Context, string, int) ([]byte, error)
 }
@@ -61,9 +73,14 @@ type Snapshot struct {
 	RX, TX                                            uint64
 	RXPerSecond, TXPerSecond                          float64
 	Disks                                             []Disk
-	Processes                                         []Process
-	Network                                           []Network
-	Warnings                                          []string
+	// Detail is true when the sample came from the full probe (ProbeCommand). Only then are Processes and
+	// Network meaningful: empty means "none" (or unavailable, see Warnings). A light sample (LightProbeCommand)
+	// has Detail false and both nil, which means "not sampled", never "no processes". Everything else,
+	// including the CPU and network rates against a previous sample, is filled the same way for both.
+	Detail    bool
+	Processes []Process
+	Network   []Network
+	Warnings  []string
 }
 
 var ansi = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
@@ -77,6 +94,8 @@ func Sections(raw string) map[string]string {
 			key = strings.TrimSuffix(strings.TrimPrefix(line, "---NS_"), "---")
 			if key == "PROBE_END" {
 				key = ""
+			} else if _, seen := out[key]; !seen {
+				out[key] = "" // a section that printed nothing is still present
 			}
 			continue
 		}
@@ -183,17 +202,24 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 		}
 		s.Disks = append(s.Disks, Disk{Device: f[0], Mount: strings.Join(f[5:], " "), TotalKB: uintn(f[1]), UsedKB: uintn(f[2]), AvailableKB: uintn(f[3]), UsedPercent: floatn(strings.TrimSuffix(f[4], "%"))})
 	}
-	s.Processes = ParseProcesses(v["PROCESSES"])
-	if text := strings.TrimSpace(v["PROCESSES"]); len(s.Processes) == 0 && text != "" {
-		// e.g. BusyBox: "ps: unrecognized option: no-headers"; an empty table with no reason looks like a bug
-		s.Warnings = append(s.Warnings, "process list unavailable: "+strings.SplitN(text, "\n", 2)[0])
+	for _, k := range []string{"PROCESSES", "NETWORK_SS", "NETWORK_NETSTAT", "NETWORK_UNAVAILABLE"} {
+		if _, ok := v[k]; ok {
+			s.Detail = true
+		}
 	}
-	if text, ok := v["NETWORK_SS"]; ok {
-		s.Network = ParseSS(text)
-	} else if text, ok := v["NETWORK_NETSTAT"]; ok {
-		s.Network = ParseNetstat(text)
-	} else {
-		s.Warnings = append(s.Warnings, "network process data unavailable (ss/netstat missing or permission denied)")
+	if s.Detail {
+		s.Processes = ParseProcesses(v["PROCESSES"])
+		if text := strings.TrimSpace(v["PROCESSES"]); len(s.Processes) == 0 && text != "" {
+			// e.g. BusyBox: "ps: unrecognized option: no-headers"; an empty table with no reason looks like a bug
+			s.Warnings = append(s.Warnings, "process list unavailable: "+strings.SplitN(text, "\n", 2)[0])
+		}
+		if text, ok := v["NETWORK_SS"]; ok {
+			s.Network = ParseSS(text)
+		} else if text, ok := v["NETWORK_NETSTAT"]; ok {
+			s.Network = ParseNetstat(text)
+		} else {
+			s.Warnings = append(s.Warnings, "network process data unavailable (ss/netstat missing or permission denied)")
+		}
 	}
 	if previous != nil {
 		elapsed := at.Sub(previous.At).Seconds()
@@ -225,14 +251,23 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 	}
 	return s, nil
 }
-func Collect(ctx context.Context, r Runner, previous *Snapshot) (Snapshot, error) {
+
+// Collect runs the full probe when detail is set, else the light one. At is the request time rather than the
+// finish time: counters are read in the shared light prefix right after the command starts, so the slower
+// full probe (ps, ss) must not stretch the interval a light/full pair's rates are divided by.
+func Collect(ctx context.Context, r Runner, previous *Snapshot, detail bool) (Snapshot, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	b, e := r.Output(ctx, ProbeCommand, 8<<20)
+	command := LightProbeCommand
+	if detail {
+		command = ProbeCommand
+	}
+	at := time.Now()
+	b, e := r.Output(ctx, command, 8<<20) // df alone can be large on a host with thousands of mounts
 	if e != nil {
 		return Snapshot{}, e
 	}
-	return Parse(string(b), time.Now(), previous)
+	return Parse(string(b), at, previous)
 }
 func ParseProcesses(raw string) []Process {
 	var out []Process
