@@ -537,3 +537,27 @@ func TestGridEnterOnATile(t *testing.T) {
 		t.Fatalf("grid %v, active %d: Enter did not go to the tile's session", a.GridOn(), a.Active)
 	}
 }
+
+// The pictures are transparent terminals like all the others, so the tile under them paints the terminal's
+// ground: without a picture behind the window, the theme's own background, not the window's.
+func TestGridTilesPaintTheTerminalGround(t *testing.T) {
+	a, p, tt, _ := gridFixture(t)
+	_ = a
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Frame()
+		openGrid(t, tt)
+		r := tileOf(t, tt, "tab-A")
+		light, darkTheme := appui.TerminalThemes(p.Preferences())
+		want := light.Background
+		if dark {
+			want = darkTheme.Background
+		}
+		got := tt.Image().At(int(r.X+r.W-12), int(r.Y+r.H-12)) // the blank corner under the picture
+		gr, gg, gb, _ := got.RGBA()
+		if uint8(gr>>8) != want.R || uint8(gg>>8) != want.G || uint8(gb>>8) != want.B {
+			t.Fatalf("dark=%v: tile ground is %v, the terminal theme's background %v", dark, got, want)
+		}
+		click(t, tt, "监视网格")
+	}
+}

@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
+	"nextshell.dev/v2/internal/testutil"
 )
 
 // n1Screens are what the sessions of the grid's screenshots show: logs, a database prompt, full-screen
@@ -65,10 +67,11 @@ var n1Screens = map[string]struct {
 }
 
 // gridScenes opens one session for each of the named hosts, showing the screens in order.
-func gridScenes(t *testing.T, names []string, screens []string, gone int) (*ui.Tester, func()) {
+func gridScenes(t *testing.T, names []string, screens []string, gone int) (*ui.Tester, func(), *appui.App) {
 	t.Helper()
 	p := newPlatform(t)
 	demo(t, p)
+	p.SetDataDir(t.TempDir())
 	a, tt := start(p)
 	tt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
 	var conns []*captureConn
@@ -90,18 +93,25 @@ func gridScenes(t *testing.T, names []string, screens []string, gone int) (*ui.T
 		<-a.Tabs[gone].Terminal.Done()
 	}
 	tt.Frame()
-	return tt, func() { openGrid(t, tt); tt.Advance(time.Second) }
+	return tt, func() { openGrid(t, tt); tt.Advance(time.Second) }, a
 }
 
 // TestScreenshotsN1 renders the grid (监视网格) with four sessions, one of them disconnected, and with
 // nine, and a dozen and a half that scroll.
 func TestScreenshotsN1(t *testing.T) {
 	shot := shooter(t)
-	tt, open := gridScenes(t, []string{"prod-web-01", "db-master", "监控机", "bastion"}, []string{"log", "psql", "top", "cron"}, 3)
+	tt, open, a := gridScenes(t, []string{"prod-web-01", "db-master", "监控机", "bastion"}, []string{"log", "psql", "top", "cron"}, 3)
 	open()
 	shot(tt, "n1-1-grid-4")
 
-	tt, open = gridScenes(t,
+	// Over a picture behind the window the tiles are as translucent as every terminal.
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{testutil.Picture(t)}) }
+	st := ui.NewTester(a.SettingsView, 880, 760)
+	click(t, st, "选择背景图")
+	tt.Frame()
+	shot(tt, "n1-4-grid-4-picture")
+
+	tt, open, _ = gridScenes(t,
 		[]string{"prod-web-01", "db-master", "prod-web-02", "build-01", "staging-02", "redis-01", "本地终端", "test-01", "bastion"},
 		[]string{"log", "psql", "top", "build", "docker", "journal", "vim", "shell", "cron"}, 8)
 	open()
@@ -113,7 +123,7 @@ func TestScreenshotsN1(t *testing.T) {
 		names = append(names, fmt.Sprintf("host-%02d", i+1))
 		screens = append(screens, keys[i%len(keys)])
 	}
-	tt, open = gridScenes(t, names, screens, -1)
+	tt, open, _ = gridScenes(t, names, screens, -1)
 	open()
 	shot(tt, "n1-3-grid-14")
 }

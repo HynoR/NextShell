@@ -88,6 +88,7 @@ func (a *App) newTile(s *Session) *gridTile {
 		NoClipboardWrite: true, // what a program copies must not reach the clipboard from a picture
 		ClipboardRead:    terminal.ClipboardDeny,
 		NoBlink:          true,
+		Transparent:      true,     // as every terminal: the tile under it paints terminalGround
 		ImageLimit:       16 << 20, // a picture is small: a program's images count little
 	})
 	if e != nil {
@@ -223,7 +224,7 @@ func (a *App) gridView(c *ui.Context) {
 	g := &a.grid
 	a.gridSync(c)
 	t := c.Theme()
-	root := ui.Column(c.Key("grid")).Grow(1).FillWidth().MinWidth(0).MinHeight(0).Background(t.Background).Label("监视网格")
+	root := ui.Column(c.Key("grid")).Grow(1).FillWidth().MinWidth(0).MinHeight(0).Background(a.page(t)).Label("监视网格")
 	// The area is what the last frame measured. The first frame has none, and a frame that follows a change
 	// of the window or its columns has the old one: they estimate it from the window, and ask for another.
 	area := root.LayoutBounds()
@@ -343,7 +344,7 @@ func (a *App) gridTileView(c *ui.Context, i int, natural [2]float32, tw, th floa
 	if t.Dark {
 		screen = dark.Background
 	}
-	card := ui.ButtonBase(c.Key("grid-tile-"+s.ID)).Label("会话预览 "+title).Size(tw, th).Shrink(0).Radius(t.Radius).Clip().Border(1, t.Border).Background(screen)
+	card := ui.ButtonBase(c.Key("grid-tile-"+s.ID)).Label("会话预览 "+title).Size(tw, th).Shrink(0).Radius(t.Radius).Clip().Border(1, t.Border).Background(a.terminalGround(c)) // the pictures are transparent terminals
 	switch {
 	case i == a.Active:
 		card.Border(2, t.Accent)
@@ -353,7 +354,7 @@ func (a *App) gridTileView(c *ui.Context, i int, natural [2]float32, tw, th floa
 	}
 	card.Children(func() {
 		ui.Column(c).Fill().Children(func() {
-			ui.Row(c).FillWidth().Height(gridHead).Shrink(0).Padding(0, 10).Gap(8).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
+			ui.Row(c).FillWidth().Height(gridHead).Shrink(0).Padding(0, 10).Gap(8).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
 				if !s.Local {
 					ui.Box(c).Size(3, 14).Radius(1.5).Background(a.hostColor(s.Connection))
 				}
