@@ -22,14 +22,14 @@ NextShell 2 是**全新产品**,不是 1.x 的升级版。
 
 ## 里程碑
 
-### M0 清理(进行中)
+### M0 清理 ✅
 
 - [x] 去掉 `third_party/mygo` fork,升级 mygo v0.9.0
 - [x] macOS 测试全绿:快捷键改用 `ui.Cmd`;依赖 Linux 远端的测试在非 Linux 上跳过
 - [x] 文档收敛:删除阶段报告,只留 ROADMAP / DESIGN / CLOUD-V2 协议 / 生态审计
-- [ ] CI:GitHub Actions 跑 `go vet` + `go test`(macOS + Linux + Windows)
+- [x] CI:`.github/workflows/v2.yml`(macOS + Linux + Windows,Linux 加 `-race`;桥测试)。推送前在 Mac 上用 README 里的 Docker 命令补跑 Linux
 
-### M1 新外壳(UI 架构 + 主布局)
+### M1 新外壳(UI 架构 + 主布局)✅ 2026-11-12
 
 按 DESIGN.md 实现:
 
@@ -40,7 +40,7 @@ NextShell 2 是**全新产品**,不是 1.x 的升级版。
 
 验收:不看文档就能完成「新建主机 → 连接 → 开第二个标签 → 打开文件面板 → 上传一个文件」。
 
-### M2 功能面板重做
+### M2 功能面板重做 ✅ 2026-11-12
 
 - 文件面板:目录面包屑 + 虚拟化表格 + 右键菜单 + 拖入上传 / 拖出下载 + 原生文件选择对话框;不再有路径输入框
 - 传输:状态栏进度 + 弹出的传输列表
@@ -49,7 +49,12 @@ NextShell 2 是**全新产品**,不是 1.x 的升级版。
 - 远程编辑:独立窗口,mygo 多窗口
 - 并入原对照表剩余缺口:主机拖进目录 / 目录排序、回收站清空与多选还原、片段分组重命名删除、多选下载 / 删除、进程详情、关闭确认开关、Shell 集成自动 / 手动 / 关闭
 
-### M3 macOS 日用验收
+M2 未做:拖出到 Finder 下载(mygo 只能拖出已存在的文件,需上游支持 file promise);目录拖拽排序(`SidebarSection` 不暴露标题,改用菜单上移 / 下移)。
+
+### M3 macOS 日用验收(进行中)
+
+- [x] 真实 OpenSSH 互操作 + 性能基准(`internal/interop`,`docs/v2/PERF.md`);修了 known_hosts 算法协商、SFTP 流水线(20ms RTT 下 1.4→46 MB/s)、打包传输报错、BusyBox 监控提示
+- [ ] Agent 通过 MCP 驱动应用的测试(进行中)
 
 - 你本人连续日用一周,问题进 issue
 - 中文输入法(终端 + 输入框)、Cmd 快捷键、全屏 / 多显示器 / Retina
@@ -77,6 +82,14 @@ mygo 自带签名、公证、DMG、NSIS、更新(见 mygo `docs/distribution.md`
 ### M6 新功能
 
 端口转发、跳板机、分屏、会话录制。
+
+## 待办池(未排期)
+
+- SSH agent forwarding、ProxyJump(随 M6 跳板机)
+- 跨服务器目录复制每个文件约 9 个往返,高延迟下慢;可改为两端都有 tar 时走打包流
+- mygo 上游 issue:终端插件公开 OSC 133 事件;拖出文件支持 file promise;`SidebarSection` 标题可拖拽
+- 应用被强杀时 `mcp.json` 残留(下次开启会覆盖)
+- Windows:SSH agent 走命名管道 / Pageant;CI 的 Windows 任务尚未真实跑过
 
 ## 决策记录(2026-11-12)
 
