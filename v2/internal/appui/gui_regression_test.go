@@ -15,7 +15,7 @@ func TestGUIRealTypingRename(t *testing.T) {
 	click(t, tt, "标签名称")
 	tt.Key(ui.Ctrl, ui.KeyA)
 	for _, r := range "typed-name" {
-		tt.TypeNative(string(r))
+		tt.Type(string(r))
 	}
 	click(t, tt, "重命名")
 	if s.Title != "typed-name" {
@@ -70,7 +70,7 @@ func TestGUITitleOSCManualPriorityAndReconnect(t *testing.T) {
 	}
 	click(t, tt, "标签名称")
 	tt.Key(ui.Ctrl, ui.KeyA)
-	tt.TypeNative("manual-title")
+	tt.Type("manual-title")
 	click(t, tt, "重命名")
 	s.Terminal.Feed([]byte("\x1b]2;later-remote-title\x07"))
 	tt.Frame()

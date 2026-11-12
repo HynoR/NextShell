@@ -3,7 +3,7 @@ module nextshell.dev/v2
 go 1.27.3
 
 require (
-	github.com/egoist/mygo v0.8.3
+	github.com/egoist/mygo v0.9.0
 	github.com/google/uuid v1.6.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/pkg/sftp v1.13.12
@@ -40,6 +40,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
-
-// Audited local fixes to the exact v0.8.3 source; see third_party/mygo/NEXTSHELL-PATCHES.md.
-replace github.com/egoist/mygo => ./third_party/mygo
