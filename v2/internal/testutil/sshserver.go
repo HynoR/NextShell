@@ -25,6 +25,19 @@ import (
 // linuxTestCmd runs the whole suite on Linux from a non-Linux dev machine (run inside v2/).
 const linuxTestCmd = `docker run --rm -v "$PWD":/src -w /src -v nextshell-gomod:/go/pkg/mod -e GOTOOLCHAIN=auto golang:1.27 go test ./... -count=1`
 
+// RequirePOSIXRemote skips t where this machine cannot stand in for a POSIX
+// remote. The server runs exec requests with /bin/sh and serves SFTP from a
+// directory of the local file system, so on Windows commands exit 127, a
+// `C:\...` path joined onto the SFTP root is invalid and POSIX file modes do
+// not exist. Tests of remote-side behaviour call it; tests of client-side
+// behaviour must work on Windows instead.
+func RequirePOSIXRemote(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a POSIX host to act as the remote (/bin/sh, slash-separated absolute paths, file modes); the in-process server cannot be one on Windows")
+	}
+}
+
 // RequireLinuxRemote skips t unless this machine can stand in for a Linux
 // remote: the server runs exec requests locally, while the product probes
 // /proc and uses GNU tools (mv -T, ps --sort) on the remote.
