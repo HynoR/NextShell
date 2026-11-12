@@ -54,6 +54,9 @@ type batchAuth struct {
 	auth, key, proxy, pass string
 }
 
+// keepProxy is the batch dialog's default: leave each host's proxy alone.
+const keepProxy = "\x00keep"
+
 func (h *hostsState) init() {
 	h.collapsed = map[string]bool{}
 	h.connecting = map[string]bool{}
@@ -444,7 +447,7 @@ func (a *App) folderMenu(e ui.Element, f model.Folder) {
 			a.later(func() { a.shiftFolder(f, 1) })
 		}
 		if m.Item("批量设置认证…").Chosen() {
-			a.later(func() { a.hosts.batch = batchAuth{open: true, folder: f.ID, auth: "password"} })
+			a.later(func() { a.hosts.batch = batchAuth{open: true, folder: f.ID, auth: "password", proxy: keepProxy} })
 		}
 		m.Separator()
 		if m.Item("删除目录").Danger().Chosen() {
@@ -773,7 +776,7 @@ func (a *App) batchDialog(c *ui.Context) {
 				case "key":
 					a.keyPick(c, &b.key)
 				}
-				var ids, names []string
+				ids, names := []string{keepProxy}, []string{"保持不变"}
 				for _, p := range a.Data.Proxies {
 					ids = append(ids, p.ID)
 					names = append(names, p.Name)
@@ -808,7 +811,10 @@ func (a *App) applyBatch(targets []model.Connection) {
 		return
 	}
 	for _, cc := range targets {
-		cc.Auth, cc.ProxyID = b.auth, b.proxy
+		cc.Auth = b.auth
+		if b.proxy != keepProxy {
+			cc.ProxyID = b.proxy
+		}
 		cc.KeyID = ""
 		if b.auth == "key" {
 			cc.KeyID = b.key

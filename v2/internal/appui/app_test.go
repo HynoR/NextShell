@@ -193,7 +193,10 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	child := model.Folder{ID: p.NewID(), Name: "子目录", ParentID: prod.ID}
 	p.SaveFolder(prod)
 	p.SaveFolder(child)
-	saveHost(t, p, model.Connection{Name: "alpha", Host: "a.example", User: "u", FolderID: prod.ID})
+	if e := p.SaveProxy(model.Proxy{ID: "px", Name: "跳板", Kind: "socks5", Host: "127.0.0.1", Port: 1080}, nil); e != nil {
+		t.Fatal(e)
+	}
+	saveHost(t, p, model.Connection{Name: "alpha", Host: "a.example", User: "u", FolderID: prod.ID, ProxyID: "px"})
 	saveHost(t, p, model.Connection{Name: "beta", Host: "b.example", User: "u", FolderID: child.ID})
 	saveHost(t, p, model.Connection{Name: "gamma", Host: "g.example", User: "u"})
 	_, tt := start(p)
@@ -230,6 +233,9 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	for _, c := range snap.Connections {
 		if (c.Name == "gamma") == (c.Auth == "agent") {
 			t.Fatal("batch scope", c.Name, c.Auth)
+		}
+		if c.Name == "alpha" && c.ProxyID != "px" {
+			t.Fatal("batch kept proxy", c.ProxyID)
 		}
 	}
 	dblclick(t, tt, "beta")
