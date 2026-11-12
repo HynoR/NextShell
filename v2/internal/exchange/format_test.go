@@ -134,7 +134,7 @@ func TestFinalShellAuthAndEncodingSpecs(t *testing.T) {
 				if key == "" && v.AuthType != "password" {
 					t.Fatal("guessed authentication_type numeric meaning")
 				}
-				if key != "" && (!v.NeedsKeyRebind || v.AuthType != "interactive") {
+				if key != "" && (!v.NeedsKeyRebind || v.AuthType != "privateKey") {
 					t.Fatal(v)
 				}
 			})
@@ -164,7 +164,7 @@ func TestFolderAndKeyMatchSpecs(t *testing.T) {
 		t.Fatal("ambiguous name guessed")
 	}
 	c := FromEntry(Entry{Name: "x", Host: "h", Port: 22, Username: "u", AuthType: "privateKey", KeyRef: &KeyRef{Name: "missing"}}, keys)
-	if c.Auth != "keyboard" || !c.NeedsKeyRebind {
+	if c.Auth != "key" || c.KeyID != "" || !c.NeedsKeyRebind || c.Validate() != nil {
 		t.Fatal(c)
 	}
 }

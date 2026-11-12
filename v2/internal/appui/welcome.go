@@ -45,14 +45,14 @@ func (a *App) welcomeView(c *ui.Context) {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {
 						muted(c, "开始使用")
 						guide(c, "新建主机", "填写地址和用户名，保存后双击即可连接", func() { a.newHost("") })
-						guide(c, "从 NextShell 1.x 导入连接文件", "在 NextShell 1.x 中导出连接文件，然后在这里导入", func() { a.openSettings("导入导出") })
+						guide(c, "从 NextShell 1.x 导入连接文件", "在 NextShell 1.x 中导出连接文件，然后在这里导入", func() { a.openImport("") })
 					})
 				} else {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {
 						muted(c, "最近")
 						ui.Grid(c).Columns(3).FillWidth().Gap(8).Children(func() {
 							for _, cc := range hosts {
-								if card(c, "recent-"+cc.ID, cc.Name, cc.User+"@"+cc.Host).Clicked() {
+								if card(c, "recent-"+cc.ID, cc.Name, a.resolved(cc).User+"@"+cc.Host).Clicked() {
 									a.connect(cc)
 								}
 							}
@@ -67,7 +67,7 @@ func (a *App) welcomeView(c *ui.Context) {
 						a.newHost("")
 					}
 					if ui.Button(c, "导入…").Clicked() {
-						a.openSettings("导入导出")
+						a.openImport("")
 					}
 					if ui.Button(c, "打开本地终端").Clicked() {
 						a.P.Local()

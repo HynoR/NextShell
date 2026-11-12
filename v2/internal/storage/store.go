@@ -209,6 +209,11 @@ func (s *Store) SaveConnection(c model.Connection, secret *string) error {
 			return e
 		}
 	}
+	if c.CredentialID != "" {
+		if _, e := get[model.Credential](s, "credential", c.CredentialID); e != nil {
+			return e
+		}
+	}
 	return s.put("connection", c.ID, c, secret)
 }
 func (s *Store) Folders() ([]model.Folder, error) { return list[model.Folder](s, "folder") }
@@ -279,12 +284,73 @@ func (s *Store) SaveKey(k model.Key) error {
 	if k.ID == "" || k.Name == "" || k.Private == "" {
 		return errors.New("invalid key")
 	}
+	if e := s.duplicateKey(k); e != nil {
+		return e
+	}
 	b, e := json.Marshal(struct{ Private, Passphrase string }{k.Private, k.Passphrase})
 	if e != nil {
 		return e
 	}
 	secret := string(b)
 	return s.put("key", k.ID, k, &secret)
+}
+
+// duplicateKey refuses a second copy of a private key: the same fingerprint in the same scope.
+func (s *Store) duplicateKey(k model.Key) error {
+	if k.Fingerprint == "" {
+		return nil
+	}
+	keys, e := s.Keys()
+	if e != nil {
+		return e
+	}
+	for _, other := range keys {
+		if other.ID != k.ID && other.Fingerprint == k.Fingerprint && other.ScopeID() == k.ScopeID() {
+			return &model.KeyExistsError{Key: other}
+		}
+	}
+	return nil
+}
+
+func (s *Store) Credentials() ([]model.Credential, error) {
+	return list[model.Credential](s, "credential")
+}
+func (s *Store) Credential(id string) (model.Credential, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.credentialUnlocked(id)
+}
+
+// credentialUnlocked requires Store.mu; used by atomic compound operations.
+func (s *Store) credentialUnlocked(id string) (model.Credential, error) {
+	c, e := get[model.Credential](s, "credential", id)
+	if e != nil {
+		return c, e
+	}
+	c.Secret, e = s.secret("credential", id)
+	return c, e
+}
+
+// SaveCredential saves cr; a nil secret keeps the saved password (none for a new credential).
+func (s *Store) SaveCredential(cr model.Credential, secret *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cr.ID == "" {
+		return errors.New("missing id")
+	}
+	if e := cr.Validate(); e != nil {
+		return e
+	}
+	if cr.Auth != "key" {
+		cr.KeyID = ""
+	}
+	if secret == nil {
+		if _, e := get[model.Credential](s, "credential", cr.ID); e != nil {
+			empty := ""
+			secret = &empty // every credential has a secret row, as cloud sync expects
+		}
+	}
+	return s.put("credential", cr.ID, cr, secret)
 }
 func (s *Store) Proxies() ([]model.Proxy, error) { return list[model.Proxy](s, "proxy") }
 func (s *Store) Proxy(id string) (model.Proxy, error) {
@@ -316,7 +382,7 @@ func (s *Store) SaveProxy(p model.Proxy, secret *string) error {
 func (s *Store) Delete(kind, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if kind != "connection" && kind != "folder" && kind != "key" && kind != "proxy" && kind != "command" {
+	if kind != "connection" && kind != "folder" && kind != "key" && kind != "proxy" && kind != "command" && kind != "credential" {
 		return errors.New("invalid resource kind")
 	}
 	cs, e := s.Connections()
@@ -326,6 +392,17 @@ func (s *Store) Delete(kind, id string) error {
 	for _, c := range cs {
 		if kind == "folder" && c.FolderID == id || kind == "key" && c.KeyID == id || kind == "proxy" && c.ProxyID == id {
 			return errors.New("resource is in use")
+		}
+	}
+	if kind == "key" {
+		crs, e := s.Credentials()
+		if e != nil {
+			return e
+		}
+		for _, cr := range crs {
+			if cr.KeyID == id {
+				return errors.New("resource is in use")
+			}
 		}
 	}
 	if kind == "folder" {
@@ -339,11 +416,22 @@ func (s *Store) Delete(kind, id string) error {
 			}
 		}
 	}
+	var cr model.Credential
+	if kind == "credential" {
+		if cr, e = s.credentialUnlocked(id); e != nil {
+			return e
+		}
+	}
 	tx, e := s.db.Begin()
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
+	if kind == "credential" {
+		if e = s.releaseCredentialTx(tx, cr, cs); e != nil {
+			return e
+		}
+	}
 	if e = s.tombstoneTx(tx, kind, id); e != nil {
 		return e
 	}
@@ -354,6 +442,26 @@ func (s *Store) Delete(kind, id string) error {
 		return e
 	}
 	return tx.Commit()
+}
+
+// releaseCredentialTx returns the hosts using credential id to their own authentication. A host
+// that never had its own (no user) keeps a copy of the credential's.
+func (s *Store) releaseCredentialTx(tx *sql.Tx, cr model.Credential, cs []model.Connection) error {
+	for _, c := range cs {
+		if c.CredentialID != cr.ID {
+			continue
+		}
+		c.CredentialID = ""
+		var secret *string
+		if strings.TrimSpace(c.User) == "" {
+			c = c.WithCredential(cr)
+			secret = &c.Secret
+		}
+		if e := s.putTx(tx, "connection", c.ID, c, secret, false); e != nil {
+			return e
+		}
+	}
+	return nil
 }
 
 // PinHost inserts a first-use pin atomically, or rejects a changed pin.

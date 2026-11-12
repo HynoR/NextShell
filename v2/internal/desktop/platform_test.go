@@ -99,7 +99,8 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 			t.Fatal(e)
 		}
 		copy, e := p.ImportKey(path, "")
-		if e != nil || copy.Public != k.Public {
+		var dup *model.KeyExistsError
+		if !errors.As(e, &dup) || copy.ID != k.ID { // the same key again is the one already saved
 			t.Fatal(copy, e)
 		}
 		if e = p.RenameKey(k.ID, "renamed"); e != nil {
@@ -115,7 +116,7 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 		t.Fatal(e)
 	}
 	snap, e := p.Snapshot()
-	if e != nil || len(snap.History) != 1 || len(snap.Keys) != 4 {
+	if e != nil || len(snap.History) != 1 || len(snap.Keys) != 2 {
 		t.Fatal(snap, e)
 	}
 	for _, k := range snap.Keys {

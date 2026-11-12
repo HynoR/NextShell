@@ -1,6 +1,8 @@
 package appui_test
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -165,50 +167,62 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 	}
 }
 
-func TestSettingsKeysAndProxies(t *testing.T) {
-	_, p, _, st := settingsFixture(t)
-	click(t, st, "密钥")
-	click(t, st, "名称")
-	st.Type("ui-key")
-	click(t, st, "生成密钥")
+func TestManagerKeysAndProxies(t *testing.T) {
+	p := newPlatform(t)
+	a, _ := start(p)
+	mt := manager(a)
+	click(t, mt, "密钥")
+	click(t, mt, "生成密钥…")
+	click(t, mt, "名称")
+	mt.Type("ui-key")
+	clickLast(t, mt, "生成密钥")
 	snap, _ := p.Snapshot()
 	if len(snap.Keys) != 1 || snap.Keys[0].Name != "ui-key" || snap.Keys[0].Private != "" {
 		t.Fatal(snap.Keys)
 	}
-	has(t, st, "ed25519 · 0 个主机使用")
-	dblclick(t, st, "密钥名称 ui-key")
-	st.Key(ui.Cmd, ui.KeyA)
-	st.Type("renamed")
-	st.Key(0, ui.KeyEnter)
+	has(t, mt, "ed25519", "被引用（0）", "复制公钥", "替换私钥…")
+	dblclick(t, mt, "密钥名称 ui-key")
+	mt.Key(ui.Cmd, ui.KeyA)
+	mt.Type("renamed")
+	mt.Key(0, ui.KeyEnter)
 	snap, _ = p.Snapshot()
 	if snap.Keys[0].Name != "renamed" {
 		t.Fatal("rename", snap.Keys[0].Name)
 	}
-	click(t, st, "删除")
-	click(t, st, "删除密钥")
+	click(t, mt, "删除")
+	click(t, mt, "删除密钥")
 	snap, _ = p.Snapshot()
 	if len(snap.Keys) != 0 {
 		t.Fatal("key not deleted")
 	}
 
-	click(t, st, "代理")
-	click(t, st, "新建代理")
-	click(t, st, "名称")
-	st.Type("socks")
-	click(t, st, "主机")
-	st.Type("127.0.0.1")
-	click(t, st, "密码")
-	st.Type("secret")
-	click(t, st, "保存代理")
+	click(t, mt, "代理")
+	click(t, mt, "新建代理…")
+	click(t, mt, "名称")
+	mt.Type("socks")
+	click(t, mt, "主机")
+	mt.Type("127.0.0.1")
+	click(t, mt, "密码")
+	mt.Type("secret")
+	click(t, mt, "保存代理")
 	snap, _ = p.Snapshot()
 	if len(snap.Proxies) != 1 || snap.Proxies[0].Port != 1080 || snap.Proxies[0].Password != "" {
 		t.Fatal(snap.Proxies)
 	}
-	click(t, st, "删除")
-	click(t, st, "删除代理")
+	click(t, mt, "socks")
+	click(t, mt, "删除")
+	click(t, mt, "删除代理")
 	snap, _ = p.Snapshot()
 	if len(snap.Proxies) != 0 {
 		t.Fatal("proxy not deleted")
+	}
+	// Settings only point to the manager.
+	st := ui.NewTester(a.SettingsView, 880, 900)
+	click(t, st, "SSH")
+	click(t, st, "管理凭据")
+	mt.Frame()
+	if p.managerShown == 0 || !mt.HasText("新建凭据…") {
+		t.Fatal("settings link")
 	}
 }
 
@@ -274,7 +288,7 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 			}
 			return false
 		}
-		sections := []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络工具", "关于"}
+		sections := []string{"通用", "终端", "SSH", "Agent", "回收站", "网络工具", "关于"}
 		for _, section := range sections {
 			click(t, st, section)
 			if shows(st) != enabled { // the sidebar lists 同步 when enabled
@@ -337,38 +351,65 @@ func TestRouteTraceDrawerFromThePingCard(t *testing.T) {
 	}
 }
 
-func TestImportPreviewOpensSettingsAndExportUsesChosenHosts(t *testing.T) {
-	_, p, tt, st := settingsFixture(t)
-	shown := 0
-	saveHost(t, p.fakePlatform, model.Connection{ID: "h1", Name: "export-me", Host: "e", User: "u"})
-	a := appui.New(p)
-	a.ShowSettings = func() { shown++ }
-	tt = ui.NewTester(a.View, 1280, 800)
-	st = ui.NewTester(a.SettingsView, 880, 1400)
+func TestImportPreviewOpensManagerAndExportUsesChosenHosts(t *testing.T) {
+	p := newPlatform(t)
+	saveHost(t, p, model.Connection{ID: "h1", Name: "export-me", Host: "e", User: "u"})
+	saveHost(t, p, model.Connection{ID: "h2", Name: "and-me", Host: "f", User: "u"})
+	saveHost(t, p, model.Connection{ID: "h3", Name: "not-me", Host: "g", User: "u"})
+	a, tt := start(p)
+	mt := manager(a)
 	p.events = append(p.events, appui.Event{Import: &appui.ImportPreview{Count: 2, Names: []string{"x", "y"}, Token: "tok"}})
 	tt.Frame()
-	st.Frame()
-	if shown != 1 {
-		t.Fatal("import preview did not open settings")
+	mt.Frame()
+	if p.managerShown != 1 {
+		t.Fatal("import preview did not open the manager")
 	}
-	has(t, st, "将导入 2 个主机", "导入 2 个主机")
-	click(t, st, "export-me  u@e")
-	has(t, st, "导出 1 个主机")
+	has(t, mt, "将导入 2 个主机", "导入 2 个主机")
+	click(t, mt, "取消")
+	click(t, mt, "export-me")
+	if e := mt.ClickWith(ui.Cmd, "and-me"); e != nil {
+		t.Fatal(e)
+	}
+	click(t, mt, "导出所选…")
+	has(t, mt, "导出 2 个主机")
 	// Local paths come only from native panels.
 	var picked []appui.FilePick
 	a.PickFiles = func(o appui.FilePick, done func([]string)) {
 		picked = append(picked, o)
 		done([]string{"/out/hosts.json"})
 	}
-	click(t, st, "选择保存到")
-	has(t, st, "/out/hosts.json")
+	click(t, mt, "选择保存到")
+	has(t, mt, "/out/hosts.json")
 	if len(picked) != 1 || !picked[0].Save || picked[0].Title != "保存到" {
 		t.Fatal(picked)
 	}
-	click(t, st, "清除保存到")
-	if st.HasText("/out/hosts.json") {
+	click(t, mt, "清除保存到")
+	if mt.HasText("/out/hosts.json") {
 		t.Fatal("clear")
 	}
+}
+
+// A connection file dropped on the manager is previewed for import.
+func TestDroppedFileIsPreviewed(t *testing.T) {
+	p := newPlatform(t)
+	a, tt := start(p)
+	mt := manager(a)
+	file := filepath.Join(t.TempDir(), "hosts.json")
+	os.WriteFile(file, []byte(`{"format":"nextshell-connections","version":1,"connections":[{"name":"dropped","host":"d","port":22,"username":"u","authType":"password"}]}`), 0o600)
+	if !mt.DropFiles(400, 300, file) {
+		t.Fatal("drop not taken")
+	}
+	mt.Frame()
+	has(t, mt, "导入连接")
+	for range 200 {
+		tt.Frame() // the main window takes the platform's events
+		mt.Frame()
+		if mt.HasText("将导入 1 个主机") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("no preview", mt.Texts())
 }
 
 func TestRecycleBinRestoresTheChosenHosts(t *testing.T) {
@@ -453,12 +494,9 @@ func TestEmptyWelcomeTellsHowToBringOneDotXHostsOver(t *testing.T) {
 	a, p, tt := fixture(t)
 	has(t, tt, "开始使用", "在 NextShell 1.x 中导出连接文件，然后在这里导入")
 	click(t, tt, "从 NextShell 1.x 导入连接文件")
-	if p.settingsShown != 1 {
-		t.Fatal("settings not opened")
+	if p.managerShown != 1 {
+		t.Fatal("manager not opened")
 	}
-	st := ui.NewTester(a.SettingsView, 880, 900)
-	has(t, st, "导入", "来源", "NextShell 1.x")
-	if st.HasText("原生 SSH 终端、文件与监控") {
-		t.Fatal("not on the 导入导出 page")
-	}
+	mt := manager(a)
+	has(t, mt, "导入连接", "来源", "NextShell 1.x")
 }

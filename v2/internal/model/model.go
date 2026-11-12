@@ -56,6 +56,7 @@ type Connection struct {
 	Secret                string   `json:"-"`
 	KeyID                 string   `json:"keyId,omitempty"`
 	ProxyID               string   `json:"proxyId,omitempty"`
+	CredentialID          string   `json:"credentialId,omitempty"` // when set, user and auth come from the credential
 	Fingerprint           string   `json:"fingerprint,omitempty"`
 	Encoding              string   `json:"encoding"`
 	Keepalive             int      `json:"keepalive"`
@@ -75,7 +76,7 @@ func (c *Connection) UnmarshalJSON(b []byte) error {
 }
 func (c Connection) Address() string { return net.JoinHostPort(c.Host, strconv.Itoa(c.Port)) }
 func (c Connection) Validate() error {
-	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.Host) == "" || strings.TrimSpace(c.User) == "" {
+	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.Host) == "" || c.CredentialID == "" && strings.TrimSpace(c.User) == "" {
 		return errors.New("名称、主机和用户不能为空")
 	}
 	if c.Port < 1 || c.Port > 65535 {
@@ -86,7 +87,8 @@ func (c Connection) Validate() error {
 	default:
 		return errors.New("未知认证方式")
 	}
-	if c.Auth == "key" && c.KeyID == "" {
+	// An imported host whose key is not here yet stays key auth until one is bound (MissingKey).
+	if c.Auth == "key" && c.KeyID == "" && !c.NeedsKeyRebind && c.CredentialID == "" {
 		return errors.New("请选择密钥")
 	}
 	switch strings.ToLower(c.Encoding) {
@@ -102,6 +104,56 @@ func (c Connection) Validate() error {
 	}
 	return nil
 }
+
+// WithCredential is c as it connects through cr: cr's user and authentication replace c's own.
+func (c Connection) WithCredential(cr Credential) Connection {
+	c.User, c.Auth, c.KeyID, c.Secret = cr.User, cr.Auth, cr.KeyID, cr.Secret
+	if c.KeyID != "" {
+		c.NeedsKeyRebind = false
+	}
+	return c
+}
+
+// BindKey makes c use key id, which ends a pending rebind.
+func (c *Connection) BindKey(id string) {
+	c.Auth, c.KeyID = "key", id
+	c.NeedsKeyRebind, c.OriginalAuth, c.SourceKeyRef = false, "", nil
+}
+
+// ErrNoKey is a key-auth connection without a key to log in with.
+var ErrNoKey = errors.New("未选择密钥：请为这个主机选择或导入密钥")
+
+// Credential is a user name and a way to log in that hosts share: changing it changes every host using it.
+type Credential struct {
+	Meta
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	User   string `json:"user"`
+	Auth   string `json:"auth"` // password, key, agent, keyboard
+	KeyID  string `json:"keyId,omitempty"`
+	Secret string `json:"-"`
+}
+
+func (c Credential) Validate() error {
+	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.User) == "" {
+		return errors.New("凭据名称和用户名不能为空")
+	}
+	switch c.Auth {
+	case "password", "agent", "keyboard":
+	case "key":
+		if c.KeyID == "" {
+			return errors.New("请选择密钥")
+		}
+	default:
+		return errors.New("未知认证方式")
+	}
+	return nil
+}
+
+// KeyExistsError is a key saved again: the same private key is already there as Key.
+type KeyExistsError struct{ Key Key }
+
+func (e *KeyExistsError) Error() string { return "密钥已存在：" + e.Key.Name }
 
 type Folder struct {
 	Meta

@@ -151,7 +151,7 @@ func DecodeFinalShell(raw []byte, group string) ([]Entry, error) {
 			e.Backspace = "ascii-delete"
 		}
 		if strings.TrimSpace(v.KeyID) != "" {
-			e.AuthType = "interactive"
+			e.AuthType = "privateKey"
 			e.NeedsKeyRebind = true
 		}
 		if pass, err := DecryptFinalShell(v.Password); err == nil {

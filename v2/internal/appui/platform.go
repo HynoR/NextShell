@@ -67,6 +67,7 @@ type Event struct {
 	ShellHook            *ShellHookResult
 	Session              *Session
 	Failed               string // ID of the saved connection whose connect failed
+	AuthFailed           bool   // Failed was refused its login (or has no key): the user may fix it and retry
 	Message              string
 	ForEditor            bool // Message answers an action of the remote editor, so it belongs in that window
 	Prompt               *Prompt
@@ -93,6 +94,7 @@ type Snapshot struct {
 	Folders     []model.Folder
 	Keys        []model.Key
 	Proxies     []model.Proxy
+	Credentials []model.Credential
 	History     []string
 }
 type Platform interface {
@@ -103,6 +105,8 @@ type Platform interface {
 	SaveFolder(model.Folder) error
 	SaveKey(model.Key) error
 	SaveProxy(model.Proxy, *string) error
+	// SaveCredential saves a shared credential; a nil secret keeps its saved password.
+	SaveCredential(model.Credential, *string) error
 	Delete(kind, id string) error
 	NewID() string
 	DuplicateConnection(id string) (model.Connection, error)
@@ -114,7 +118,11 @@ type Platform interface {
 	SaveUIState(key, value string) error
 	Capabilities() TerminalCapabilities
 	GenerateKey(name, algorithm string) (model.Key, error)
+	// ImportKey and SaveKey fail with *model.KeyExistsError for a key already saved. A new key is bound
+	// to the imported hosts waiting for it (by fingerprint or name), which a Message event reports.
 	ImportKey(path, passphrase string) (model.Key, error)
+	// ReplaceKey gives key id a new private key, read from path unless pem is set; it keeps its name.
+	ReplaceKey(id, path, pem, passphrase string) error
 	Connect(model.Connection)
 	Local()
 	Reconnect(*Session)

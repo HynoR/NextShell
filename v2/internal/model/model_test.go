@@ -71,3 +71,23 @@ func TestMonitorDefaultsOnUnlessSaidOff(t *testing.T) {
 		t.Fatal("quick connect samples by default")
 	}
 }
+
+func TestCredentialRules(t *testing.T) {
+	c := Connection{Name: "x", Host: "h", Port: 22, Auth: "password", Encoding: "utf-8", CredentialID: "cr"}
+	if c.Validate() != nil {
+		t.Fatal("a host using a credential needs no user of its own")
+	}
+	c.CredentialID, c.User, c.Auth, c.NeedsKeyRebind = "", "u", "key", true
+	if c.Validate() != nil {
+		t.Fatal("an imported key host waiting for its key")
+	}
+	r := c.WithCredential(Credential{User: "ops", Auth: "key", KeyID: "k", Secret: "s"})
+	if r.User != "ops" || r.KeyID != "k" || r.Secret != "s" || r.NeedsKeyRebind {
+		t.Fatal(r)
+	}
+	for _, bad := range []Credential{{Name: "n", Auth: "password"}, {Name: "n", User: "u", Auth: "key"}, {Name: "n", User: "u", Auth: "x"}} {
+		if bad.Validate() == nil {
+			t.Fatal("accepted", bad)
+		}
+	}
+}

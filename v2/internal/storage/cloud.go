@@ -154,7 +154,7 @@ func (s *Store) SyncSnapshot(id string) (cloudv2.Snapshot, string, int64, error)
 	rows.Close()
 	for i := range snapshot.Records {
 		r := &snapshot.Records[i]
-		if r.Kind == "connection" || r.Kind == "key" || r.Kind == "proxy" {
+		if r.Kind == "connection" || r.Kind == "key" || r.Kind == "proxy" || r.Kind == "credential" {
 			var envelope []byte
 			e := tx.QueryRow("SELECT envelope FROM secrets WHERE id=?", r.Kind+":"+r.ID).Scan(&envelope)
 			if e != nil {

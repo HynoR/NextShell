@@ -172,3 +172,29 @@ func saveHost(t *testing.T, p *fakePlatform, c model.Connection) model.Connectio
 	}
 	return c
 }
+
+// choose picks option in the drop-down labeled label.
+func choose(t *testing.T, tt *ui.Tester, label, option string) {
+	t.Helper()
+	info, ok := tt.AccessByRole(ui.RolePopUpButton, label)
+	if !ok {
+		t.Fatal("no drop-down", label, tt.Texts())
+	}
+	tt.ClickAt(info.Bounds.X+info.Bounds.W/2, info.Bounds.Y+info.Bounds.H/2)
+	click(t, tt, option)
+}
+
+// clickLast clicks the last element named label, as the 密钥 of a form below the 密钥 page tab.
+func clickLast(t *testing.T, tt *ui.Tester, label string) {
+	t.Helper()
+	var last *ui.AccessInfo
+	for _, v := range tt.AccessAll() {
+		if v.Name == label {
+			last = &v
+		}
+	}
+	if last == nil {
+		t.Fatal("no", label, tt.Texts())
+	}
+	tt.ClickAt(last.Bounds.X+last.Bounds.W/2, last.Bounds.Y+last.Bounds.H/2)
+}

@@ -4,11 +4,13 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/egoist/mygo/plugins/terminal"
 	"io"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/cloudsync"
+	"nextshell.dev/v2/internal/exchange"
 	"nextshell.dev/v2/internal/mcpendpoint"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/monitor"
@@ -139,6 +141,9 @@ func (p *Platform) Snapshot() (appui.Snapshot, error) {
 	if e != nil {
 		return s, e
 	}
+	if s.Credentials, e = p.store.Credentials(); e != nil {
+		return s, e
+	}
 	s.History, e = p.store.History()
 	if e != nil {
 		return s, e
@@ -158,13 +163,56 @@ func (p *Platform) UIState(key string) string {
 	return v
 }
 func (p *Platform) SaveProxy(a model.Proxy, s *string) error { return p.store.SaveProxy(a, s) }
+func (p *Platform) SaveCredential(c model.Credential, s *string) error {
+	return p.store.SaveCredential(c, s)
+}
 func (p *Platform) SaveKey(k model.Key) error {
 	pub, e := sshclient.InspectKey(k.Private, k.Passphrase)
 	if e != nil {
 		return e
 	}
 	k.Public = pub
-	return p.store.SaveKey(k)
+	if e = p.store.SaveKey(k); e != nil {
+		return e
+	}
+	if n := p.rebindKeys(); n > 0 {
+		p.emit(appui.Event{Message: fmt.Sprintf("已为 %d 个主机绑定密钥", n)})
+	}
+	return nil
+}
+
+// rebindKeys binds the imported hosts still missing their key to the key their reference names
+// (fingerprint first, else a unique name), and returns how many it bound.
+func (p *Platform) rebindKeys() int {
+	keys, e := p.store.Keys()
+	if e != nil {
+		return 0
+	}
+	cs, e := p.store.Connections()
+	if e != nil {
+		return 0
+	}
+	n := 0
+	for _, c := range cs {
+		if !c.NeedsKeyRebind || c.KeyID != "" || c.SourceKeyRef == nil {
+			continue
+		}
+		var scoped []model.Key
+		for _, k := range keys {
+			if k.ScopeID() == c.ScopeID() {
+				scoped = append(scoped, k)
+			}
+		}
+		id := exchange.MatchKey(&exchange.KeyRef{Name: c.SourceKeyRef.Name, Fingerprint: c.SourceKeyRef.Fingerprint}, scoped)
+		if id == "" {
+			continue
+		}
+		c.BindKey(id)
+		if p.store.SaveConnection(c, nil) == nil {
+			n++
+		}
+	}
+	return n
 }
 func (p *Platform) Delete(kind, id string) error { return p.store.Delete(kind, id) }
 func (p *Platform) NewID() string                { return storage.ID() }
@@ -177,25 +225,50 @@ func (p *Platform) GenerateKey(name, algorithm string) (model.Key, error) {
 	}
 	return k, p.SaveKey(k)
 }
-func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
+func readKeyFile(path string) (string, error) {
 	f, e := os.Open(path)
 	if e != nil {
-		return model.Key{}, e
+		return "", e
 	}
 	defer f.Close()
 	b, e := io.ReadAll(io.LimitReader(f, 1024*1024+1))
 	if e != nil {
-		return model.Key{}, e
+		return "", e
 	}
 	if len(b) > 1024*1024 {
-		return model.Key{}, errors.New("key file too large")
+		return "", errors.New("key file too large")
 	}
-	k := model.Key{ID: p.NewID(), Name: filepath.Base(path), Private: string(b), Passphrase: pass}
+	return string(b), nil
+}
+func (p *Platform) ReplaceKey(id, path, pem, pass string) error {
+	k, e := p.store.Key(id)
+	if e != nil {
+		return e
+	}
+	if pem == "" {
+		if pem, e = readKeyFile(path); e != nil {
+			return e
+		}
+	}
+	k.Private, k.Passphrase = pem, pass
+	return p.SaveKey(k)
+}
+func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
+	b, e := readKeyFile(path)
+	if e != nil {
+		return model.Key{}, e
+	}
+	k := model.Key{ID: p.NewID(), Name: filepath.Base(path), Private: b, Passphrase: pass}
 	k.Public, e = sshclient.InspectKey(k.Private, pass)
 	if e != nil {
 		return k, e
 	}
-	return k, p.SaveKey(k)
+	e = p.SaveKey(k)
+	var dup *model.KeyExistsError
+	if errors.As(e, &dup) {
+		return dup.Key, e
+	}
+	return k, e
 }
 func (p *Platform) ask(title string, questions []string, echo []bool) ([]string, error) {
 	return p.askContext(p.ctx, title, questions, echo)
@@ -248,10 +321,13 @@ func (p *Platform) launch(fn func()) {
 func (p *Platform) Connect(c model.Connection) {
 	p.launch(func() {
 		if e := p.connect(c, ""); e != nil {
-			p.emit(appui.Event{Message: e.Error(), Failed: c.ID})
+			p.emit(appui.Event{Message: e.Error(), Failed: c.ID, AuthFailed: c.ID != "" && authFailed(e)})
 		}
 	})
 }
+
+// authFailed reports a login the server refused, or one without its key: other details could fix it.
+func authFailed(e error) bool { return isAuthFailure(e) || errors.Is(e, model.ErrNoKey) }
 func (p *Platform) connect(c model.Connection, replace string) error {
 	return p.connectContext(p.ctx, c, replace)
 }
@@ -265,6 +341,18 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		if c.Secret == "" {
 			c.Secret = stored.Secret
 		}
+	}
+	saved := stored.Secret
+	if c.CredentialID != "" { // every connect resolves the shared credential: its edits apply at once
+		cr, e := p.store.Credential(c.CredentialID)
+		if e != nil {
+			return e
+		}
+		c = c.WithCredential(cr)
+		saved = cr.Secret
+	}
+	if c.Auth == "key" && c.KeyID == "" {
+		return model.ErrNoKey
 	}
 	if c.Auth == "password" && c.Secret == "" {
 		if e := p.askPassword(ctx, &c, stored, "输入密码"); e != nil {
@@ -346,7 +434,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		s, e = p.dial(ctx, o)
 	}
 	// A rejected password asks again, at most three times in all.
-	savedUsed := stored.Secret != "" && c.Secret == stored.Secret
+	savedUsed := saved != "" && c.Secret == saved
 	for tries := 1; tries < 3 && c.Auth == "password" && isAuthFailure(e); tries++ {
 		askCtx := ctx
 		if tries == 1 && savedUsed {
@@ -413,10 +501,17 @@ func (p *Platform) askPassword(ctx context.Context, c *model.Connection, stored 
 		return e
 	}
 	c.Secret = a[0]
-	if req.Remember && c.ID != "" {
-		return p.store.SaveConnection(stored, &c.Secret)
+	if !req.Remember || c.ID == "" {
+		return nil
 	}
-	return nil
+	if c.CredentialID != "" {
+		cr, e := p.store.Credential(c.CredentialID)
+		if e != nil {
+			return e
+		}
+		return p.store.SaveCredential(cr, &c.Secret)
+	}
+	return p.store.SaveConnection(stored, &c.Secret)
 }
 func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool, replace string, sshConn ...*sshclient.Session) {
 	p.registerFrom(false, t, c, local, replace, sshConn...)
@@ -531,7 +626,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 				c = old.Connection
 			}
 			if e := p.connect(c, old.ID); e != nil {
-				p.emit(appui.Event{Message: e.Error(), Failed: old.Connection.ID})
+				p.emit(appui.Event{Message: e.Error(), Failed: old.Connection.ID, AuthFailed: old.Connection.ID != "" && authFailed(e)})
 			}
 			return
 		}

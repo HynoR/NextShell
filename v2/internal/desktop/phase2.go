@@ -680,6 +680,13 @@ func (p *Platform) CommitImport(token, folder, policy string) {
 		}
 		usedTargets := map[string]bool{}
 		skipped := 0
+		credentials := map[string]model.Credential{} // local credentials by name
+		for _, cr := range snapshot.Credentials {
+			if cr.ScopeID() == model.LocalScope {
+				credentials[cr.Name] = cr
+			}
+		}
+		imported := map[exchange.CredentialRef]string{} // a credential the file repeats per host is created once
 		for _, entry := range plan.Entries {
 			c := exchange.FromEntry(entry, keys)
 			matches := conflicts[endpoint(c)]
@@ -722,6 +729,28 @@ func (p *Platform) CommitImport(token, folder, policy string) {
 					parent = id
 				}
 				c.FolderID = parent
+			}
+			if r := entry.Credential; r != nil {
+				same := *r
+				same.Password, same.KeyRef = nil, nil
+				if id := imported[same]; id != "" {
+					c.CredentialID = id
+				} else if cr, ok := exchange.FromCredential(*r, keys); ok {
+					old, found := credentials[cr.Name]
+					if found && old.User == cr.User && old.Auth == cr.Auth {
+						c.CredentialID = old.ID
+					} else {
+						for n := 2; found; n++ {
+							cr.Name = fmt.Sprintf("%s（导入 %d）", r.Name, n)
+							_, found = credentials[cr.Name]
+						}
+						cr.ID = p.NewID()
+						credentials[cr.Name] = cr
+						b.Credentials = append(b.Credentials, cr)
+						c.CredentialID = cr.ID
+					}
+					imported[same] = c.CredentialID
+				}
 			}
 			b.Connections = append(b.Connections, c)
 			if !overwriting {
@@ -787,11 +816,26 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 			if len(segments) > 0 {
 				group += "/" + strings.Join(segments, "/")
 			}
+			var ref *exchange.CredentialRef
+			if c.CredentialID != "" { // the host carries the credential's user and auth, and the credential itself
+				cr, e := p.store.Credential(c.CredentialID)
+				if e != nil {
+					return e
+				}
+				var ck *model.Key
+				if v, ok := keyMap[cr.KeyID]; ok {
+					ck = &v
+				}
+				ref = exchange.ToCredential(cr, ck)
+				c = c.WithCredential(cr)
+			}
 			var k *model.Key
 			if v, ok := keyMap[c.KeyID]; ok {
 				k = &v
 			}
-			entries = append(entries, exchange.ToEntry(c, group, k))
+			entry := exchange.ToEntry(c, group, k)
+			entry.Credential = ref
+			entries = append(entries, entry)
 		}
 		raw, e := exchange.Encode(entries, pass, time.Now())
 		if e != nil {

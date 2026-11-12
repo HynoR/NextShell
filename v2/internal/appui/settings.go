@@ -21,16 +21,13 @@ type settingsState struct {
 	hosts                                   map[string]bool // chosen for export and cloud copy
 	trash                                   map[string]bool // chosen in the recycle bin
 
-	keys    keysState
-	proxies proxiesState
-	cloud   cloudState
-	agent   agentState
-	data    dataState
+	cloud cloudState
+	agent agentState
 }
 
 var settingsSections = []struct{ id, icon string }{
-	{"通用", "settings"}, {"终端", "terminal"}, {"SSH", "server"}, {"密钥", "keys"}, {"代理", "proxies"},
-	{"同步", "cloud"}, {"Agent", "agent"}, {"导入导出", "data"}, {"回收站", "trash"}, {"网络工具", "diagnostics"}, {"关于", "info"},
+	{"通用", "settings"}, {"终端", "terminal"}, {"SSH", "server"},
+	{"同步", "cloud"}, {"Agent", "agent"}, {"回收站", "trash"}, {"网络工具", "diagnostics"}, {"关于", "info"},
 }
 
 func (s *settingsState) load(v model.Preferences) {
@@ -46,10 +43,6 @@ func (s *settingsState) load(v model.Preferences) {
 		s.hosts = map[string]bool{}
 		s.cloud.endpoint = "http://127.0.0.1:41888"
 		s.cloud.name = "我的工作区"
-		s.data.format = "nextshell"
-		s.data.policy = "skip"
-		s.data.encrypt = true
-		s.keys.algorithm = "ed25519"
 	}
 }
 func (s *settingsState) parse() (model.Preferences, error) {
@@ -85,12 +78,12 @@ func (s *settingsState) selectHosts(ids ...string) {
 }
 func (s *settingsState) handle(a *App, e Event) {
 	if e.Import != nil {
-		s.data.preview = e.Import
-		s.data.confirmOverwrite = false
-		a.openSettings("导入导出")
+		d := &a.hosts.records.data
+		d.preview, d.importOpen = e.Import, true
+		a.openManager()
 	}
 	if strings.HasPrefix(e.Message, "已导入 ") {
-		s.data.preview = nil
+		a.hosts.records.data.preview, a.hosts.records.data.importOpen = nil, false
 	}
 	if e.WorkspaceID != "" {
 		s.cloud.workspace = e.WorkspaceID
@@ -191,16 +184,10 @@ func (a *App) settingsSection(c *ui.Context) {
 		a.terminalSettings(c)
 	case "SSH":
 		a.sshSettings(c)
-	case "密钥":
-		a.keySettings(c)
-	case "代理":
-		a.proxySettings(c)
 	case "同步":
 		a.cloudSettings(c)
 	case "Agent":
 		a.agentSettings(c)
-	case "导入导出":
-		a.dataSettings(c)
 	case "回收站":
 		a.trashSettings(c)
 	case "网络工具":
@@ -323,6 +310,22 @@ func (a *App) sshSettings(c *ui.Context) {
 	group(c, "心跳", func() {
 		toggle(c, "默认发送心跳", &v.KeepaliveEnabled)
 		field(c, "默认间隔（秒）", &s.keepalive).Description("5–600；主机设为「跟随全局设置」时使用，新会话生效")
+	})
+	group(c, "密钥、代理与凭据", func() {
+		muted(c, "密钥、代理、凭据和连接的导入导出都在连接管理器里，可以在编辑主机时直接新建。")
+		actions(c, func() {
+			for _, v := range []struct {
+				label string
+				page  int
+			}{{"管理密钥", managerKeys}, {"管理代理", managerProxies}, {"管理凭据", managerCredentials}} {
+				if ui.Button(c, v.label).Clicked() {
+					a.openManagerPage(v.page)
+				}
+			}
+			if ui.Button(c, "导入导出连接").Clicked() {
+				a.openImport("")
+			}
+		})
 	})
 	group(c, "本地终端", func() {
 		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: programDir(true), Hidden: true})

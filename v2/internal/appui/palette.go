@@ -63,7 +63,7 @@ func (a *App) paletteItems() []paletteItem {
 			break
 		}
 		before := len(out)
-		add("主机", cc.Name, cc.User+"@"+cc.Address(), cc.Host+" "+cc.User+" "+strings.Join(cc.Tags, " ")+" "+a.folderPath(cc.FolderID), func(mods ui.Modifiers) {
+		add("主机", cc.Name, a.login(cc), cc.Host+" "+a.resolved(cc).User+" "+strings.Join(cc.Tags, " ")+" "+a.folderPath(cc.FolderID), func(mods ui.Modifiers) {
 			a.connect(cc)
 			if mods&ui.Cmd != 0 {
 				a.showBench(benchFiles)
@@ -89,10 +89,11 @@ func (a *App) paletteItems() []paletteItem {
 		{"连接管理器", a.openManager},
 		{"打开设置", func() { a.openSettings("") }},
 		{"切换深浅色", a.toggleAppearance},
-		{"导入连接", func() { a.openSettings("导入导出") }},
-		{"导出连接", func() { a.openSettings("导入导出") }},
-		{"密钥管理", func() { a.openSettings("密钥") }},
-		{"代理管理", func() { a.openSettings("代理") }},
+		{"导入连接", func() { a.openImport("") }},
+		{"导出连接", func() { a.openExport(nil) }},
+		{"密钥管理", func() { a.openManagerPage(managerKeys) }},
+		{"代理管理", func() { a.openManagerPage(managerProxies) }},
+		{"凭据管理", func() { a.openManagerPage(managerCredentials) }},
 		{"Agent 与 MCP", func() { a.openSettings("Agent") }},
 		{"回收站", func() { a.openSettings("回收站") }},
 		{"网络工具（nexttrace 路径）", func() { a.openSettings("网络工具") }},

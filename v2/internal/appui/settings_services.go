@@ -11,7 +11,7 @@ import (
 	"nextshell.dev/v2/internal/model"
 )
 
-// Sync, Agent, import / export and the network tools.
+// Sync, Agent and the network tools.
 
 type cloudState struct {
 	endpoint, workspace, name, joinID, auth, encryption string
@@ -37,13 +37,6 @@ func autoApproveLabel(v agent.AutoApproval) string {
 	return fmt.Sprintf("剩余 %d 分钟", m)
 }
 
-type dataState struct {
-	path, password, format, policy, folder string
-	preview                                *ImportPreview
-	confirmOverwrite, encrypt              bool
-	exportPath, exportPassword             string
-}
-
 // hostChecklist chooses hosts into the settings' selection.
 func (a *App) hostChecklist(c *ui.Context, filter func(model.Connection) bool) []string {
 	s := &a.settings
@@ -54,7 +47,7 @@ func (a *App) hostChecklist(c *ui.Context, filter func(model.Connection) bool) [
 				continue
 			}
 			on := s.hosts[cc.ID]
-			ui.Checkbox(c.Key("pick-"+cc.ID), &on, cc.Name+"  "+cc.User+"@"+cc.Host)
+			ui.Checkbox(c.Key("pick-"+cc.ID), &on, cc.Name+"  "+a.resolved(cc).User+"@"+cc.Host)
 			s.hosts[cc.ID] = on
 			if on {
 				ids = append(ids, cc.ID)
@@ -340,106 +333,6 @@ func (a *App) agentSettings(c *ui.Context) {
 			muted(c.Key(fmt.Sprint("activity-", i)), ev.At+" · "+tool+" · "+orDefault(states[ev.State], ev.State))
 		}
 	})
-}
-
-func (a *App) dataSettings(c *ui.Context) {
-	s := &a.settings.data
-	t := c.Theme()
-	group(c, "导入", func() {
-		formats := []string{"nextshell", "finalshell"}
-		i := max(0, indexOf(formats, s.format))
-		ui.Field(c, "来源", func() {
-			if ui.Segmented(c, &i, "NextShell 1.x", "FinalShell").Label("来源").Changed() {
-				s.format = formats[i]
-			}
-		}).FillWidth()
-		if s.format == "finalshell" {
-			a.localPath(c, "配置目录", "未选择", &s.path, FilePick{Directory: true, Hidden: true}).Description("FinalShell 的配置目录")
-		} else {
-			a.localPath(c, "连接文件", "未选择", &s.path, FilePick{}).Description("NextShell 1.x 导出的连接文件")
-		}
-		password(c, "解密口令", &s.password).Description("导出时没有加密就留空")
-		a.folderPick(c, "导入到目录", &s.folder)
-		policies := []string{"skip", "rename-copy", "overwrite"}
-		j := max(0, indexOf(policies, s.policy))
-		ui.Field(c, "同名主机", func() {
-			if ui.Segmented(c, &j, "跳过", "另存副本", "覆盖").Label("同名主机").Changed() {
-				s.policy = policies[j]
-			}
-		}).FillWidth()
-		actions(c, func() {
-			if ui.Button(c, "预览").Disabled(strings.TrimSpace(s.path) == "").Clicked() {
-				a.P.PreviewImport(strings.TrimSpace(s.path), s.password, s.format)
-				s.password = ""
-			}
-		})
-		if p := s.preview; p != nil {
-			ui.Column(c).FillWidth().Padding(10).Gap(4).Radius(t.Radius).Border(1, t.Border).Children(func() {
-				ui.Text(c, fmt.Sprintf("将导入 %d 个主机", p.Count)).Bold()
-				if p.PasswordsUnavailable > 0 {
-					muted(c, fmt.Sprintf("%d 个主机的密码无法导入，连接时会询问", p.PasswordsUnavailable))
-				}
-				if p.KeysNeedRebind > 0 {
-					muted(c, fmt.Sprintf("%d 个主机需要重新选择密钥", p.KeysNeedRebind))
-				}
-				muted(c, strings.Join(p.Names, "、"))
-				for _, w := range p.Warnings {
-					ui.Text(c, w).FontSize(12).TextColor(t.Warning)
-				}
-				for _, target := range p.Targets {
-					muted(c, "已存在："+target)
-				}
-			})
-			actions(c, func() { a.commitImportButton(c) })
-		}
-	})
-	a.exportSettings(c)
-}
-func (a *App) commitImportButton(c *ui.Context) {
-	s := &a.settings.data
-	if ui.PrimaryButton(c, fmt.Sprintf("导入 %d 个主机", s.preview.Count)).Clicked() {
-		run := func() { a.P.CommitImport(s.preview.Token, s.folder, s.policy) }
-		if s.policy == "overwrite" && len(s.preview.Targets) > 0 {
-			a.confirm("覆盖已有主机", fmt.Sprintf("%d 个已有主机会被覆盖；文件里明确为空的密码会清空已保存的密码。", len(s.preview.Targets)), fmt.Sprintf("覆盖 %d 个主机", len(s.preview.Targets)), run)
-		} else {
-			run()
-		}
-	}
-}
-func (a *App) exportSettings(c *ui.Context) {
-	s := &a.settings.data
-	group(c, "导出", func() {
-		muted(c, "不勾选则导出全部主机。私钥永远不会导出。")
-		ids := a.hostChecklist(c, func(model.Connection) bool { return true })
-		a.localPath(c, "保存到", "未选择", &s.exportPath, FilePick{Save: true, DefaultPath: "~/nextshell-hosts.json"}).Description("不会覆盖已有文件")
-		toggle(c, "加密并包含密码", &s.encrypt)
-		if s.encrypt {
-			password(c, "加密口令", &s.exportPassword)
-		} else {
-			muted(c, "不加密时不包含任何密码")
-		}
-		label := "导出全部主机"
-		if len(ids) > 0 {
-			label = fmt.Sprintf("导出 %d 个主机", len(ids))
-		}
-		actions(c, func() { a.exportButton(c, label, ids) })
-	})
-}
-func (a *App) exportButton(c *ui.Context, label string, ids []string) {
-	s := &a.settings.data
-	if ui.Button(c, label).Disabled(strings.TrimSpace(s.exportPath) == "").Clicked() {
-		var pass *string
-		if s.encrypt {
-			if s.exportPassword == "" {
-				a.fail(fmt.Errorf("加密导出需要口令"))
-				return
-			}
-			p := s.exportPassword
-			pass = &p
-		}
-		a.P.ExportConnections(strings.TrimSpace(s.exportPath), pass, ids)
-		s.exportPassword = ""
-	}
 }
 
 func (a *App) diagnosticSettings(c *ui.Context) {
