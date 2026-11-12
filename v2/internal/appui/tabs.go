@@ -74,7 +74,7 @@ func (a *App) tabBar(c *ui.Context) {
 			}
 			m.Separator()
 			for _, cc := range a.hosts.recentHosts(a, 10) {
-				if m.Item(cc.Name).ID(cc.ID).Subtitle(cc.User + "@" + cc.Host).Chosen() {
+				if m.Item(cc.Name).ID(cc.ID).Subtitle(a.resolved(cc).User + "@" + cc.Host).Chosen() {
 					a.later(func() { a.connect(cc) })
 				}
 			}

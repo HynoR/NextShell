@@ -225,20 +225,40 @@ func (p *Platform) GenerateKey(name, algorithm string) (model.Key, error) {
 	}
 	return k, p.SaveKey(k)
 }
-func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
+func readKeyFile(path string) (string, error) {
 	f, e := os.Open(path)
 	if e != nil {
-		return model.Key{}, e
+		return "", e
 	}
 	defer f.Close()
 	b, e := io.ReadAll(io.LimitReader(f, 1024*1024+1))
 	if e != nil {
-		return model.Key{}, e
+		return "", e
 	}
 	if len(b) > 1024*1024 {
-		return model.Key{}, errors.New("key file too large")
+		return "", errors.New("key file too large")
 	}
-	k := model.Key{ID: p.NewID(), Name: filepath.Base(path), Private: string(b), Passphrase: pass}
+	return string(b), nil
+}
+func (p *Platform) ReplaceKey(id, path, pem, pass string) error {
+	k, e := p.store.Key(id)
+	if e != nil {
+		return e
+	}
+	if pem == "" {
+		if pem, e = readKeyFile(path); e != nil {
+			return e
+		}
+	}
+	k.Private, k.Passphrase = pem, pass
+	return p.SaveKey(k)
+}
+func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
+	b, e := readKeyFile(path)
+	if e != nil {
+		return model.Key{}, e
+	}
+	k := model.Key{ID: p.NewID(), Name: filepath.Base(path), Private: b, Passphrase: pass}
 	k.Public, e = sshclient.InspectKey(k.Private, pass)
 	if e != nil {
 		return k, e

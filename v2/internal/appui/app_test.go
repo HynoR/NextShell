@@ -114,9 +114,14 @@ func TestNoImplementationTermsInVisibleText(t *testing.T) {
 		}
 	}
 	check(tt, "welcome")
-	for _, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
+	for _, section := range []string{"通用", "终端", "SSH", "Agent", "回收站", "网络诊断", "关于"} {
 		click(t, st, section)
 		check(st, section)
+	}
+	mt := manager(a)
+	for _, page := range []string{"连接", "密钥", "代理", "凭据"} {
+		click(t, mt, page)
+		check(mt, page)
 	}
 }
 
@@ -136,16 +141,14 @@ func TestHostEditorCreateEditValidateAndTrash(t *testing.T) {
 		}
 	}
 	tt := manager(a)
-	click(t, tt, "新建")
-	click(t, tt, "新建主机…")
-	has(t, tt, "新建主机", "常规", "认证", "高级")
+	click(t, tt, "+ 新建连接")
+	has(t, tt, "新建主机", "使用凭据", "认证方式", "安全", "网络", "终端")
 	tt.Type("web-a")
 	click(t, tt, "主机")
 	tt.Type("10.0.0.7")
 	click(t, tt, "用户名")
 	tt.Type("root")
-	click(t, tt, "认证")
-	click(t, tt, "密码")
+	clickLast(t, tt, "密码")
 	tt.Type("pw")
 	click(t, tt, "保存")
 	snap, _ := p.Snapshot()
@@ -233,33 +236,35 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	saveHost(t, p, model.Connection{Name: "gamma", Host: "g.example", User: "u"})
 	a, main := start(p)
 	tt := manager(a)
-	has(t, tt, "生产  2", "子目录  1", "alpha", "beta", "gamma")
+	has(t, tt, "生产  2", "子目录  1", "全部主机  3", "alpha", "beta", "gamma")
 	click(t, tt, "生产  2")
-	if tt.HasText("alpha") || tt.HasText("beta") {
-		t.Fatal("collapse")
+	if !tt.HasText("alpha") || !tt.HasText("beta") || tt.HasText("gamma") {
+		t.Fatal("folder shows its subtree", tt.Texts())
 	}
-	click(t, tt, "生产  2")
-	click(t, tt, "过滤主机")
+	click(t, tt, "全部主机  3")
+	click(t, tt, "搜索主机")
 	tt.Type("b.exam")
 	if tt.HasText("alpha") || !tt.HasText("beta") || tt.HasText("gamma") {
 		t.Fatal("filter", tt.Texts())
 	}
-	click(t, tt, "过滤主机")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Key(0, ui.KeyBackspace)
 	if e := tt.RightClick("gamma"); e != nil {
 		t.Fatal(e)
 	}
 	if e := tt.ChooseMenuItem("收藏"); e != nil {
 		t.Fatal(e)
 	}
-	has(t, tt, "★ 收藏")
+	has(t, tt, "★")
 	if e := tt.RightClick("生产  2"); e != nil {
 		t.Fatal(e)
 	}
-	if e := tt.ChooseMenuItem("批量设置认证…"); e != nil {
+	if e := tt.ChooseMenuItem("批量绑定认证…"); e != nil {
 		t.Fatal(e)
 	}
-	has(t, tt, "将应用到「生产」及子目录中的 2 个主机")
+	has(t, tt, "将应用到「生产」及子目录的 2 个主机", "alpha")
 	click(t, tt, "SSH Agent")
+	has(t, tt, "密码 → SSH Agent")
 	click(t, tt, "应用到 2 个主机")
 	snap, _ := p.Snapshot()
 	for _, c := range snap.Connections {
@@ -339,7 +344,7 @@ func TestDragHostIntoFolderAndMoveFoldersUp(t *testing.T) {
 	h := saveHost(t, p, model.Connection{Name: "web-1", Host: "w", Port: 22, User: "u", Auth: "agent", FolderID: "甲"})
 	a, _ := start(p)
 	tt := manager(a)
-	drag(t, tt, "web-1", "丙  0")
+	drag(t, tt, "拖动 web-1", "丙  0")
 	snap, _ := p.Snapshot()
 	for _, c := range snap.Connections {
 		if c.ID == h.ID && c.FolderID != "丙" {

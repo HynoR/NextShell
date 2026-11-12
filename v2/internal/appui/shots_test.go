@@ -33,7 +33,17 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 	db = saveHost(t, p, model.Connection{Name: "db-master", Host: "10.0.2.10", User: "postgres", FolderID: prod.ID})
 	saveHost(t, p, model.Connection{Name: "test-01", Host: "10.1.0.5", User: "dev", FolderID: test.ID})
 	saveHost(t, p, model.Connection{Name: "redis-01", Host: "10.0.3.1", User: "root", FolderID: cache.ID})
-	saveHost(t, p, model.Connection{Name: "bastion", Host: "jump.example.com", User: "ops"})
+	ops := model.Credential{ID: p.NewID(), Name: "运维账号", User: "ops", Auth: "password"}
+	if e := p.SaveCredential(ops, nil); e != nil {
+		t.Fatal(e)
+	}
+	deploy, e := p.GenerateKey("deploy", "ed25519")
+	if e != nil {
+		t.Fatal(e)
+	}
+	saveHost(t, p, model.Connection{Name: "bastion", Host: "jump.example.com", CredentialID: ops.ID})
+	saveHost(t, p, model.Connection{Name: "build-01", Host: "10.0.5.3", User: "ci", Auth: "key", KeyID: deploy.ID, FolderID: test.ID})
+	saveHost(t, p, model.Connection{Name: "legacy-box", Host: "10.8.0.2", User: "root", Auth: "key", NeedsKeyRebind: true, OriginalAuth: "key", SourceKeyRef: &model.KeyReference{Name: "old-ops"}})
 	saveHost(t, p, model.Connection{Name: "old-jump", Host: "10.9.0.1", User: "ops", Deleted: true})
 	saveHost(t, p, model.Connection{Name: "staging-02", Host: "10.1.0.9", User: "dev", Deleted: true})
 	for _, c := range []model.Command{
@@ -198,23 +208,46 @@ func TestScreenshots(t *testing.T) {
 	tt.Key(appMod(), ui.KeyB)
 	tt.Key(appMod(), ui.KeyJ)
 
-	// The connection manager window and its host dialog.
-	mt := ui.NewTester(a.ManagerView, 960, 640)
+	// The connection manager: folders, host tiles (legacy-box lacks its key), the card, several hosts
+	// chosen, the batch binding with its preview, the host form, and the keys, proxies and credentials.
+	mt := ui.NewTester(a.ManagerView, 1200, 760)
 	shot(mt, "16-manager")
 	click(t, mt, "prod-web-01")
 	shot(mt, "16b-manager-host")
+	if e := mt.ClickWith(ui.Cmd, "db-master"); e != nil {
+		t.Fatal(e)
+	}
+	shot(mt, "16c-manager-multiselect")
+	click(t, mt, "绑定认证…")
+	choose(t, mt, "使用凭据", "运维账号")
+	shot(mt, "16d-manager-batch-preview")
+	click(t, mt, "取消")
+	click(t, mt, "取消选择")
 	if e := mt.RightClick("prod-web-02"); e != nil {
 		t.Fatal(e)
 	}
 	if e := mt.ChooseMenuItem("编辑…"); e != nil {
 		t.Fatal(e)
 	}
-	shot(mt, "08-host-general")
-	click(t, mt, "认证")
-	shot(mt, "09-host-auth")
-	click(t, mt, "高级")
-	shot(mt, "10-host-advanced")
+	shot(mt, "08-host-editor")
+	choose(t, mt, "认证方式", "密钥")
+	click(t, mt, "网络")
+	click(t, mt, "终端")
+	mt.Advance(time.Second)
+	shot(mt, "09-host-editor-key-sections")
+	choose(t, mt, "使用凭据", "运维账号")
+	shot(mt, "10-host-editor-credential")
 	click(t, mt, "取消")
+	click(t, mt, "密钥")
+	click(t, mt, "deploy")
+	shot(mt, "18-manager-keys")
+	click(t, mt, "凭据")
+	click(t, mt, "运维账号")
+	shot(mt, "19-manager-credentials")
+	click(t, mt, "新建凭据…")
+	shot(mt, "19b-credential-dialog")
+	click(t, mt, "取消")
+	click(t, mt, "连接")
 
 	answers := make(chan []string, 1)
 	done := make(chan struct{})
@@ -239,6 +272,11 @@ func TestScreenshots(t *testing.T) {
 	p.events = append(p.events, appui.Event{Prompt: &appui.Prompt{Kind: appui.PromptPassword, ByAgent: true, Title: "输入密码", Host: "root@10.0.0.1:22", Questions: []string{"密码"}, CanRemember: true, Answers: make(chan []string, 1), Done: done}})
 	tt.Frame()
 	shot(tt, "13b-password-by-agent")
+	click(t, tt, "取消")
+	// A refused login offers another user, method or key, saved to the host.
+	p.events = append(p.events, appui.Event{Failed: db.ID, AuthFailed: true, Message: "ssh: handshake failed: ssh: unable to authenticate, attempted methods [none password]"})
+	tt.Frame()
+	shot(tt, "13c-auth-retry")
 	click(t, tt, "取消")
 
 	shown := 0
@@ -279,7 +317,7 @@ func TestScreenshots(t *testing.T) {
 
 	a.Version, a.ProfilePath = "2.0.0-rc1", "/Users/me/Library/Application Support/NextShell-v2/nextshell.db"
 	st := ui.NewTester(a.SettingsView, 880, 640)
-	for i, section := range []string{"通用", "终端", "SSH", "密钥", "代理", "Agent", "导入导出", "回收站", "网络诊断", "关于"} {
+	for i, section := range []string{"通用", "终端", "SSH", "Agent", "回收站", "网络诊断", "关于"} {
 		click(t, st, section)
 		shot(st, "20-settings-"+string(rune('a'+i))+"-"+section)
 	}

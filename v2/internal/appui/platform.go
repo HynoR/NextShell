@@ -121,6 +121,8 @@ type Platform interface {
 	// ImportKey and SaveKey fail with *model.KeyExistsError for a key already saved. A new key is bound
 	// to the imported hosts waiting for it (by fingerprint or name), which a Message event reports.
 	ImportKey(path, passphrase string) (model.Key, error)
+	// ReplaceKey gives key id a new private key, read from path unless pem is set; it keeps its name.
+	ReplaceKey(id, path, pem, passphrase string) error
 	Connect(model.Connection)
 	Local()
 	Reconnect(*Session)

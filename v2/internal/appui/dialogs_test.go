@@ -177,7 +177,7 @@ func TestPaletteConnectsSwitchesRunsAndActs(t *testing.T) {
 	if p.managerShown != 1 {
 		t.Fatal("新建主机 did not open the connection manager")
 	}
-	has(t, mt, "常规", "认证", "高级")
+	has(t, mt, "新建主机", "认证方式")
 	mt.Key(0, ui.KeyEscape)
 	tt.Key(appMod(), ui.KeyK)
 	tt.Type("打开设置")

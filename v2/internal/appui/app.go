@@ -361,7 +361,11 @@ func (a *App) poll() bool {
 			delete(a.hosts.connecting, e.Failed)
 			a.hosts.failed[e.Failed] = true
 		}
-		if e.Message != "" {
+		if e.AuthFailed { // the retry dialog says why and offers the fix
+			a.reload()
+			a.log(e.Message)
+			a.retryAuth(e.Failed, e.Message)
+		} else if e.Message != "" {
 			a.reload()
 			show := func() {
 				if e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof") {
