@@ -28,9 +28,9 @@ func demo(t *testing.T, p *fakePlatform) (web, db model.Connection) {
 			t.Fatal(e)
 		}
 	}
-	web = saveHost(t, p, model.Connection{Name: "prod-web-01", Host: "10.0.0.1", User: "root", FolderID: prod.ID, Favorite: true, Tags: []string{"web"}})
+	web = saveHost(t, p, model.Connection{Name: "prod-web-01", Host: "10.0.0.1", User: "root", FolderID: prod.ID, Favorite: true, Tags: []string{"web"}, Color: "#ef4444"})
 	saveHost(t, p, model.Connection{Name: "prod-web-02", Host: "10.0.0.2", User: "root", FolderID: prod.ID})
-	db = saveHost(t, p, model.Connection{Name: "db-master", Host: "10.0.2.10", User: "postgres", FolderID: prod.ID})
+	db = saveHost(t, p, model.Connection{Name: "db-master", Host: "10.0.2.10", User: "postgres", FolderID: prod.ID, Color: "#a855f7"})
 	saveHost(t, p, model.Connection{Name: "test-01", Host: "10.1.0.5", User: "dev", FolderID: test.ID})
 	saveHost(t, p, model.Connection{Name: "redis-01", Host: "10.0.3.1", User: "root", FolderID: cache.ID})
 	ops := model.Credential{ID: p.NewID(), Name: "运维账号", User: "ops", Auth: "password"}
@@ -154,6 +154,12 @@ func TestScreenshots(t *testing.T) {
 	tt.SetSize(1000, 650)
 	shot(tt, "02-main-connected-small")
 	tt.SetSize(1280, 800)
+	// The same window in two other main colors.
+	for _, accent := range []string{"violet", "orange"} {
+		a.Prefs.Accent = accent
+		shot(tt, "02h-main-accent-"+accent)
+	}
+	a.Prefs.Accent = ""
 	titled(t, shot)
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
 		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
@@ -259,6 +265,12 @@ func TestScreenshots(t *testing.T) {
 		t.Fatal(e)
 	}
 	shot(mt, "08-host-editor")
+	click(t, mt, "标签与备注")
+	mt.Advance(time.Second)
+	click(t, mt, "蓝")
+	shot(mt, "08b-host-editor-color")
+	click(t, mt, "标签与备注")
+	mt.Advance(time.Second)
 	choose(t, mt, "认证方式", "密钥")
 	click(t, mt, "网络")
 	click(t, mt, "终端")
@@ -340,9 +352,9 @@ func TestScreenshots(t *testing.T) {
 	click(t, sst, "Agent")
 	shot(sst, "21-settings-agent-auto-approve")
 	kp := &keysPlatform{fakePlatform: p, keys: []model.HostKey{{Address: "10.0.0.1:22", Fingerprint: "SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8"}, {Address: "jump.example.com:22", Fingerprint: "SHA256:Q2V4Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"}}}
-	kst := ui.NewTester(appui.New(kp).SettingsView, 880, 900)
+	kst := ui.NewTester(appui.New(kp).SettingsView, 880, 1500)
 	click(t, kst, "终端")
-	shot(kst, "22-settings-ssh-host-keys")
+	shot(kst, "22-settings-terminal-ssh-groups")
 
 	a.Version, a.ProfilePath = "2.0.0-rc1", "/Users/me/Library/Application Support/NextShell-v2/nextshell.db"
 	st := ui.NewTester(a.SettingsView, 880, 640)
