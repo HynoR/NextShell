@@ -184,6 +184,10 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 		s.Disks = append(s.Disks, Disk{Device: f[0], Mount: strings.Join(f[5:], " "), TotalKB: uintn(f[1]), UsedKB: uintn(f[2]), AvailableKB: uintn(f[3]), UsedPercent: floatn(strings.TrimSuffix(f[4], "%"))})
 	}
 	s.Processes = ParseProcesses(v["PROCESSES"])
+	if text := strings.TrimSpace(v["PROCESSES"]); len(s.Processes) == 0 && text != "" {
+		// e.g. BusyBox: "ps: unrecognized option: no-headers"; an empty table with no reason looks like a bug
+		s.Warnings = append(s.Warnings, "process list unavailable: "+strings.SplitN(text, "\n", 2)[0])
+	}
 	if text, ok := v["NETWORK_SS"]; ok {
 		s.Network = ParseSS(text)
 	} else if text, ok := v["NETWORK_NETSTAT"]; ok {

@@ -132,3 +132,14 @@ func TestRealSSHProbeExecCancelAndProcessSignal(t *testing.T) {
 		t.Fatal("exec cancel broke terminal SSH connection", e)
 	}
 }
+
+func TestUnsupportedPsExplainsEmptyProcessList(t *testing.T) {
+	raw := strings.Replace(probe, "---NS_DISK---", "---NS_PROCESSES---\nps: unrecognized option: no-headers\nBusyBox v1.37.0\n---NS_DISK---", 1)
+	v, e := Parse(raw, time.Now(), nil)
+	if e != nil || len(v.Processes) != 0 || len(v.Warnings) == 0 || !strings.Contains(v.Warnings[0], "unrecognized option: no-headers") {
+		t.Fatal(v.Warnings, e)
+	}
+	if v, e = Parse(probe, time.Now(), nil); e != nil || strings.Contains(strings.Join(v.Warnings, "|"), "process list") {
+		t.Fatal("a probe without a process section must not warn about it:", v.Warnings, e)
+	}
+}

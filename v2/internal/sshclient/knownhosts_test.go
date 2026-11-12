@@ -63,3 +63,35 @@ func TestOptionalKnownHostsReadOnlyPinPriority(t *testing.T) {
 		t.Fatalf("mismatch accepted: %v", e)
 	}
 }
+
+// OpenSSH records one key type per host (usually ed25519); x/crypto must be told to negotiate that type,
+// or its default ecdsa-first order makes a genuine server look like a changed key.
+func TestKnownHostKeyAlgorithms(t *testing.T) {
+	ed := newServer(t, false, false).signer.PublicKey()
+	rsaPriv, _, _ := GenerateKeyWithType("rsa-2048", "")
+	rsaSigner, _ := ssh.ParsePrivateKey([]byte(rsaPriv))
+	file := filepath.Join(t.TempDir(), "known_hosts")
+	data := knownhosts.Line([]string{"[a.example]:2222"}, ed) + "\n" + knownhosts.Line([]string{"b.example"}, rsaSigner.PublicKey()) + "\n"
+	if e := os.WriteFile(file, []byte(data), 0600); e != nil {
+		t.Fatal(e)
+	}
+	known, e := knownhosts.New(file)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, tc := range []struct {
+		addr string
+		want []string
+	}{
+		{"a.example:2222", []string{ssh.KeyAlgoED25519}},
+		{"b.example:22", []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}},
+		{"unknown.example:22", nil},
+	} {
+		if got := knownHostKeyAlgorithms(known, tc.addr); strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: got %v want %v", tc.addr, got, tc.want)
+		}
+	}
+	if knownHostKeyAlgorithms(nil, "a:22") != nil {
+		t.Error("no known_hosts must keep the defaults")
+	}
+}

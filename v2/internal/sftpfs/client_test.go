@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func client(t *testing.T) (*Client, string) {
+func client(t testing.TB) (*Client, string) {
 	t.Helper()
 	root := t.TempDir()
 	server, e := testutil.New(root)

@@ -67,6 +67,39 @@ func MatchFingerprint(want string, key []byte) bool {
 	return strings.EqualFold(want, hex.EncodeToString(sha[:])) || strings.EqualFold(want, mhex) || strings.EqualFold(want, strings.Join(parts, ":"))
 }
 
+type strAddr string
+
+func (a strAddr) Network() string { return "tcp" }
+func (a strAddr) String() string  { return string(a) }
+
+// knownHostKeyAlgorithms limits the handshake to the key types known_hosts holds for address. Without it
+// x/crypto offers its own preference order (ecdsa before ed25519), so a file written by OpenSSH that only
+// has the ed25519 key is reported as a changed key. Probing with a throwaway key makes the callback list
+// what it knows for the host; nil means "unknown host / no file": keep the defaults.
+func knownHostKeyAlgorithms(known ssh.HostKeyCallback, address string) []string {
+	if known == nil {
+		return nil
+	}
+	probe, err := ssh.NewPublicKey(ed25519.PublicKey(make([]byte, ed25519.PublicKeySize)))
+	if err != nil {
+		return nil
+	}
+	var keyErr *knownhosts.KeyError
+	if !errors.As(known(address, strAddr(address), probe), &keyErr) {
+		return nil
+	}
+	var algos []string
+	for _, w := range keyErr.Want {
+		switch t := w.Key.Type(); t {
+		case ssh.KeyAlgoRSA:
+			algos = append(algos, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA)
+		default:
+			algos = append(algos, t)
+		}
+	}
+	return algos
+}
+
 type Options struct {
 	KnownHostsFile   string // optional existing read-only OpenSSH host-key file
 	KeepaliveTimeout time.Duration
@@ -172,7 +205,7 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 			return nil, fmt.Errorf("read known_hosts: %w", err)
 		}
 	}
-	cfg := &ssh.ClientConfig{User: c.User, Auth: auth, Timeout: o.Timeout, HostKeyCallback: func(host string, remote net.Addr, k ssh.PublicKey) error {
+	cfg := &ssh.ClientConfig{User: c.User, Auth: auth, Timeout: o.Timeout, HostKeyAlgorithms: knownHostKeyAlgorithms(known, c.Address()), HostKeyCallback: func(host string, remote net.Addr, k ssh.PublicKey) error {
 		fp := Fingerprint(k.Marshal())
 		if c.Fingerprint != "" {
 			if !MatchFingerprint(c.Fingerprint, k.Marshal()) {

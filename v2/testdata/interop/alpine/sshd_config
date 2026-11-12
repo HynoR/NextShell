@@ -1,0 +1,9 @@
+Port 22
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+PubkeyAuthentication yes
+PermitRootLogin no
+AllowAgentForwarding yes
+PrintMotd no
+LogLevel VERBOSE
+Subsystem sftp /usr/lib/ssh/sftp-server
