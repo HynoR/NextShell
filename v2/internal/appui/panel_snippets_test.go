@@ -202,3 +202,12 @@ func TestSendToAllWithNoLiveSessionSaysSo(t *testing.T) {
 		t.Fatal("a confirm for nobody")
 	}
 }
+
+// Two tabs of one host read 「名称 (2)」 everywhere, the send button's tooltip and the activity list included.
+func TestNumberedTabTitlesInTooltipsAndLists(t *testing.T) {
+	p, tt := snippetFixture(t)
+	session(t, p, tt, "two", "prod-web-01", remoteHost("one"))
+	hover(t, tt, "片段 重启 nginx")
+	hover(t, tt, "发送 重启 nginx")
+	has(t, tt, "发送到 prod-web-01 (2)")
+}

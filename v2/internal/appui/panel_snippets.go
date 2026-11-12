@@ -98,7 +98,7 @@ func (a *App) sendToAll(text string, cr bool) {
 		a.toast("没有可发送的会话：所有会话都已断开")
 		return
 	}
-	msg := "将向以下会话发送：\n" + listNames(names, 10) + "\n\n" + text
+	msg := fmt.Sprintf("将向以下 %d 个会话发送：\n%s\n\n命令：\n%s", len(targets), listNames(names, 10), text)
 	if skipped := len(a.Tabs) - len(targets); skipped > 0 {
 		msg += fmt.Sprintf("\n\n已跳过 %d 个已断开的会话。", skipped)
 	}
