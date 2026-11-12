@@ -192,3 +192,25 @@ func barPlaceholder(tt *ui.Tester) string {
 	}
 	return ""
 }
+
+// An agent request that waits for approval shows a toast with a way to the activity column; nothing
+// moves while it shows: no raise, no tab switch.
+func TestPendingAgentRequestToastDoesNotTakeTheFocus(t *testing.T) {
+	a, p, tt, raised, _ := agentFixture(t)
+	p.events = append(p.events, appui.Event{Agent: &appui.AgentNotice{Tool: "exec"}})
+	tt.Frame()
+	raisedBefore := len(*raised)
+	if tt.HasText("Agent 请求等待批准") {
+		t.Fatal("a call that needs no approval said so")
+	}
+	p.events = append(p.events, appui.Event{Agent: &appui.AgentNotice{Tool: "exec", Pending: true}})
+	tt.Frame()
+	has(t, tt, "Agent 请求等待批准", "查看", "展开活动栏")
+	if len(*raised) != raisedBefore || a.Active != 0 {
+		t.Fatal("the toast took the window or the tab", *raised, a.Active)
+	}
+	click(t, tt, "查看")
+	if tt.HasText("展开活动栏") || len(*raised) != raisedBefore || a.Active != 0 {
+		t.Fatal("查看 should open the activity column and nothing else", tt.Texts())
+	}
+}
