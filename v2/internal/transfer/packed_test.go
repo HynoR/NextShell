@@ -5,10 +5,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
+	"io"
 	"nextshell.dev/v2/internal/sshclient"
 	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +111,32 @@ func TestRealSSHPackedTransferAndQuote(t *testing.T) {
 	}
 	if server.Execs.Load() < 4 {
 		t.Fatal("did not use real SSH exec")
+	}
+}
+
+type failingRunner struct{ stderr string }
+
+func (r failingRunner) Run(_ context.Context, _ string, in io.Reader, _, stderr io.Writer) error {
+	if in != nil {
+		io.Copy(io.Discard, in)
+	}
+	io.WriteString(stderr, r.stderr)
+	return errors.New("Process exited with status 1")
+}
+
+// The remote's complaint must reach the user: the bare exit status does not say what failed.
+func TestPackedFailureCarriesRemoteStderr(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0600)
+	e := UploadPacked(context.Background(), failingRunner{"mv: unrecognized option: T\n"}, dir, "/tmp/new", nil)
+	if e == nil || !strings.Contains(e.Error(), "unrecognized option: T") {
+		t.Fatal(e)
+	}
+	e = DownloadPacked(context.Background(), failingRunner{"tar: can't change directory\n"}, "/tmp/x", filepath.Join(t.TempDir(), "out"), nil)
+	if e == nil || !strings.Contains(e.Error(), "can't change directory") {
+		t.Fatal(e)
+	}
+	if e = UploadPacked(context.Background(), failingRunner{}, dir, "/tmp/new", nil); e == nil || e.Error() != "Process exited with status 1" {
+		t.Fatal("silent stderr must leave the error unchanged:", e)
 	}
 }

@@ -169,7 +169,9 @@ func UploadPacked(ctx context.Context, runner Runner, local, remoteDestination s
 	pr, pw := io.Pipe()
 	packErr := make(chan error, 1)
 	go func() { e := Pack(ctx, local, pw); pw.CloseWithError(e); packErr <- e }()
-	e := runner.Run(ctx, command, &countReader{Reader: pr, progress: progress}, io.Discard, io.Discard)
+	var stderr stderrTail
+	e := runner.Run(ctx, command, &countReader{Reader: pr, progress: progress}, io.Discard, &stderr)
+	e = stderr.wrap(e)
 	pr.CloseWithError(e)
 	pe := <-packErr
 	if e != nil {
@@ -196,7 +198,8 @@ func DownloadPacked(ctx context.Context, runner Runner, remote, local string, pr
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		e := runner.Run(ctx, command, nil, &countWriter{Writer: pw, progress: progress}, io.Discard)
+		var stderr stderrTail
+		e := stderr.wrap(runner.Run(ctx, command, nil, &countWriter{Writer: pw, progress: progress}, &stderr))
 		pw.CloseWithError(e)
 		done <- e
 	}()
@@ -213,6 +216,24 @@ func DownloadPacked(ctx context.Context, runner Runner, remote, local string, pr
 		return e
 	}
 	return nil
+}
+
+// stderrTail keeps the end of a remote command's stderr so a failure says why: "Process exited with
+// status 1" alone cannot tell the user that, say, the remote mv has no -T.
+type stderrTail struct{ b []byte }
+
+func (w *stderrTail) Write(p []byte) (int, error) {
+	w.b = append(w.b, p...)
+	if len(w.b) > 1024 {
+		w.b = w.b[len(w.b)-1024:]
+	}
+	return len(p), nil
+}
+func (w *stderrTail) wrap(e error) error {
+	if msg := strings.TrimSpace(string(w.b)); e != nil && msg != "" {
+		return fmt.Errorf("%w: %s", e, msg)
+	}
+	return e
 }
 
 type countReader struct {
