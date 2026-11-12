@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -292,5 +293,201 @@ func TestDeleteConfirmNamesTheServerEvenAfterATabSwitch(t *testing.T) {
 	click(t, tt, "删除 1 项")
 	if len(p.queued) != 1 || p.queued[0].Session != "one" {
 		t.Fatal("deleted on", p.queued)
+	}
+}
+
+// linkFixture lists a folder with a link to a folder, a link to a file, a link to nothing and a plain folder.
+func linkFixture(t *testing.T) (*fakePlatform, *ui.Tester) {
+	t.Helper()
+	_, p, tt := fixture(t)
+	tt.SetSize(1280, 1100) // every row in view
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/etc/nginx",
+		sftpfs.Entry{Name: "conf.d", Path: "/etc/nginx/conf.d", Directory: true},
+		sftpfs.Entry{Name: "logs", Path: "/etc/nginx/logs", Directory: true, Symlink: true, Target: "/var/log/nginx"},
+		sftpfs.Entry{Name: "default.conf", Path: "/etc/nginx/default.conf", Symlink: true, Target: "sites-available/default", Size: 1536},
+		sftpfs.Entry{Name: "stale", Path: "/etc/nginx/stale", Symlink: true, Broken: true, Target: "/srv/gone"})
+	return p, tt
+}
+
+func TestLinksShowWhereTheyLeadAndOpenAsWhatTheyPointTo(t *testing.T) {
+	p, tt := linkFixture(t)
+	has(t, tt, "→ /var/log/nginx", "→ sites-available/default", "→ /srv/gone（失效）", "1.5K")
+	if tt.HasText("目录 /etc/nginx/logs") {
+		t.Fatal("the tree shows real folders only, not links to folders")
+	}
+	// A link to a folder opens as one, in the list.
+	click(t, tt, "打开 logs")
+	tt.Key(0, ui.KeyEnter)
+	if p.listed[len(p.listed)-1] != "one:/etc/nginx/logs" {
+		t.Fatal("link to a folder did not open", p.listed)
+	}
+	// A link to a file opens in the editor, at the link's own path.
+	click(t, tt, "选择 default.conf")
+	tt.Key(0, ui.KeyEnter)
+	if !slices.Contains(p.opened, "/etc/nginx/default.conf") {
+		t.Fatal("link to a file did not open", p.opened)
+	}
+	// A broken one says so, and opens nothing.
+	n := len(p.opened) + len(p.listed)
+	click(t, tt, "选择 stale")
+	tt.Key(0, ui.KeyEnter)
+	has(t, tt, "「stale」是失效的链接")
+	if len(p.opened)+len(p.listed) != n {
+		t.Fatal("a broken link opened something", p.opened, p.listed)
+	}
+}
+
+func TestLinkMenusOfferWhatTheTargetAllows(t *testing.T) {
+	p, tt := linkFixture(t)
+	menu := func(row string) []string {
+		t.Helper()
+		if e := tt.RightClick(row); e != nil {
+			t.Fatal(e)
+		}
+		items := slices.Clone(tt.Menu())
+		tt.CloseMenu()
+		return items
+	}
+	for _, v := range []struct {
+		row  string
+		want []string
+		not  []string
+	}{
+		{"选择 default.conf", []string{"编辑", "远程编辑", "下载到默认目录", "下载到…", "删除"}, []string{"发送到其他服务器…"}},
+		{"打开 logs", []string{"打开", "下载到默认目录", "删除"}, []string{"编辑", "发送到其他服务器…"}},
+		{"选择 stale", []string{"重命名", "删除"}, []string{"编辑", "打开", "下载到默认目录", "下载到…"}},
+	} {
+		got := menu(v.row)
+		for _, w := range v.want {
+			if !slices.Contains(got, w) {
+				t.Errorf("%s: no %q in %q", v.row, w, got)
+			}
+		}
+		for _, w := range v.not {
+			if slices.Contains(got, w) {
+				t.Errorf("%s: %q should not be offered: %q", v.row, w, got)
+			}
+		}
+	}
+	// Downloading a link asks for what it points to, by the link's path.
+	if e := tt.RightClick("选择 default.conf"); e != nil {
+		t.Fatal(e)
+	}
+	if e := tt.ChooseMenuItem("下载到默认目录"); e != nil {
+		t.Fatal(e)
+	}
+	tt.Frame()
+	if len(p.queued) != 1 || p.queued[0].Kind != "download" || p.queued[0].Remote != "/etc/nginx/default.conf" {
+		t.Fatal("download", p.queued)
+	}
+	// Deleting a link says it is the link that goes, and is a plain delete: no count of what is behind it.
+	deleteRow(t, tt, "打开 logs")
+	has(t, tt, "删除 one 上的文件", "logs\n删除后无法恢复。\n链接只会删除链接本身，不会动它指向的内容。")
+	click(t, tt, "删除 1 项")
+	if len(p.actions) != 1 || p.actions[0] != [3]string{"remove", "/etc/nginx/logs", ""} {
+		t.Fatal("delete", p.actions)
+	}
+}
+
+func TestTreeScrollsTheFolderShownIntoView(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/srv/app/releases")
+	// A long folder list above it: the folder shown is far below the top of the tree.
+	var roots []sftpfs.Entry
+	for i := range 60 {
+		name := fmt.Sprintf("a%02d", i)
+		roots = append(roots, sftpfs.Entry{Name: name, Path: "/" + name, Directory: true})
+	}
+	roots = append(roots, sftpfs.Entry{Name: "srv", Path: "/srv", Directory: true})
+	listing(p, tt, "one", "/", roots...)
+	listing(p, tt, "one", "/srv", sftpfs.Entry{Name: "app", Path: "/srv/app", Directory: true})
+	listing(p, tt, "one", "/srv/app", sftpfs.Entry{Name: "releases", Path: "/srv/app/releases", Directory: true})
+	// Going to another folder shows the list of it; the tree follows to where it is.
+	listing(p, tt, "one", "/srv/app/releases", sftpfs.Entry{Name: "v1", Path: "/srv/app/releases/v1", Directory: true})
+	tt.Frame()
+	if r, ok := tt.Find("目录 /srv/app/releases"); !ok || r.W == 0 || r.H == 0 { // a row scrolled out of the pane has no area
+		t.Fatal("the selected folder of the tree is out of sight", r)
+	}
+}
+
+func TestQueuingManyFilesIsOneToast(t *testing.T) {
+	a, p, tt := fixture(t)
+	a.PickFiles = func(o appui.FilePick, done func([]string)) {
+		done([]string{"/tmp/a.txt", "/tmp/b.txt", "/tmp/c.txt", "/tmp/d.txt", "/tmp/e.txt"})
+	}
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/srv", sftpfs.Entry{Name: "x", Path: "/srv/x"})
+	click(t, tt, "上传")
+	tt.Frame()
+	if len(p.queued) != 5 {
+		t.Fatal("queued", p.queued)
+	}
+	toasts := 0
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "已加入") {
+			toasts++
+			if s != "已加入 5 个传输" {
+				t.Fatal(s)
+			}
+		}
+	}
+	if toasts != 1 {
+		t.Fatal("one toast for five files, got", toasts, tt.Texts())
+	}
+	// The same goes for several downloads and a paste.
+	p.queued = nil
+	listing(p, tt, "one", "/srv", sftpfs.Entry{Name: "x", Path: "/srv/x"}, sftpfs.Entry{Name: "y", Path: "/srv/y"})
+	click(t, tt, "选择 x")
+	if e := tt.ClickWith(ui.Cmd, "选择 y"); e != nil {
+		t.Fatal(e)
+	}
+	if e := tt.RightClick("选择 y"); e != nil {
+		t.Fatal(e)
+	}
+	if e := tt.ChooseMenuItem("下载到默认目录（2 项）"); e != nil {
+		t.Fatal(e)
+	}
+	tt.Frame()
+	if len(p.queued) != 2 || !tt.HasText("已加入 2 个传输") {
+		t.Fatal("two downloads", p.queued, tt.Texts())
+	}
+}
+
+func TestFilesPanelOfAnEndedConnectionSaysSoAndOffersNothing(t *testing.T) {
+	_, p, tt := fixture(t)
+	s := session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/srv", sftpfs.Entry{Name: "a.txt", Path: "/srv/a.txt"})
+	if tt.HasText("文件操作不可用") {
+		t.Fatal("the hint shows on a live connection")
+	}
+	for _, name := range []string{"上传", "刷新", "上级目录", "更多"} {
+		if info, ok := tt.Access(name); !ok || info.Disabled {
+			t.Fatal(name, "is not usable on a live connection", info)
+		}
+	}
+	s.Terminal.Close()
+	<-s.Terminal.Done()
+	tt.Frame()
+	has(t, tt, "连接已断开，文件操作不可用", "a.txt") // the list stays as it was, to read
+	for _, name := range []string{"上传", "刷新", "上级目录", "更多"} {
+		if info, ok := tt.Access(name); !ok || !info.Disabled {
+			t.Fatal(name, "is offered on a connection that ended", info)
+		}
+	}
+	// Nothing opens from the list either: the menu is not there, and Return does nothing.
+	n := len(p.listed)
+	if e := tt.RightClick("选择 a.txt"); e == nil && len(tt.Menu()) > 0 {
+		t.Fatal("a menu on a list of an ended connection", tt.Menu())
+	}
+	click(t, tt, "选择 a.txt")
+	tt.Key(0, ui.KeyEnter)
+	if len(p.opened) != 0 || len(p.listed) != n {
+		t.Fatal("Return acted on a dead connection", p.opened, p.listed[n:])
 	}
 }
