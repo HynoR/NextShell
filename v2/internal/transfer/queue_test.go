@@ -184,3 +184,33 @@ func TestItemsJobsStayItemsAfterRetry(t *testing.T) {
 		t.Fatal("a retry counted bytes")
 	}
 }
+
+func TestDismissDropsOneEndedJobAndNeverARunningOne(t *testing.T) {
+	q := New(2, nil)
+	defer q.Close()
+	boom := func(context.Context, func(int64)) error { return errors.New("boom") }
+	release := make(chan struct{})
+	hold := func(ctx context.Context, _ func(int64)) error {
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return nil
+	}
+	a, _ := q.Add("a", boom)
+	b, _ := q.Add("b", boom)
+	running, _ := q.Add("running", hold)
+	waitJobs(t, q, func(js []Job) bool {
+		return js[0].State == "failed" && js[1].State == "failed" && js[2].State == "running"
+	})
+	q.Dismiss(running) // still running: stays
+	q.Dismiss("no such job")
+	if got := q.List(); len(got) != 3 {
+		t.Fatal(got)
+	}
+	q.Dismiss(a)
+	if got := q.List(); len(got) != 2 || got[0].ID != b || got[1].ID != running {
+		t.Fatal("only a went:", got)
+	}
+	close(release)
+}

@@ -191,6 +191,21 @@ func (q *Queue) clear(states ...string) int {
 	}
 	return n
 }
+
+// Dismiss drops one job that has ended (done, failed or cancelled) from the list; a job that is queued or
+// running stays.
+func (q *Queue) Dismiss(id string) {
+	q.mu.Lock()
+	n := len(q.items)
+	q.items = slices.DeleteFunc(q.items, func(it *item) bool {
+		return it.job.ID == id && it.job.State != "queued" && it.job.State != "running"
+	})
+	changed := len(q.items) != n
+	q.mu.Unlock()
+	if changed {
+		q.notify()
+	}
+}
 func (q *Queue) CancelAll() {
 	q.mu.Lock()
 	for _, it := range q.items {

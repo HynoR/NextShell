@@ -1128,6 +1128,10 @@ func (a *App) transferSection(c *ui.Context) {
 						if ghost(c, "重试", "").Clicked() {
 							a.report(a.P.RetryTransfer(j.ID), "")
 						}
+						if iconButton(c, "移除 "+j.Label, "close").Clicked() { // one row, not all the failed ones
+							id := j.ID
+							a.later(func() { a.P.DismissTransfer(id) })
+						}
 					}
 				})
 				if j.State == "running" {
@@ -1151,7 +1155,10 @@ func (a *App) transferSection(c *ui.Context) {
 
 // transferDetail is the grey line of a job: its state, how far it is, the speed and the attempt.
 func transferDetail(j transfer.Job, state string) string {
-	detail := state + " · " + humanSize(j.Bytes)
+	detail := state
+	if j.Bytes > 0 { // nothing moved yet: 「失败 · 0 B」 says nothing
+		detail += " · " + humanSize(j.Bytes)
+	}
 	switch {
 	case j.Items: // a deletion counts items, and has no speed
 		detail = state

@@ -327,6 +327,7 @@ func (p *Platform) CountRemoval(session string, paths []string) func() {
 func (p *Platform) Transfers() []transfer.Job           { return p.queue.List() }
 func (p *Platform) CancelTransfer(id string)            { p.queue.Cancel(id) }
 func (p *Platform) RetryTransfer(id string) error       { return p.queue.Retry(id) }
+func (p *Platform) DismissTransfer(id string)           { p.queue.Dismiss(id) }
 func (p *Platform) OpenRemote(session, remote string)   { p.openRemote(session, remote, false) }
 func (p *Platform) ReloadRemote(session, remote string) { p.openRemote(session, remote, true) }
 func (p *Platform) openRemote(session, remote string, forEditor bool) {

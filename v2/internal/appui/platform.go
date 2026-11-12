@@ -158,6 +158,8 @@ type Platform interface {
 	// ClearFailedTransfers drops the failed and cancelled jobs, which stay for a retry until then.
 	ClearFailedTransfers() int
 	RetryTransfer(id string) error
+	// DismissTransfer drops one ended job from the list; a queued or running one stays.
+	DismissTransfer(id string)
 	OpenRemote(session, path string)
 	// ReloadRemote is OpenRemote for the editor's reload button: the same Editor event,
 	// and a failure's Message is ForEditor.
