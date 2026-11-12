@@ -16,22 +16,32 @@ import (
 	"nextshell.dev/v2/internal/sshclient"
 )
 
-// tcpProxy forwards to target and counts bytes; Blackhole makes it swallow traffic silently in both
-// directions while keeping the TCP connections open (a NAT entry that expired, a dead Wi-Fi).
+// tcpProxy forwards to target and counts bytes; blackholed makes it swallow traffic silently in both
+// directions while keeping the TCP connections open (a NAT entry that expired, a dead Wi-Fi). delay adds
+// a one-way latency to every chunk (order and throughput preserved), to emulate a WAN link.
 type tcpProxy struct {
 	l          net.Listener
 	target     string
 	bytes      atomic.Int64
 	blackholed atomic.Bool
+	delay      time.Duration
 	wg         sync.WaitGroup
 }
 
-func newTCPProxy(t *testing.T, target string) *tcpProxy {
+type chunk struct {
+	b   []byte
+	due time.Time
+}
+
+func newTCPProxy(t testing.TB, target string, delay ...time.Duration) *tcpProxy {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := &tcpProxy{l: l, target: target}
+	if len(delay) > 0 {
+		p.delay = delay[0]
+	}
 	t.Cleanup(func() { l.Close(); p.wg.Wait() })
 	p.wg.Add(1)
 	go func() {
@@ -48,24 +58,33 @@ func newTCPProxy(t *testing.T, target string) *tcpProxy {
 			}
 			t.Cleanup(func() { c.Close(); up.Close() })
 			for _, pair := range [][2]net.Conn{{c, up}, {up, c}} {
-				p.wg.Add(1)
-				go func(src, dst net.Conn) {
+				queue := make(chan chunk, 4096)
+				p.wg.Add(2)
+				go func(src net.Conn) {
 					defer p.wg.Done()
-					buf := make([]byte, 32<<10)
+					defer close(queue)
 					for {
+						buf := make([]byte, 32<<10)
 						n, err := src.Read(buf)
 						if n > 0 {
 							p.bytes.Add(int64(n))
-							if !p.blackholed.Load() {
-								dst.Write(buf[:n])
-							}
+							queue <- chunk{buf[:n], time.Now().Add(p.delay)}
 						}
 						if err != nil {
-							dst.Close()
 							return
 						}
 					}
-				}(pair[0], pair[1])
+				}(pair[0])
+				go func(dst net.Conn) {
+					defer p.wg.Done()
+					defer dst.Close()
+					for ch := range queue {
+						time.Sleep(time.Until(ch.due))
+						if !p.blackholed.Load() {
+							dst.Write(ch.b)
+						}
+					}
+				}(pair[1])
 			}
 		}
 	}()
