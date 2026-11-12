@@ -37,6 +37,9 @@ type App struct {
 	// Cloud shows the cloud sync UI: the 同步 settings page, its palette action, the status-bar indicator and
 	// the host menu's copy action. The host sets it for development builds only: no sync server exists yet.
 	Cloud bool
+	// Version is the packaged app's version for the About page; empty for a build run from source.
+	// ProfilePath is the profile database the About page shows.
+	Version, ProfilePath string
 	// ShowEditor opens (or raises) the remote editor window, which EditorView
 	// builds; HideEditor closes it. Without ShowEditor the editor is a dialog.
 	ShowEditor, HideEditor func()

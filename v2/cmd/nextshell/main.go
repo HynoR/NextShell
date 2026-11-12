@@ -54,6 +54,10 @@ func main() {
 	}
 	a := appui.New(p)
 	a.Cloud = cloudUI
+	a.ProfilePath = path
+	if !mygo.IsDev() { // go run, go build and mygo dev builds are 开发版
+		a.Version = mygo.App.Version()
+	}
 	end := &shutdown{cleanup: func() {
 		if !opts.smoke {
 			a.SaveOpenTabs() // before the store closes

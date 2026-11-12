@@ -356,10 +356,26 @@ func programDir(shell bool) string {
 	return "/usr/bin"
 }
 
+const releasesURL = "https://github.com/HynoR/NextShell/releases"
+
 func (a *App) aboutSettings(c *ui.Context) {
 	group(c, "", func() {
 		ui.Text(c, "NextShell 2").FontSize(16).Bold()
 		muted(c, "原生 SSH 终端、文件与监控")
+	})
+	group(c, "应用", func() {
+		ui.Field(c, "版本", func() { ui.Text(c, orDefault(a.Version, "开发版")).Selectable() }).FillWidth()
+		if a.ProfilePath != "" {
+			ui.Field(c, "配置文件", func() { ui.Text(c, a.ProfilePath).Font("monospace").FontSize(12).Selectable().Grow(1).MinWidth(0) }).Description("主机、设置等数据保存在这个文件里").FillWidth()
+		}
+		ui.Field(c, "发布页", func() {
+			ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, releasesURL).Font("monospace").FontSize(12).Selectable().Grow(1).MinWidth(0)
+				if ui.Button(c, "打开发布页").Clicked() {
+					a.report(a.P.OpenURL(releasesURL), "")
+				}
+			})
+		}).Description("新版本发布在这里，NextShell 不会自动检查更新").FillWidth()
 	})
 	group(c, "最近操作", func() {
 		if len(a.logs) == 0 {

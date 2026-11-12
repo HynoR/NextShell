@@ -135,4 +135,7 @@ func TestTerminalLinksConsumeDefaultAndUseInjectedOpener(t *testing.T) {
 	if err := p.OpenURL(e.Link); err != nil || calls != 1 {
 		t.Fatal(err, calls)
 	}
+	if err := p.OpenURL("https://github.com/HynoR/NextShell/releases"); err != nil || calls != 2 { // the About page's link
+		t.Fatal(err, calls)
+	}
 }

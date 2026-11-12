@@ -415,3 +415,24 @@ func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 		t.Fatal("shell integration", v.ShellIntegration)
 	}
 }
+
+func TestAboutShowsVersionProfileAndOpensReleases(t *testing.T) {
+	p := newPlatform(t)
+	a := appui.New(p)
+	st := ui.NewTester(a.SettingsView, 880, 900)
+	click(t, st, "关于")
+	has(t, st, "版本", "开发版", "https://github.com/HynoR/NextShell/releases")
+	if st.HasText("配置文件") {
+		t.Fatal("no profile path to show")
+	}
+	a.Version, a.ProfilePath = "2.0.0-rc1", "/home/u/.config/NextShell-v2/nextshell.db"
+	st.Frame()
+	has(t, st, "2.0.0-rc1", "配置文件", a.ProfilePath)
+	if st.HasText("开发版") {
+		t.Fatal("a release shows its version")
+	}
+	click(t, st, "打开发布页")
+	if !slices.Equal(p.opened, []string{"https://github.com/HynoR/NextShell/releases"}) {
+		t.Fatal(p.opened)
+	}
+}
