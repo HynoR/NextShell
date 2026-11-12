@@ -50,3 +50,15 @@ func TestCrossFileExplicitOverwriteStillWorks(t *testing.T) {
 		t.Fatal(err, string(b))
 	}
 }
+
+func TestListFilesFailureEndsInAFailureEvent(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
+	p := desktopFixture(t)
+	session, root := phase2SSH(t, p)
+	gone := filepath.Join(root, "gone")
+	p.ListFiles(session, gone)
+	ev := awaitEvent(t, p, func(e appui.Event) bool { return e.FilesFailed != nil || e.Files != nil || e.Message != "" })
+	if f := ev.FilesFailed; f == nil || f.Session != session || f.Path != gone || f.Err == "" || ev.Message != "" {
+		t.Fatal("a listing that fails is its own event, so the pane can show why:", ev)
+	}
+}

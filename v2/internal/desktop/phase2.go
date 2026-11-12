@@ -62,19 +62,22 @@ func (p *Platform) operationFor(forEditor bool, fn func(context.Context) error) 
 	})
 }
 func (p *Platform) ListFiles(session, remote string) {
-	p.operation(func(ctx context.Context) error {
-		return p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
-			if remote == "" {
-				remote = "."
+	p.launch(func() {
+		ctx, cancel := context.WithTimeout(p.ctx, 30*time.Second)
+		defer cancel()
+		e := p.withSFTP(ctx, session, func(c *sftpfs.Client) error {
+			dir := remote
+			if dir == "" {
+				dir = "."
 			}
-			if remote == "~" || strings.HasPrefix(remote, "~/") {
+			if dir == "~" || strings.HasPrefix(dir, "~/") {
 				home, err := c.RealPath(".")
 				if err != nil {
 					return err
 				}
-				remote = path.Join(home, strings.TrimPrefix(strings.TrimPrefix(remote, "~"), "/"))
+				dir = path.Join(home, strings.TrimPrefix(strings.TrimPrefix(dir, "~"), "/"))
 			}
-			resolved, e := c.RealPath(remote)
+			resolved, e := c.RealPath(dir)
 			if e != nil {
 				return e
 			}
@@ -85,6 +88,9 @@ func (p *Platform) ListFiles(session, remote string) {
 			p.emit(appui.Event{Files: &appui.FileListing{Session: session, Path: resolved, Entries: entries}})
 			return nil
 		})
+		if e != nil { // the pane shows why in place of the list: nothing else would end its spinner
+			p.emit(appui.Event{FilesFailed: &appui.FileFailure{Session: session, Path: remote, Err: e.Error()}})
+		}
 	})
 }
 func (p *Platform) FileAction(session, action, from, to string) {

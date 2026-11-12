@@ -60,6 +60,7 @@ type Event struct {
 	CloseID              string       // an agent closed this session: drop its tab
 	Agent                *AgentNotice // an agent call changed (or wants to change) something
 	Files                *FileListing
+	FilesFailed          *FileFailure // a listing that could not be read
 	Editor               *EditorResult
 	Monitor              *MonitorResult
 	Import               *ImportPreview
@@ -203,6 +204,9 @@ type FileListing struct {
 	Session, Path string
 	Entries       []sftpfs.Entry
 }
+
+// FileFailure is a directory listing that failed. Path is what was asked for; Err is the server's own wording.
+type FileFailure struct{ Session, Path, Err string }
 type EditorResult struct {
 	Saved    bool
 	Session  string

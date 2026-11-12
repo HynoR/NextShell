@@ -35,6 +35,7 @@ type filesState struct {
 	follow                   bool
 	dialog                   fileDialog
 	trees                    map[string]*dirTree // per session
+	failed                   map[string]string   // per session: why its first listing could not be read
 	treeHidden               bool
 	treeWidth                float32
 }
@@ -43,10 +44,11 @@ type filesState struct {
 type dirTree struct {
 	dirs   map[string][]string // a listed folder's subfolders, in order
 	open   map[string]*bool
-	asked  map[string]bool // listed, or being listed
-	peeks  map[string]bool // listings asked for the tree alone, not to show in the list
-	shown  string          // the folder the list shows, which the tree follows
-	hidden bool            // dotfolders were kept, as the list shows them
+	asked  map[string]bool   // listed, or being listed
+	peeks  map[string]bool   // listings asked for the tree alone, not to show in the list
+	failed map[string]string // a folder whose listing failed, and why
+	shown  string            // the folder the list shows, which the tree follows
+	hidden bool              // dotfolders were kept, as the list shows them
 }
 
 type remoteClipboard struct {
@@ -68,13 +70,14 @@ func (s *filesState) init() {
 	s.row = -1
 	s.paths = map[string]string{}
 	s.trees = map[string]*dirTree{}
+	s.failed = map[string]string{}
 	s.treeWidth = 200
 }
 
 func (s *filesState) tree(id string) *dirTree {
 	t := s.trees[id]
 	if t == nil {
-		t = &dirTree{dirs: map[string][]string{}, open: map[string]*bool{}, asked: map[string]bool{}, peeks: map[string]bool{}}
+		t = &dirTree{dirs: map[string][]string{}, open: map[string]*bool{}, asked: map[string]bool{}, peeks: map[string]bool{}, failed: map[string]string{}}
 		s.trees[id] = t
 	}
 	return t
@@ -125,6 +128,10 @@ func (t *dirTree) flag(p string) *bool {
 }
 
 func (s *filesState) handle(a *App, e Event) {
+	if f := e.FilesFailed; f != nil {
+		s.listFailed(a, f)
+		return
+	}
 	if e.Files == nil {
 		return
 	}
@@ -139,6 +146,7 @@ func (s *filesState) handle(a *App, e Event) {
 	tree := s.tree(e.Files.Session)
 	tree.learn(e.Files)
 	tree.follow(e.Files.Path)
+	delete(s.failed, e.Files.Session)
 	if s.session != e.Files.Session || s.path != e.Files.Path {
 		s.selection.Clear()
 		s.row = -1
@@ -147,6 +155,37 @@ func (s *filesState) handle(a *App, e Event) {
 	s.paths[s.session] = s.path
 	s.all = e.Files.Entries
 	s.filterEntries()
+}
+
+// listFailed answers a listing that failed: a folder of the tree shows it in place, a list not shown yet
+// takes the pane (its spinner would never end), and a folder opened from a list shown is a toast.
+func (s *filesState) listFailed(a *App, f *FileFailure) {
+	reason, detail := listReason(f.Err)
+	if tree := s.trees[f.Session]; tree != nil && tree.peeks[f.Path] {
+		delete(tree.peeks, f.Path)
+		tree.failed[f.Path] = reason
+		return
+	}
+	if f.Session == s.session {
+		a.failAs(reason, f.Err)
+		return
+	}
+	s.failed[f.Session] = reason
+	if detail != "" {
+		s.failed[f.Session] += "\n" + detail
+	}
+}
+
+// listReason says why a listing failed, in words for the user; detail is the server's own wording
+// when it is not one of the known causes.
+func listReason(msg string) (reason, detail string) {
+	if strings.Contains(strings.ToLower(msg), "subsystem") {
+		return "这台服务器没有开启文件传输（SFTP）", ""
+	}
+	if title, known := humanize(msg); known {
+		return title, ""
+	}
+	return "服务器没有返回目录内容", msg
 }
 func (s *filesState) filterEntries() {
 	s.entries = s.entries[:0:0]
@@ -216,6 +255,7 @@ func digits(s string) int {
 }
 func (a *App) listFiles(id, dir string) {
 	a.files.requested = id
+	delete(a.files.failed, id)
 	delete(a.files.tree(id).peeks, dir)
 	a.P.ListFiles(id, dir)
 }
@@ -243,6 +283,13 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 				for _, sub := range subs {
 					if a.files.hidden || !strings.HasPrefix(path.Base(sub), ".") {
 						node(sub)
+					}
+				}
+				if reason, bad := tree.failed[dir]; bad {
+					if ui.TreeItem(c.Key("retry-"+dir), "无法读取，点击重试", nil, nil).Label("重试读取 " + dir).Tooltip(reason).TextColor(c.Theme().Danger).Clicked() {
+						delete(tree.failed, dir)
+						tree.peeks[dir] = true
+						a.later(func() { a.P.ListFiles(id, dir) })
 					}
 				}
 			}
@@ -297,6 +344,10 @@ func (a *App) filesPanel(c *ui.Context) {
 		iconButton(c, "更多", "more").PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
 	if s.session != id {
+		if why, bad := s.failed[id]; bad {
+			a.listError(c, id, why)
+			return
+		}
 		ui.Row(c).Fill().Center().Children(func() { ui.Spinner(c) })
 		return
 	}
@@ -314,6 +365,27 @@ func (a *App) filesPanel(c *ui.Context) {
 		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
 			a.pasteRemoteClipboard(id)
 		}
+	})
+}
+
+// listError takes the pane when the first listing failed: why, and a way to ask again.
+func (a *App) listError(c *ui.Context, id, why string) {
+	reason, detail, _ := strings.Cut(why, "\n")
+	retry := orDefault(a.files.paths[id], ".")
+	ui.Column(c).Fill().Padding(24).Gap(6).Center().Children(func() {
+		ui.Text(c, "无法读取目录").Bold()
+		ui.Text(c, reason).FontSize(12).TextColor(c.Theme().Danger)
+		if detail != "" {
+			muted(c, detail).FontSize(11).Selectable()
+		}
+		ui.Row(c).Gap(8).Padding(8, 0, 0, 0).Children(func() {
+			if ui.Button(c, "重试").Clicked() {
+				a.listFiles(id, retry)
+			}
+			if retry != "." && ui.Button(c, "回到主目录").Clicked() {
+				a.listFiles(id, ".")
+			}
+		})
 	})
 }
 
