@@ -18,7 +18,9 @@ const runNpm = (args) =>
   execFileSync(npmCommand, [...npmArgs, ...args], { cwd: dir, encoding: "utf8" });
 const client = new Client({ name: "packed-smoke", version: "1" });
 try {
-  const packed = JSON.parse(runNpm(["pack", root, "--ignore-scripts", "--json"]));
+  const output = JSON.parse(runNpm(["pack", root, "--ignore-scripts", "--json"]));
+  // npm 10 prints an array, newer npm an object keyed by package name.
+  const packed = Array.isArray(output) ? output : Object.values(output);
   runNpm([
     "install",
     "--ignore-scripts",
@@ -32,7 +34,17 @@ try {
   await client.connect(
     new StdioClientTransport({
       command: npmCommand,
-      args: [...npmArgs, "exec", "--offline", "--", "nextshell-mcp", "--port", "1"],
+      args: [
+        ...npmArgs,
+        "exec",
+        "--offline",
+        "--",
+        "nextshell-mcp",
+        "--port",
+        "1",
+        "--token",
+        "unused"
+      ],
       cwd: dir
     })
   );
