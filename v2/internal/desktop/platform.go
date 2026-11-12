@@ -42,10 +42,10 @@ type Platform struct {
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
-	dialSlots        map[string]chan struct{} // handshake limiter per endpoint; see dial
+	dialSlots        map[string]chan struct{}   // handshake limiter per endpoint; see dial
 	connects         map[string]*connectAttempt // connects in progress per saved connection; see CancelConnect
-	trustNewHosts    atomic.Bool              // development builds only (see devtrust_development.go): pin first-seen host keys without asking
-	tar              map[string]bool          // whether each session's server has tar
+	trustNewHosts    atomic.Bool                // development builds only (see devtrust_development.go): pin first-seen host keys without asking
+	tar              map[string]bool            // whether each session's server has tar
 	queue            *transfer.Queue
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
