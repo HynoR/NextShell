@@ -52,6 +52,9 @@ func awaitEvent(t *testing.T, p *Platform, pick func(appui.Event) bool) appui.Ev
 	}
 }
 func TestNativeLocalTerminal(t *testing.T) {
+	// A plain shell: rc files (e.g. oh-my-zsh) re-report $PWD via OSC 7 at each
+	// prompt and race with the OSC 7 this test sends.
+	t.Setenv("SHELL", "/bin/sh")
 	p := desktopFixture(t)
 	p.Local()
 	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil })
