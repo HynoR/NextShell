@@ -32,7 +32,10 @@ func (a *App) leftColumn(c *ui.Context) {
 				ui.Spacer(c).Grow(1)
 				a.foldLeft(c)
 			})
-			ui.Column(c).Grow(1).FillWidth().Center().Children(func() { muted(c, "未选择服务器") })
+			ui.Column(c).Grow(1).FillWidth().Padding(0, 16).Center().Gap(4).Children(func() {
+				muted(c, "未选择服务器")
+				muted(c, "连接服务器后，这里显示实时状态").FontSize(11).Wrap()
+			})
 			return
 		}
 		a.sessionCard(c, s)
@@ -111,7 +114,7 @@ func (a *App) sessionCard(c *ui.Context, s *Session) {
 			info := strings.ToUpper(orDefault(s.Connection.Encoding, "utf-8"))
 			if !exited {
 				c.After(time.Minute)
-				info += " · 已连接 " + since(a.tabs.started[s.ID])
+				info += " · " + connectedFor(a.tabs.started[s.ID])
 			}
 			muted(c, info).SingleLine()
 		}
@@ -131,14 +134,15 @@ func (a *App) sessionCard(c *ui.Context, s *Session) {
 	})
 }
 
-func since(at time.Time) string {
+// connectedFor is how long the session has been up: 刚刚连接, 已连接 5 分钟, 已连接 2 小时 3 分钟.
+func connectedFor(at time.Time) string {
 	d := time.Since(at)
 	switch {
 	case at.IsZero() || d < time.Minute:
-		return "不到 1 分钟"
+		return "刚刚连接"
 	case d < time.Hour:
-		return fmt.Sprintf("%d 分钟", int(d.Minutes()))
+		return fmt.Sprintf("已连接 %d 分钟", int(d.Minutes()))
 	default:
-		return fmt.Sprintf("%d 小时 %d 分钟", int(d.Hours()), int(d.Minutes())%60)
+		return fmt.Sprintf("已连接 %d 小时 %d 分钟", int(d.Hours()), int(d.Minutes())%60)
 	}
 }

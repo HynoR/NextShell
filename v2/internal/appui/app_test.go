@@ -49,7 +49,7 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 		t.Fatal("local terminal")
 	}
 	session(t, p, tt, "s1", "saved-box", saved)
-	has(t, tt, "已连接", "ops@10.9.9.9:22", "UTF-8 · 已连接 不到 1 分钟")
+	has(t, tt, "已连接", "ops@10.9.9.9:22", "UTF-8 · 刚刚连接")
 	if tt.HasText("最近") {
 		t.Fatal("welcome shown with a tab")
 	}

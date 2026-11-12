@@ -395,7 +395,7 @@ func (p *Platform) terminalOptions(o terminal.Options) terminal.Options {
 	o.OnTitle = func(string) { p.Invalidate() }
 	o.OnBell = func() {
 		if p.Preferences().Notifications {
-			p.emit(appui.Event{Message: "终端响铃（BEL）"})
+			p.emit(appui.Event{Message: "终端响铃"})
 		}
 	}
 	o.OnNotify = func(title, body string) {

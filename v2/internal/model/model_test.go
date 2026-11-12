@@ -26,6 +26,9 @@ func TestQuickConnect(t *testing.T) {
 			}
 		})
 	}
+	if _, e := QuickConnect("host"); e == nil || e.Error() != "请输入 用户名@主机[:端口]" {
+		t.Fatal("the format hint is for the person typing:", e)
+	}
 }
 func TestConnectionValidation(t *testing.T) {
 	base := Connection{Name: "x", Host: "localhost", Port: 22, User: "tester", Auth: "password", Encoding: "utf-8"}

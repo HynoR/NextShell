@@ -51,6 +51,23 @@ func waitQueue(t *testing.T, p *Platform, id string) {
 		}
 	}
 }
+
+// A server that is not Linux fails every probe: the platform reports it as a quiet result for the panels to
+// count, never as a toast every 2 s. The test server runs the probe on this machine, so it needs a non-Linux one.
+func TestMonitorFailureIsAResultNotAToast(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
+	if runtime.GOOS == "linux" {
+		t.Skip("this machine passes the probe's Linux guard")
+	}
+	p := desktopFixture(t)
+	session, _ := phase2SSH(t, p)
+	p.RefreshMonitor(session)
+	// awaitEvent fails the test on a message event.
+	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Monitor != nil })
+	if e.Monitor.Session != session || e.Monitor.Err == nil || e.Message != "" || e.Monitor.Snapshot.MemoryTotal != 0 {
+		t.Fatalf("%+v", e)
+	}
+}
 func TestPhase2PlatformRealSSHWorkflow(t *testing.T) {
 	testutil.RequireLinuxRemote(t)
 	p := desktopFixture(t)

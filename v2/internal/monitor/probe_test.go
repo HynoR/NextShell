@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"nextshell.dev/v2/internal/sshclient"
@@ -287,5 +288,38 @@ func TestCollectPicksProbeByDetail(t *testing.T) {
 	}
 	if len(r.commands) != 2 || r.commands[0] != LightProbeCommand || r.commands[1] != ProbeCommand {
 		t.Fatal("wrong commands run")
+	}
+}
+
+type answerRunner struct {
+	out []byte
+	err error
+}
+
+func (f answerRunner) Output(context.Context, string, int) ([]byte, error) { return f.out, f.err }
+
+// exitStatus stands in for ssh.ExitError, whose ExitStatus the probe's refusal comes back as.
+type exitStatus int
+
+func (e exitStatus) Error() string   { return fmt.Sprintf("Process exited with status %d", int(e)) }
+func (e exitStatus) ExitStatus() int { return int(e) }
+
+// A server that can never be read (not Linux, no /proc) is told apart from a probe that failed this time.
+func TestCollectTellsUnsupportedFromFailed(t *testing.T) {
+	for name, tc := range map[string]struct {
+		r           answerRunner
+		unsupported bool
+	}{
+		"not linux":      {answerRunner{err: fmt.Errorf("run: %w", exitStatus(44))}, true},
+		"no /proc":       {answerRunner{out: []byte("---NS_INFO---\nbox\n---NS_PROBE_END---")}, true},
+		"other exit":     {answerRunner{err: exitStatus(1)}, false},
+		"dropped":        {answerRunner{err: context.DeadlineExceeded}, false},
+		"output limit":   {answerRunner{out: []byte("x"), err: fmt.Errorf("remote output exceeds limit")}, false},
+		"readable linux": {answerRunner{out: []byte(lightOut(100, 900, 1000, 2000))}, false},
+	} {
+		_, e := Collect(context.Background(), tc.r, nil, false)
+		if errors.Is(e, ErrUnsupported) != tc.unsupported || (name != "readable linux") != (e != nil) {
+			t.Errorf("%s: %v", name, e)
+		}
 	}
 }

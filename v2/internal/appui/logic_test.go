@@ -37,6 +37,14 @@ func (p *sendRecorder) ExecuteCommand(session, text string, all bool, appendCR .
 	return nil
 }
 
+func TestConnectionStatesInWords(t *testing.T) {
+	for in, want := range map[string]string{"LISTEN": "监听", "UNCONN": "监听", "ESTAB": "已建立", "ESTABLISHED": "已建立", "TIME-WAIT": "等待回收", "TIME_WAIT": "等待回收", "CLOSE_WAIT": "等待关闭", "FIN_WAIT2": "正在关闭", "SYN-SENT": "正在连接", "weird": "weird"} {
+		if got := connState(in); got != want {
+			t.Errorf("%s: %s, want %s", in, got, want)
+		}
+	}
+}
+
 func TestSnippetParametersPreservedPerSnippet(t *testing.T) {
 	p := &sendRecorder{}
 	a := &App{P: p, Tabs: []*Session{{ID: "s"}}, Active: 0}

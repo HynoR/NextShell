@@ -1,6 +1,7 @@
 package appui
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -22,6 +23,11 @@ type hostMonitor struct {
 	session    string           // the session that sent snap
 	latency    time.Duration    // 0 when unknown
 	nic        string           // the interface the left column shows
+	// A failed sample counts against failSession; stopAfter in a row stop its sampling until a retry,
+	// a reconnect (a new session) or a good sample.
+	fails       int
+	failSession string
+	failErr     error
 }
 
 type monitorState struct {
@@ -41,6 +47,7 @@ type monitorState struct {
 const (
 	allNICs     = "全部网卡"
 	cachedAfter = 6 * time.Second // a sample older than this is shown as 缓存数据
+	stopAfter   = 3               // failed samples in a row before a server is left alone
 )
 
 func (s *monitorState) init() {
@@ -63,37 +70,57 @@ func (s *monitorState) handle(a *App, e Event) {
 	if d := e.Diagnostic; d != nil && d.ID == s.trace.id {
 		s.trace.busy, s.trace.text = false, d.Text
 	}
-	if e.Monitor == nil {
+	m := e.Monitor
+	if m == nil {
 		return
 	}
-	if h := s.record(a.hostKeyOf(e.Monitor.Session), e.Monitor.Snapshot); h != nil {
-		h.session, h.latency = e.Monitor.Session, e.Monitor.Latency
+	key := a.hostKeyOf(m.Session)
+	if m.Err != nil {
+		h := s.entry(key)
+		if h.failSession != m.Session {
+			h.failSession, h.fails = m.Session, 0
+		}
+		if h.fails++; h.fails == stopAfter {
+			a.log("无法读取服务器状态：" + m.Err.Error())
+		}
+		h.failErr = m.Err
+		return
+	}
+	if h := s.record(key, m.Snapshot); h != nil {
+		h.session, h.latency, h.fails = m.Session, m.Latency, 0
 	}
 }
 
-// record keeps the sample as the host's latest and in its history, for at most 32 hosts, dropping the stalest.
+// entry is the host's record, made when it has none, for at most 32 hosts, dropping the stalest.
+func (s *monitorState) entry(key string) *hostMonitor {
+	h := s.hosts[key]
+	if h != nil {
+		return h
+	}
+	if len(s.hosts) >= 32 {
+		oldest := ""
+		var at time.Time
+		for key, o := range s.hosts {
+			if len(o.history.Points) == 0 {
+				oldest = key
+				break
+			}
+			last := o.history.Points[len(o.history.Points)-1].At
+			if at.IsZero() || last.Before(at) {
+				at, oldest = last, key
+			}
+		}
+		delete(s.hosts, oldest)
+	}
+	h = &hostMonitor{}
+	s.hosts[key] = h
+	return h
+}
+
+// record keeps the sample as the host's latest and in its history.
 // It returns nil for a sample older than the last.
 func (s *monitorState) record(key string, snap monitor.Snapshot) *hostMonitor {
-	h := s.hosts[key]
-	if h == nil {
-		if len(s.hosts) >= 32 {
-			oldest := ""
-			var at time.Time
-			for key, o := range s.hosts {
-				if len(o.history.Points) == 0 {
-					oldest = key
-					break
-				}
-				last := o.history.Points[len(o.history.Points)-1].At
-				if at.IsZero() || last.Before(at) {
-					at, oldest = last, key
-				}
-			}
-			delete(s.hosts, oldest)
-		}
-		h = &hostMonitor{}
-		s.hosts[key] = h
-	}
+	h := s.entry(key)
 	if !h.history.Append(snap) {
 		return nil
 	}
@@ -112,8 +139,48 @@ func (a *App) monitorOn(s *Session) bool {
 	return s.Connection.Monitor
 }
 
-// sampling says whether the session's server is being sampled: connected, and its switch on.
-func (a *App) sampling(s *Session) bool { return !s.Local && !a.P.Exited(s.ID) && a.monitorOn(s) }
+// sampling says whether the session's server is being sampled: connected, its switch on, and not given up on.
+func (a *App) sampling(s *Session) bool {
+	return !s.Local && !a.P.Exited(s.ID) && a.monitorOn(s) && !a.monitorStopped(s)
+}
+
+// monitorStopped says the connected session's server failed stopAfter samples in a row: it is left alone, and
+// the panels offer to turn its monitoring off or to try again.
+func (a *App) monitorStopped(s *Session) bool {
+	h := a.monitor.hosts[hostKey(s)]
+	return h != nil && h.fails >= stopAfter && h.failSession == s.ID && !a.P.Exited(s.ID)
+}
+
+// monitorOff turns the server's monitoring off for good: its saved connection, and this session's own copy.
+func (a *App) monitorOff(s *Session) {
+	s.Connection.Monitor = false
+	if cc, ok := a.host(s.Connection.ID); ok && s.Connection.ID != "" {
+		cc.Monitor = false
+		a.report(a.P.SaveConnection(cc, nil), "已关闭此服务器的监控")
+		a.reload()
+	}
+}
+
+// monitorUnreadable is what the panels show in place of a server's status once it is given up on.
+func (a *App) monitorUnreadable(c *ui.Context, s *Session) {
+	why := "连接不稳定或服务器没有响应"
+	if h := a.monitor.hosts[hostKey(s)]; h != nil && errors.Is(h.failErr, monitor.ErrUnsupported) {
+		why = "目前只支持 Linux"
+	}
+	ui.Column(c).FillWidth().MaxWidth(280).Gap(8).Children(func() {
+		ui.Text(c, "无法读取此服务器的状态（"+why+"）").FontSize(12).Wrap()
+		if ui.Button(c, "关闭此服务器的监控").FillWidth().Clicked() {
+			a.later(func() { a.monitorOff(s) })
+		}
+		if ui.Button(c, "重试").FillWidth().Clicked() {
+			a.later(func() {
+				if h := a.monitor.hosts[hostKey(s)]; h != nil {
+					h.fails = 0
+				}
+			})
+		}
+	})
+}
 
 // cached says whether what the host shows is old: from another session, or not renewed for a while.
 func (a *App) cached(s *Session, h *hostMonitor) bool {
@@ -172,8 +239,10 @@ func (a *App) sysinfoPanel(c *ui.Context) {
 	switch {
 	case !a.monitorOn(sess):
 		emptyState(c, "此服务器的监控已关闭", "在连接设置里开启后，这里会显示系统信息和历史曲线。")
+	case a.monitorStopped(sess):
+		ui.Column(c).Fill().Padding(24).Center().Children(func() { a.monitorUnreadable(c, sess) })
 	case h == nil || h.snap.At.IsZero():
-		sampling(c)
+		reading(c)
 	default:
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() {
@@ -212,10 +281,10 @@ func (a *App) systemInfo(c *ui.Context, sess *Session, h *hostMonitor) {
 	}
 }
 
-func sampling(c *ui.Context) {
+func reading(c *ui.Context) {
 	ui.Column(c).Fill().Center().Gap(8).Children(func() {
 		ui.Spinner(c)
-		muted(c, "正在采样…（仅支持 Linux 服务器）")
+		muted(c, "正在读取服务器状态…")
 	})
 }
 
@@ -277,11 +346,15 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 	if exited {
 		muted(c, "连接断开后不再采样")
 	}
+	if a.monitorStopped(sess) {
+		a.monitorUnreadable(c, sess)
+		return
+	}
 	if !has {
 		if !exited {
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Spinner(c)
-				muted(c, "正在采样…（仅支持 Linux 服务器）")
+				muted(c, "正在读取服务器状态…")
 			})
 		}
 		return
@@ -637,13 +710,36 @@ func (a *App) processTable(c *ui.Context, id string, snap monitor.Snapshot) {
 	}
 	muted(c, fmt.Sprintf("%d / %d 个进程 · 双击查看详情，右键发送信号", len(rows), len(processes))).Padding(4, 10)
 }
+
+// connState is a connection's state as ss or netstat name it, in words; one it does not know stays as it is.
+func connState(s string) string {
+	switch strings.ReplaceAll(strings.ToUpper(s), "_", "-") {
+	case "LISTEN", "UNCONN":
+		return "监听"
+	case "ESTAB", "ESTABLISHED":
+		return "已建立"
+	case "SYN-SENT":
+		return "正在连接"
+	case "SYN-RECV":
+		return "正在接入"
+	case "FIN-WAIT-1", "FIN-WAIT-2", "FIN-WAIT1", "FIN-WAIT2", "LAST-ACK", "CLOSING":
+		return "正在关闭"
+	case "CLOSE-WAIT":
+		return "等待关闭"
+	case "TIME-WAIT":
+		return "等待回收"
+	case "CLOSED":
+		return "已关闭"
+	}
+	return s
+}
 func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 	s := &a.monitor
 	ui.SearchField(c, &s.netFilter).Label("过滤网络连接").Placeholder("端口、地址或进程").Margin(4, 8)
 	var rows []monitor.Network
 	q := strings.ToLower(strings.TrimSpace(s.netFilter))
 	for _, v := range network {
-		if strings.Contains(strings.ToLower(fmt.Sprintf("%s %s %s:%d %s:%d %d %s", v.Protocol, v.State, v.LocalIP, v.LocalPort, v.RemoteIP, v.RemotePort, v.PID, v.Process)), q) {
+		if strings.Contains(strings.ToLower(fmt.Sprintf("%s %s %s %s:%d %s:%d %d %s", v.Protocol, v.State, connState(v.State), v.LocalIP, v.LocalPort, v.RemoteIP, v.RemotePort, v.PID, v.Process)), q) {
 			rows = append(rows, v)
 		}
 	}
@@ -652,10 +748,10 @@ func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 		v := rows[i]
 		return fmt.Sprintf("%s|%s|%d|%s|%d|%d", v.Protocol, v.LocalIP, v.LocalPort, v.RemoteIP, v.RemotePort, v.PID)
 	}
-	cols := []ui.TableColumn{{Title: "协议", Width: 84}, {Title: "本地"}, {Title: "远端"}, {Title: "进程", Width: 90}}
+	cols := []ui.TableColumn{{Title: "协议", Width: 108}, {Title: "本地"}, {Title: "远端"}, {Title: "进程", Width: 90}}
 	ui.Table(c.Key("network-table"), &s.networkList, cols, len(rows), func(row, col int) {
 		v := rows[row]
-		text := []string{v.Protocol + " " + v.State, fmt.Sprintf("%s:%d", v.LocalIP, v.LocalPort), fmt.Sprintf("%s:%d", v.RemoteIP, v.RemotePort), fmt.Sprintf("%d %s", v.PID, v.Process)}[col]
+		text := []string{v.Protocol + " " + connState(v.State), fmt.Sprintf("%s:%d", v.LocalIP, v.LocalPort), fmt.Sprintf("%s:%d", v.RemoteIP, v.RemotePort), fmt.Sprintf("%d %s", v.PID, v.Process)}[col]
 		ui.Text(c, text).SingleLine().FontSize(12).Tooltip(fmt.Sprintf("%d 个连接 · %d 个对端", v.Connections, v.UniqueIPs))
 	}).Grow(1).FillWidth()
 	muted(c, fmt.Sprintf("%d / %d 条", len(rows), len(network))).Padding(4, 10)
