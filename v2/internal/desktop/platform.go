@@ -49,6 +49,7 @@ type Platform struct {
 	store            *storage.Store
 	ctx              context.Context
 	cancel           context.CancelFunc
+	agentIO          agentIO // what agent tools read: output, typing, closed ids
 	mu               sync.Mutex
 	events           []appui.Event
 	sessions         map[string]*terminal.Terminal
@@ -77,6 +78,7 @@ func Open(path string) (*Platform, error) {
 	p.monitorWatches = map[string]context.CancelFunc{}
 	p.clouds = map[string]*cloudsync.Service{}
 	p.gateway = agent.New(agentBackend{p}, p.Invalidate)
+	p.gateway.SetNotify(func(n agent.Notice) { p.emit(appui.Event{Agent: &appui.AgentNotice{Tool: n.Tool, Pending: n.Pending}}) })
 	p.gateway.Halt(true)
 	p.queue = transfer.New(2, p.Invalidate)
 	return p, nil
@@ -192,6 +194,7 @@ func (p *Platform) askContext(ctx context.Context, title string, questions []str
 
 // prompt shows req and waits for the answer; a nil answer cancels.
 func (p *Platform) prompt(ctx context.Context, req *appui.Prompt) ([]string, error) {
+	defer userAction(ctx, req)() // an agent's session_open learns that the user has a dialog to answer
 	done := make(chan struct{})
 	defer func() { close(done); p.emit(appui.Event{}) }()
 	req.Done = done
@@ -333,12 +336,12 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		s.Close()
 		return e
 	}
-	t, e := terminal.New(p.terminalOptions(terminal.Options{Conn: s, NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
+	t, e := p.newTerminal(terminal.Options{Conn: p.recorded(s), NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
 	if e != nil {
 		s.Close()
 		return e
 	}
-	p.register(t, c, false, replace, s)
+	p.registerFrom(fromAgent(ctx), t, c, false, replace, s)
 	return nil
 }
 func isAuthFailure(e error) bool {
@@ -359,6 +362,11 @@ func (p *Platform) askPassword(ctx context.Context, c *model.Connection, stored 
 	return nil
 }
 func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool, replace string, sshConn ...*sshclient.Session) {
+	p.registerFrom(false, t, c, local, replace, sshConn...)
+}
+
+// registerFrom is register for a tab an agent opened (byAgent): the window adds it in the background.
+func (p *Platform) registerFrom(byAgent bool, t *terminal.Terminal, c model.Connection, local bool, replace string, sshConn ...*sshclient.Session) {
 	id := p.NewID()
 	p.mu.Lock()
 	if p.closed {
@@ -377,11 +385,11 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 	if local {
 		title = "本地终端"
 	}
-	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local}})
+	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local, ByAgent: byAgent}})
 }
 func (p *Platform) Local() {
 	p.launch(func() {
-		t, e := terminal.New(p.terminalOptions(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
+		t, e := p.newTerminal(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 			return
@@ -392,6 +400,7 @@ func (p *Platform) Local() {
 func (p *Platform) CloseSession(id string) {
 	p.mu.Lock()
 	t := p.sessions[id]
+	p.forgetAgentIO(id, t, p.sshSessions[id])
 	delete(p.sessions, id)
 	delete(p.sshSessions, id)
 	delete(p.tar, id)
@@ -453,7 +462,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 			}
 			return
 		}
-		t, e := terminal.New(p.terminalOptions(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny}))
+		t, e := p.newTerminal(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 			return

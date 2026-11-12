@@ -19,6 +19,9 @@ import (
 	"time"
 )
 
+// maxSessions is how many MCP sessions may be open at once.
+const maxSessions = 32
+
 type Endpoint struct {
 	mu, initMu sync.Mutex
 	verifier   [32]byte
@@ -30,6 +33,7 @@ type Endpoint struct {
 	handler    *mcp.StreamableHTTPHandler
 	now        func() time.Time
 	inflight   chan struct{}
+	active     map[string]int // POST requests being served, per MCP session
 }
 
 func hashToken(token string) ([32]byte, error) {
@@ -44,13 +48,12 @@ func New(token string, gateway *agent.Gateway) (*Endpoint, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Endpoint{verifier: h, sessions: map[string]time.Time{}, gateway: gateway, now: time.Now, inflight: make(chan struct{}, 32)}
-	e.sdk = mcp.NewServer(&mcp.Implementation{Name: "NextShell-v2", Version: "0.3.0"}, &mcp.ServerOptions{SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26"}, GetSessionID: func() string { id := cloudv2.NewID(); e.mu.Lock(); e.sessions[id] = e.now(); e.mu.Unlock(); return id }})
-	for _, definition := range Tools() {
-		name := definition["name"].(string)
-		readOnly := definition["annotations"].(map[string]any)["readOnlyHint"].(bool)
-		destructive := !readOnly
-		e.sdk.AddTool(&mcp.Tool{Name: name, Description: definition["description"].(string), InputSchema: definition["inputSchema"], Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, DestructiveHint: &destructive}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	e := &Endpoint{verifier: h, sessions: map[string]time.Time{}, active: map[string]int{}, gateway: gateway, now: time.Now, inflight: make(chan struct{}, 32)}
+	e.sdk = mcp.NewServer(&mcp.Implementation{Name: "NextShell-v2", Version: "0.3.0"}, &mcp.ServerOptions{Instructions: agent.Instructions, SupportedProtocolVersions: []string{"2025-11-25", "2025-06-18", "2025-03-26"}, GetSessionID: func() string { id := cloudv2.NewID(); e.mu.Lock(); e.sessions[id] = e.now(); e.mu.Unlock(); return id }})
+	for _, spec := range agent.Specs() {
+		name := spec.Name
+		destructive, open := spec.Gated, true
+		e.sdk.AddTool(&mcp.Tool{Name: name, Title: spec.Title, Description: spec.Description, InputSchema: spec.Schema, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: spec.ReadOnly, DestructiveHint: &destructive, IdempotentHint: spec.Idempotent, OpenWorldHint: &open}}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.Session.ID()
 			if owner == "" {
 				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Session-bound approval requires a negotiated session"}}}, nil
@@ -96,6 +99,12 @@ func (e *Endpoint) Start(port string) (string, error) {
 	e.server = &http.Server{Handler: e, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 125 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	server := e.server
 	go server.Serve(ln)
+	// Clients that resolve "localhost" to ::1 should work too; hosts without IPv6 loopback just skip it.
+	if _, p, err := net.SplitHostPort(ln.Addr().String()); err == nil {
+		if ln6, err := net.Listen("tcp6", "[::1]:"+p); err == nil {
+			go server.Serve(ln6)
+		}
+	}
 	return "http://" + ln.Addr().String() + "/mcp", nil
 }
 func (e *Endpoint) Close() error {
@@ -125,9 +134,11 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		host = r.Host
 	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
+	host = strings.Trim(host, "[]")
+	ip := net.ParseIP(host)
 	remote, _, remoteErr := net.SplitHostPort(r.RemoteAddr)
-	if ip == nil || !ip.IsLoopback() || remoteErr != nil || net.ParseIP(remote) == nil || !net.ParseIP(remote).IsLoopback() || r.Header.Get("Origin") != "" {
+	// Host must name this machine's loopback; other names (DNS rebinding) are refused.
+	if !(strings.EqualFold(host, "localhost") || (ip != nil && ip.IsLoopback())) || remoteErr != nil || net.ParseIP(remote) == nil || !net.ParseIP(remote).IsLoopback() || r.Header.Get("Origin") != "" {
 		http.Error(w, "Loopback non-browser clients only", 403)
 		return
 	}
@@ -163,6 +174,7 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			delete(e.sessions, id)
 		}
 	}
+	evict := ""
 	if sid != "" {
 		if _, ok := e.sessions[sid]; !ok {
 			e.mu.Unlock()
@@ -170,12 +182,39 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.sessions[sid] = e.now()
-	} else if len(e.sessions) >= 32 {
-		e.mu.Unlock()
-		http.Error(w, "Session capacity", 503)
-		return
+		if r.Method == "POST" {
+			e.active[sid]++
+			defer func() {
+				e.mu.Lock()
+				if e.active[sid]--; e.active[sid] <= 0 {
+					delete(e.active, sid)
+				}
+				e.mu.Unlock()
+			}()
+		}
+	} else if len(e.sessions) >= maxSessions {
+		// Full: make room by dropping the session that has been idle the longest, never one that is
+		// serving a call or waiting for an approval.
+		for id, last := range e.sessions {
+			if e.active[id] == 0 && !e.gateway.HasPending(id) && (evict == "" || last.Before(e.sessions[evict])) {
+				evict = id
+			}
+		}
+		if evict == "" {
+			e.mu.Unlock()
+			http.Error(w, "Session capacity", 503)
+			return
+		}
+		delete(e.sessions, evict)
 	}
 	e.mu.Unlock()
+	if evict != "" {
+		for session := range e.sdk.Sessions() {
+			if session.ID() == evict {
+				session.Close()
+			}
+		}
+	}
 	e.handler.ServeHTTP(w, r)
 	if r.Method == "DELETE" {
 		e.mu.Lock()
@@ -183,48 +222,13 @@ func (e *Endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		e.mu.Unlock()
 	}
 }
+
+// Tools is the tools/list the app serves; the bridge's offline list is generated from it
+// (see TestToolsMatchBridgeSnapshot).
 func Tools() []map[string]any {
 	var out []map[string]any
-	for _, name := range []string{"host_list", "session_open", "session_list", "session_history", "session_read", "command_search", "command_save", "exec", "session_send_signal", "session_focus"} {
-		properties := map[string]any{}
-		add := func(n, t string) { properties[n] = map[string]any{"type": t} }
-		switch name {
-		case "host_list", "command_search":
-			add("query", "string")
-			add("limit", "integer")
-		case "session_list":
-		case "session_open":
-			add("target", "string")
-			add("reason", "string")
-			add("requestId", "string")
-		case "command_save":
-			for _, k := range []string{"id", "name", "command", "group", "workspaceId", "requestId"} {
-				add(k, "string")
-			}
-			add("appendCr", "boolean")
-		case "exec":
-			add("target", "string")
-			add("command", "string")
-			add("timeoutSec", "integer")
-			add("allowSensitive", "boolean")
-			add("requestId", "string")
-		case "session_send_signal":
-			add("target", "string")
-			properties["signal"] = map[string]any{"type": "string", "enum": []string{"interrupt", "eof", "suspend", "quit"}}
-			add("requestId", "string")
-		case "session_focus":
-			add("target", "string")
-			add("requestId", "string")
-		case "session_read":
-			add("target", "string")
-			add("lines", "integer")
-			add("mode", "string")
-		case "session_history":
-			add("target", "string")
-			add("limit", "integer")
-		}
-		readOnly := name == "host_list" || name == "session_list" || name == "session_read" || name == "session_history" || name == "command_search"
-		out = append(out, map[string]any{"name": name, "description": name + ": NextShell v2; mutations require in-app approval; OSC133/foreground unavailable", "inputSchema": map[string]any{"type": "object", "properties": properties, "additionalProperties": false}, "annotations": map[string]any{"readOnlyHint": readOnly, "destructiveHint": !readOnly}})
+	for _, s := range agent.Specs() {
+		out = append(out, map[string]any{"name": s.Name, "title": s.Title, "description": s.Description, "inputSchema": s.Schema, "annotations": map[string]any{"readOnlyHint": s.ReadOnly, "destructiveHint": s.Gated, "idempotentHint": s.Idempotent, "openWorldHint": true}})
 	}
 	return out
 }

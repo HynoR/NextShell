@@ -25,9 +25,15 @@ func (*backend) Read(string) (string, error)                        { return "sc
 func (*backend) Exec(context.Context, string, string) (agent.ExecResult, error) {
 	return agent.ExecResult{}, nil
 }
-func (*backend) Control(string, string) error                 { return nil }
-func (b *backend) Focus(string) error                         { b.focus.Add(1); return nil }
-func (*backend) Open(context.Context, string) (string, error) { return "session", nil }
+func (*backend) Control(string, string) error { return nil }
+func (b *backend) Focus(string) error         { b.focus.Add(1); return nil }
+func (*backend) Close(string) error           { return nil }
+func (*backend) Open(context.Context, string, agent.UserAction) (string, error) {
+	return "session", nil
+}
+func (*backend) Closed(string) bool                         { return false }
+func (*backend) Workspaces() ([]string, error)              { return nil, nil }
+func (*backend) Output(string, int64) (agent.Output, error) { return agent.Output{}, nil }
 
 type bearer struct{ token string }
 
@@ -67,7 +73,7 @@ func TestOfficialSDKNegotiationToolsConsentAndRotation(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 10 {
+	if err != nil || len(tools.Tools) != 14 {
 		t.Fatal(tools, err)
 	}
 	read, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "host_list", Arguments: map[string]any{}})

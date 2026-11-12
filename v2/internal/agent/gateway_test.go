@@ -37,9 +37,16 @@ func (f *fake) Exec(ctx context.Context, id, command string) (ExecResult, error)
 	}
 	return ExecResult{Output: "token=TOPSECRET", Stderr: "password=TOPSECRET"}, nil
 }
-func (f *fake) Control(id, data string) error                { f.mark("control:" + data); return nil }
-func (f *fake) Focus(id string) error                        { f.mark("focus:" + id); return nil }
-func (f *fake) Open(context.Context, string) (string, error) { f.mark("open"); return "remote", nil }
+func (f *fake) Control(id, data string) error { f.mark("control:" + data); return nil }
+func (f *fake) Focus(id string) error         { f.mark("focus:" + id); return nil }
+func (f *fake) Close(id string) error         { f.mark("close:" + id); return nil }
+func (f *fake) Open(context.Context, string, UserAction) (string, error) {
+	f.mark("open")
+	return "remote", nil
+}
+func (*fake) Closed(id string) bool                { return id == "gone" }
+func (*fake) Workspaces() ([]string, error)        { return []string{"ws"}, nil }
+func (*fake) Output(string, int64) (Output, error) { return Output{Supported: true}, nil }
 func invoke(g *Gateway, owner, tool string, a Arguments) Result {
 	raw, _ := json.Marshal(a)
 	return g.Call(context.Background(), owner, "test client", tool, raw)
