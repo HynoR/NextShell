@@ -38,3 +38,23 @@ func TestAgentTestFlagExistsOnlyInDevtoolsBuilds(t *testing.T) {
 		t.Fatal("--agent-test accepted=", e == nil, "devtools build=", developmentInspector)
 	}
 }
+
+// Nothing that auto-trusts or imports exists in a release build.
+func TestTestingFlagsExistOnlyInDevtoolsBuilds(t *testing.T) {
+	for _, name := range []string{"agent-test", "import", "trust-new-hosts"} {
+		fs := flag.NewFlagSet("nextshell", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		if _, e := parseFlags(fs, nil); e != nil {
+			t.Fatal(e)
+		}
+		if (fs.Lookup(name) != nil) != developmentInspector {
+			t.Fatalf("--%s registered=%v, devtools build=%v", name, fs.Lookup(name) != nil, developmentInspector)
+		}
+	}
+	fs := flag.NewFlagSet("nextshell", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	_, e := parseFlags(fs, []string{"--db", ":memory:", "--agent-test", "--trust-new-hosts"})
+	if developmentInspector == (e != nil) {
+		t.Fatal("--trust-new-hosts accepted=", e == nil, "devtools build=", developmentInspector)
+	}
+}

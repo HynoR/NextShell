@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"flag"
 	"io"
+	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/desktop"
 	"nextshell.dev/v2/internal/exchange"
+	"nextshell.dev/v2/internal/testutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -134,4 +136,69 @@ func TestImportFlagNeedsAgentTestAndAReadableFile(t *testing.T) {
 	if e = startDevMode(p, options{db: "t.db", agentTest: true, importFile: "/does/not/exist.json"}, io.Discard); e == nil {
 		t.Fatal("a missing file must stop the start")
 	}
+}
+
+func TestTrustNewHostsNeedsAgentTest(t *testing.T) {
+	fs := flag.NewFlagSet("nextshell", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if _, e := parseFlags(fs, []string{"--db", "x.db", "--trust-new-hosts"}); e == nil {
+		t.Fatal("--trust-new-hosts without --agent-test must be refused")
+	}
+	fs = flag.NewFlagSet("nextshell", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	if o, e := parseFlags(fs, []string{"--db", "x.db", "--agent-test", "--trust-new-hosts"}); e != nil || !o.trustNewHosts {
+		t.Fatal(o, e)
+	}
+}
+
+// With --trust-new-hosts a server seen for the first time is pinned without a dialog, as the app
+// would after the user trusted it; a key that differs from the pinned one still asks.
+func TestTrustNewHostsPinsFirstSeenKeysButStillAsksAboutChangedOnes(t *testing.T) {
+	server, e := testutil.New(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(server.Close)
+	p, e := desktop.Open(filepath.Join(t.TempDir(), "t.db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	p.SetAgentPort("0")
+	t.Cleanup(p.Shutdown)
+	var stderr bytes.Buffer
+	if e = startDevMode(p, options{db: "t.db", agentTest: true, trustNewHosts: true}, &stderr); e != nil {
+		t.Fatal(e)
+	}
+	if !strings.Contains(stderr.String(), "trusted automatically") {
+		t.Fatal(stderr.String())
+	}
+	c := server.Options().Connection
+	c.Fingerprint = "" // unpinned: the first connection would ask
+	p.Connect(c)
+	var opened *appui.Session
+	if e = awaitEvent(p, func(ev appui.Event) bool {
+		if ev.Prompt != nil {
+			t.Fatal("a dialog for a first-seen host key:", ev.Prompt.Title)
+		}
+		opened = ev.Session
+		return opened != nil
+	}); e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { p.CloseSession(opened.ID) })
+	if pins, e := p.HostKeys(); e != nil || len(pins) != 1 || pins[0].Address != c.Address() {
+		t.Fatal("the key must be pinned like a trusted one:", pins, e)
+	}
+	// A pinned key that no longer matches is not trusted automatically.
+	wrong := server.Options().Connection
+	wrong.Name, wrong.Fingerprint = "changed", "SHA256:aGVsbG8gdGhpcyBpcyBub3QgdGhlIGtleSBhdCBhbGw"
+	p.Connect(wrong)
+	var prompt *appui.Prompt
+	if e = awaitEvent(p, func(ev appui.Event) bool { prompt = ev.Prompt; return prompt != nil }); e != nil {
+		t.Fatal(e)
+	}
+	if prompt.Kind != appui.PromptHostKeyChanged {
+		t.Fatal(prompt.Kind)
+	}
+	prompt.Answers <- nil
 }

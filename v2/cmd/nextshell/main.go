@@ -19,6 +19,8 @@ type options struct {
 	smoke      bool
 	agentTest  bool   // only registered in nextshell_devtools builds
 	importFile string // likewise: --import with --agent-test
+
+	trustNewHosts bool // likewise: --trust-new-hosts with --agent-test
 }
 
 func parseFlags(fs *flag.FlagSet, args []string) (options, error) {

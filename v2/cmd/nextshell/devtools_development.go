@@ -17,6 +17,7 @@ const developmentInspector = true
 
 func registerDevFlags(fs *flag.FlagSet, o *options) {
 	fs.BoolVar(&o.agentTest, "agent-test", false, "enable MCP with auto-approve until exit (requires --db; development builds only)")
+	fs.BoolVar(&o.trustNewHosts, "trust-new-hosts", false, "with --agent-test: trust the host key of a server seen for the first time without asking; a changed key still asks (development builds only)")
 	fs.StringVar(&o.importFile, "import", "", "with --agent-test: import a plain nextshell-connections v1 JSON file into the test profile at startup (development builds only)")
 }
 
@@ -27,6 +28,9 @@ func checkDevFlags(o options) error {
 	}
 	if o.importFile != "" && !o.agentTest {
 		return errors.New("--import is only for the --agent-test profile")
+	}
+	if o.trustNewHosts && !o.agentTest {
+		return errors.New("--trust-new-hosts is only for the --agent-test profile")
 	}
 	return nil
 }
@@ -42,6 +46,10 @@ func startDevMode(p *desktop.Platform, o options, stderr io.Writer) error {
 			return fmt.Errorf("--import %s: %w", o.importFile, e)
 		}
 		fmt.Fprintf(stderr, "agent-test: imported %d connection(s) from %s\n", n, o.importFile)
+	}
+	if o.trustNewHosts {
+		p.TrustNewHosts(true)
+		fmt.Fprintln(stderr, "agent-test: first-seen host keys are trusted automatically")
 	}
 	if e := p.AgentEndpoint(true); e != nil {
 		return e

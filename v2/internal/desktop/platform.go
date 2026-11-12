@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -40,6 +41,7 @@ type Platform struct {
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
 	dialSlots        map[string]chan struct{} // handshake limiter per endpoint; see dial
+	trustNewHosts    atomic.Bool              // development builds only (see devtrust_development.go): pin first-seen host keys without asking
 	tar              map[string]bool          // whether each session's server has tar
 	queue            *transfer.Queue
 	imports          map[string]importPlan
@@ -304,6 +306,9 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 				return &sshclient.HostKeyError{Address: addr, Fingerprint: fp, Changed: true}
 			}
 			return nil
+		}
+		if p.trustNewHosts.Load() {
+			return p.store.PinHost(addr, fp)
 		}
 		if _, e := p.prompt(ctx, &appui.Prompt{Kind: appui.PromptHostKey, Title: "首次连接，请核对主机指纹", Host: addr, Fingerprint: fp}); e != nil {
 			return errors.New("未信任主机")
