@@ -182,3 +182,34 @@ func TestCloseToTrayExplainsTheWayBackOnLinuxOnly(t *testing.T) {
 		restore()
 	}
 }
+
+// When a tray option cannot work in this run, the settings say it waits for a restart and one toast says so.
+func TestTrayPendingTellsOnceAndTheSettingsSayWhy(t *testing.T) {
+	p := newPlatform(t)
+	a, tt := start(p)
+	a.TrayAvailable = true
+	st := ui.NewTester(a.SettingsView, 880, 900)
+	flip(t, st, "关闭窗口时最小化到托盘")
+	if st.HasText("重启 NextShell 后生效") {
+		t.Fatal("the option claimed to wait for a restart before the host said so")
+	}
+	a.TrayPending(true)
+	a.TrayPending(true)
+	st.Frame()
+	tt.Frame()
+	has(t, st, "这次运行里还不能生效，重启 NextShell 后生效")
+	if n := countText(tt, "托盘选项重启后生效"); n != 1 {
+		t.Fatal("the toast was shown", n, "times")
+	}
+	flip(t, st, "关闭窗口时最小化到托盘") // turned off again: nothing waits
+	if st.HasText("重启 NextShell 后生效") {
+		t.Fatal("the note stayed with the option off")
+	}
+	flip(t, st, "关闭窗口时最小化到托盘")
+	has(t, st, "重启 NextShell 后生效")
+	a.TrayPending(false)
+	st.Frame()
+	if st.HasText("重启 NextShell 后生效") {
+		t.Fatal("the note stayed after the host could hide the window")
+	}
+}

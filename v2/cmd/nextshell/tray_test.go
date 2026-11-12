@@ -316,3 +316,79 @@ func TestSecondLaunchShowsTheWindow(t *testing.T) {
 		t.Fatal("the window made later was not shown", late)
 	}
 }
+
+// A tray option turned on in settings needs the single-instance lock too: it is taken then, once, and the
+// window may hide only after that.
+func TestOptionTurnedOnLaterTakesTheLockBeforeTheWindowCanHide(t *testing.T) {
+	f := newTrayFixture(t)
+	locks := 0
+	f.tray.shared, f.tray.lock = true, func() bool { locks++; return true }
+	f.tray.Sync() // both options off: nothing to protect yet
+	if locks != 0 || len(f.icons) != 0 {
+		t.Fatal("lock taken with both options off", locks)
+	}
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	f.tray.Sync()
+	f.app.Prefs.MinimizeToTray = true
+	f.tray.Sync()
+	if locks != 1 || len(f.icons) != 1 || !f.tray.closeHides() {
+		t.Fatal("locks", locks, "icons", len(f.icons), "hides", f.tray.closeHides())
+	}
+	// Off and on again: the lock is still held, and mygo is not asked again.
+	f.app.Prefs.CloseToTray, f.app.Prefs.MinimizeToTray = false, false
+	f.tray.Sync()
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	if locks != 1 || len(f.icons) != 2 || !f.tray.closeHides() {
+		t.Fatal("locks", locks, "icons", len(f.icons))
+	}
+	// A run that took the lock at startup does not ask again when the option is already on.
+	g := newTrayFixture(t)
+	asked := 0
+	g.tray.shared, g.tray.lock = true, func() bool { asked++; return true }
+	g.app.Prefs.CloseToTray = true
+	if !g.tray.takeLock() || asked != 1 {
+		t.Fatal("startup lock", asked)
+	}
+	g.tray.Sync()
+	if asked != 1 || len(g.icons) != 1 {
+		t.Fatal("asked again", asked)
+	}
+}
+
+// Where the lock cannot be had (another instance holds it) the window never hides in this run: no icon, the
+// settings say the option waits for a restart, and the lock is tried again when the option is next turned on.
+func TestWithoutTheLockTheWindowStaysVisible(t *testing.T) {
+	f := newTrayFixture(t)
+	locks, held := 0, false
+	f.tray.shared, f.tray.lock = true, func() bool { locks++; return held }
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	if locks != 1 || len(f.icons) != 0 || f.tray.closeHides() || f.tray.Hides(true) {
+		t.Fatal("locks", locks, "icons", len(f.icons), "hides", f.tray.closeHides())
+	}
+	if !f.app.TrayAvailable {
+		t.Fatal("the option disappeared instead of waiting for a restart")
+	}
+	f.tray.Sync()
+	if locks != 2 || len(f.icons) != 0 {
+		t.Fatal("not tried again", locks)
+	}
+	held = true
+	f.tray.Sync()
+	if len(f.icons) != 1 || !f.tray.closeHides() {
+		t.Fatal("the lock came free but the icon did not")
+	}
+}
+
+// A trial profile (--db) runs beside the real one and never asks for the lock.
+func TestTrialProfileHidesWithoutTheLock(t *testing.T) {
+	f := newTrayFixture(t)
+	f.tray.lock = func() bool { t.Fatal("a trial profile took the lock"); return false }
+	f.app.Prefs.CloseToTray = true
+	f.tray.Sync()
+	if len(f.icons) != 1 || !f.tray.closeHides() {
+		t.Fatal("trial profile cannot hide", len(f.icons))
+	}
+}

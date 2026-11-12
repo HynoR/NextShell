@@ -34,6 +34,18 @@ func (a *App) TrayHosts() []TrayHost {
 	return out
 }
 
+// TrayPending says that a tray option was turned on but cannot work in this run (the host could not take the
+// lock that makes a hidden window findable): the window stays visible, the settings say the option waits for a
+// restart, and the first time a toast does too. Off clears it.
+func (a *App) TrayPending(on bool) {
+	s := &a.settings
+	s.trayRestart = on
+	if on && !s.trayTold {
+		s.trayTold = true
+		a.toast("托盘选项重启后生效")
+	}
+}
+
 // TrayConnect connects to the host id, if it is still there.
 func (a *App) TrayConnect(id string) {
 	if cc, ok := a.host(id); ok && !cc.Deleted {

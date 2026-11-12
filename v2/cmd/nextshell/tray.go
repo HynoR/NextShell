@@ -27,6 +27,12 @@ type tray struct {
 	icon   trayIcon
 	failed bool
 
+	// shared is a run on the real profile (no --db): it may be launched again, and only while it holds the
+	// single-instance lock does a second launch show its window instead of starting another one, so only
+	// then may it hide the window. lock takes the lock, as mygo's RequestSingleInstanceLock does.
+	shared, locked bool
+	lock           func() bool
+
 	quitting    atomic.Bool // the app is quitting: closing the window then means quitting, never hiding
 	terminating func() bool // the system is ending the process, which nothing may hold back
 }
@@ -59,17 +65,35 @@ func (t *tray) Probe(goos string) {
 	}
 }
 
+// takeLock holds the single-instance lock where a run needs it to hide its window. A trial profile runs
+// beside the real one and needs none. mygo allows the call at any time and answers true again once the lock is
+// held; it answers false when another instance of this app holds it, which no run can change.
+func (t *tray) takeLock() bool {
+	if !t.shared || t.locked {
+		return true
+	}
+	t.locked = t.lock()
+	return t.locked
+}
+
 // Sync makes the icon match the preferences: made when one of them needs it, removed when none does.
 func (t *tray) Sync() {
 	wanted := !t.failed && (t.app.Prefs.MinimizeToTray || t.app.Prefs.CloseToTray)
 	switch {
 	case wanted && t.icon == nil:
+		// An option turned on in this run needs the lock too; without it the window stays visible, and the
+		// settings say that the option works after a restart.
+		if !t.takeLock() {
+			t.app.TrayPending(true)
+			return
+		}
 		icon, e := t.create()
 		if e != nil {
 			t.failed = true
 			t.app.TrayAvailable = false
 			return
 		}
+		t.app.TrayPending(false)
 		t.icon = icon
 		icon.OnClick(func() { t.show() })
 		if !menuIsStatic {
@@ -79,6 +103,9 @@ func (t *tray) Sync() {
 	case !wanted && t.icon != nil:
 		t.icon.Destroy()
 		t.icon = nil
+	}
+	if !wanted {
+		t.app.TrayPending(false)
 	}
 }
 

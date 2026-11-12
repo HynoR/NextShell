@@ -20,6 +20,7 @@ type settingsState struct {
 	draft                                   model.Preferences
 	size, lineHeight, scrollback, keepalive string
 	problems                                []settingsProblem // values that do not hold up, as the last frame found them
+	trayRestart, trayTold                   bool              // the tray options wait for a restart; the toast saying so was shown
 	hosts                                   map[string]bool   // chosen for export and cloud copy
 	trash                                   map[string]bool   // chosen in the recycle bin
 
@@ -311,10 +312,18 @@ func (a *App) windowSettings(c *ui.Context) {
 	})
 	group(c, "窗口", func() {
 		if a.TrayAvailable {
-			switchField(c, "最小化到托盘", &v.MinimizeToTray, "最小化时把窗口收进系统托盘，点击托盘图标就能找回")
+			wait := "\n这次运行里还不能生效，重启 NextShell 后生效"
+			minimize := "最小化时把窗口收进系统托盘，点击托盘图标就能找回"
+			if a.settings.trayRestart && v.MinimizeToTray {
+				minimize += wait
+			}
+			switchField(c, "最小化到托盘", &v.MinimizeToTray, minimize)
 			help := "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」"
 			if osName == "linux" { // some desktops show no tray icons: opening the app again is the way back
 				help += "\n看不到托盘图标时，再次打开 NextShell 即可显示窗口"
+			}
+			if a.settings.trayRestart && v.CloseToTray {
+				help += wait
 			}
 			switchField(c, "关闭窗口时最小化到托盘", &v.CloseToTray, help)
 		}
