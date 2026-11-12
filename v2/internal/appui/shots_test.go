@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"fmt"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -145,7 +146,7 @@ func TestScreenshots(t *testing.T) {
 		p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "s1", Snapshot: monitorSnapshot(now.Add(time.Duration(i-12)*2*time.Second), i), Latency: 18 * time.Millisecond}})
 	}
 	tt.Frame()
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	click(t, tt, "SFTP")
 	tt.Frame()
 	// The connected workspace, as the 1.x reference: session card, live status, terminal, SFTP.
 	shot(tt, "02-main-connected")
@@ -155,6 +156,7 @@ func TestScreenshots(t *testing.T) {
 	shot(tt, "02-main-connected-small")
 	tt.SetSize(1280, 800)
 	titled(t, shot)
+	workspaceTools(t, shot)
 	p.events = append(p.events, appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log/nginx", Entries: []sftpfs.Entry{
 		{Name: "archive", Path: "/var/log/nginx/archive", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
 		{Name: "access.log.10", Path: "/var/log/nginx/access.log.10", Size: 900000, Mode: "-rw-r-----", Modified: now.Add(-240 * time.Hour)},
@@ -211,7 +213,7 @@ func TestScreenshots(t *testing.T) {
 	shot(ptt, "02g-route-trace-drawer")
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
 	shot(tt, "05-snippets")
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	click(t, tt, "SFTP")
 
 	p.jobs = []transfer.Job{
 		{ID: "1", Label: "上传 release.tar.gz → /srv/app", State: "running", Bytes: 48 << 20, Total: 120 << 20, Attempt: 1, Started: now.Add(-20 * time.Second)},
@@ -357,4 +359,65 @@ func TestScreenshots(t *testing.T) {
 	shot(tst, "23-settings-terminal-shell-manual")
 	click(t, tst, "自动")
 	shot(tst, "23b-settings-terminal-shell-auto")
+}
+
+// workspaceTools shows the SFTP tree with a folder opened beside the one listed, the command bar
+// recalling history, the find bar over the scrollback, and a 连接中 tab and page with their cancel.
+func workspaceTools(t *testing.T, shot func(*ui.Tester, string)) {
+	t.Helper()
+	p := newPlatform(t)
+	web, _ := demo(t, p)
+	if e := p.SaveHistory([]string{"systemctl status nginx", "tail -n 50 /var/log/nginx/error.log", "df -h"}); e != nil {
+		t.Fatal(e)
+	}
+	_, tt := start(p)
+	tt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	s := session(t, p, tt, "s1", "prod-web-01", web)
+	for i := range 40 {
+		s.Terminal.Feed([]byte(fmt.Sprintf("\r\n[%02d] GET /api/health 200", i)))
+		if i == 12 || i == 31 {
+			s.Terminal.Feed([]byte("\r\n[error] upstream timed out while reading response header"))
+		}
+	}
+	s.Terminal.Feed([]byte("\r\nroot@prod-web-01:~# "))
+	click(t, tt, "SFTP")
+	dir := func(name, at string) sftpfs.Entry {
+		return sftpfs.Entry{Name: name, Path: at + "/" + name, Directory: true, Mode: "drwxr-xr-x"}
+	}
+	p.events = append(p.events,
+		appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var/log", Entries: []sftpfs.Entry{dir("apt", "/var/log"), dir("nginx", "/var/log"), {Name: "syslog", Path: "/var/log/syslog", Size: 2200000, Mode: "-rw-r-----"}, {Name: "auth.log", Path: "/var/log/auth.log", Size: 81000, Mode: "-rw-r-----"}}}})
+	tt.Frame() // the tree asks for the folders above
+	p.events = append(p.events,
+		appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/", Entries: []sftpfs.Entry{dir("etc", ""), dir("home", ""), dir("opt", ""), dir("var", "")}}},
+		appui.Event{Files: &appui.FileListing{Session: "s1", Path: "/var", Entries: []sftpfs.Entry{dir("cache", "/var"), dir("lib", "/var"), dir("log", "/var"), dir("www", "/var")}}})
+	tt.Frame()
+	tt.Frame()
+	tt.SetSize(1280, 900)
+	shot(tt, "24-sftp-tree")
+	tt.SetSize(1280, 800)
+	click(t, tt, "命令输入")
+	tt.Key(0, ui.KeyUp)
+	tt.Key(0, ui.KeyUp)
+	shot(tt, "25-command-bar-history")
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyDown)
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	tt.Type("error")
+	for range 5 {
+		tt.Frame()
+	}
+	shot(tt, "26-find-bar")
+	tt.Key(0, ui.KeyEscape)
+	// A host connecting for the first time: its tab closes to cancel; alone, the page offers it too.
+	connect := func(tt *ui.Tester) {
+		click(t, tt, "快速连接服务器")
+		tt.Type("db-master")
+		tt.Key(0, ui.KeyEnter)
+	}
+	connect(tt)
+	shot(tt, "27-connecting-tab-cancel")
+	_, ctt := start(p)
+	ctt.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	connect(ctt)
+	shot(ctt, "27b-connecting-page-cancel")
 }

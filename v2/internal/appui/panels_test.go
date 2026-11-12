@@ -27,7 +27,7 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	var answer []string
 	a.PickFiles = func(o appui.FilePick, done func([]string)) { picks = append(picks, o); done(answer) }
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	click(t, tt, "SFTP")
 	if len(p.listed) != 1 || p.listed[0] != "one:." {
 		t.Fatal("panel did not list the session's home", p.listed)
 	}
@@ -158,7 +158,7 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 func TestRemoteEditorOpensFromFilesAndGuardsDirtyClose(t *testing.T) {
 	a, p, tt := fixture(t)
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	click(t, tt, "SFTP")
 	listing(p, tt, "one", "/etc", sftpfs.Entry{Name: "app.conf", Path: "/etc/app.conf"})
 	dblclick(t, tt, "选择 app.conf")
 	if len(p.opened) != 1 || p.opened[0] != "/etc/app.conf" {
@@ -475,7 +475,7 @@ func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 	_, p, tt := fixture(t)
 	tt.SetSize(1280, 1400) // every row in view
 	session(t, p, tt, "one", "one", remoteHost("one"))
-	tt.Key(ui.Cmd|ui.Shift, ui.KeyF)
+	click(t, tt, "SFTP")
 	listing(p, tt, "one", "/d",
 		sftpfs.Entry{Name: "file10", Path: "/d/file10", Size: 1},
 		sftpfs.Entry{Name: "zeta", Path: "/d/zeta", Directory: true},

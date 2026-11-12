@@ -51,6 +51,7 @@ type App struct {
 	welcome  welcomeState
 	palette  paletteState
 	files    filesState
+	cmdbar   cmdbarState
 	monitor  monitorState
 	snippets snippetsState
 	editor   editorState
@@ -454,10 +455,13 @@ func (a *App) shortcuts(c *ui.Context) {
 	for _, v := range []struct {
 		key   ui.Key
 		bench int
-	}{{ui.KeyF, benchFiles}, {ui.KeyM, benchSysinfo}, {ui.KeyS, benchSnippets}} {
+	}{{ui.KeyM, benchSysinfo}, {ui.KeyS, benchSnippets}} {
 		if c.Shortcut(ui.Cmd|ui.Shift, v.key) {
 			a.showBench(v.bench)
 		}
+	}
+	if s := a.current(); s != nil && a.activeTool() == nil && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
+		a.toggleFind(s)
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
 		if s := a.current(); s != nil {

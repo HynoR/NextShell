@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -334,16 +335,21 @@ func (a *App) commandDialog(c *ui.Context) {
 }
 func (a *App) sendCommand(text string, all bool) {
 	a.sendText(text, all, true)
-	history := append(append([]string{}, a.Data.History...), text)
+	a.rememberCommand(text)
+	a.snippets.command = ""
+	if !all {
+		a.snippets.commandOpen = false
+	}
+}
+
+// rememberCommand adds text to the saved command history, the newest last; a repeat moves to the end.
+func (a *App) rememberCommand(text string) {
+	history := append(slices.DeleteFunc(slices.Clone(a.Data.History), func(h string) bool { return h == text }), text)
 	if len(history) > 100 {
 		history = history[len(history)-100:]
 	}
 	a.report(a.P.SaveHistory(history), "")
 	a.reload()
-	a.snippets.command = ""
-	if !all {
-		a.snippets.commandOpen = false
-	}
 }
 
 // snippetGroupHeader names a group; its menu renames or deletes the whole group.
