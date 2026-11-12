@@ -124,14 +124,29 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 	switch p.Kind {
 	case PromptHostKey:
 		open := true
-		message := fmt.Sprintf("主机：%s\n指纹：%s\n\n请与服务器管理员提供的指纹核对，确认无误后再信任。", p.Host, p.Fingerprint)
-		if p.ByAgent {
-			message = agentOrigin + "\n\n" + message
-		}
-		switch ui.AlertDialog(c, &open, "首次连接，请核对主机指纹", message, "取消", "信任并连接") {
-		case 1:
-			d.answer([]string{})
-		case ui.AlertDismissed, 0:
+		dialog(c, &open, func() {
+			ui.Column(c).Width(520).Gap(12).Children(func() {
+				ui.Text(c, "首次连接，请核对主机指纹").FontSize(17).Bold()
+				if p.ByAgent {
+					muted(c, agentOrigin)
+				}
+				ui.Text(c, "请与服务器管理员提供的指纹核对，确认无误后再信任。").FillWidth()
+				ui.Column(c).FillWidth().Padding(12).Gap(6).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
+					muted(c, "主机 "+p.Host)
+					muted(c, "指纹")
+					ui.Text(c, p.Fingerprint).Font("monospace").FontSize(12).Selectable()
+				})
+				ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+					if ui.Button(c, "取消").Clicked() {
+						d.answer(nil)
+					}
+					if ui.PrimaryButton(c, "信任并连接").AutoFocus().Clicked() {
+						d.answer([]string{})
+					}
+				})
+			})
+		})
+		if !open {
 			d.answer(nil)
 		}
 	case PromptHostKeyChanged:

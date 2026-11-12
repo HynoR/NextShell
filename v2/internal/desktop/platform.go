@@ -323,7 +323,7 @@ func (p *Platform) launch(fn func()) {
 	go func() { defer p.wg.Done(); fn() }()
 }
 func (p *Platform) Connect(c model.Connection) {
-	p.launch(func() { p.attempt(c.ID, func(ctx context.Context) error { return p.connectContext(ctx, c, "") }) })
+	p.launch(func() { p.attempt(c, func(ctx context.Context) error { return p.connectContext(ctx, c, "") }) })
 }
 
 // connectAttempt is the context the connects of one saved connection share until they end or are cancelled.
@@ -333,9 +333,10 @@ type connectAttempt struct {
 	n      int
 }
 
-// attempt runs connect for saved connection id under a context CancelConnect(id) ends, and reports a
+// attempt runs connect for saved connection c under a context CancelConnect(id) ends, and reports a
 // failure; a cancelled attempt reports nothing, as the user asked for it.
-func (p *Platform) attempt(id string, connect func(context.Context) error) {
+func (p *Platform) attempt(c model.Connection, connect func(context.Context) error) {
+	id := c.ID
 	p.mu.Lock()
 	at := p.connects[id]
 	if at == nil {
@@ -359,7 +360,7 @@ func (p *Platform) attempt(id string, connect func(context.Context) error) {
 	}
 	p.mu.Unlock()
 	if e != nil && !cancelled {
-		p.emit(appui.Event{Message: e.Error(), Failed: id, AuthFailed: id != "" && authFailed(e)})
+		p.emit(connectFailure(c, e))
 	}
 }
 
@@ -372,6 +373,16 @@ func (p *Platform) CancelConnect(id string) {
 		delete(p.connects, id)
 	}
 	p.mu.Unlock()
+}
+
+// connectFailure is the event of a connect that failed: Host names the connection (a quick connect has no
+// saved name, only the text it was typed as) for the toast.
+func connectFailure(c model.Connection, e error) appui.Event {
+	host := c.Name
+	if host == "" {
+		host = c.Host
+	}
+	return appui.Event{Message: e.Error(), Failed: c.ID, Host: host, AuthFailed: c.ID != "" && authFailed(e)}
 }
 
 // authFailed reports a login the server refused, or one without its key: other details could fix it.
@@ -672,7 +683,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 			if !ok {
 				c = old.Connection
 			}
-			p.attempt(old.Connection.ID, func(ctx context.Context) error { return p.connectContext(ctx, c, old.ID) })
+			p.attempt(old.Connection, func(ctx context.Context) error { return p.connectContext(ctx, c, old.ID) })
 			return
 		}
 		t, e := p.newTerminal(terminal.Options{NoClipboardWrite: true, ClipboardRead: terminal.ClipboardDeny})
