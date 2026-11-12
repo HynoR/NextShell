@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/egoist/mygo/plugins/terminal"
+	"golang.org/x/crypto/ssh"
 	"net"
 	"nextshell.dev/v2/internal/agent"
 	"nextshell.dev/v2/internal/appui"
@@ -332,4 +333,71 @@ func TestRecorderTracksTheAlternateScreen(t *testing.T) {
 			t.Fatalf("after %q: alt=%v, want %v", step.chunk, alt(), step.want)
 		}
 	}
+}
+
+// openForAgent calls session_open as an agent and returns its answer.
+func openForAgent(t *testing.T, p *Platform, id string) map[string]any {
+	t.Helper()
+	r := p.gateway.Call(context.Background(), "o", "c", "session_open", json.RawMessage(fmt.Sprintf(`{"target":%q}`, id)))
+	if !r.OK {
+		t.Fatal(r.Error)
+	}
+	return r.Data.(map[string]any)
+}
+
+// A host key that differs from the trusted one is not "host_key": the agent is told it changed.
+func TestAgentOpenOfAChangedHostKeyReportsHostKeyChanged(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	c := server.Options().Connection
+	c.ID, c.Fingerprint = p.NewID(), ""
+	secret := c.Secret
+	if e := p.SaveConnection(c, &secret); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.store.PinHost(c.Address(), "SHA256:aGVsbG8gdGhpcyBpcyBub3QgdGhlIGtleSBhdCBhbGw"); e != nil {
+		t.Fatal(e)
+	}
+	p.gateway.Halt(false)
+	p.gateway.SetAutoApprove(agent.UntilExit)
+	d := openForAgent(t, p, c.ID)
+	if d["status"] != "user_action_required" || d["reason"] != "host_key_changed" {
+		t.Fatal(d)
+	}
+	prompt := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt
+	if prompt.Kind != appui.PromptHostKeyChanged {
+		t.Fatal(prompt.Kind)
+	}
+	prompt.Answers <- nil // the user refuses
+}
+
+// A password the server rejected, saved for the host, is flagged; one the user typed a moment ago is not.
+func TestAgentOpenWithARejectedSavedPasswordSaysSo(t *testing.T) {
+	p := desktopFixture(t)
+	server := testServer(t)
+	c := server.Options().Connection
+	c.ID = p.NewID()
+	wrong := "wrong"
+	if e := p.SaveConnection(c, &wrong); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.store.PinHost(c.Address(), ssh.FingerprintSHA256(server.Signer.PublicKey())); e != nil {
+		t.Fatal(e)
+	}
+	p.gateway.Halt(false)
+	p.gateway.SetAutoApprove(agent.UntilExit)
+	d := openForAgent(t, p, c.ID)
+	if d["status"] != "user_action_required" || d["reason"] != "password" || d["savedPasswordRejected"] != true {
+		t.Fatal("saved password rejected:", d)
+	}
+	prompt := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt
+	prompt.Answers <- []string{"also wrong"}
+	var again map[string]any
+	waitUntil(t, "the second prompt", func() bool {
+		again = openForAgent(t, p, c.ID)
+		_, saved := again["savedPasswordRejected"]
+		return again["status"] == "user_action_required" && again["reason"] == "password" && !saved
+	})
+	prompt = awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil }).Prompt
+	prompt.Answers <- nil
 }

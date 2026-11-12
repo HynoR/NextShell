@@ -66,9 +66,19 @@ type Output struct {
 }
 
 // UserAction is the callback Open uses when the connection needs a decision from the user
-// (reason "host_key", "password" or "otp"): call it before showing the dialog and the returned
-// function once the user answered.
+// (one of the Reason constants): call it before showing the dialog and the returned function once the
+// user answered.
 type UserAction func(reason string) (done func())
+
+// Why the user has to act. ReasonPasswordRejected is a password prompt that follows the server
+// rejecting the password saved for the host; agents see it as "password" plus savedPasswordRejected.
+const (
+	ReasonHostKey          = "host_key"
+	ReasonHostKeyChanged   = "host_key_changed"
+	ReasonPassword         = "password"
+	ReasonPasswordRejected = "password_rejected"
+	ReasonOTP              = "otp"
+)
 
 type Backend interface {
 	Hosts() ([]Host, error)
@@ -1151,7 +1161,7 @@ func (g *Gateway) open(ctx context.Context, host string) Result {
 		case finished:
 			return ok(map[string]any{"status": "opened", "sessionId": id})
 		case waiting != "":
-			return ok(map[string]any{"status": "user_action_required", "reason": waiting, "message": userActionMessage(waiting)})
+			return ok(userAction(waiting))
 		}
 		select {
 		case <-changed:
@@ -1161,12 +1171,27 @@ func (g *Gateway) open(ctx context.Context, host string) Result {
 	}
 }
 
-func userActionMessage(reason string) string {
-	what := map[string]string{"host_key": "confirm the server's host key", "password": "enter the password", "otp": "enter the one-time code"}[reason]
-	if what == "" {
+// userAction is the answer of session_open while the user has a dialog to answer.
+func userAction(reason string) map[string]any {
+	d := map[string]any{"status": "user_action_required", "reason": reason}
+	what := ""
+	switch reason {
+	case ReasonHostKey:
+		what = "confirm the server's host key"
+	case ReasonHostKeyChanged:
+		what = "decide about a CHANGED host key: the server presents a different key than the one trusted before (compare the fingerprints; it may be a reinstall or an attack)"
+	case ReasonPasswordRejected:
+		d["reason"], d["savedPasswordRejected"] = ReasonPassword, true
+		what = "enter the password again: the server rejected the one saved for this host"
+	case ReasonPassword:
+		what = "enter the password"
+	case ReasonOTP:
+		what = "enter the one-time code"
+	default:
 		what = "answer a prompt"
 	}
-	return "The user has to " + what + " in the NextShell window. Tell them, then call session_open again with the same target; it joins the connection in progress."
+	d["message"] = "The user has to " + what + " in the NextShell window. Tell them, then call session_open again with the same target; it joins the connection in progress."
+	return d
 }
 
 var controls = map[string]string{"interrupt": "\x03", "eof": "\x04", "suspend": "\x1a", "quit": "\x1c"}

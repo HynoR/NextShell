@@ -111,7 +111,7 @@ var specs = []ToolSpec{
 		Title: "请求打开服务器",
 		Description: "Open a connection to a saved host (id from host_list) and return the new session id. A host that already has a connected tab is reused. The tab opens in the background: it does not switch tabs or take the keyboard. " +
 			"Needs the user's approval in NextShell unless they turned on auto-approve: the first call may return { status: 'pending', requestId }; call again with the same arguments. A `denied` error means the user refused: stop and ask them, never retry on your own. " +
-			"If the connection needs a decision from the user (trust a host key, type a password or one-time code) the call returns at once with { status: 'user_action_required', reason: 'host_key'|'password'|'otp' } while the dialog stays open in the app: tell the user, then call session_open again with the same target; it joins the pending connection. " +
+			"If the connection needs a decision from the user (trust a host key, type a password or one-time code) the call returns at once with { status: 'user_action_required', reason: 'host_key'|'host_key_changed'|'password'|'otp' } while the dialog stays open in the app (host_key_changed: the server's key differs from the trusted one; password with savedPasswordRejected: true: the saved password was rejected): tell the user, then call session_open again with the same target; it joins the pending connection. " +
 			"Failures say why: host_key, auth_failed, refused, unreachable, timeout.",
 		Schema: object([]string{"target"}, map[string]any{
 			"target":    name("Connection id from host_list.", 128),

@@ -789,3 +789,38 @@ func TestFreshTextSlicesAtTheCursor(t *testing.T) {
 		}
 	}
 }
+
+// The user_action_required answer tells a changed host key from a first one, and a rejected saved
+// password from a password that was never saved.
+func TestUserActionRequiredSaysWhy(t *testing.T) {
+	for _, tc := range []struct {
+		reason, wantReason string
+		saved              bool
+		message            string
+	}{
+		{ReasonHostKey, "host_key", false, "host key"},
+		{ReasonHostKeyChanged, "host_key_changed", false, "CHANGED host key"},
+		{ReasonPassword, "password", false, "enter the password"},
+		{ReasonPasswordRejected, "password", true, "saved for this host"},
+		{ReasonOTP, "otp", false, "one-time code"},
+	} {
+		b := newRich()
+		b.sessions = nil
+		b.open = func(ctx context.Context, host string, ua UserAction) (string, error) {
+			defer ua(tc.reason)()
+			<-ctx.Done()
+			return "", ctx.Err()
+		}
+		g := New(b, nil)
+		g.SetAutoApprove(UntilExit)
+		d := data(t, call(g, "o", "session_open", m{"target": "h1"}))
+		_, saved := d["savedPasswordRejected"]
+		if d["status"] != "user_action_required" || d["reason"] != tc.wantReason || saved != tc.saved || !strings.Contains(d["message"].(string), tc.message) {
+			t.Errorf("%s: %v", tc.reason, d)
+		}
+		if tc.saved && d["savedPasswordRejected"] != true {
+			t.Errorf("%s: %v", tc.reason, d)
+		}
+		g.Halt(true) // ends the attempt
+	}
+}

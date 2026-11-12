@@ -289,18 +289,26 @@ type agentOrigin struct{}
 // fromAgent reports whether a connection attempt was started by an MCP call.
 func fromAgent(ctx context.Context) bool { return ctx.Value(agentOrigin{}) != nil }
 
+// savedPasswordRejected marks a context whose next password prompt follows the server rejecting the saved password.
+type savedPasswordRejected struct{}
+
 // userAction tells the agent gateway that the connection waits for a dialog, if an agent started it.
 func userAction(ctx context.Context, req *appui.Prompt) (done func()) {
 	ua, _ := ctx.Value(agentOrigin{}).(agent.UserAction)
 	if ua == nil {
 		return func() {}
 	}
-	reason := "otp"
+	reason := agent.ReasonOTP
 	switch req.Kind {
-	case appui.PromptHostKey, appui.PromptHostKeyChanged:
-		reason = "host_key"
+	case appui.PromptHostKey:
+		reason = agent.ReasonHostKey
+	case appui.PromptHostKeyChanged:
+		reason = agent.ReasonHostKeyChanged
 	case appui.PromptPassword:
-		reason = "password"
+		reason = agent.ReasonPassword
+		if ctx.Value(savedPasswordRejected{}) != nil {
+			reason = agent.ReasonPasswordRejected
+		}
 	}
 	return ua(reason)
 }

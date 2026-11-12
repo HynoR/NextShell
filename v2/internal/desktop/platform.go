@@ -339,8 +339,13 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		s, e = p.dial(ctx, o)
 	}
 	// A rejected password asks again, at most three times in all.
+	savedUsed := stored.Secret != "" && c.Secret == stored.Secret
 	for tries := 1; tries < 3 && c.Auth == "password" && isAuthFailure(e); tries++ {
-		if err := p.askPassword(ctx, &c, stored, "密码错误，请重新输入"); err != nil {
+		askCtx := ctx
+		if tries == 1 && savedUsed {
+			askCtx = context.WithValue(ctx, savedPasswordRejected{}, true) // an agent is told it was the saved one
+		}
+		if err := p.askPassword(askCtx, &c, stored, "密码错误，请重新输入"); err != nil {
 			return err
 		}
 		o.Connection.Secret = c.Secret
