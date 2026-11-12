@@ -502,6 +502,21 @@ func TestSendTextClassifiesLinesAndEscapes(t *testing.T) {
 	}
 }
 
+func TestInterruptForgetsTheHalfTypedLine(t *testing.T) {
+	b := newRich()
+	g := New(b, nil)
+	g.SetAutoApprove(UntilExit)
+	data(t, call(g, "o", "session_send_text", m{"target": "s1", "text": "sudo ls"}))
+	data(t, call(g, "o", "session_send_signal", m{"target": "s1", "signal": "interrupt"}))
+	if d := data(t, call(g, "o", "session_send_text", m{"target": "s1", "text": "echo hi\\r"})); d["sent"] != 8 {
+		t.Fatal("the cancelled sudo must not taint the next line", d)
+	}
+	r := call(g, "o", "session_send_text", m{"target": "s1", "text": "reboot\\r"})
+	if r.Error == nil || r.Error.Code != "forbidden" || !strings.HasPrefix(r.Error.Message, "Blocked by the command policy: ") {
+		t.Fatalf("%+v", r.Error)
+	}
+}
+
 func TestSendTextNeedsApprovalWithoutAutoApprove(t *testing.T) {
 	b := newRich()
 	g := New(b, nil)

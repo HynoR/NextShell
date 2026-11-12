@@ -181,6 +181,13 @@ func failErr(e error) Result {
 }
 func ok(data any) Result { return Result{OK: true, Data: data} }
 
+// blocked answers a command the policy never lets run; unlike a halt, it says why.
+func blocked(v Verdict) Result {
+	r := fail("forbidden", strings.Join(v.Why, "; "))
+	r.Error.Message = strings.Replace(r.Error.Message, messages["forbidden"], "Blocked by the command policy", 1)
+	return r
+}
+
 type Pending struct {
 	ID, Client, Tool, Target string
 	TargetName               string // what Target is called in the UI: a tab title or host name
@@ -580,7 +587,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		}
 		verdict = Classify(a.Command, g.blacklistCopy())
 		if verdict.Forbidden {
-			return fail("forbidden", strings.Join(verdict.Why, "; "))
+			return blocked(verdict)
 		}
 		if verdict.Sensitive && !a.AllowSensitive {
 			return fail("consent_required", strings.Join(verdict.Why, "; "))
@@ -595,7 +602,7 @@ func (g *Gateway) Call(ctx context.Context, clientID, clientName, tool string, r
 		g.mu.Unlock()
 		verdict, typedNext = scanTyping(state, data, g.blacklistCopy())
 		if verdict.Forbidden {
-			return fail("forbidden", strings.Join(verdict.Why, "; "))
+			return blocked(verdict)
 		}
 		if verdict.Sensitive && !a.AllowSensitive {
 			return fail("consent_required", strings.Join(verdict.Why, "; "))
@@ -991,6 +998,11 @@ func (g *Gateway) run(ctx context.Context, tool string, a Arguments, data string
 		if e := g.backend.Control(a.Target, controls[a.Signal]); e != nil {
 			return failErr(e)
 		}
+		// Ctrl-C throws away the half-typed line the tracker still holds.
+		g.mu.Lock()
+		state := g.typed[a.Target]
+		_, g.typed[a.Target] = scanTyping(state, controls[a.Signal], nil)
+		g.mu.Unlock()
 		return ok(map[string]any{"sessionId": a.Target, "signal": a.Signal})
 	case "session_send_text":
 		g.mu.Lock()
@@ -999,7 +1011,7 @@ func (g *Gateway) run(ctx context.Context, tool string, a Arguments, data string
 		// The line may have changed since the request was made: judge it again before typing.
 		v, next := scanTyping(state, data, g.blacklistCopy())
 		if v.Forbidden {
-			return fail("forbidden", strings.Join(v.Why, "; "))
+			return blocked(v)
 		}
 		before, _ := g.backend.Output(a.Target, -1)
 		if e := g.backend.Control(a.Target, data); e != nil {
