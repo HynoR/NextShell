@@ -33,7 +33,7 @@ type sendRecorder struct {
 	sent []string
 }
 
-func (p *sendRecorder) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
+func (p *sendRecorder) ExecuteCommand(session, text string, appendCR ...bool) error {
 	p.sent = append(p.sent, text)
 	return nil
 }

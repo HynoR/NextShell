@@ -139,3 +139,12 @@ func TestTerminalLinksConsumeDefaultAndUseInjectedOpener(t *testing.T) {
 		t.Fatal(err, calls)
 	}
 }
+
+// Terminals leave their background to the window's view under them, which paints the theme's color, or lets
+// the background picture show: that is what lets the picture be set or cleared with sessions open.
+func TestTerminalsAreMadeTransparent(t *testing.T) {
+	p := desktopFixture(t)
+	if !p.terminalOptions(terminal.Options{}).Transparent {
+		t.Fatal("terminals paint their own background")
+	}
+}

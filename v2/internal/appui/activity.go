@@ -42,7 +42,7 @@ func (a *App) activityColumn(c *ui.Context) {
 		editLabel = fmt.Sprintf("实时编辑 %d 个文件", len(edits))
 	}
 	if !a.layout.rightOpen {
-		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(8).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
+		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(8).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
 			open := iconButton(c, "展开活动栏", "panel-right").Clicked()
 			ui.Box(c).Width(20).Height(1).Background(t.Border)
 			// A failure is what to look at: it takes the badge, in red, until it is retried or cleared.
@@ -72,7 +72,7 @@ func (a *App) activityColumn(c *ui.Context) {
 		})
 		return
 	}
-	ui.Column(c).Width(rightWidth).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
+	ui.Column(c).Width(rightWidth).FillHeight().Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 0, 0, 1).Children(func() {
 		ui.Row(c).FillWidth().Padding(8, 8, 4, 12).AlignItems(ui.Center).Children(func() {
 			ui.Spacer(c).Grow(1)
 			if iconButton(c, "收起活动栏", "panel-right").Clicked() {
@@ -207,7 +207,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 						if ghost(c, "覆盖远端", "").TextColor(t.Danger).Clicked() {
 							id, host := l.ID, a.sessionTitle(l.Session)
 							a.later(func() {
-								a.confirm("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() { // danger
+								a.confirmDanger("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() {
 									a.P.ResolveLiveEdit(id, true)
 								})
 							})

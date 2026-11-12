@@ -2,6 +2,7 @@ package appui
 
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"slices"
 	"strconv"
@@ -183,7 +184,14 @@ func (a *App) applyPreferences(p model.Preferences) bool {
 		a.fail(e)
 		return false
 	}
+	old := a.Prefs.BackgroundImage
 	a.Prefs = p
+	if old != "" && old != p.BackgroundImage { // replaced, cleared or reset: the copy of the old picture is of no use
+		a.P.RemoveBackground(old)
+	}
+	if a.PreferencesChanged != nil {
+		a.PreferencesChanged()
+	}
 	l, d := TerminalThemes(p)
 	for _, s := range a.Tabs {
 		s.Terminal.SetTheme(l, d)
@@ -299,11 +307,21 @@ func (a *App) windowSettings(c *ui.Context) {
 		if chosen != accentFor(v.Accent).id {
 			v.Accent = chosen
 		}
+		a.backgroundSettings(c)
 	})
 	group(c, "窗口", func() {
+		if a.TrayAvailable {
+			switchField(c, "最小化到托盘", &v.MinimizeToTray, "最小化时把窗口收进系统托盘，点击托盘图标就能找回")
+			switchField(c, "关闭窗口时最小化到托盘", &v.CloseToTray, "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」")
+		}
 		confirm := !v.NoCloseConfirm
-		if toggle(c, "关闭窗口时确认", &confirm) {
-			v.NoCloseConfirm = !confirm
+		closing := ui.Field(c, "关闭窗口时确认", func() {
+			if ui.Switch(c, &confirm).Label("关闭窗口时确认").Changed() {
+				v.NoCloseConfirm = !confirm
+			}
+		}).FillWidth()
+		if a.TrayAvailable && v.CloseToTray { // closing no longer closes anything: this guards quitting
+			closing.Description("关闭窗口只会隐藏窗口；这一项管的是退出时的确认，从托盘退出也一样")
 		}
 		tabConfirm := !v.NoTabConfirm
 		if switchField(c, "关闭标签时确认", &tabConfirm, "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭") {
@@ -318,6 +336,43 @@ func (a *App) windowSettings(c *ui.Context) {
 			a.confirmDanger("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
 		}
 	})
+}
+
+// backgroundSettings is the picture behind the main window and how opaque the panels stay over it.
+func (a *App) backgroundSettings(c *ui.Context) {
+	t := c.Theme()
+	v := &a.settings.draft
+	bmp := a.backdropBitmap()
+	ui.Field(c, "背景图", func() {
+		ui.Row(c).Grow(1).MinWidth(0).Gap(10).AlignItems(ui.Center).Children(func() {
+			text, color := "未设置", t.TextMuted
+			if bmp != nil {
+				ui.Image(c, bmp).Size(72, 44).Fit(ui.Cover).Radius(6).Shrink(0).Label("背景图预览")
+				text, color = "已设置", t.Text
+			}
+			ui.Text(c, text).Grow(1).MinWidth(0).TextColor(color).SingleLine()
+			if bmp != nil && ghost(c, "清除", "").Label("清除背景图").Clicked() {
+				a.later(a.clearBackground)
+			}
+			if ui.Button(c, "选择图片…").Label("选择背景图").Clicked() {
+				a.pick(FilePick{Title: "选择背景图", Images: true}, func(p []string) {
+					a.inWindow(settingsWindow, func() { a.chooseBackground(p[0]) })
+					if a.wakeSettings != nil {
+						a.wakeSettings()
+					}
+				})
+			}
+		})
+	}).Description("作为主窗口的背景，终端也会透出它。图片会另存一份，原文件移动或删除不受影响").FillWidth()
+	ui.Field(c, "界面不透明度", func() {
+		ui.Row(c).Grow(1).MinWidth(0).Gap(10).AlignItems(ui.Center).Disabled(bmp == nil).Children(func() {
+			o := float64(v.BackgroundOpacity)
+			if ui.Slider(c, &o, model.BackgroundOpacityMin, model.BackgroundOpacityMax).Step(1).Label("界面不透明度").Grow(1).Changed() {
+				v.BackgroundOpacity = int(math.Round(o))
+			}
+			ui.Text(c, fmt.Sprintf("%d%%", v.BackgroundOpacity)).Font("monospace").FontSize(12).Width(40).SingleLine()
+		})
+	}).Description("越小越能看清背景图，越大文字越清晰").FillWidth()
 }
 
 func (a *App) transferSettings(c *ui.Context) {

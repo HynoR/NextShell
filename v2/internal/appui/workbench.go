@@ -6,7 +6,7 @@ import "github.com/egoist/mygo/ui"
 // the active session. ⌘J folds it to a strip of its tabs.
 func (a *App) workbench(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().MinHeight(0).Background(t.Surface).Children(func() {
+	ui.Column(c).Fill().MinHeight(0).Background(a.pane(t)).Children(func() {
 		a.benchHeader(c, "收起工作区", "chevron-down")
 		ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() {
 			switch a.layout.bench {
@@ -23,7 +23,7 @@ func (a *App) workbench(c *ui.Context) {
 
 // benchStrip is the folded workbench: a tab opens it on that tab.
 func (a *App) benchStrip(c *ui.Context) {
-	ui.Column(c).FillWidth().Background(c.Theme().Surface).Children(func() { a.benchHeader(c, "展开工作区", "chevron-up") })
+	ui.Column(c).FillWidth().Background(a.pane(c.Theme())).Children(func() { a.benchHeader(c, "展开工作区", "chevron-up") })
 }
 
 func (a *App) benchHeader(c *ui.Context, fold, icon string) {

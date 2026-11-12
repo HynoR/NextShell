@@ -137,7 +137,7 @@ type broadcastPlatform struct {
 	refuse map[string]bool
 }
 
-func (p *broadcastPlatform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
+func (p *broadcastPlatform) ExecuteCommand(session, text string, appendCR ...bool) error {
 	if p.refuse[session] {
 		return errors.New("会话已关闭")
 	}

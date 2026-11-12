@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -39,13 +40,30 @@ type Preferences struct {
 	FoldLeft         bool    `json:"foldLeft"`         // start with the left column folded
 	FoldBench        bool    `json:"foldBench"`        // start with the bottom workbench folded
 	ShellIntegration string  `json:"shellIntegration"` // "" manual, "auto" or "off"
+
+	// BackgroundImage is the file name of the picture behind the main window, a copy kept in the app's data
+	// folder; "" shows no picture and the window looks as it always has. BackgroundOpacity is how opaque the
+	// panels stay over it, in percent.
+	BackgroundImage   string `json:"backgroundImage"`
+	BackgroundOpacity int    `json:"backgroundOpacity"`
+	// MinimizeToTray hides the window when it is minimized, CloseToTray when it is closed; the tray icon
+	// brings it back. Both are ignored where there is no tray.
+	MinimizeToTray bool `json:"minimizeToTray"`
+	CloseToTray    bool `json:"closeToTray"`
 }
+
+// Limits of BackgroundOpacity, as the 1.x slider had them.
+const (
+	BackgroundOpacityMin     = 30
+	BackgroundOpacityMax     = 80
+	BackgroundOpacityDefault = 60
+)
 
 // HostKey is a trusted server key fingerprint.
 type HostKey struct{ Address, Fingerprint string }
 
 func DefaultPreferences() Preferences {
-	return Preferences{HyperlinkConfirm: true, Appearance: "跟随系统", FontSize: 14, LineHeight: 1.2, TerminalTheme: "跟随外观", Background: "#0b1220", Foreground: "#d8e3f0", Cursor: "block", CursorBlink: true, ScrollbackMiB: 10, TitleUpdates: true, Notifications: true, UploadDir: "~", DownloadDir: "~/Downloads", KeepaliveEnabled: true, KeepaliveSeconds: 15}
+	return Preferences{HyperlinkConfirm: true, Appearance: "跟随系统", FontSize: 14, LineHeight: 1.2, TerminalTheme: "跟随外观", Background: "#0b1220", Foreground: "#d8e3f0", Cursor: "block", CursorBlink: true, ScrollbackMiB: 10, TitleUpdates: true, Notifications: true, UploadDir: "~", DownloadDir: "~/Downloads", KeepaliveEnabled: true, KeepaliveSeconds: 15, BackgroundOpacity: BackgroundOpacityDefault}
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -84,6 +102,13 @@ func (p Preferences) Validate() error {
 	}
 	if p.UploadDir == "" || p.DownloadDir == "" {
 		return fmt.Errorf("默认目录不得为空")
+	}
+	if p.BackgroundOpacity < BackgroundOpacityMin || p.BackgroundOpacity > BackgroundOpacityMax {
+		return fmt.Errorf("界面不透明度需为%d..%d", BackgroundOpacityMin, BackgroundOpacityMax)
+	}
+	// The picture is a file name inside the data folder, never a path: a preference cannot point elsewhere.
+	if n := p.BackgroundImage; n != "" && (n != filepath.Base(n) || n == "." || n == ".." || strings.ContainsAny(n, "/\\:\x00")) {
+		return fmt.Errorf("无效的背景图")
 	}
 	return nil
 }

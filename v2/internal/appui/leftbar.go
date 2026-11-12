@@ -15,7 +15,7 @@ func (a *App) leftColumn(c *ui.Context) {
 	s := a.current()
 	a.traceDrawer(c)
 	if a.layout.leftHidden {
-		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(10).AlignItems(ui.Center).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
+		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(10).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 			if iconButtonTip(c, "展开左栏", "展开左栏 "+appShortcutLabel("B"), "panel-left").Clicked() {
 				a.layout.leftHidden = false
 			}
@@ -26,7 +26,7 @@ func (a *App) leftColumn(c *ui.Context) {
 		})
 		return
 	}
-	ui.Column(c).Width(leftWidth).FillHeight().Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
+	ui.Column(c).Width(leftWidth).FillHeight().Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 		if s == nil {
 			ui.Row(c).FillWidth().Padding(8, 8, 0, 12).AlignItems(ui.Center).Children(func() {
 				ui.Spacer(c).Grow(1)
@@ -93,7 +93,7 @@ func (a *App) requestReconnect(s *Session) {
 	if s.Local {
 		title, msg, action = "重新打开 "+a.tabTitle(s)+"？", "终端里正在运行的程序会结束。", "结束并重新打开"
 	}
-	a.confirm(title, msg, action, func() {
+	a.confirmDanger(title, msg, action, func() {
 		if a.tabIndex(s.ID) >= 0 { // the tab may have closed while the question was open
 			a.reconnect(s)
 		}

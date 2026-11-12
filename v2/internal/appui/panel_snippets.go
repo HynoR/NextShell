@@ -72,7 +72,7 @@ func (a *App) sendText(text string, all, cr bool) {
 		a.toast("请先打开一个会话")
 		return
 	}
-	if e := a.P.ExecuteCommand(a.activeID(), text, false, cr); e != nil {
+	if e := a.P.ExecuteCommand(a.activeID(), text, cr); e != nil {
 		a.fail(e)
 		return
 	}
@@ -106,10 +106,10 @@ func (a *App) sendToAll(text string, cr bool) {
 	for i, s := range targets {
 		titles[i] = a.tabTitle(s)
 	}
-	a.confirm("发送到全部会话", msg, fmt.Sprintf("发送到 %d 个会话", len(targets)), func() { // danger
+	a.confirmDanger("发送到全部会话", msg, fmt.Sprintf("发送到 %d 个会话", len(targets)), func() {
 		var failed, detail []string
 		for i, s := range targets {
-			if e := a.P.ExecuteCommand(s.ID, text, false, cr); e != nil {
+			if e := a.P.ExecuteCommand(s.ID, text, cr); e != nil {
 				failed, detail = append(failed, titles[i]), append(detail, titles[i]+"："+e.Error())
 			}
 		}
@@ -265,7 +265,7 @@ func (a *App) snippetMenu(e ui.Element, v model.Command) {
 		m.Separator()
 		if m.Item("删除").Danger().Chosen() {
 			a.later(func() {
-				a.confirm("删除片段「"+v.Name+"」", "删除后无法恢复。", "删除片段", func() { // danger
+				a.confirmDanger("删除片段「"+v.Name+"」", "删除后无法恢复。", "删除片段", func() {
 					a.report(a.P.Delete("command", v.ID), "已删除片段")
 					a.reload()
 				})
@@ -380,7 +380,7 @@ func (a *App) commandDialog(c *ui.Context) {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 					muted(c, "最近发送").Grow(1)
 					if ghost(c, "清空历史", "").Clicked() {
-						a.confirm("清空命令历史", "删除全部本地历史，无法恢复。", "清空历史", func() { // danger
+						a.confirmDanger("清空命令历史", "删除全部本地历史，无法恢复。", "清空历史", func() {
 							a.report(a.P.SaveHistory(nil), "")
 							a.reload()
 						})
@@ -477,7 +477,7 @@ func (a *App) snippetGroupHeader(c *ui.Context, group string) {
 		}
 		if m.Item("删除分组…").Danger().Chosen() {
 			a.later(func() {
-				a.confirm(fmt.Sprintf("删除分组「%s」", group), fmt.Sprintf("分组里的 %d 个片段会一起删除，无法恢复。", n), fmt.Sprintf("删除 %d 个片段", n), func() { // danger
+				a.confirmDanger(fmt.Sprintf("删除分组「%s」", group), fmt.Sprintf("分组里的 %d 个片段会一起删除，无法恢复。", n), fmt.Sprintf("删除 %d 个片段", n), func() {
 					for _, v := range a.Data.Commands {
 						if v.Group == group {
 							if e := a.P.Delete("command", v.ID); e != nil {
