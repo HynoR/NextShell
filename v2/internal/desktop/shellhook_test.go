@@ -79,6 +79,46 @@ func TestAutoShellIntegrationTypesTheLineAtThePromptWithoutAWindow(t *testing.T)
 	}
 }
 
+// A reconnect starts a new shell, so it gets the line again; the file is on the server already and is not rewritten.
+func TestAutoShellIntegrationRunsForReconnectedSessionsToo(t *testing.T) {
+	t.Setenv("SHELL", "/bin/bash")
+	p := autoIntegration(t, "auto")
+	server := testServer(t)
+	events := &inbox{t: t, p: p}
+	p.Connect(server.Options().Connection)
+	first := events.await(func(e appui.Event) bool { return e.Session != nil }).Session
+	t.Cleanup(func() { p.CloseSession(first.ID) })
+	line := ". ~/.cache/nextshell/osc7.sh"
+	first.Terminal.Feed([]byte("tester@host:~$ "))
+	for deadline := time.Now().Add(5 * time.Second); !strings.Contains(first.Terminal.Text(), line); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the first session did not get the line:", first.Terminal.Text())
+		}
+	}
+	file := filepath.Join(server.Root, ".cache/nextshell/osc7.sh")
+	old := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+	if e := os.Chtimes(file, old, old); e != nil {
+		t.Fatal(e)
+	}
+
+	p.Reconnect(first)
+	next := events.await(func(e appui.Event) bool { return e.Session != nil && e.Session.Replaces == first.ID }).Session
+	t.Cleanup(func() { p.CloseSession(next.ID) })
+	time.Sleep(300 * time.Millisecond) // no prompt yet: nothing typed
+	if strings.Contains(next.Terminal.Text(), "osc7.sh") {
+		t.Fatal("typed before the prompt:", next.Terminal.Text())
+	}
+	next.Terminal.Feed([]byte("tester@host:~$ "))
+	for deadline := time.Now().Add(5 * time.Second); !strings.Contains(next.Terminal.Text(), line); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the reconnected session did not get the line:", next.Terminal.Text())
+		}
+	}
+	if fi, e := os.Stat(file); e != nil || !fi.ModTime().Equal(old) {
+		t.Fatal("the hook file was rewritten although its content is the same", e)
+	}
+}
+
 func TestAutoShellIntegrationReportsAndTypesNothingWhenTheServerCannotOrNoPromptShows(t *testing.T) {
 	for name, tc := range map[string]struct {
 		shell, want string

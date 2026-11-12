@@ -400,7 +400,8 @@ func (p *Platform) register(t *terminal.Terminal, c model.Connection, local bool
 		title = "本地终端"
 	}
 	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local}})
-	if len(sshConn) > 0 && replace == "" && p.Preferences().ShellIntegration == "auto" {
+	// A reconnect is a new shell too: it needs the line again (the file is already on the server).
+	if len(sshConn) > 0 && p.Preferences().ShellIntegration == "auto" {
 		p.integrateShell(id, t, sshConn[0])
 	}
 }
