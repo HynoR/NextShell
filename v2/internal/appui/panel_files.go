@@ -458,6 +458,13 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
+		follow := iconButton(c, "跟随终端目录", "link")
+		if s.follow {
+			follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+		}
+		if follow.Clicked() {
+			s.follow, s.followed = !s.follow, ""
+		}
 		if iconButton(c, "上传", "upload").Clicked() {
 			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
 		}
@@ -466,6 +473,9 @@ func (a *App) filesPanel(c *ui.Context) {
 		}
 		iconButton(c, "更多", "more").PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
+	if s.follow && a.P.SessionDir(id) == "" {
+		a.followHint(c)
+	}
 	if s.session != id {
 		if why, bad := s.failed[id]; bad {
 			a.listError(c, id, why)
@@ -489,6 +499,19 @@ func (a *App) filesPanel(c *ui.Context) {
 		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
 			a.pasteRemoteClipboard(id)
 		}
+	})
+}
+
+// followHint says what to do when the list is to follow the terminal, which has not told its folder.
+func (a *App) followHint(c *ui.Context) {
+	t := c.Theme()
+	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + shortcutLabel("K") + "，选「插入目录跟踪脚本」，检查后回车执行即可。"
+	if a.Prefs.ShellIntegration == "off" {
+		text = "目录跟踪在设置里是关闭的。到设置的「Shell 集成」打开后，文件面板才能跟随终端目录。"
+	}
+	ui.Row(c).FillWidth().Padding(5, 10).Gap(8).Background(t.Warning.Alpha(.12)).Label("跟随终端目录的提示").Children(func() {
+		ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.Warning)
+		ui.Text(c, text).FontSize(12).Grow(1).MinWidth(0)
 	})
 }
 
@@ -580,6 +603,7 @@ func (a *App) fileList(c *ui.Context, id string) {
 			}
 		}).Grow(1).FillWidth()
 		a.fileClipboardKeys(table, id)
+		a.fileKeys(table, id)
 		if table.Submitted() && s.row >= 0 && s.row < len(s.entries) {
 			f := s.entries[s.row]
 			if f.Directory {
@@ -730,12 +754,6 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 	if m.Item("显示隐藏文件").Checked(s.hidden).Chosen() {
 		s.hidden = !s.hidden
 		s.filterEntries()
-	}
-	if m.Item("跟随终端目录").Checked(s.follow).Chosen() {
-		s.follow = !s.follow
-		if s.follow && a.P.SessionDir(id) == "" {
-			a.toast("终端还没有报告当前目录，可在命令面板里为会话插入目录跟踪脚本")
-		}
 	}
 	if m.Item("在终端中 cd 到此处").Chosen() {
 		a.later(func() { a.cdInTerminal(id, s.path) })
@@ -990,6 +1008,41 @@ func (a *App) pasteRemoteClipboard(id string) {
 		a.queue(TransferRequest{Session: clip.Session, TargetSession: id, Kind: kind, Remote: src, Destination: path.Join(a.files.path, path.Base(src))})
 	}
 	// Keep the clipboard on failures; a completed cut then fails safely (source absent).
+}
+
+// fileKeys are the keys of the list: Delete (⌘⌫ on a Mac) asks to delete what is selected, F2 renames the
+// row, Backspace goes up to the folder above. A name being typed keeps its keys.
+func (a *App) fileKeys(e ui.Element, id string) {
+	s := &a.files
+	if s.renaming != "" {
+		return
+	}
+	row := func() []sftpfs.Entry { // what is selected, or else the row the keyboard is on
+		if got := a.selectedFiles(nil); len(got) > 0 {
+			return got
+		}
+		if s.row >= 0 && s.row < len(s.entries) {
+			return s.entries[s.row : s.row+1]
+		}
+		return nil
+	}
+	switch {
+	case e.Shortcut(0, ui.KeyDelete), e.Shortcut(ui.Cmd, ui.KeyBackspace):
+		if targets := slices.Clone(row()); len(targets) > 0 {
+			a.later(func() { a.askRemove(id, targets) })
+		}
+	case e.Shortcut(0, ui.KeyF2):
+		if s.row >= 0 && s.row < len(s.entries) {
+			f := s.entries[s.row]
+			s.renaming, s.renameTo = f.Path, f.Name
+		} else if got := row(); len(got) == 1 {
+			s.renaming, s.renameTo = got[0].Path, got[0].Name
+		}
+	case e.Shortcut(0, ui.KeyBackspace):
+		if s.path != "/" {
+			a.listFiles(id, path.Dir(s.path))
+		}
+	}
 }
 func (a *App) fileClipboardKeys(e ui.Element, id string) {
 	if e.Shortcut(ui.Cmd, ui.KeyC) {

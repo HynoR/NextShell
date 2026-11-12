@@ -2,6 +2,7 @@ package appui_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -171,5 +172,107 @@ func TestDeleteCountCanBeGivenUpAndFailuresShow(t *testing.T) {
 	has(t, tt, "a.txt\n删除后无法恢复。")
 	if len(p.counts) != 2 {
 		t.Fatal("files were counted", p.counts)
+	}
+}
+
+func TestFileKeysDeleteRenameAndParent(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/srv/app", sftpfs.Entry{Name: "a.txt", Path: "/srv/app/a.txt"}, sftpfs.Entry{Name: "b.txt", Path: "/srv/app/b.txt"})
+	click(t, tt, "选择 a.txt")
+	tt.Key(0, ui.KeyDelete)
+	has(t, tt, "删除远程文件", "a.txt\n删除后无法恢复。")
+	click(t, tt, "删除 1 项")
+	if len(p.actions) != 1 || p.actions[0] != [3]string{"remove", "/srv/app/a.txt", ""} {
+		t.Fatal("delete key", p.actions)
+	}
+	// Two rows chosen: both are asked about.
+	click(t, tt, "选择 a.txt")
+	if e := tt.ClickWith(ui.Cmd, "选择 b.txt"); e != nil {
+		t.Fatal(e)
+	}
+	tt.Key(ui.Cmd, ui.KeyBackspace) // the Mac's delete key
+	has(t, tt, "a.txt、b.txt\n删除后无法恢复。")
+	click(t, tt, "取消")
+	// F2 renames the row in place; the name has the keys while it is typed.
+	click(t, tt, "选择 b.txt")
+	tt.Key(0, ui.KeyF2)
+	has(t, tt, "重命名 b.txt")
+	n := len(p.listed)
+	tt.Key(0, ui.KeyBackspace)
+	tt.Key(0, ui.KeyDelete)
+	if len(p.listed) != n || tt.HasText("删除远程文件") {
+		t.Fatal("Backspace and Delete in the name acted on the list", p.listed[n:])
+	}
+	tt.Key(0, ui.KeyEscape)
+	if tt.HasText("重命名 b.txt") {
+		t.Fatal("Escape keeps the name open")
+	}
+	// Backspace goes up, and stops at the root.
+	click(t, tt, "选择 b.txt")
+	tt.Key(0, ui.KeyBackspace)
+	if p.listed[len(p.listed)-1] != "one:/srv" {
+		t.Fatal("backspace", p.listed)
+	}
+	listing(p, tt, "one", "/srv", sftpfs.Entry{Name: "app", Path: "/srv/app", Directory: true}, sftpfs.Entry{Name: "c.txt", Path: "/srv/c.txt"})
+	click(t, tt, "选择 c.txt")
+	tt.Key(0, ui.KeyBackspace)
+	if p.listed[len(p.listed)-1] != "one:/" {
+		t.Fatal("backspace again", p.listed)
+	}
+	listing(p, tt, "one", "/", sftpfs.Entry{Name: "srv", Path: "/srv", Directory: true}, sftpfs.Entry{Name: "d.txt", Path: "/d.txt"})
+	n = len(p.listed)
+	click(t, tt, "选择 d.txt")
+	tt.Key(0, ui.KeyBackspace)
+	if len(p.listed) != n {
+		t.Fatal("there is nothing above the root", p.listed[n:])
+	}
+}
+
+// dirPlatform is a shell that tells its folder.
+type dirPlatform struct {
+	*fakePlatform
+	dir string
+}
+
+func (p *dirPlatform) SessionDir(string) string { return p.dir }
+
+func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
+	p := &dirPlatform{fakePlatform: newPlatform(t)}
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p.fakePlatform, tt, "one", "/srv/app", sftpfs.Entry{Name: "a.txt", Path: "/srv/app/a.txt"})
+	click(t, tt, "更多")
+	if slices.Contains(tt.Menu(), "跟随终端目录") {
+		t.Fatal("the toggle is still in the menu", tt.Menu())
+	}
+	tt.CloseMenu()
+	if tt.HasText("还没有收到终端的当前目录") {
+		t.Fatal("a hint before the toggle is on")
+	}
+	click(t, tt, "跟随终端目录")
+	has(t, tt, "还没有收到终端的当前目录，暂时无法跟随。", "插入目录跟踪脚本")
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") {
+			t.Fatal("the hint names a file:", s)
+		}
+	}
+	click(t, tt, "跟随终端目录")
+	if tt.HasText("还没有收到终端的当前目录") {
+		t.Fatal("the hint outlives the toggle")
+	}
+	// Tracking off in the settings: the way to turn it on.
+	a.Prefs.ShellIntegration = "off"
+	click(t, tt, "跟随终端目录")
+	has(t, tt, "目录跟踪在设置里是关闭的", "Shell 集成")
+	click(t, tt, "跟随终端目录")
+	// The shell reports its folder: the list goes there, and no hint.
+	p.dir = "/var/www"
+	click(t, tt, "跟随终端目录")
+	if p.listed[len(p.listed)-1] != "one:/var/www" || tt.HasText("暂时无法跟随") {
+		t.Fatal("follow", p.listed)
 	}
 }

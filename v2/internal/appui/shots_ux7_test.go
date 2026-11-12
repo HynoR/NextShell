@@ -87,4 +87,16 @@ func TestScreenshotsUX7(t *testing.T) {
 	shot(st, "ux7-3a-snippet-hover")
 	hover(t, st, "发送 查看日志")
 	shot(st, "ux7-3b-snippet-send-target")
+
+	// Following the terminal's folder, which it has not told.
+	fp := newPlatform(t)
+	fweb, _ := demo(t, fp)
+	_, ft := start(fp)
+	ft.SetTitleBar(ui.TitleBar{Height: 44, Left: 72})
+	session(t, fp, ft, "s1", "prod-web-01", fweb)
+	click(t, ft, "SFTP")
+	listing(fp, ft, "s1", "/var/log", sftpfs.Entry{Name: "nginx", Path: "/var/log/nginx", Directory: true, Mode: "drwxr-xr-x", Modified: now.Add(-26 * time.Hour)},
+		sftpfs.Entry{Name: "syslog", Path: "/var/log/syslog", Size: 2200000, Mode: "-rw-r-----", Modified: now.Add(-time.Hour)})
+	click(t, ft, "跟随终端目录")
+	shot(ft, "ux7-4-follow-hint")
 }
