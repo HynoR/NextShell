@@ -2,6 +2,7 @@ package appui_test
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -444,6 +445,32 @@ func TestSendCommandDialogAndHistory(t *testing.T) {
 	}
 }
 
+func TestFilesDirectoryTreeFollowsAndLists(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	tt.Key(appMod(), ui.KeyJ) // the workbench was hidden: show it, on SFTP
+	tt.Key(appMod(), ui.KeyJ)
+	listing(p, tt, "one", "/var/log", sftpfs.Entry{Name: "nginx", Path: "/var/log/nginx", Directory: true}, sftpfs.Entry{Name: "syslog", Path: "/var/log/syslog"})
+	tt.Frame()
+	has(t, tt, "目录 /", "目录 /var", "目录 /var/log", "目录 /var/log/nginx")
+	// The open folders above list their subfolders for the tree alone.
+	if !slices.Contains(p.listed, "one:/") || !slices.Contains(p.listed, "one:/var") {
+		t.Fatal("tree did not list the folders above", p.listed)
+	}
+	listing(p, tt, "one", "/var", sftpfs.Entry{Name: "lib", Path: "/var/lib", Directory: true}, sftpfs.Entry{Name: "log", Path: "/var/log", Directory: true}, sftpfs.Entry{Name: "x", Path: "/var/x"})
+	has(t, tt, "目录 /var/lib", "syslog", "2 项") // the list still shows /var/log
+	click(t, tt, "目录 /var/lib")
+	if p.listed[len(p.listed)-1] != "one:/var/lib" {
+		t.Fatal("tree click", p.listed)
+	}
+	click(t, tt, "隐藏目录树")
+	if tt.HasText("目录 /var/lib") || p.UIState("sftp-tree") != "true" {
+		t.Fatal("tree not hidden", p.UIState("sftp-tree"))
+	}
+	click(t, tt, "显示目录树")
+	has(t, tt, "目录 /var/lib")
+}
+
 func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 	_, p, tt := fixture(t)
 	tt.SetSize(1280, 1400) // every row in view
@@ -457,7 +484,11 @@ func TestFilesSortFoldersFirstNaturallyAndByHeader(t *testing.T) {
 	order := func() string {
 		var out []string
 		for _, n := range []string{"alpha", "zeta", "File2", "file10"} {
-			r, ok := tt.Find(n)
+			label := "选择 " + n
+			if n == "alpha" || n == "zeta" {
+				label = "打开 " + n // the list's row, not the tree's
+			}
+			r, ok := tt.Find(label)
 			if !ok {
 				t.Fatal("missing", n)
 			}

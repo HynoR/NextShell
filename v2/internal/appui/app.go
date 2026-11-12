@@ -121,6 +121,7 @@ func New(p Platform) *App {
 	a.hosts.init()
 	a.hosts.recent = strings.Fields(p.UIState("recent"))
 	a.files.init()
+	a.files.treeHidden = p.UIState("sftp-tree") == "true"
 	a.monitor.init()
 	a.snippets.init()
 	a.reload()
