@@ -51,7 +51,7 @@ func TestSFTPCreateDoesNotOverwrite(t *testing.T) {
 	id, root := phase2SSH(t, p)
 	file := filepath.Join(root, "new file.txt")
 	p.FileAction(id, "create", file, "")
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.Contains(e.Message, "create completed") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.Contains(e.Message, "文件操作完成") })
 	if b, e := os.ReadFile(file); e != nil || len(b) != 0 {
 		t.Fatal(e, string(b))
 	}

@@ -232,10 +232,10 @@ func TestDesktopSSHTrustCloneAndReconnect(t *testing.T) {
 	p := desktopFixture(t)
 	p.Connect(c)
 	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
-	if !strings.Contains(e.Prompt.Title, "TRUST") {
-		t.Fatal("no trust confirmation")
+	if e.Prompt.Kind != appui.PromptHostKey || !strings.HasPrefix(e.Prompt.Fingerprint, "SHA256:") || e.Prompt.Host == "" {
+		t.Fatal("no trust confirmation", e.Prompt)
 	}
-	e.Prompt.Answers <- []string{"TRUST"}
+	e.Prompt.Answers <- []string{}
 	e = awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil })
 	s := e.Session
 	if s.Connection.Secret != "" {
@@ -264,4 +264,70 @@ func TestTerminalCapabilityRejectsClosedSession(t *testing.T) {
 	if p.ScreenText("missing") != "" || !p.Exited("missing") {
 		t.Fatal("closed capability incorrect")
 	}
+}
+
+func TestDesktopSSHPasswordPromptRememberAndChangedHostKey(t *testing.T) {
+	c, _ := desktopSSH(t)
+	p := desktopFixture(t)
+	c.ID = p.NewID()
+	c.Secret = ""
+	if e := p.SaveConnection(c, nil); e != nil {
+		t.Fatal(e)
+	}
+	if e := p.store.PinHost(c.Address(), "SHA256:old"); e != nil {
+		t.Fatal(e)
+	}
+	p.Connect(c)
+	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	if e.Prompt.Kind != appui.PromptPassword || !e.Prompt.CanRemember {
+		t.Fatal("password prompt", e.Prompt)
+	}
+	e.Prompt.Remember = true
+	e.Prompt.Answers <- []string{"secret"}
+	e = awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	if e.Prompt.Kind != appui.PromptHostKeyChanged || e.Prompt.OldFingerprint != "SHA256:old" || e.Prompt.Fingerprint == "SHA256:old" {
+		t.Fatal("changed key prompt", e.Prompt)
+	}
+	e.Prompt.Answers <- []string{}
+	s := awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil }).Session
+	defer p.CloseSession(s.ID)
+	if pin, _ := p.store.HostPin(c.Address()); pin == "SHA256:old" {
+		t.Fatal("pin not replaced")
+	}
+	if stored, _ := p.store.Connection(c.ID); stored.Secret != "secret" {
+		t.Fatal("password not remembered")
+	}
+}
+func TestDesktopSSHChangedHostKeyDeclined(t *testing.T) {
+	c, _ := desktopSSH(t)
+	p := desktopFixture(t)
+	if e := p.store.PinHost(c.Address(), "SHA256:old"); e != nil {
+		t.Fatal(e)
+	}
+	p.Connect(c)
+	e := awaitEvent(t, p, func(e appui.Event) bool { return e.Prompt != nil })
+	e.Prompt.Answers <- nil
+	for {
+		ev := awaitEventOrMessage(t, p)
+		if ev.Message != "" {
+			break
+		}
+	}
+	if pin, _ := p.store.HostPin(c.Address()); pin != "SHA256:old" {
+		t.Fatal("declined change replaced pin")
+	}
+}
+func awaitEventOrMessage(t *testing.T, p *Platform) appui.Event {
+	t.Helper()
+	until := time.Now().Add(5 * time.Second)
+	for time.Now().Before(until) {
+		for _, e := range p.Poll() {
+			if e.Message != "" || e.Session != nil {
+				return e
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("event timeout")
+	return appui.Event{}
 }

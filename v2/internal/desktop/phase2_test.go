@@ -140,7 +140,7 @@ func TestPhase2PlatformImportPreviewExportAndFolderSpecs(t *testing.T) {
 		t.Fatal("preview mutated storage", snap, pv)
 	}
 	p.CommitImport(pv.Token, "", "skip")
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导入 ") })
 	snap, _ = p.Snapshot()
 	if len(snap.Connections) != 1 || len(snap.Folders) != 2 || snap.Connections[0].Secret != "" {
 		t.Fatal("import hierarchy/redaction", snap)
@@ -151,21 +151,21 @@ func TestPhase2PlatformImportPreviewExportAndFolderSpecs(t *testing.T) {
 	}
 	pv = preview()
 	p.CommitImport(pv.Token, "", "skip")
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导入 ") })
 	snap, _ = p.Snapshot()
 	if len(snap.Connections) != 1 || len(snap.Folders) != 2 {
 		t.Fatal("reimport skip/reuse failed")
 	}
 	pv = preview()
 	p.CommitImport(pv.Token, "", "rename-copy")
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导入 ") })
 	snap, _ = p.Snapshot()
 	if len(snap.Connections) != 2 || len(snap.Folders) != 2 {
 		t.Fatal("duplicate/reuse failed")
 	}
 	export := filepath.Join(t.TempDir(), "export.json")
 	p.ExportConnections(export, &password, []string{snap.Connections[0].ID})
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "exported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导出 ") })
 	encoded, _ := os.ReadFile(export)
 	decoded, e := exchange.Decode(encoded, &password)
 	if e != nil || len(decoded.Connections) != 1 || *decoded.Connections[0].Password != secret || decoded.Connections[0].GroupPath != "/server/prod/empty" {
@@ -228,7 +228,7 @@ func TestPhase2FinalShellDirectoryPreviewAndImport(t *testing.T) {
 		t.Fatal(pv)
 	}
 	p.CommitImport(pv.Token, "", "rename-copy")
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导入 ") })
 	snap, _ := p.Snapshot()
 	if len(snap.Folders) != 2 || len(snap.Connections) != 2 {
 		t.Fatal(snap)

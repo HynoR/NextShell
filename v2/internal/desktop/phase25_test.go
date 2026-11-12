@@ -37,7 +37,7 @@ func importTarget(t *testing.T, p *Platform) model.Connection {
 }
 func importDone(t *testing.T, p *Platform) {
 	t.Helper()
-	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "imported ") })
+	awaitEvent(t, p, func(e appui.Event) bool { return strings.HasPrefix(e.Message, "已导入 ") })
 }
 func TestImportOverwritePreservesIdentityAbsentFieldsAndRouting(t *testing.T) {
 	p := desktopFixture(t)

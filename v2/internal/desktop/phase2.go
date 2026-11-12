@@ -27,7 +27,7 @@ func (p *Platform) ssh(id string) (*sshclient.Session, error) {
 	s := p.sshSessions[id]
 	p.mu.Unlock()
 	if s == nil {
-		return nil, errors.New("select an active remote SSH session (not a local terminal)")
+		return nil, errors.New("请先切换到一个远程 SSH 会话")
 	}
 	return s, nil
 }
@@ -106,7 +106,7 @@ func (p *Platform) FileAction(session, action, from, to string) {
 				return errors.New("unsupported file action")
 			}
 			if e == nil {
-				p.emit(appui.Event{Message: "SFTP " + action + " completed"})
+				p.emit(appui.Event{Message: "文件操作完成"})
 				p.ListFiles(session, path.Dir(from))
 			}
 			return e
@@ -206,7 +206,7 @@ func (p *Platform) SaveRemote(session string, doc remoteedit.Document, text stri
 			if e != nil {
 				return e
 			}
-			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "remote file saved"})
+			p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "已保存远程文件"})
 			return nil
 		})
 	})
@@ -220,13 +220,13 @@ func (p *Platform) ExternalEdit(session, remote, executable string, args []strin
 				return e
 			}
 			return remoteedit.External(p.ctx, c, doc, watchEditor, executable, func(next remoteedit.Document) {
-				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "external editor saved remote file"})
+				p.emit(appui.Event{Editor: &appui.EditorResult{Session: session, Document: next, Saved: true}, Message: "外部编辑器的修改已保存到远程"})
 			}, args...)
 		})
 		if e != nil {
 			p.emit(appui.Event{Message: e.Error()})
 		} else {
-			p.emit(appui.Event{Message: "external editor closed; staging cleaned"})
+			p.emit(appui.Event{Message: "外部编辑器已关闭"})
 		}
 	})
 }
@@ -300,7 +300,7 @@ func (p *Platform) SignalProcess(session string, pid int, signal string) {
 		}
 		_, e = s.Output(ctx, cmd, 4096)
 		if e == nil {
-			p.emit(appui.Event{Message: "process signal sent"})
+			p.emit(appui.Event{Message: "已发送进程信号"})
 			p.RefreshMonitor(session)
 		}
 		return e
@@ -309,7 +309,7 @@ func (p *Platform) SignalProcess(session string, pid int, signal string) {
 func (p *Platform) SaveCommand(c model.Command) error { return p.store.SaveCommand(c) }
 func (p *Platform) ExecuteCommand(session, text string, all bool, appendCR ...bool) error {
 	if strings.TrimSpace(text) == "" {
-		return errors.New("empty command")
+		return errors.New("命令为空")
 	}
 	suffix := "\r"
 	if len(appendCR) > 0 && !appendCR[0] {
@@ -325,7 +325,7 @@ func (p *Platform) ExecuteCommand(session, text string, all bool, appendCR ...bo
 	}
 	p.mu.Unlock()
 	if len(ids) == 0 {
-		return errors.New("no active sessions")
+		return errors.New("没有打开的会话")
 	}
 	var errs []string
 	for _, id := range ids {
@@ -628,7 +628,7 @@ func (p *Platform) CommitImport(token, folder, policy string) {
 		p.mu.Lock()
 		delete(p.imports, token)
 		p.mu.Unlock()
-		p.emit(appui.Event{Message: fmt.Sprintf("imported %d connections, skipped %d", len(b.Connections), skipped)})
+		p.emit(appui.Event{Message: fmt.Sprintf("已导入 %d 个连接，跳过 %d 个", len(b.Connections), skipped)})
 		return nil
 	})
 }
@@ -704,7 +704,7 @@ func (p *Platform) ExportConnections(file string, password *string, ids []string
 		if closeErr != nil {
 			return closeErr
 		}
-		p.emit(appui.Event{Message: fmt.Sprintf("exported %d connections", len(entries))})
+		p.emit(appui.Event{Message: fmt.Sprintf("已导出 %d 个连接", len(entries))})
 		return nil
 	})
 }

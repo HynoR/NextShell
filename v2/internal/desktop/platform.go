@@ -17,6 +17,7 @@ import (
 	"nextshell.dev/v2/internal/transfer"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -172,22 +173,28 @@ func (p *Platform) ask(title string, questions []string, echo []bool) ([]string,
 	return p.askContext(p.ctx, title, questions, echo)
 }
 func (p *Platform) askContext(ctx context.Context, title string, questions []string, echo []bool) ([]string, error) {
+	return p.prompt(ctx, &appui.Prompt{Title: title, Questions: questions, Echo: echo})
+}
+
+// prompt shows req and waits for the answer; a nil answer cancels.
+func (p *Platform) prompt(ctx context.Context, req *appui.Prompt) ([]string, error) {
 	done := make(chan struct{})
 	defer func() { close(done); p.emit(appui.Event{}) }()
-	req := &appui.Prompt{Done: done, Title: title, Questions: questions, Echo: echo, Answers: make(chan []string, 1)}
+	req.Done = done
+	req.Answers = make(chan []string, 1)
 	p.emit(appui.Event{Prompt: req})
 	t := time.NewTimer(2 * time.Minute)
 	defer t.Stop()
 	select {
 	case a := <-req.Answers:
-		if len(a) != len(questions) {
-			return nil, errors.New("用户取消认证")
+		if a == nil || len(a) != len(req.Questions) {
+			return nil, errors.New("已取消")
 		}
 		return a, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-t.C:
-		return nil, errors.New("认证提示超时")
+		return nil, errors.New("等待输入超时")
 	}
 }
 func (p *Platform) launch(fn func()) {
@@ -203,7 +210,7 @@ func (p *Platform) launch(fn func()) {
 func (p *Platform) Connect(c model.Connection) {
 	p.launch(func() {
 		if e := p.connect(c, ""); e != nil {
-			p.emit(appui.Event{Message: e.Error()})
+			p.emit(appui.Event{Message: e.Error(), Failed: c.ID})
 		}
 	})
 }
@@ -211,13 +218,27 @@ func (p *Platform) connect(c model.Connection, replace string) error {
 	return p.connectContext(p.ctx, c, replace)
 }
 func (p *Platform) connectContext(ctx context.Context, c model.Connection, replace string) error {
+	var stored model.Connection
 	if c.ID != "" {
-		stored, e := p.store.Connection(c.ID)
-		if e != nil {
+		var e error
+		if stored, e = p.store.Connection(c.ID); e != nil {
 			return e
 		}
 		if c.Secret == "" {
 			c.Secret = stored.Secret
+		}
+	}
+	if c.Auth == "password" && c.Secret == "" {
+		req := &appui.Prompt{Kind: appui.PromptPassword, Title: "输入密码", Host: c.User + "@" + c.Address(), Questions: []string{"密码"}, Echo: []bool{false}, CanRemember: c.ID != ""}
+		a, e := p.prompt(ctx, req)
+		if e != nil {
+			return e
+		}
+		c.Secret = a[0]
+		if req.Remember && c.ID != "" {
+			if e := p.store.SaveConnection(stored, &c.Secret); e != nil {
+				return e
+			}
 		}
 	}
 	var k model.Key
@@ -237,6 +258,7 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		pr = &a
 	}
 	keepalive := effectiveKeepalive(c, p.Preferences())
+	explicitPin := c.Fingerprint != ""
 	if c.Fingerprint == "" {
 		pin, err := p.store.HostPin(c.Address())
 		if err != nil {
@@ -257,16 +279,12 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 			}
 			return nil
 		}
-		a, e := p.askContext(ctx, "核对服务器指纹后输入 TRUST", []string{addr + "\n" + fp}, []bool{true})
-		if e != nil {
-			return e
-		}
-		if a[0] != "TRUST" {
+		if _, e := p.prompt(ctx, &appui.Prompt{Kind: appui.PromptHostKey, Title: "首次连接，请核对主机指纹", Host: addr, Fingerprint: fp}); e != nil {
 			return errors.New("未信任主机")
 		}
 		return p.store.PinHost(addr, fp)
 	}, Keyboard: func(user, instruction string, questions []string, echo []bool) ([]string, error) {
-		return p.askContext(ctx, "SSH "+user+" "+instruction, questions, echo)
+		return p.askContext(ctx, strings.TrimSpace("服务器验证 "+user+" "+instruction), questions, echo)
 	}}
 	if c.UseKnownHosts {
 		home, err := os.UserHomeDir()
@@ -276,6 +294,24 @@ func (p *Platform) connectContext(ctx context.Context, c model.Connection, repla
 		o.KnownHostsFile = filepath.Join(home, ".ssh", "known_hosts")
 	}
 	s, e := sshclient.Dial(ctx, o)
+	var changed *sshclient.HostKeyError
+	if errors.As(e, &changed) && changed.Changed {
+		// The user compares both keys; only an explicit confirmation replaces the pin.
+		if _, err := p.prompt(ctx, &appui.Prompt{Kind: appui.PromptHostKeyChanged, Title: "主机指纹已变化", Host: changed.Address, Fingerprint: changed.Fingerprint, OldFingerprint: c.Fingerprint}); err != nil {
+			return e
+		}
+		if err := p.store.ReplaceHostPin(changed.Address, changed.Fingerprint); err != nil {
+			return err
+		}
+		if explicitPin && c.ID != "" {
+			stored.Fingerprint = changed.Fingerprint
+			if err := p.store.SaveConnection(stored, nil); err != nil {
+				return err
+			}
+		}
+		o.Connection.Fingerprint = changed.Fingerprint
+		s, e = sshclient.Dial(ctx, o)
+	}
 	if e != nil {
 		return e
 	}
@@ -431,11 +467,11 @@ func (p *Platform) Send(id, text string) error {
 	t := p.sessions[id]
 	p.mu.Unlock()
 	if t == nil {
-		return errors.New("session closed")
+		return errors.New("会话已关闭")
 	}
 	select {
 	case <-t.Done():
-		return errors.New("session exited")
+		return errors.New("会话已退出")
 	default:
 	}
 	t.Send([]byte(text))

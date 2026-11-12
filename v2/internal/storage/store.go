@@ -373,6 +373,13 @@ func (s *Store) PinHost(address, fp string) error {
 	}
 	return nil
 }
+// ReplaceHostPin overwrites a pin after the user confirmed a changed host key.
+func (s *Store) ReplaceHostPin(address, fp string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, e := s.db.Exec("INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "host:"+address, fp)
+	return e
+}
 func (s *Store) HostPin(address string) (string, error) {
 	var fp string
 	e := s.db.QueryRow("SELECT value FROM app_settings WHERE key=?", "host:"+address).Scan(&fp)

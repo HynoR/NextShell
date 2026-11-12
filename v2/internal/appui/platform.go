@@ -21,13 +21,26 @@ type Session struct {
 	Connection  model.Connection
 	Local       bool
 }
+// Prompt asks the user something during a connection. Kind selects the dialog:
+// "" (server questions), PromptPassword, PromptHostKey or PromptHostKeyChanged.
+// A nil answer cancels; Remember is set before answering and read after.
 type Prompt struct {
-	Title     string
-	Questions []string
-	Echo      []bool
-	Answers   chan []string
-	Done      <-chan struct{}
+	Kind, Host                  string
+	Fingerprint, OldFingerprint string
+	CanRemember, Remember       bool
+	Title                       string
+	Questions                   []string
+	Echo                        []bool
+	Answers                     chan []string
+	Done                        <-chan struct{}
 }
+
+const (
+	PromptPassword       = "password"
+	PromptHostKey        = "host-key"
+	PromptHostKeyChanged = "host-key-changed"
+)
+
 type DiagnosticResult struct{ ID, Kind, Text string }
 type Event struct {
 	Link                 string
@@ -39,6 +52,7 @@ type Event struct {
 	Import               *ImportPreview
 	ShellMark            *PromptEvent // reserved: no producer while OSC 133 waits on upstream
 	Session              *Session
+	Failed               string // ID of the saved connection whose connect failed
 	Message              string
 	Prompt               *Prompt
 }
