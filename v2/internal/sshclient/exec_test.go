@@ -33,6 +33,7 @@ func sessionWith(t *testing.T, encoding string) (*sshclient.Session, *testutil.S
 // sshd keeps a command alive after its channel closes, so Run must not wait for the remote:
 // it asks the server to kill the command and returns when the context ends.
 func TestRunReturnsWhenTheContextEnds(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	s, server := session(t)
 	for name, cancel := range map[string]func(context.Context) (context.Context, context.CancelFunc){
 		"timeout": func(c context.Context) (context.Context, context.CancelFunc) {
@@ -73,6 +74,7 @@ func TestRunReturnsWhenTheContextEnds(t *testing.T) {
 }
 
 func TestRunStillReturnsOutputAndExitStatus(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	s, _ := session(t)
 	var out, stderr bytes.Buffer
 	e := s.Run(context.Background(), "echo out; echo err >&2; exit 3", nil, &out, &stderr)
@@ -85,6 +87,7 @@ func TestRunStillReturnsOutputAndExitStatus(t *testing.T) {
 }
 
 func TestRunTextUsesTheHostEncoding(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	for _, tc := range []struct{ encoding, text, wire string }{
 		{"gbk", "中文", "d6d0cec4"},
 		{"big5", "中文", "a4a4a4e5"},
@@ -118,6 +121,7 @@ func TestRunTextUsesTheHostEncoding(t *testing.T) {
 }
 
 func TestRunTextDecodesAcrossWritesAndMarksInvalidBytes(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
 	s, _ := sessionWith(t, "gbk")
 	var out bytes.Buffer
 	// the first byte of a two-byte character is flushed alone, then 0xff (invalid) ends the output
