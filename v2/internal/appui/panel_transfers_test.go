@@ -52,7 +52,8 @@ func TestFailedTransfersTakeTheStripBadgeAndLeadTheList(t *testing.T) {
 	}
 	click(t, tt, "清除失败项")
 	has(t, tt, "已清除 2 个任务")
-	if tt.HasText("权限不足") || tt.HasText("清除失败项") {
+	// The failure toast may still be up and name the reason; the list entry itself must be gone.
+	if tt.HasText("上传 config.yaml → /etc/app") || tt.HasText("清除失败项") {
 		t.Fatal("cleared entries are still listed", tt.Texts())
 	}
 	click(t, tt, "收起活动栏")
