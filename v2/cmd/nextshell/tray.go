@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/model"
 )
 
 // trayIcon is what the host asks of a tray icon; *mygo.Tray is one, and a test uses another.
@@ -79,6 +80,18 @@ func (t *tray) Sync() {
 		t.icon.Destroy()
 		t.icon = nil
 	}
+}
+
+// wantsSingleInstance is whether this launch takes the single-instance lock: a tray option is on, so the
+// window may be hidden, and the profile is the real one. A launch with --db is a trial and runs beside it.
+func wantsSingleInstance(prefs model.Preferences, o options) bool {
+	return (prefs.MinimizeToTray || prefs.CloseToTray) && o.db == ""
+}
+
+// secondInstance is what a later launch does to this one, which holds the lock: show the window as the tray's
+// 显示窗口 does. The launch calls from another goroutine, so run puts it on the main thread.
+func (t *tray) secondInstance(run func(func())) func([]string, string) {
+	return func([]string, string) { run(func() { t.show() }) }
 }
 
 // Hides is whether the window may hide for the preference on: there is an icon to bring it back.
