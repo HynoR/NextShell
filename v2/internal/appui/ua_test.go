@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/model"
 )
 
@@ -95,4 +96,99 @@ func TestUnsavedCloseDefaultsToCancel(t *testing.T) {
 	if len(a.Tabs) != 0 {
 		t.Fatal("Enter no longer confirms a plain close", len(a.Tabs))
 	}
+}
+
+// The command bar names its target and keeps a line for each tab: a command typed for one server is never
+// sent to the next tab's, and it is still there when the tab comes back.
+func TestCommandBarKeepsALinePerSessionAndNamesItsTarget(t *testing.T) {
+	a, p, tt := fixture(t)
+	session(t, p, tt, "A", "prod-web-01", remoteHost("a"))
+	session(t, p, tt, "B", "db-master", remoteHost("b"))
+	has(t, tt, "→ db-master")
+	click(t, tt, "命令输入")
+	tt.Type("systemctl restart nginx")
+	click(t, tt, "prod-web-01")
+	has(t, tt, "→ prod-web-01")
+	if tt.HasText("→ db-master") {
+		t.Fatal("the bar still names the previous tab")
+	}
+	inputIs(t, tt, "")
+	click(t, tt, "命令输入")
+	tt.Type("uptime")
+	click(t, tt, "db-master")
+	inputIs(t, tt, "systemctl restart nginx")
+	click(t, tt, "命令输入")
+	tt.Key(0, ui.KeyEnter)
+	if len(p.sent) != 1 || p.sent[0] != "systemctl restart nginx" {
+		t.Fatal("sent", p.sent)
+	}
+	inputIs(t, tt, "")
+	click(t, tt, "prod-web-01")
+	inputIs(t, tt, "uptime")
+	// A reconnect keeps the line with its tab; closing the tab drops it.
+	p.events = append(p.events, appui.Event{Session: &appui.Session{ID: "A2", Replaces: "A", Terminal: newTerminal(t, "$ "), Connection: remoteHost("a")}})
+	tt.Frame()
+	inputIs(t, tt, "uptime")
+	click(t, tt, "db-master")
+	click(t, tt, "关闭标签 prod-web-01")
+	click(t, tt, "断开并关闭")
+	session(t, p, tt, "C", "cache-01", remoteHost("c"))
+	inputIs(t, tt, "")
+	if len(a.Tabs) != 2 {
+		t.Fatal(len(a.Tabs))
+	}
+}
+
+// A multi-line snippet cannot go into the bar: clicking it says where to send it, and what was typed stays.
+func TestMultiLineSnippetClickSaysWhereToSend(t *testing.T) {
+	p := newPlatform(t)
+	if e := p.SaveCommand(model.Command{ID: p.NewID(), Name: "部署", Group: "默认", Text: "cd /srv\n./deploy.sh"}); e != nil {
+		t.Fatal(e)
+	}
+	_, tt := start(p)
+	session(t, p, tt, "A", "prod", remoteHost("a"))
+	click(t, tt, "命令输入")
+	tt.Type("ls")
+	click(t, tt, "命令库")
+	click(t, tt, "片段 部署")
+	tt.Frame()
+	has(t, tt, "多行片段请点 ▶ 发送")
+	inputIs(t, tt, "ls")
+}
+
+// A session that has ended shows it in the bar: Return reconnects instead of sending; a shortcut moves the
+// keyboard into the bar and Esc gives it back to the terminal.
+func TestCommandBarOnAnEndedSessionAndKeyboardHandOff(t *testing.T) {
+	_, p, tt := fixture(t)
+	s := session(t, p, tt, "x", "gone", remoteHost("gone"))
+	tt.Key(appMod(), ui.KeyL)
+	tt.Type("hi")
+	inputIs(t, tt, "hi")
+	tt.Key(0, ui.KeyEscape)
+	tt.Type("there")
+	inputIs(t, tt, "hi") // the terminal has the keys again
+	s.Terminal.Close()
+	<-s.Terminal.Done()
+	tt.Frame()
+	if got := barPlaceholder(tt); got != "连接已断开，回车重新连接" {
+		t.Fatal("placeholder", got)
+	}
+	if e := tt.Click("发送"); e == nil && len(p.sent) != 0 {
+		t.Fatal("sent to an ended session", p.sent)
+	}
+	click(t, tt, "命令输入")
+	tt.Key(0, ui.KeyEnter)
+	if p.reconnected != 1 || len(p.sent) != 0 {
+		t.Fatal("Return on an ended session", p.reconnected, p.sent)
+	}
+	inputIs(t, tt, "hi") // the line waits for the new session
+}
+
+func barPlaceholder(tt *ui.Tester) string {
+	for _, v := range tt.AccessAll() {
+		if v.Name == "命令输入" && v.Role == ui.RoleTextField {
+			return v.Placeholder
+		}
+	}
+	return ""
 }

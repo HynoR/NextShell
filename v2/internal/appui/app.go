@@ -414,6 +414,7 @@ func (a *App) addSession(s *Session) {
 			s.Title = old.Title
 			s.ManualTitle = old.ManualTitle
 			delete(a.tabs.started, old.ID)
+			a.cmdbar.rehome(old.ID, s.ID)
 			a.rehome(old, s)
 			a.Tabs[i] = s
 			a.Active = i
@@ -459,6 +460,9 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	if key(ui.KeyO) {
 		a.openManager()
+	}
+	if key(ui.KeyL) && a.current() != nil && a.activeTool() == nil && a.activeEditor() == nil {
+		a.cmdbar.focus = true // the command bar takes the keyboard in this frame; Esc in it goes back to the terminal
 	}
 	for _, v := range []struct {
 		key   ui.Key

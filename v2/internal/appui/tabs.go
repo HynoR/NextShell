@@ -385,6 +385,7 @@ func (a *App) closeTab(i int) {
 		a.cancelConnect(host) // its reconnect would otherwise open a new tab
 	}
 	delete(a.tabs.started, id)
+	a.cmdbar.forget(id)
 	a.P.CloseSession(id)
 	a.Tabs = append(a.Tabs[:i], a.Tabs[i+1:]...)
 	switch {
