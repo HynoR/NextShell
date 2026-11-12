@@ -1,7 +1,6 @@
 package appui
 
 import (
-	"fmt"
 	"runtime"
 	"sort"
 	"strings"
@@ -57,6 +56,8 @@ type App struct {
 	settings settingsState
 	dialogs  dialogState
 	agent    agentUI
+	// transfers tells which transfers finished since the last frame, for their toasts.
+	transfers transferWatch
 
 	actions []func()
 	// toasts waits per window until that window's view builds and shows them;
@@ -133,7 +134,7 @@ func (a *App) later(fn func()) { a.actions = append(a.actions, fn) }
 
 func (a *App) toast(msg string) {
 	a.log(msg)
-	a.addToast(ui.Toast{Title: msg, Timeout: 3 * time.Second})
+	a.addToast(ui.Toast{Title: msg, Timeout: toastTimeout(msg, 3*time.Second)})
 }
 
 // addToast queues t for the window being built, or the one the code runs for.
@@ -294,6 +295,7 @@ func (a *App) View(c *ui.Context) {
 			}
 		}
 	}
+	a.notifyTransfers()
 	a.restoreTabs()
 	a.refreshTitles()
 	a.shortcuts(c)
@@ -357,9 +359,11 @@ func (a *App) poll() bool {
 		if e.ShellHook != nil && e.ShellHook.Err != nil {
 			a.log("Shell 集成未启用：" + e.ShellHook.Err.Error())
 		}
+		// A password the user declined to give is no failure: nothing to report, no red mark.
+		declined := e.Host != "" && strings.Contains(e.Message, "已取消")
 		if e.Failed != "" {
 			delete(a.hosts.connecting, e.Failed)
-			a.hosts.failed[e.Failed] = true
+			a.hosts.failed[e.Failed] = !declined
 		}
 		if e.AuthFailed { // the retry dialog says why and offers the fix
 			a.reload()
@@ -368,11 +372,14 @@ func (a *App) poll() bool {
 		} else if e.Message != "" {
 			a.reload()
 			show := func() {
-				if e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof") {
-					a.failAs("代理连接被关闭", e.Message)
-				} else if _, known := humanize(e.Message); e.Failed != "" || known {
-					a.fail(fmt.Errorf("%s", e.Message))
-				} else {
+				title, known := humanize(e.Message)
+				switch {
+				case declined:
+				case e.Failed != "" && a.viaProxy(e.Failed) && strings.Contains(strings.ToLower(e.Message), "handshake failed: eof"):
+					a.failAs(connectTitle(e.Host, "代理连接被关闭"), e.Message)
+				case e.Host != "" || e.Failed != "" || known:
+					a.failAs(connectTitle(e.Host, title), e.Message)
+				default:
 					a.toast(e.Message)
 				}
 			}

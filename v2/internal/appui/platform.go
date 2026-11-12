@@ -67,6 +67,7 @@ type Event struct {
 	ShellHook            *ShellHookResult
 	Session              *Session
 	Failed               string // ID of the saved connection whose connect failed
+	Host                 string // the name of the connection whose connect failed, for the toast; set with Message
 	AuthFailed           bool   // Failed was refused its login (or has no key): the user may fix it and retry
 	Message              string
 	ForEditor            bool // Message answers an action of the remote editor, so it belongs in that window

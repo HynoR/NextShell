@@ -321,9 +321,19 @@ func (p *Platform) launch(fn func()) {
 func (p *Platform) Connect(c model.Connection) {
 	p.launch(func() {
 		if e := p.connect(c, ""); e != nil {
-			p.emit(appui.Event{Message: e.Error(), Failed: c.ID, AuthFailed: c.ID != "" && authFailed(e)})
+			p.emit(connectFailure(c, e))
 		}
 	})
+}
+
+// connectFailure is the event of a connect that failed: Host names the connection (a quick connect has no
+// saved name, only the text it was typed as) for the toast.
+func connectFailure(c model.Connection, e error) appui.Event {
+	host := c.Name
+	if host == "" {
+		host = c.Host
+	}
+	return appui.Event{Message: e.Error(), Failed: c.ID, Host: host, AuthFailed: c.ID != "" && authFailed(e)}
 }
 
 // authFailed reports a login the server refused, or one without its key: other details could fix it.
@@ -626,7 +636,7 @@ func (p *Platform) Reconnect(old *appui.Session) {
 				c = old.Connection
 			}
 			if e := p.connect(c, old.ID); e != nil {
-				p.emit(appui.Event{Message: e.Error(), Failed: old.Connection.ID, AuthFailed: old.Connection.ID != "" && authFailed(e)})
+				p.emit(connectFailure(old.Connection, e))
 			}
 			return
 		}

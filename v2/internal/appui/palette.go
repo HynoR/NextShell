@@ -57,6 +57,10 @@ func (a *App) paletteItems() []paletteItem {
 			out = append(out, paletteItem{"连接", "连接 " + q, "密码会在随后的对话框里询问", func(ui.Modifiers) { a.connect(cc) }})
 		}
 	}
+	// An open tab comes before the host it is a session of, so Enter switches to it instead of opening another.
+	for i, s := range a.Tabs {
+		add("标签", s.Title, a.tabTooltip(s), s.Connection.Name+" "+s.Connection.Host, func(ui.Modifiers) { a.activateTab(i) })
+	}
 	limit := 0
 	for _, cc := range a.hosts.recentHosts(a, len(a.Data.Connections)) {
 		if limit >= 30 {
@@ -72,9 +76,6 @@ func (a *App) paletteItems() []paletteItem {
 		if len(out) > before {
 			limit++
 		}
-	}
-	for i, s := range a.Tabs {
-		add("标签", s.Title, a.tabTooltip(s), "", func(ui.Modifiers) { a.activateTab(i) })
 	}
 	for _, v := range a.Data.Commands {
 		add("命令片段", v.Name, firstLine(v.Text), v.Group+" "+v.Description+" "+v.Text, func(mods ui.Modifiers) { a.runSnippet(v, mods&ui.Alt != 0) })
@@ -141,9 +142,26 @@ func (a *App) paletteItems() []paletteItem {
 		}
 	}
 	for _, v := range actions {
-		add("操作", v.title, "", "", func(ui.Modifiers) { v.run() })
+		add("操作", v.title, actionKeys[v.title], "", func(ui.Modifiers) { v.run() })
 	}
 	return out
+}
+
+// actionKeys are the shortcuts the palette shows beside the actions that have one. The letters take appMod
+// (⌘ on macOS, Ctrl+Shift elsewhere: a plain Ctrl+letter belongs to the shell); the comma takes ⌘ or Ctrl.
+var actionKeys = map[string]string{
+	"打开本地终端":       appShortcutLabel("T"),
+	"连接管理器":        appShortcutLabel("O"),
+	"打开设置":         shortcutLabel(","),
+	"显示 / 隐藏左栏":    appShortcutLabel("B"),
+	"显示 / 隐藏底部工作区": appShortcutLabel("J"),
+}
+
+func appShortcutLabel(key string) string {
+	if appMod == ui.Cmd {
+		return shortcutLabel(key)
+	}
+	return "Ctrl+Shift+" + key
 }
 
 func (a *App) toggleAppearance() {

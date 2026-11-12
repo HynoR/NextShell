@@ -9,7 +9,8 @@ import (
 
 type welcomeState struct{ quick string }
 
-// quickConnect connects to a saved host by name, or to user@host[:port].
+// quickConnect connects to a saved host by name, or to user@host[:port]. Other text is looked for in the
+// saved hosts' names and addresses: one match connects, anything else opens the command palette on it.
 func (a *App) quickConnect(text string) bool {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -21,6 +22,21 @@ func (a *App) quickConnect(text string) bool {
 			return true
 		}
 	}
+	if !strings.Contains(text, "@") {
+		var found []model.Connection
+		for _, cc := range a.Data.Connections {
+			if !cc.Deleted && (containsFold(cc.Name, text) || containsFold(cc.Host, text)) {
+				found = append(found, cc)
+			}
+		}
+		if len(found) == 1 {
+			a.connect(found[0])
+		} else {
+			a.palette.show()
+			a.palette.query = text
+		}
+		return true
+	}
 	cc, e := model.QuickConnect(text)
 	if e != nil {
 		a.fail(e)
@@ -28,6 +44,10 @@ func (a *App) quickConnect(text string) bool {
 	}
 	a.connect(cc)
 	return true
+}
+
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 }
 
 func (a *App) welcomeView(c *ui.Context) {
@@ -63,10 +83,11 @@ func (a *App) welcomeView(c *ui.Context) {
 					})
 				}
 				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, "+ 新建主机").Clicked() {
+					// With no hosts the guide cards above already offer 新建 and 导入.
+					if len(hosts) > 0 && ui.Button(c, "+ 新建主机").Clicked() {
 						a.newHost("")
 					}
-					if ui.Button(c, "导入…").Clicked() {
+					if len(hosts) > 0 && ui.Button(c, "导入…").Clicked() {
 						a.openImport("")
 					}
 					if ui.Button(c, "打开本地终端").Clicked() {

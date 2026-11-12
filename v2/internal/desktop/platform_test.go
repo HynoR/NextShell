@@ -357,3 +357,19 @@ func TestDesktopSSHWrongPasswordAsksAgainAtMostThreeTimes(t *testing.T) {
 		t.Fatal("third failure did not end the attempt", ev)
 	}
 }
+
+// A failed connect names the connection for the toast: a saved host by its name, a quick connect by the text typed.
+func TestConnectFailureNamesTheConnection(t *testing.T) {
+	e := errors.New("unable to authenticate")
+	got := connectFailure(model.Connection{ID: "h1", Name: "prod-web-01", Host: "10.0.0.1"}, e)
+	if got.Host != "prod-web-01" || got.Failed != "h1" || got.Message != e.Error() || !got.AuthFailed {
+		t.Fatalf("%+v", got)
+	}
+	got = connectFailure(model.Connection{Name: "root@10.0.0.5", Host: "10.0.0.5"}, errors.New("connection refused"))
+	if got.Host != "root@10.0.0.5" || got.Failed != "" || got.AuthFailed {
+		t.Fatalf("%+v", got)
+	}
+	if got = connectFailure(model.Connection{ID: "h2", Host: "10.0.0.6"}, errors.New("connection refused")); got.Host != "10.0.0.6" {
+		t.Fatal("a host without a name is shown by its address", got.Host)
+	}
+}
