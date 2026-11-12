@@ -67,7 +67,11 @@ func main() {
 			settings.Focus()
 			return
 		}
-		settings = mygo.NewWindow(mygo.WindowOptions{Title: "设置", Width: 880, Height: 640, MinWidth: 680, MinHeight: 440, StateKey: "settings", Content: ui.View(a.SettingsView)})
+		settings = mygo.NewWindow(mygo.WindowOptions{Title: "设置", Width: 880, Height: 640, MinWidth: 680, MinHeight: 440, StateKey: "settings", Content: ui.View(closeOnCmdW(a.SettingsView, func() {
+			if settings != nil {
+				settings.Close()
+			}
+		}))})
 		settings.OnClosed(func() { settings = nil })
 	}
 	a.PickFiles = func(o appui.FilePick, done func([]string)) {
@@ -96,7 +100,11 @@ func main() {
 			editor.Focus()
 			return
 		}
-		editor = mygo.NewWindow(mygo.WindowOptions{Title: "远程编辑器", Width: 960, Height: 700, MinWidth: 560, MinHeight: 360, StateKey: "editor", Content: ui.View(a.EditorView)})
+		editor = mygo.NewWindow(mygo.WindowOptions{Title: "远程编辑器", Width: 960, Height: 700, MinWidth: 560, MinHeight: 360, StateKey: "editor", Content: ui.View(closeOnCmdW(a.EditorView, func() {
+			if editor != nil {
+				editor.Close()
+			}
+		}))})
 		editor.OnClose(func(e *mygo.CloseEvent) {
 			if !end.Terminating() && !a.EditorMayClose() {
 				e.PreventDefault()
@@ -148,6 +156,7 @@ func main() {
 			if !end.Terminating() && a.ExitNeedsConfirm() {
 				e.PreventDefault()
 				a.ConfirmExit = true
+				go mygo.RunOnMain(func() { bringForward(w) })
 				p.Invalidate()
 			}
 		})
