@@ -349,6 +349,46 @@ func TestSSHSetupTimeout(t *testing.T) {
 		t.Fatal("setup hung")
 	}
 }
+
+// Time a person spends answering a host-key or one-time-code dialog is not the network's: it must not eat
+// the connection timeout, or the handshake dies under a dialog that is still open.
+func TestSSHDialTimeoutDoesNotCountPrompts(t *testing.T) {
+	for _, mode := range []string{"host key", "keyboard-interactive"} {
+		t.Run(mode, func(t *testing.T) {
+			srv := newServer(t, false, false)
+			o := srv.options()
+			o.Timeout = 300 * time.Millisecond
+			answers := 0
+			think := func() { answers++; time.Sleep(900 * time.Millisecond) }
+			if mode == "host key" {
+				o.Connection.Fingerprint = ""
+				o.HostKey = func(address, fp string) error { think(); return nil }
+			} else {
+				o.Connection.Auth = "keyboard"
+				o.Keyboard = func(user, instruction string, q []string, echo []bool) ([]string, error) {
+					think()
+					return []string{"123456", "tester"}, nil
+				}
+			}
+			s, e := Dial(context.Background(), o)
+			if e != nil || answers != 1 {
+				t.Fatal(e, answers)
+			}
+			s.Close()
+		})
+	}
+	// The budget still bounds everything else, and the error says so the way it always did.
+	srv := newServer(t, false, true)
+	o := srv.options()
+	o.Timeout = 150 * time.Millisecond
+	o.Connection.Fingerprint = ""
+	o.HostKey = func(string, string) error { time.Sleep(400 * time.Millisecond); return nil }
+	start := time.Now()
+	_, e := Dial(context.Background(), o)
+	if e == nil || !strings.Contains(e.Error(), "i/o timeout") || !errors.Is(e, context.DeadlineExceeded) || time.Since(start) > 2*time.Second {
+		t.Fatal(e, time.Since(start))
+	}
+}
 func TestSSHKeepalive(t *testing.T) {
 	for _, noReply := range []bool{false, true} {
 		t.Run(fmt.Sprint("silent=", noReply), func(t *testing.T) {

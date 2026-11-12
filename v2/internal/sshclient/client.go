@@ -147,7 +147,10 @@ func (s *Session) Close() error {
 }
 func (s *Session) Done() <-chan struct{} { return s.done }
 func (s *Session) WaitError() error      { s.waitMu.Lock(); defer s.waitMu.Unlock(); return s.waitErr }
-func Dial(ctx context.Context, o Options) (*Session, error) {
+
+// Dial connects and opens the interactive shell. Timeout bounds the network work: the time spent in
+// the HostKey and Keyboard callbacks, where a person answers a dialog, does not count against it.
+func Dial(ctx context.Context, o Options) (s *Session, err error) {
 	c := o.Connection
 	if e := c.Validate(); e != nil {
 		return nil, e
@@ -158,8 +161,21 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 	if o.KeepaliveTimeout <= 0 {
 		o.KeepaliveTimeout = o.Timeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
-	defer cancel()
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	left, resumed := o.Timeout, time.Now()
+	budget := time.AfterFunc(left, func() { cancel(context.DeadlineExceeded) })
+	defer budget.Stop()
+	defer func() {
+		if err != nil && errors.Is(context.Cause(ctx), context.DeadlineExceeded) {
+			err = fmt.Errorf("ssh: connecting to %s: i/o timeout: %w", c.Address(), context.DeadlineExceeded)
+		}
+	}()
+	asking := func() func() { // the budget stands still while a person answers
+		budget.Stop()
+		left -= time.Since(resumed)
+		return func() { resumed = time.Now(); budget.Reset(max(left, time.Millisecond)) }
+	}
 	var auth []ssh.AuthMethod
 	var agentConn net.Conn
 	switch c.Auth {
@@ -196,7 +212,10 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 		if o.Keyboard == nil {
 			return nil, errors.New("keyboard-interactive 需要提示处理器")
 		}
-		auth = append(auth, ssh.KeyboardInteractive(o.Keyboard))
+		auth = append(auth, ssh.KeyboardInteractive(func(user, instruction string, questions []string, echo []bool) ([]string, error) {
+			defer asking()()
+			return o.Keyboard(user, instruction, questions, echo)
+		}))
 	}
 	var known ssh.HostKeyCallback
 	if o.KnownHostsFile != "" && c.Fingerprint == "" {
@@ -227,14 +246,13 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 		if o.HostKey == nil {
 			return &HostKeyError{c.Address(), fp, false}
 		}
+		defer asking()()
 		return o.HostKey(c.Address(), fp)
 	}}
 	conn, e := dialTransport(ctx, c.Address(), o.Proxy)
 	if e != nil {
 		return nil, e
 	}
-	deadline, _ := ctx.Deadline()
-	conn.SetDeadline(deadline)
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	cc, chans, reqs, e := ssh.NewClientConn(conn, c.Address(), cfg)
 	defer stop()
@@ -271,8 +289,7 @@ func Dial(ctx context.Context, o Options) (*Session, error) {
 		client.Close()
 		return nil, e
 	}
-	conn.SetDeadline(time.Time{})
-	s := &Session{client: client, session: ss, in: in, out: r, pipe: r, done: make(chan struct{})}
+	s = &Session{client: client, session: ss, in: in, out: r, pipe: r, done: make(chan struct{})}
 	if enc := Encoding(c.Encoding); enc != nil {
 		s.enc = enc
 		s.out = transform.NewReader(r, enc.NewDecoder())
