@@ -13,6 +13,8 @@ cd v2 && go tool mygo build -skip-dmg    # -> dist/darwin-arm64/NextShell.app(�
 
 把 `NextShell.app` 拖进 `/Applications`。本机构建的应用是 ad-hoc 签名且没有隔离属性,直接双击即可。若是经 AirDrop/下载拷来的,首次需右键 → 打开(或 `xattr -dr com.apple.quarantine /Applications/NextShell.app`)。
 
+Cmd+W:主窗口关当前标签,设置/远程编辑器窗口关自己(菜单里没有 Close Window,否则菜单会截走主窗口的 Cmd+W)。需要退出确认时应用会请求前置;若在后台(如 Dock → Quit),macOS 14+ 可能不允许应用自行激活,此时 Dock 图标持续跳动,点开即见确认框。
+
 试用不碰真实数据:`open -n dist/darwin-arm64/NextShell.app --args --db /tmp/try/t.db`。
 
 ## DMG
