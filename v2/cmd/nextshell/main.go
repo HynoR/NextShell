@@ -51,6 +51,12 @@ func main() {
 		log.Fatal(e)
 	}
 	a := appui.New(p)
+	end := &shutdown{cleanup: func() {
+		if !opts.smoke {
+			a.SaveOpenTabs() // before the store closes
+		}
+		p.Shutdown()
+	}}
 	p.SetQuit(func() { mygo.App.Quit() })
 	var settings *mygo.Window
 	a.ShowSettings = func() {
@@ -90,7 +96,7 @@ func main() {
 		}
 		editor = mygo.NewWindow(mygo.WindowOptions{Title: "远程编辑器", Width: 960, Height: 700, MinWidth: 560, MinHeight: 360, StateKey: "editor", Content: ui.View(a.EditorView)})
 		editor.OnClose(func(e *mygo.CloseEvent) {
-			if !a.EditorMayClose() {
+			if !end.Terminating() && !a.EditorMayClose() {
 				e.PreventDefault()
 				p.Invalidate()
 			}
@@ -105,10 +111,25 @@ func main() {
 			}
 		})
 	}
+	// mygo turns SIGINT/SIGTERM into App.Quit, which asks for confirmation when sessions are open and,
+	// answered by nobody, never exits. This process hears the signal too, and its own quit does not ask.
+	end.Watch(notify(), func() {
+		mygo.RunOnMain(func() {
+			a.ExitConfirmed, a.ConfirmExit = true, false
+			mygo.App.Quit()
+		})
+	}, 10*time.Second, os.Exit)
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		if e.SessionEnding { // logout, restart, shutdown: cannot be cancelled and cannot wait for a dialog
+			end.terminating.Store(true)
+		}
+	})
+	// OnQuit is the last hook the OS session's end leaves time for; Run may never return then.
+	mygo.App.OnQuit(end.Finish)
 	mygo.App.WhenReady(func() {
 		w := mygo.NewWindow(mygo.WindowOptions{Title: "NextShell", Width: 1280, Height: 820, MinWidth: 900, MinHeight: 560, TitleBarStyle: mygo.TitleBarHidden, TrafficLightPosition: &mygo.Point{X: 14, Y: 13}, Page: mygo.PageOptions{DevTools: devToolsMode()}, Content: ui.View(a.View)})
 		w.OnClose(func(e *mygo.CloseEvent) {
-			if a.ExitNeedsConfirm() {
+			if !end.Terminating() && a.ExitNeedsConfirm() {
 				e.PreventDefault()
 				a.ConfirmExit = true
 				p.Invalidate()
@@ -122,9 +143,7 @@ func main() {
 		}
 	})
 	e = mygo.App.Run()
-	if !opts.smoke {
-		a.SaveOpenTabs()
-	}
+	end.Finish()
 	if e != nil {
 		log.Fatal(e)
 	}
