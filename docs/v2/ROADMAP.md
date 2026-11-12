@@ -87,7 +87,8 @@ mygo 自带签名、公证、DMG、NSIS、更新(见 mygo `docs/distribution.md`
 
 - SSH agent forwarding、ProxyJump(随 M6 跳板机)
 - 跨服务器目录复制每个文件约 9 个往返,高延迟下慢;可改为两端都有 tar 时走打包流
-- mygo 上游 issue:终端插件公开 OSC 133 事件;拖出文件支持 file promise;`SidebarSection` 标题可拖拽
+- mygo 上游 issue:终端插件公开 OSC 133 事件和 `AltScreen()`(目前从 SSH 输出里跟踪 DEC 模式 1049/1047/47,本地 shell 标签拿不到);拖出文件支持 file promise;`SidebarSection` 标题可拖拽
+- go-sdk(现 v1.8.0)只在协议版本 ≥ 2026-07-28 时把 HTTP 请求取消传给工具处理函数:客户端直接断开 HTTP 连接不会取消正在运行的 `exec`,只能用 `notifications/cancelled` 或 `timeoutSec`(已写进 `exec` 工具描述和 SKILL.md)。升级 SDK 后重新验证,不打补丁
 - 应用被强杀时 `mcp.json` 残留(下次开启会覆盖)
 - Windows:SSH agent 走命名管道 / Pageant;CI 的 Windows 任务尚未真实跑过
 
@@ -98,6 +99,7 @@ mygo 自带签名、公证、DMG、NSIS、更新(见 mygo `docs/distribution.md`
 - **自动批准**:Agent 设置里提供「自动批准」开关,时长可选 15 分钟 / 1 小时 / 直到退出;重启后一律关闭;风险命令和黑名单命中仍需手动批准;开启期间状态栏常驻提示。
 - **Agent 测试模式**:仅 `nextshell_devtools` 构建提供 `--agent-test` 参数,启动即开启 MCP 和自动批准,配合 `--db` 使用临时 profile;`--import <文件>` 导入明文连接文件;发布构建不含这些参数。
 - **命令策略三级**(2026-11-12 修订):禁止 / 风险(始终手动批准)/ 其余可自动批准;凭据文件与环境导出需要同意。Agent 不打扰用户:首次变更提示一次,之后后台工作,`session_focus` 为显式交还。
+- **命令策略的边界**(2026-11-12):策略防误操作,不防蓄意或被提示词注入的 Agent;自动批准不是安全沙箱。只补具体漏洞,不追求穷举 shell 写法。工具描述、SKILL.md 和 Agent 设置里都这样写。
 - **互操作测试**:用 Docker 起真实 OpenSSH 容器,测试放在 `interop` 构建标签下,默认 `go test` 不跑。
 
 ## 分工

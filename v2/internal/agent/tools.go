@@ -17,6 +17,7 @@ const Instructions = "NextShell lends you the terminal tabs the user already ope
 	"Risky commands (privilege escalation, recursive deletes, piping into a shell, package or service changes, writes to system directories) are ALWAYS a manual approval, even under auto-approve; " +
 	"`denied` means stop and ask the user; `forbidden` is final; `consent_required` means a credential file or the environment is involved: ask the user first. " +
 	"session_open answers { status: 'user_action_required' } while the user must answer a host-key, password or one-time-code dialog in the app: tell the user and call session_open again later. " +
+	"The policy guards against accidents, not against a determined or prompt-injected agent (a shell has endless ways around any classifier): auto-approve is not a sandbox, so never rephrase a refused or manually-approved command to get past its tier, ask the user instead. " +
 	"After the first action NextShell does not raise windows or switch tabs for you; session_focus is the explicit hand-over to the user. Outputs are redacted. agent_status shows your pending requests."
 
 func str(desc string, max int) map[string]any {
@@ -55,7 +56,7 @@ var specs = []ToolSpec{
 	{
 		Name: "host_list", ReadOnly: true, Idempotent: true,
 		Title:       "查找服务器",
-		Description: "Find saved servers by substring of name, host or tags (case-insensitive; matched against the redacted text). Returns metadata only, never credentials, plus `total` matches; page with `limit` (1-200, default 50) and `offset`. Use a host id as session_open's target.",
+		Description: "Find saved servers by substring of name, host or tags (case-insensitive; matched against the redacted text). Returns metadata only, never credentials, plus `total` matches, sorted by name (case-insensitive); page with `limit` (1-200, default 50) and `offset`. Use a host id as session_open's target.",
 		Schema: object(nil, map[string]any{
 			"query":  str("Substring to look for; empty lists everything.", 200),
 			"limit":  integer("Page size, 1-200 (default 50).", 1, 200),
@@ -74,7 +75,7 @@ var specs = []ToolSpec{
 		Description: "Read a live session. Without options it returns the visible screen (secrets redacted; `lines` counts back from the bottom, default 200, max 2000) and a `cursor`. " +
 			"With `sinceCursor` it returns only the output received after that cursor (escape sequences removed, redacted), so you can follow a command typed with session_send_text. " +
 			"With `waitFor` it blocks until the text appears in that new output (or timeoutSec passes, max 60), then returns `matched` and `timedOut`; without sinceCursor it waits for output arriving from now on. " +
-			"The pattern is matched against the redacted text. Local shell tabs have no output stream: waitFor polls the screen and sinceCursor is unavailable.",
+			"The pattern is matched against the redacted text. `waitFor.on: \"screen\"` waits for text on the rendered screen instead (polled about ten times a second): use it for full-screen programs such as htop, vim or less, whose output stream is cursor movement. Local shell tabs have no output stream: waitFor polls the screen and sinceCursor is unavailable.",
 		Schema: object([]string{"target"}, map[string]any{
 			"target": targetProp,
 			"lines":  integer("Lines counted back from the bottom (default 200).", 1, 2000),
@@ -113,7 +114,7 @@ var specs = []ToolSpec{
 		Description: "Open a connection to a saved host (id from host_list) and return the new session id. A host that already has a connected tab is reused. The tab opens in the background: it does not switch tabs or take the keyboard. " +
 			"Needs the user's approval in NextShell unless they turned on auto-approve: the first call may return { status: 'pending', requestId }; call again with the same arguments. A `denied` error means the user refused: stop and ask them, never retry on your own. " +
 			"If the connection needs a decision from the user (trust a host key, type a password or one-time code) the call returns at once with { status: 'user_action_required', reason: 'host_key'|'host_key_changed'|'password'|'otp' } while the dialog stays open in the app (host_key_changed: the server's key differs from the trusted one; password with savedPasswordRejected: true: the saved password was rejected): tell the user, then call session_open again with the same target; it joins the pending connection. " +
-			"Failures say why: host_key, auth_failed, refused, unreachable, timeout.",
+			"Failures say why: host_key, auth_failed, refused (also a server that drops the handshake, e.g. over its connection limit), unreachable, timeout. At most 6 connections per server handshake at once; further opens wait their turn.",
 		Schema: object([]string{"target"}, map[string]any{
 			"target":    name("Connection id from host_list.", 128),
 			"reason":    str("Shown to the user in the approval prompt.", 300),
@@ -124,7 +125,7 @@ var specs = []ToolSpec{
 		Name: "command_save", Gated: true,
 		Title: "保存快速命令",
 		Description: "Save a command in the user's library, or update one: pass an `id` from command_search and only the fields you want to change (the others are kept). An unknown id or workspaceId answers `not_found`. " +
-			"Without an id, name and command are required. Needs approval like exec.",
+			"Without an id, name and command are required. The command text is judged like exec's: a forbidden command is refused (`forbidden`), a risky one is always a manual approval even under auto-approve. Needs approval like exec.",
 		Schema: object(nil, map[string]any{
 			"id":          str("Command id from command_search; update that command, merging only the fields provided.", 128),
 			"name":        name("Display name (required for a new command).", 256),
@@ -140,10 +141,13 @@ var specs = []ToolSpec{
 		Name: "exec", Gated: true,
 		Title: "在会话里执行命令",
 		Description: "Run a shell command on the REMOTE host of a connected session over a separate channel (invisible in the tab; local shell tabs are not supported). Returns output, stderr, exitCode and actualCwd, with secrets redacted; one exec at a time per session (`busy` otherwise). " +
+			"The command runs as a whole in the tab's directory when the shell reports it (actualCwd; empty when the tab does not track its directory, then it starts in the login directory); if that directory is gone nothing runs and the answer is `cwd_missing`. " +
+			"If the connection drops while it runs you get `disconnected` and the command may or may not have finished; closing the session kills it. A client that just drops its HTTP connection does not stop the command: use notifications/cancelled or a short `timeoutSec`. " +
 			"Needs the user's approval in NextShell unless they turned on auto-approve: the first call may return { status: 'pending', requestId } while the prompt is up; call exec again with the same arguments. `denied` means the user refused: stop and ask them, never retry on your own. " +
-			"Three tiers: forbidden commands (wiping disks or /, power off, kill everything, overwriting /etc/passwd, your user's blacklist) fail with `forbidden` and never run; " +
-			"risky commands (sudo/su, rm -r, piping into a shell or interpreter, eval, writes to /etc /boot /usr /var/lib, package or service changes, firewall, userdel/passwd) are ALWAYS a manual approval even under auto-approve (status `pending`, with `tier` and `why`); " +
-			"commands touching credential files (.env*, ssh keys, .aws/credentials, .netrc, …) or dumping the environment (env, printenv, set) fail with `consent_required` until the user agrees; then pass allowSensitive: true (also a manual approval). `timeoutSec` max 120 (default 30).",
+			"Three tiers: forbidden commands (wiping disks or /, power off, kill everything or init, overwriting /etc/passwd, your user's blacklist) fail with `forbidden` and never run; " +
+			"risky commands (sudo/su, rm -r, piping or here-stringing into a shell or interpreter, eval, writes to /etc /boot /usr /var/lib, package or service changes, firewall, userdel/passwd, ssh with a remote command, signalling sshd or init, nc -e, docker run --privileged or with / mounted) are ALWAYS a manual approval even under auto-approve (status `pending`, with `tier` and `why`); " +
+			"commands touching credential files (.env*, ssh keys, *.pem/*.key/*.p12, .aws/credentials, .netrc, shell history, ~/.config/gcloud, /proc/*/environ, …) or dumping the environment (env, printenv, set, compgen -e) fail with `consent_required` until the user agrees; then pass allowSensitive: true (also a manual approval). " +
+			"This is a guard against accidents, not a sandbox: do not rephrase a command to get around its tier. `timeoutSec` max 120 (default 30).",
 		Schema: object([]string{"target", "command"}, map[string]any{
 			"target":         targetProp,
 			"command":        name("Shell command to run on the remote host.", 8192),
@@ -157,9 +161,10 @@ var specs = []ToolSpec{
 	{
 		Name: "session_send_text", Gated: true,
 		Title: "向会话输入文本",
-		Description: "Type into the terminal tab itself, like a user would: `text` (up to 4 KiB; the escapes \\r \\n \\t \\e \\xHH and \\\\ are interpreted, so use \\\\ for a literal backslash) and/or named `keys` (Enter, Up, Down, Left, Right, Esc, Tab, Backspace, Delete, F1-F12, PageUp, PageDown, Home, End, Ctrl-a to Ctrl-z). " +
+		Description: "Type into the terminal tab itself, like a user would: `text` (up to 4 KiB; the escapes \\r \\n \\t \\e \\xHH and \\\\ are interpreted, so use \\\\ for a literal backslash) and/or named `keys` (Enter, Up, Down, Left, Right, Esc, Tab, Backspace, Delete, F1-F12, PageUp, PageDown, Home, End, Ctrl-a to Ctrl-z), typed text first and keys after. " +
+			"To mix them in order pass `input` instead, e.g. [{\"key\":\"Ctrl-b\"}, \"%\"] for tmux's split. " +
 			"Use it for interactive programs, sudo password prompts you must not see, REPLs and tmux; use exec for ordinary commands. " +
-			"Every complete line (ended by Enter) is classified like an exec command: forbidden lines are refused with `forbidden`, risky lines are always a manual approval, credential files need allowSensitive; a line built with history, completion or cursor keys cannot be inspected and counts as risky. " +
+			"Every complete line (ended by Enter) is classified like an exec command: forbidden lines are refused with `forbidden`, risky lines are always a manual approval, credential files need allowSensitive. At a shell prompt a line edited with history, completion, cursor or any other readline key cannot be inspected and counts as risky (Ctrl-O, Ctrl-J, Ctrl-M and Alt-Enter run the line like Enter). On the alternate screen (tmux, vim, htop) control keys and Esc belong to the program and are not held against you, while lines ended by Enter are still judged. " +
 			"The response carries the `cursor` from before the keystrokes: pass it as session_read's sinceCursor (with waitFor) to read the result. If the user pressed a key in that tab within the last 3 seconds the call fails with `user_typing`; retry later.",
 		Schema: object([]string{"target"}, map[string]any{
 			"target": targetProp,
@@ -201,7 +206,7 @@ var specs = []ToolSpec{
 		Name:        "session_close",
 		Gated:       true,
 		Title:       "关闭会话标签",
-		Description: "Close a session's tab and disconnect it (also works on a tab whose connection already dropped). Needs approval like exec. Closing a session that is already gone answers `alreadyClosed`.",
+		Description: "Close a session's tab and disconnect it (also works on a tab whose connection already dropped); an exec still running there is killed first. Needs approval like exec. Closing a session that is already gone answers `alreadyClosed`.",
 		Schema: object([]string{"target"}, map[string]any{
 			"target":    targetProp,
 			"reason":    str("Shown to the user in the approval prompt.", 300),

@@ -59,7 +59,7 @@ Tool failures come back as `{ ok: false, error: { code, message } }`:
 | `incompatible_version` | the app lacks a tool this package expects: update both                       |
 
 App-side codes (`denied`, `forbidden`, `consent_required`, `busy`, `disconnected`, `auth_failed`,
-`host_key`, `refused`, `unreachable`, `user_typing`, …) are passed through unchanged, with a short
+`host_key`, `refused`, `unreachable`, `user_typing`, `invalid_argument`, `cwd_missing`, …) are passed through unchanged, with a short
 redacted cause in `message`. A call that returns `{ status: "pending", requestId }` is waiting for the
 user: call the same tool again with the same arguments (or only that `requestId`). `session_open` can
 also answer `{ status: "user_action_required", reason }` while a dialog waits for the user. The bridge

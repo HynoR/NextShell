@@ -234,7 +234,7 @@ func (a *App) agentSettings(c *ui.Context) {
 					s.auto = choice
 				}
 			}
-		}).Description("风险操作（sudo、rm -r、管道进 shell 等）和敏感文件仍需手动批准，黑名单与危险命令直接拒绝；重启应用后自动关闭").FillWidth()
+		}).Description("风险操作（sudo、rm -r、管道进 shell 等）和敏感文件仍需手动批准，黑名单与危险命令直接拒绝；重启应用后自动关闭。自动批准不是安全沙箱：只在你信任当前 Agent 任务时开启。").FillWidth()
 		if auto.On {
 			ui.Text(c, "自动批准中 · "+autoApproveLabel(auto)).TextColor(t.Warning)
 		}

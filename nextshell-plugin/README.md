@@ -62,6 +62,8 @@ Direct HTTP also works for clients that can set headers: `http://127.0.0.1:41777
   environment always need a manual click, even under auto-approve. Everything else follows your
   approval or auto-approve setting. The pending list in 设置 → Agent shows the tier, the agent's
   reason, the host or tab name and the full command.
+- The policy guards against **accidents**, not against a determined or prompt-injected agent: a shell
+  offers endless ways around any classifier. 自动批准不是安全沙箱：只在你信任当前 Agent 任务时开启。
 - Agents do not interrupt you: the first change per app run raises the window once with a notice;
   afterwards no raising, no tab switching, no keyboard focus. Tabs an agent opens stay in the
   background with an Agent badge; `session_focus` is the explicit hand-over (at most one raise per
