@@ -339,19 +339,41 @@ func TestScreenshots(t *testing.T) {
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/nginx/nginx.conf", Text: "user www-data;\nworker_processes auto;\n\nevents {\n    worker_connections 768;\n}\n"}}})
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "s1", Document: remoteedit.Document{Path: "/etc/hosts", Text: "127.0.0.1 localhost\n"}}})
 	tt.Frame()
+	// The editor is a tab of the main window, with the unsaved dot; closing it asks; 在新窗口打开 moves it out.
+	click(t, tt, "nginx.conf")
+	tt.Type("# edited\n")
+	tt.Move(640, 420) // the dot shows while the pointer is elsewhere
+	shot(tt, "32-editor-tab-dirty")
+	click(t, tt, "关闭标签 nginx.conf")
+	shot(tt, "32b-editor-close-dirty")
+	click(t, tt, "取消")
+	click(t, tt, "在新窗口打开")
 	ed := ui.NewTester(a.EditorView, 960, 640)
-	ed.Type("# edited\n")
 	shot(ed, "14-editor-window")
 	if a.EditorMayClose() {
 		t.Fatal("dirty editor closed")
 	}
 	shot(ed, "14b-editor-close-guard")
+	tt.Frame()
 
-	// A dropped connection: the card and the tab offer to reconnect.
-	one.Terminal.Close()
+	// A dropped connection: the card and the tab offer to reconnect; with the left column folded, a line
+	// under the terminal does. (The ping card above reused the id s1: point it back at this terminal.)
+	p.terminals[one.ID] = one.Terminal
+	a.Active = 0
+	a.Tabs[0].Terminal.Close()
 	<-one.Terminal.Done()
 	tt.Frame()
 	shot(tt, "17-disconnected")
+	tt.Key(appMod(), ui.KeyB)
+	shot(tt, "17b-disconnected-folded")
+	tt.Key(appMod(), ui.KeyB)
+	// Closing a connected tab asks first; the + opens a menu of the local terminal, recent hosts and the manager.
+	click(t, tt, "关闭标签 db-master")
+	shot(tt, "30-close-confirm")
+	click(t, tt, "取消")
+	click(t, tt, "新建标签")
+	shot(tt, "31-plus-menu")
+	tt.CloseMenu()
 
 	sp := &servicesPlatform{fakePlatform: p, auto: agent.AutoApproval{On: true, Expires: now.Add(42 * time.Minute)}}
 	sp.agent = appui.AgentOverview{Pending: []agent.Pending{{ID: "r", Client: "claude", Tool: "exec", Summary: "systemctl restart nginx", ExpiresAt: now.Add(time.Minute)}}}

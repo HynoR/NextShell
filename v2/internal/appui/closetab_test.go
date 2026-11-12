@@ -19,10 +19,12 @@ func TestCmdWClosesTheCurrentTab(t *testing.T) {
 		mod = ui.Ctrl | ui.Shift
 	}
 	tt.Key(mod, ui.KeyW)
+	click(t, tt, "断开并关闭") // a connected tab asks first
 	if ids(a) != "A" {
 		t.Fatal("closes the active tab", ids(a))
 	}
 	tt.Key(mod, ui.KeyW)
+	click(t, tt, "断开并关闭")
 	if ids(a) != "" || a.Active != -1 {
 		t.Fatal("closes the last tab", ids(a), a.Active)
 	}

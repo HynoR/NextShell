@@ -26,20 +26,7 @@ func (t toolTab) icon() string {
 }
 
 // toolSession is the session a tool tab samples: its host's connected session, else any of them.
-func (a *App) toolSession(t toolTab) *Session {
-	var found *Session
-	for _, s := range a.Tabs {
-		if !s.Local && hostKey(s) == t.host {
-			if !a.P.Exited(s.ID) {
-				return s
-			}
-			if found == nil {
-				found = s
-			}
-		}
-	}
-	return found
-}
+func (a *App) toolSession(t toolTab) *Session { return a.hostSession(t.host) }
 
 func (a *App) toolTitle(t toolTab) string {
 	name := t.host
@@ -64,6 +51,7 @@ func (a *App) showTool(t toolTab) {
 	if s := a.toolSession(t); s != nil {
 		a.Active = a.tabIndex(s.ID)
 		a.monitor.tool = t.key()
+		a.editor.shown = ""
 	}
 }
 func (a *App) closeTool(t toolTab) {
@@ -102,6 +90,12 @@ func (a *App) toolTabs(c *ui.Context, tabs ui.TabsParts, first int) {
 		on := a.monitor.tool == tool.key()
 		title := a.toolTitle(tool)
 		tab := tabs.Tab(first+n).Label(title).Height(28).Padding(0, 6, 0, 10).Gap(6).Radius(t.Radius).AlignItems(ui.Center).Tooltip(title)
+		if a.tabs.reveal == "tool:"+tool.key() {
+			tab.ScrollIntoView()
+		}
+		if a.middleClicked(tab, "tool:"+tool.key()) {
+			a.later(func() { a.closeTool(tool) })
+		}
 		tab.ContextMenu(func(m *ui.Menu) {
 			if m.Item("关闭").Chosen() {
 				a.later(func() { a.closeTool(tool) })

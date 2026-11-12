@@ -43,8 +43,8 @@ type App struct {
 	// Version is the packaged app's version for the About page; empty for a build run from source.
 	// ProfilePath is the profile database the About page shows.
 	Version, ProfilePath string
-	// ShowEditor opens (or raises) the remote editor window, which EditorView
-	// builds; HideEditor closes it. Without ShowEditor the editor is a dialog.
+	// ShowEditor opens (or raises) the remote editor window, which EditorView builds, for a document
+	// popped out of its tab; HideEditor closes it. Without ShowEditor documents stay in tabs.
 	ShowEditor, HideEditor func()
 
 	layout   layoutState
@@ -96,16 +96,6 @@ func (a *App) inWindow(w window, fn func()) {
 	a.view = w
 	fn()
 	a.view = before
-}
-
-// inEditorWindow is inWindow for the editor window, when it is showing; the
-// toasts of an editor action that outlives its window go to the main window.
-func (a *App) inEditorWindow(fn func()) {
-	if a.editor.windowed {
-		a.inWindow(editorWindow, fn)
-		return
-	}
-	fn()
 }
 
 // appMod is the modifier of app shortcuts that would otherwise take a
@@ -187,6 +177,7 @@ func humanize(msg string) (string, bool) {
 		{"file does not exist", "文件或目录不存在"},
 		{"file exists", "目标已存在"},
 		{"knownhosts: key mismatch", "known_hosts 里的主机密钥与服务器不一致"},
+		{"remote file changed since open", "远程文件在打开后被修改了，请重新载入后再保存"},
 	} {
 		if strings.Contains(m, v.match) {
 			return v.text, true
@@ -346,6 +337,8 @@ func (a *App) poll() bool {
 		a.monitor.handle(a, e)
 		if e.Editor != nil {
 			a.receiveDocument(e.Editor)
+		} else if e.ForEditor {
+			clear(a.editor.closeSave) // a save failed: the document stays open
 		}
 		if e.Agent != nil {
 			a.agentActed(e.Agent)
@@ -391,7 +384,7 @@ func (a *App) poll() bool {
 				}
 			}
 			if e.ForEditor {
-				a.inEditorWindow(show)
+				a.inEditor(a.editor.fromWindow, show)
 			} else {
 				show()
 			}
@@ -421,6 +414,7 @@ func (a *App) addSession(s *Session) {
 			s.Title = old.Title
 			s.ManualTitle = old.ManualTitle
 			delete(a.tabs.started, old.ID)
+			a.rehome(old, s)
 			a.Tabs[i] = s
 			a.Active = i
 			a.tabs.mru.Sync(a.tabIDs(), s.ID)
@@ -445,10 +439,12 @@ func (a *App) shortcuts(c *ui.Context) {
 		a.P.Local()
 	}
 	if c.Shortcut(appMod, ui.KeyW) {
-		if tool := a.activeTool(); tool != nil {
+		if doc := a.activeEditor(); doc != nil {
+			a.requestDocumentClose(doc.Key)
+		} else if tool := a.activeTool(); tool != nil {
 			a.closeTool(*tool)
-		} else if a.current() != nil {
-			a.closeTab(a.Active)
+		} else if s := a.current(); s != nil {
+			a.requestClose(s.ID)
 		} else if pending := a.pendingTabs(); len(a.Tabs) == 0 && len(pending) > 0 { // the 连接中 page shows
 			a.cancelConnect(pending[0].ID)
 		}
@@ -472,7 +468,7 @@ func (a *App) shortcuts(c *ui.Context) {
 			a.showBench(v.bench)
 		}
 	}
-	if s := a.current(); s != nil && a.activeTool() == nil && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
+	if s := a.current(); s != nil && a.activeTool() == nil && a.activeEditor() == nil && c.Shortcut(ui.Cmd|ui.Shift, ui.KeyF) {
 		a.toggleFind(s)
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
