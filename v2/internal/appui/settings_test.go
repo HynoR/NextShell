@@ -131,13 +131,13 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 	st.Type("16")
 	flip(t, st, "光标闪烁")
 	click(t, st, "竖线")
-	click(t, st, "通用")
+	click(t, st, "窗口行为")
 	click(t, st, "深色")
 	got := p.Preferences()
 	if got.FontSize != 16 || got.CursorBlink || got.Cursor != "bar" || got.Appearance != "深色" {
 		t.Fatal("not persisted", got)
 	}
-	click(t, st, "SSH")
+	click(t, st, "终端")
 	click(t, st, "默认间隔（秒）")
 	st.Key(ui.Cmd, ui.KeyA)
 	st.Type("2")
@@ -154,7 +154,7 @@ func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
 	if p.Preferences().Appearance != "浅色" || a.Prefs.Appearance != "浅色" {
 		t.Fatal("toggle", p.Preferences().Appearance)
 	}
-	click(t, st, "终端")
+	click(t, st, "窗口行为")
 	click(t, st, "恢复默认设置…")
 	click(t, st, "恢复默认")
 	st.Frame()
@@ -217,8 +217,8 @@ func TestManagerKeysAndProxies(t *testing.T) {
 		t.Fatal("proxy not deleted")
 	}
 	// Settings only point to the manager.
-	st := ui.NewTester(a.SettingsView, 880, 900)
-	click(t, st, "SSH")
+	st := ui.NewTester(a.SettingsView, 880, 1400)
+	click(t, st, "终端")
 	click(t, st, "管理凭据")
 	mt.Frame()
 	if p.managerShown == 0 || !mt.HasText("新建凭据…") {
@@ -235,7 +235,7 @@ func TestCloudConflictNeedsConfirmationAndAgentConsent(t *testing.T) {
 	p.events = append(p.events, appui.Event{WorkspaceID: id})
 	tt.Frame()
 	has(t, tt, "同步冲突")
-	click(t, st, "同步")
+	click(t, st, "云同步")
 	click(t, st, "团队")
 	click(t, st, "使用云端版本…")
 	if len(p.remote) != 0 {
@@ -281,14 +281,14 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 		shows := func(tt *ui.Tester) bool {
 			for _, s := range tt.Texts() {
 				for _, bad := range cloudTexts {
-					if strings.Contains(s, bad) {
+					if strings.Contains(strings.ReplaceAll(s, "底部工作区", ""), bad) {
 						return true
 					}
 				}
 			}
 			return false
 		}
-		sections := []string{"通用", "终端", "SSH", "Agent", "回收站", "网络工具", "关于"}
+		sections := []string{"窗口行为", "文件传输", "远端编辑", "终端", "网络工具", "回收站", "Agent", "关于"}
 		for _, section := range sections {
 			click(t, st, section)
 			if shows(st) != enabled { // the sidebar lists 同步 when enabled
@@ -298,8 +298,8 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 		if shows(tt) != enabled {
 			t.Errorf("enabled=%v: main window: %q", enabled, tt.Texts())
 		}
-		if (st.Click("同步") == nil) != enabled {
-			t.Errorf("enabled=%v: 同步 section", enabled)
+		if (st.Click("云同步") == nil) != enabled {
+			t.Errorf("enabled=%v: 云同步 section", enabled)
 		}
 		mt := ui.NewTester(a.ManagerView, 960, 700)
 		if e := mt.RightClick("box"); e != nil {
@@ -448,7 +448,7 @@ func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 	p := &keysPlatform{fakePlatform: newPlatform(t), keys: []model.HostKey{{Address: "db.example:22", Fingerprint: "SHA256:abc"}}}
 	a := appui.New(p)
 	st := ui.NewTester(a.SettingsView, 880, 1400)
-	click(t, st, "SSH")
+	click(t, st, "终端")
 	has(t, st, "已信任的主机密钥", "db.example:22", "SHA256:abc")
 	click(t, st, "移除 db.example:22")
 	click(t, st, "移除密钥")
@@ -456,7 +456,7 @@ func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 		t.Fatal("not forgotten", keys)
 	}
 	has(t, st, "还没有信任过的主机")
-	click(t, st, "通用")
+	click(t, st, "窗口行为")
 	flip(t, st, "关闭窗口时确认")
 	flip(t, st, "启动时恢复标签")
 	if v := p.Preferences(); !v.NoCloseConfirm || !v.RestoreTabs {
@@ -499,4 +499,23 @@ func TestEmptyWelcomeTellsHowToBringOneDotXHostsOver(t *testing.T) {
 	}
 	mt := manager(a)
 	has(t, mt, "导入连接", "来源", "NextShell 1.x")
+}
+
+// The main color is saved as it is picked (every window's theme reads it each frame); the fold
+// defaults fold the columns at the next start.
+func TestAccentAndFoldDefaults(t *testing.T) {
+	a, p, _, st := settingsFixture(t)
+	click(t, st, "窗口行为")
+	click(t, st, "绿")
+	if p.Preferences().Accent != "green" || a.Prefs.Accent != "green" {
+		t.Fatal("accent not saved", p.Preferences().Accent)
+	}
+	flip(t, st, "左栏默认折叠")
+	flip(t, st, "底部工作区默认折叠")
+	b := appui.New(p)
+	tt := ui.NewTester(b.View, 1280, 800)
+	session(t, p.fakePlatform, tt, "s", "s", remoteHost("s"))
+	if !tt.HasText("展开左栏") || !tt.HasText("展开工作区") {
+		t.Fatal("fold defaults not applied", tt.Texts())
+	}
 }

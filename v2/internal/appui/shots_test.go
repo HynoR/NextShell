@@ -341,12 +341,12 @@ func TestScreenshots(t *testing.T) {
 	shot(sst, "21-settings-agent-auto-approve")
 	kp := &keysPlatform{fakePlatform: p, keys: []model.HostKey{{Address: "10.0.0.1:22", Fingerprint: "SHA256:nThbg6kXUpJWGl7E1IGOCspRomTxdCARLviKw6E5SY8"}, {Address: "jump.example.com:22", Fingerprint: "SHA256:Q2V4Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZg"}}}
 	kst := ui.NewTester(appui.New(kp).SettingsView, 880, 900)
-	click(t, kst, "SSH")
+	click(t, kst, "终端")
 	shot(kst, "22-settings-ssh-host-keys")
 
 	a.Version, a.ProfilePath = "2.0.0-rc1", "/Users/me/Library/Application Support/NextShell-v2/nextshell.db"
 	st := ui.NewTester(a.SettingsView, 880, 640)
-	for i, section := range []string{"通用", "终端", "SSH", "Agent", "回收站", "网络工具", "关于"} {
+	for i, section := range []string{"窗口行为", "文件传输", "远端编辑", "终端", "网络工具", "回收站", "Agent", "关于"} {
 		click(t, st, section)
 		shot(st, "20-settings-"+string(rune('a'+i))+"-"+section)
 	}

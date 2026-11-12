@@ -113,7 +113,7 @@ func TestNoImplementationTermsInVisibleText(t *testing.T) {
 		}
 	}
 	check(tt, "welcome")
-	for _, section := range []string{"通用", "终端", "SSH", "Agent", "回收站", "网络工具", "关于"} {
+	for _, section := range []string{"窗口行为", "文件传输", "远端编辑", "终端", "网络工具", "回收站", "Agent", "关于"} {
 		click(t, st, section)
 		check(st, section)
 	}

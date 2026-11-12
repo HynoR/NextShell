@@ -57,8 +57,8 @@ func (a *App) openEditor(session, remote string) {
 }
 func (a *App) externalEdit(session, remote string) {
 	if a.Prefs.EditorCommand == "" {
-		a.toast("请先在设置的「通用」里选择外部编辑器")
-		a.openSettings("通用")
+		a.toast("请先在设置的「远端编辑」里选择外部编辑器")
+		a.openSettings("远端编辑")
 		return
 	}
 	var args []string

@@ -116,6 +116,8 @@ func New(p Platform) *App {
 	a := &App{P: p, Active: -1}
 	a.layout.load(p.UIState("layout"))
 	a.Prefs = p.Preferences()
+	a.layout.leftHidden = a.layout.leftHidden || a.Prefs.FoldLeft
+	a.layout.benchHidden = a.layout.benchHidden || a.Prefs.FoldBench
 	a.settings.load(a.Prefs)
 	a.tabs.started = map[string]time.Time{}
 	a.hosts.init()

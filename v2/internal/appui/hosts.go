@@ -313,7 +313,7 @@ func (a *App) hostMenu(item ui.Element, cc model.Connection) {
 			a.later(func() { a.openExport([]string{cc.ID}) })
 		}
 		if a.Cloud && m.Item("复制到云工作区…").Chosen() {
-			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("同步") })
+			a.later(func() { a.settings.selectHosts(cc.ID); a.openSettings("云同步") })
 		}
 		m.Separator()
 		if m.Item("移入回收站").Danger().Chosen() {
