@@ -121,3 +121,27 @@ func TestClearCompletedRetainsActiveAndRetryableJobs(t *testing.T) {
 		t.Fatal("failed/cancelled records removed")
 	}
 }
+
+func TestSetTotalReachesTheJob(t *testing.T) {
+	q := New(1, nil)
+	defer q.Close()
+	done := make(chan struct{})
+	q.Add("x", func(ctx context.Context, progress func(int64)) error {
+		SetTotal(ctx, 100)
+		progress(40)
+		close(done)
+		return nil
+	})
+	<-done
+	SetTotal(context.Background(), 5) // outside a job: no effect, no panic
+	for range 100 {
+		if j := q.List()[0]; j.State == "done" {
+			if j.Total != 100 || j.Bytes != 40 {
+				t.Fatal(j)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("job did not finish")
+}

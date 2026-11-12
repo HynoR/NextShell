@@ -11,11 +11,20 @@ import (
 
 type Job struct {
 	ID, Label, State, Error string
-	Bytes                   int64
+	Bytes, Total            int64 // Total is 0 when unknown
 	Attempt                 int
 	Started, Finished       time.Time
 }
 type Work func(context.Context, func(int64)) error
+
+type totalKey struct{}
+
+// SetTotal tells the job running with ctx how many bytes it will move, for a percentage.
+func SetTotal(ctx context.Context, n int64) {
+	if set, ok := ctx.Value(totalKey{}).(func(int64)); ok {
+		set(n)
+	}
+}
 type item struct {
 	job    Job
 	work   Work
@@ -76,7 +85,8 @@ func (q *Queue) run(it *item) {
 	q.notify()
 	err := it.ctx.Err()
 	if err == nil {
-		err = it.work(it.ctx, func(n int64) { q.mu.Lock(); it.job.Bytes = n; q.mu.Unlock(); q.notify() })
+		ctx := context.WithValue(it.ctx, totalKey{}, func(n int64) { q.mu.Lock(); it.job.Total = n; q.mu.Unlock() })
+		err = it.work(ctx, func(n int64) { q.mu.Lock(); it.job.Bytes = n; q.mu.Unlock(); q.notify() })
 	}
 	if it.ctx.Err() != nil {
 		err = it.ctx.Err()

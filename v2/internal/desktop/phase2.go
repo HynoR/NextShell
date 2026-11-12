@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/pkg/sftp"
 	"io"
+	"io/fs"
 	"nextshell.dev/v2/internal/appui"
 	"nextshell.dev/v2/internal/exchange"
 	"nextshell.dev/v2/internal/model"
@@ -145,8 +146,7 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 			return "", errors.New("cut/paste is only available on the same server/account")
 		}
 	}
-	label := req.Kind + ": " + req.Remote
-	id, e := p.queue.Add(label, func(ctx context.Context, progress func(int64)) error {
+	id, e := p.queue.Add(transferLabel(req), func(ctx context.Context, progress func(int64)) error {
 		if req.Kind == "upload-packed" || req.Kind == "download-packed" {
 			s, e := p.ssh(req.Session)
 			if e != nil {
@@ -160,12 +160,39 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 		return p.withSFTP(ctx, req.Session, func(c *sftpfs.Client) error {
 			switch req.Kind {
 			case "upload":
+				info, e := os.Stat(req.Local)
+				if e != nil {
+					return e
+				}
+				if info.IsDir() {
+					// Directories go as one tar stream when the server has tar.
+					if s, e := p.ssh(req.Session); e == nil && p.canPack(ctx, req.Session, s) {
+						return transfer.UploadPacked(ctx, s, req.Local, req.Remote, progress)
+					}
+					transfer.SetTotal(ctx, localSize(req.Local))
+					return c.UploadTree(ctx, req.Local, req.Remote, progress)
+				}
+				transfer.SetTotal(ctx, info.Size())
 				return c.Upload(ctx, req.Local, req.Remote, req.Overwrite, progress)
 			case "download":
+				info, e := c.Stat(req.Remote)
+				if e != nil {
+					return e
+				}
+				if info.IsDir() {
+					if s, e := p.ssh(req.Session); e == nil && p.canPack(ctx, req.Session, s) {
+						return transfer.DownloadPacked(ctx, s, req.Remote, req.Local, progress)
+					}
+					return c.DownloadTree(ctx, req.Remote, req.Local, progress)
+				}
+				transfer.SetTotal(ctx, info.Size())
 				return c.Download(ctx, req.Remote, req.Local, req.Overwrite, progress)
 			case "move":
 				return c.RenamePath(req.Remote, req.Destination)
 			case "cross", "copy":
+				if info, e := c.Lstat(req.Remote); e == nil && info.Mode().IsRegular() {
+					transfer.SetTotal(ctx, info.Size())
+				}
 				return p.withSFTP(ctx, req.TargetSession, func(target *sftpfs.Client) error {
 					if req.Kind == "cross" && req.Overwrite {
 						info, err := c.Lstat(req.Remote)
@@ -183,6 +210,46 @@ func (p *Platform) QueueTransfer(req appui.TransferRequest) (string, error) {
 		})
 	})
 	return id, e
+}
+
+// canPack reports whether the server has tar and a GNU-style `mv -T -n`
+// (packed uploads rely on both); a failed probe means recursive SFTP.
+func (p *Platform) canPack(ctx context.Context, id string, s *sshclient.Session) bool {
+	p.mu.Lock()
+	v, ok := p.tar[id]
+	p.mu.Unlock()
+	if ok {
+		return v
+	}
+	v = s.Run(ctx, packProbe, nil, io.Discard, io.Discard) == nil
+	p.mu.Lock()
+	p.tar[id] = v
+	p.mu.Unlock()
+	return v
+}
+func localSize(dir string) int64 {
+	var n int64
+	filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type().IsRegular() {
+			if info, e := d.Info(); e == nil {
+				n += info.Size()
+			}
+		}
+		return nil
+	})
+	return n
+}
+func transferLabel(r appui.TransferRequest) string {
+	switch r.Kind {
+	case "upload", "upload-packed":
+		return "上传 " + filepath.Base(r.Local) + " → " + path.Dir(r.Remote)
+	case "download", "download-packed":
+		return "下载 " + path.Base(r.Remote) + " → " + filepath.Dir(r.Local)
+	case "move":
+		return "移动 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
+	default:
+		return "复制 " + path.Base(r.Remote) + " → " + path.Dir(r.Destination)
+	}
 }
 func (p *Platform) Transfers() []transfer.Job     { return p.queue.List() }
 func (p *Platform) CancelTransfer(id string)      { p.queue.Cancel(id) }
@@ -721,3 +788,5 @@ func (p *Platform) SessionDir(id string) string {
 
 func (p *Platform) CancelAllTransfers()          { p.queue.CancelAll() }
 func (p *Platform) ClearCompletedTransfers() int { return p.queue.ClearCompleted() }
+
+const packProbe = `command -v tar >/dev/null 2>&1 && d=$(mktemp -d 2>/dev/null) && { mv -T -n -- "$d" "$d.t" 2>/dev/null; r=$?; rm -rf -- "$d" "$d.t"; exit $r; }`

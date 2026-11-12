@@ -38,6 +38,7 @@ type Platform struct {
 	mcpPath          string // discovery file; see discoveryPathLocked
 	mcpTemp          string // per-process directory for an in-memory profile
 	sshSessions      map[string]*sshclient.Session
+	tar              map[string]bool // whether each session's server has tar
 	queue            *transfer.Queue
 	imports          map[string]importPlan
 	monitorPrevious  map[string]monitor.Snapshot
@@ -69,6 +70,7 @@ func Open(path string) (*Platform, error) {
 	ctx, c := context.WithCancel(context.Background())
 	p := &Platform{dbPath: path, agentPort: mcpendpoint.DefaultPort, preferences: prefs, store: s, ctx: ctx, cancel: c, credentials: map[string]model.Connection{}, sessions: map[string]*terminal.Terminal{}}
 	p.sshSessions = map[string]*sshclient.Session{}
+	p.tar = map[string]bool{}
 	p.imports = map[string]importPlan{}
 	p.monitorPrevious = map[string]monitor.Snapshot{}
 	p.monitorBusy = map[string]bool{}
@@ -385,6 +387,7 @@ func (p *Platform) CloseSession(id string) {
 	t := p.sessions[id]
 	delete(p.sessions, id)
 	delete(p.sshSessions, id)
+	delete(p.tar, id)
 	if cancel := p.monitorWatches[id]; cancel != nil {
 		cancel()
 		delete(p.monitorWatches, id)
