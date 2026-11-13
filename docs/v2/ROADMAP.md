@@ -364,8 +364,8 @@ NextShell 2 是**全新产品**,不是 1.x 的升级版。
 - [x] Linux(Docker `golang:1.27`)全套 `go test` 通过;真实 OpenSSH 互操作测试通过。
   - 注意:`golang` 镜像没有 Pango,mygo 会退回内置排版;CI 的 ubuntu 有 Pango 和系统字体,字宽不同。本地门禁要先 `apt-get install libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 fonts-dejavu fonts-noto-cjk` 再跑(2026-11-13 CI 因此暴露出管理器多选工具栏溢出)。
 - [x] Windows / Linux(amd64、arm64)交叉 `go vet` + `go build` 通过。
-- [ ] 三平台 CI:需推送 `v2` 后在 GitHub Actions 上跑(产品负责人决定何时推送)。
-- [ ] 改 `mygo.json` 版本为 `2.0.0-rc2`、CHANGELOG 小节标题改为 `2.0.0-rc2`,打 tag 发布(产品负责人决定)。
+- [x] 三平台 CI:2026-11-13 推送 `v2`,修完 Linux(Pango 排版)与 Windows 的失败后三平台全绿。
+- [x] 版本 `2.0.0-rc2`(`mygo.json`、CHANGELOG、插件 `.mcp.json`),2026-11-13 打 tag `v2.0.0-rc2` 发布。
 - [ ] 与 v1 的并排截图评审:截图齐全,待产品负责人过目(评审页已更新)。
 - [ ] 只能在真实窗口里确认:托盘图标 / 菜单 / 隐藏与恢复、再次打开唤回窗口、关闭管理器时的未保存确认、Linux 无托盘宿主、Wayland 焦点。
 - [ ] rc2 在 macOS / Windows / Linux 各日用一周。

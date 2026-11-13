@@ -1,7 +1,7 @@
 {
   "name": "NextShell",
   "identifier": "io.github.hynor.nextshell",
-  "version": "2.0.0-rc1",
+  "version": "2.0.0-rc2",
   "copyright": "© 2026 HynoR",
   "license": "GPL-3.0-only",
   "main": "./cmd/nextshell",

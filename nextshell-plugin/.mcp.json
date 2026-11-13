@@ -5,7 +5,7 @@
       "args": [
         "--allow-remote=root",
         "-y",
-        "https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc1/nextshell-mcp-0.2.0.tgz"
+        "https://github.com/HynoR/NextShell/releases/download/v2.0.0-rc2/nextshell-mcp-0.2.0.tgz"
       ]
     }
   }
