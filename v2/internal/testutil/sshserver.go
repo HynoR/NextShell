@@ -177,7 +177,6 @@ func (s *Server) serve(ch ssh.Channel, requests <-chan *ssh.Request) {
 			var v struct{ Command string }
 			ssh.Unmarshal(r.Payload, &v)
 			r.Reply(true, nil)
-			s.Execs.Add(1)
 			// Like sshd, a command outlives its channel: only a "signal" request or Close ends it early.
 			cmd := exec.CommandContext(s.ctx, "/bin/sh", "-c", v.Command)
 			cmd.Dir = s.Root
@@ -185,17 +184,20 @@ func (s *Server) serve(ch ssh.Channel, requests <-chan *ssh.Request) {
 			cmd.Stdout = ch
 			cmd.Stderr = ch.Stderr()
 			cmd.WaitDelay = time.Second
+			// Started before the next request is read, as sshd forks: a "signal" right behind it finds the command.
+			started := cmd.Start()
+			if started == nil {
+				running.Store(cmd.Process)
+			}
+			s.Execs.Add(1)
 			s.wg.Add(1)
 			go func() {
 				defer s.wg.Done()
 				status := uint32(0)
-				if e := cmd.Start(); e != nil {
+				if started != nil {
 					status = 127
-				} else {
-					running.Store(cmd.Process)
-					if e := cmd.Wait(); e != nil {
-						status = 1
-					}
+				} else if e := cmd.Wait(); e != nil {
+					status = 1
 				}
 				ch.SendRequest("exit-status", false, ssh.Marshal(struct{ Status uint32 }{status}))
 				ch.Close()
