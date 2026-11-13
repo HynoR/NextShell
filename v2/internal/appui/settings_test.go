@@ -107,7 +107,7 @@ func settingsFixture(t *testing.T) (*appui.App, *servicesPlatform, *ui.Tester, *
 	base := newPlatform(t)
 	p := &servicesPlatform{fakePlatform: base}
 	a := appui.New(p)
-	return a, p, ui.NewTester(a.View, 1280, 800), ui.NewTester(a.SettingsView, 880, 1400)
+	return a, p, ui.NewTester(a.View, 1280, 800), ui.NewTester(a.SettingsView, 880, 1800)
 }
 
 func TestSettingsApplyInstantlyAndPersist(t *testing.T) {
@@ -217,7 +217,7 @@ func TestManagerKeysAndProxies(t *testing.T) {
 		t.Fatal("proxy not deleted")
 	}
 	// Settings only point to the manager.
-	st := ui.NewTester(a.SettingsView, 880, 1400)
+	st := ui.NewTester(a.SettingsView, 880, 1800)
 	click(t, st, "终端")
 	click(t, st, "管理凭据")
 	mt.Frame()
@@ -277,7 +277,7 @@ func TestCloudSyncUIOnlyWhenEnabled(t *testing.T) {
 		a := appui.New(p)
 		a.Cloud = enabled
 		a.ShowSettings = func() { p.settingsShown++ }
-		tt, st := ui.NewTester(a.View, 1280, 800), ui.NewTester(a.SettingsView, 880, 1400)
+		tt, st := ui.NewTester(a.View, 1280, 800), ui.NewTester(a.SettingsView, 880, 1800)
 		shows := func(tt *ui.Tester) bool {
 			for _, s := range tt.Texts() {
 				for _, bad := range cloudTexts {
@@ -447,7 +447,7 @@ func (p *keysPlatform) ForgetHostKey(address string) error {
 func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 	p := &keysPlatform{fakePlatform: newPlatform(t), keys: []model.HostKey{{Address: "db.example:22", Fingerprint: "SHA256:abc"}}}
 	a := appui.New(p)
-	st := ui.NewTester(a.SettingsView, 880, 1400)
+	st := ui.NewTester(a.SettingsView, 880, 1800)
 	click(t, st, "终端")
 	has(t, st, "已信任的主机密钥", "db.example:22", "SHA256:abc")
 	click(t, st, "移除 db.example:22")

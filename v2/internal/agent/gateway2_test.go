@@ -182,7 +182,20 @@ func TestConcurrentOpenOfOneHostCoalesces(t *testing.T) {
 		wg.Add(1)
 		go func() { defer wg.Done(); results[i] = call(g, "o", "session_open", m{"target": "h1"}) }()
 	}
-	time.Sleep(100 * time.Millisecond)
+	// release only when every call is past approval, the step right before it joins the attempt: a fixed
+	// sleep let a slow runner (Windows CI) start the fifth call after the first had finished
+	approved := func() (n int) {
+		for _, a := range g.Activity() {
+			if a.Tool == "session_open" && a.State == "auto-approved" {
+				n++
+			}
+		}
+		return n
+	}
+	for deadline := time.Now().Add(10 * time.Second); approved() < len(results) && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
 	close(release)
 	wg.Wait()
 	for _, r := range results {

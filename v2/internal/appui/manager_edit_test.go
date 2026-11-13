@@ -56,8 +56,10 @@ func TestManagerEditorShots(t *testing.T) {
 		t.Fatal(e)
 	}
 	for _, s := range []string{"安全", "网络", "终端", "标签与备注"} {
+		mt.Scroll(560, 75, 0, 2000) // the closed headers are last; wide CJK fonts push them below the fold
 		click(t, mt, s)
 	}
+	mt.Scroll(560, 75, 0, -2000)
 	mt.Advance(time.Second)
 	shot(mt, "w2-02-host-editor-footer")
 	mt.Scroll(560, 75, 0, 700)
@@ -115,8 +117,10 @@ func TestHostEditorButtonsStayPinned(t *testing.T) {
 	a, _ := twoHosts(t)
 	mt := editing(t, a, "alpha")
 	for _, s := range []string{"安全", "网络", "终端", "标签与备注"} {
+		mt.Scroll(560, 75, 0, 2000) // the closed headers are last; wide CJK fonts push them below the fold
 		click(t, mt, s)
 	}
+	mt.Scroll(560, 75, 0, -2000)
 	mt.Advance(time.Second)
 	for _, name := range []string{"取消", "保存", "保存并连接"} {
 		if b, ok := mt.Access(name); !ok || b.Bounds.Y+b.Bounds.H > 640 || b.Bounds.Y < 500 {
@@ -162,8 +166,10 @@ func TestHostEditorInputsShareOneEdge(t *testing.T) {
 		}
 	}
 	for _, s := range []string{"安全", "网络", "终端", "标签与备注"} {
+		mt.Scroll(560, 75, 0, 2000) // the closed headers are last; wide CJK fonts push them below the fold
 		click(t, mt, s)
 	}
+	mt.Scroll(560, 75, 0, -2000)
 	mt.Advance(time.Second)
 	for _, name := range []string{"名称", "主机", "认证方式", "已知主机", "主机指纹", "代理", "心跳", "字符编码", "退格键", "删除键", "监控状态", "标签", "收藏", "颜色", "备注"} {
 		if x := field(t, mt, name).Bounds.X; x != edge {

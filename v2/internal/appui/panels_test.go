@@ -692,7 +692,7 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	tt := ui.NewTester(a.View, 1280, 800)
 	a.ShowEditor, a.HideEditor = func() {}, func() {}
 	ed := ui.NewTester(a.EditorView, 900, 640)
-	st := ui.NewTester(a.SettingsView, 880, 1400)
+	st := ui.NewTester(a.SettingsView, 880, 1800)
 	session(t, p.fakePlatform, tt, "one", "one", remoteHost("one"))
 	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: remoteedit.Document{Path: "/etc/a.conf", Text: "a=1\n"}}})
 	tt.Frame()

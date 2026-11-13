@@ -4,6 +4,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -201,7 +202,7 @@ func TestConflictCanSaveALocalCopy(t *testing.T) {
 	if e != nil || string(got) != "xa=1\n" {
 		t.Fatalf("copy %q, %v: want the text with the unsaved edit", got, e)
 	}
-	if info, _ := os.Stat(dest); info.Mode().Perm() != 0o600 {
+	if info, _ := os.Stat(dest); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 { // Windows has no mode bits
 		t.Fatal("the copy is readable by others", info.Mode())
 	}
 	has(t, tt, "已另存到 "+dest, "重新载入会丢弃未保存的修改") // the banner stays: the user still chooses

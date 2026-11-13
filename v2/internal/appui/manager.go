@@ -230,8 +230,8 @@ func (a *App) hostTiles(c *ui.Context) {
 		}
 	}
 	if len(picked) >= 2 {
-		ui.Row(c).FillWidth().Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(t.Accent.Alpha(.12)).Children(func() {
-			ui.Text(c, fmt.Sprintf("已选 %d", len(picked))).Bold().Grow(1)
+		ui.Row(c).FillWidth().Wrap().Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(t.Accent.Alpha(.12)).Children(func() {
+			ui.Text(c, fmt.Sprintf("已选 %d", len(picked))).Bold().NoWrap().Grow(1)
 			if ui.Button(c, "绑定认证…").Clicked() {
 				a.openBatch("所选", hostIDs(picked), "")
 			}

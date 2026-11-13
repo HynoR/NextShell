@@ -362,6 +362,7 @@ NextShell 2 是**全新产品**,不是 1.x 的升级版。
 - [x] 没有已知的数据丢失问题:危险操作统一红色确认、默认焦点「取消」;未保存文件关闭 / 退出均询问。
 - [x] macOS:`go vet`(含 `interop`、`nextshell_devtools` 标签)、`go test`、`go test -race` 通过;`go tool mygo build -skip-dmg` 出包;窗口级 SIGTERM 测试通过。
 - [x] Linux(Docker `golang:1.27`)全套 `go test` 通过;真实 OpenSSH 互操作测试通过。
+  - 注意:`golang` 镜像没有 Pango,mygo 会退回内置排版;CI 的 ubuntu 有 Pango 和系统字体,字宽不同。本地门禁要先 `apt-get install libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 fonts-dejavu fonts-noto-cjk` 再跑(2026-11-13 CI 因此暴露出管理器多选工具栏溢出)。
 - [x] Windows / Linux(amd64、arm64)交叉 `go vet` + `go build` 通过。
 - [ ] 三平台 CI:需推送 `v2` 后在 GitHub Actions 上跑(产品负责人决定何时推送)。
 - [ ] 改 `mygo.json` 版本为 `2.0.0-rc2`、CHANGELOG 小节标题改为 `2.0.0-rc2`,打 tag 发布(产品负责人决定)。

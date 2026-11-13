@@ -154,7 +154,7 @@ func (s *Session) Latency(ctx context.Context) (time.Duration, error) {
 	go func() { _, _, err := s.client.SendRequest("keepalive@openssh.com", true, nil); reply <- err }()
 	select {
 	case err := <-reply:
-		return time.Since(start), err
+		return max(time.Since(start), time.Microsecond), err // a coarse clock (Windows) can read 0, which means unknown
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	case <-s.done:
