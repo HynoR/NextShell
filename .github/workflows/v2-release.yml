@@ -126,6 +126,9 @@ jobs:
           tar -xzf dist/linux-amd64/*.tar.gz --exclude=.mygo-files -C "dist/stage/$name"
           tar -czf "dist/assets/$name.tar.gz" --owner=0 --group=0 -C dist/stage "$name"
           cp dist/linux-amd64/*.deb "dist/assets/$name.deb"
+          # The deb gets the same treatment: .mygo-files is mygo's updater list, which NextShell does not use.
+          packaging/strip-mygo-files.sh "dist/assets/$name.deb"
+          if dpkg-deb -c "dist/assets/$name.deb" | grep -F .mygo-files; then exit 1; fi
           cp dist/linux-amd64/*.rpm "dist/assets/$name.rpm"
       - run: ls -l dist/assets
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

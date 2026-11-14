@@ -43,6 +43,8 @@ tag 运行的顺序:版本检查(含插件 URL)→ `go vet` + `go test ./...`(Li
 
 文件名由工作流统一成纯 ASCII(mygo 给 deb/rpm 的版本是 `2.0.0~rc1`,GitHub 可能改写 `~`)。某一步缺文件会让该任务失败,不会默默少发。
 
+mygo 会把它更新器用的文件清单 `.mygo-files` 写进 Linux 应用目录;NextShell 不用 mygo 的更新器,所以 tar.gz 解包重打时排除它,deb 由 `packaging/strip-mygo-files.sh` 重打去掉(连同 md5sums 里那一行)。rpm 仍带着这个 59 字节的清单(`/opt/nextshell/.mygo-files`):重打 rpm 需要 rpmbuild 和 spec,暂未处理。
+
 和 1.x 的隔离:
 
 - `release-electron.yml` 对每个 tag 触发,所以它的 `tags-ignore` 排除了 `v2.*`;1.x 的 `v0.*` tag 不受影响。GitHub 用 tag 所在提交里的工作流文件,所以这个改动必须在被打 tag 的提交里。
