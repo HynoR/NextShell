@@ -380,12 +380,35 @@ func (a *App) backgroundSettings(c *ui.Context) {
 	ui.Field(c, "界面不透明度", func() {
 		ui.Row(c).Grow(1).MinWidth(0).Gap(10).AlignItems(ui.Center).Disabled(bmp == nil).Children(func() {
 			o := float64(v.BackgroundOpacity)
-			if ui.Slider(c, &o, model.BackgroundOpacityMin, model.BackgroundOpacityMax).Step(1).Label("界面不透明度").Grow(1).Changed() {
+			slider := ui.Slider(c, &o, model.BackgroundOpacityMin, model.BackgroundOpacityMax).Step(1).Label("界面不透明度").Grow(1)
+			if trackClick(c, slider, &o, model.BackgroundOpacityMin, model.BackgroundOpacityMax) || slider.Changed() {
 				v.BackgroundOpacity = int(math.Round(o))
 			}
 			ui.Text(c, fmt.Sprintf("%d%%", v.BackgroundOpacity)).Font("monospace").FontSize(12).Width(40).SingleLine()
 		})
 	}).Description("越小越能看清背景图，越大文字越清晰").FillWidth()
+}
+
+// trackClick moves a slider to where its track was clicked. The slider follows a press it sees in a
+// build; a quick click whose press and release land between two frames (as on GTK) it never sees.
+// The knob takes half its width of padding on either side, as ui.Slider lays it out.
+func trackClick(c *ui.Context, s ui.Element, value *float64, lo, hi float64) bool {
+	x, _, over := s.PointerPosition()
+	if !s.Clicked() || !over {
+		return false
+	}
+	pad := c.Theme().Space(5) / 2
+	w := s.Bounds().W - 2*pad
+	if w <= 0 {
+		return false
+	}
+	f := float64(max(0, min(1, (x-pad)/w)))
+	v := math.Round(lo + f*(hi-lo))
+	if v == *value {
+		return false
+	}
+	*value = v
+	return true
 }
 
 func (a *App) transferSettings(c *ui.Context) {

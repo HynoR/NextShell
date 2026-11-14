@@ -276,3 +276,28 @@ func TestTransparentTerminalLooksLikeAnOpaqueOneWithoutAPicture(t *testing.T) {
 		}
 	}
 }
+
+// A click on the opacity slider's track moves it there, at either end, as a drag of its knob does.
+func TestOpacitySliderFollowsAClickOnItsTrack(t *testing.T) {
+	a, p, tt := fixture(t)
+	p.SetDataDir(t.TempDir())
+	st := ui.NewTester(a.SettingsView, 880, 1800)
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{testutil.Picture(t)}) }
+	click(t, st, "选择背景图")
+	tt.Frame()
+	st.Frame()
+	info, ok := st.AccessByRole(ui.RoleSlider, "界面不透明度")
+	if !ok || info.Disabled || !st.HasText("60%") {
+		t.Fatal("no opacity slider to use", info)
+	}
+	b := info.Bounds
+	st.ClickAt(b.X+2, b.Y+b.H/2)
+	st.Frame()
+	has(t, st, "30%")
+	st.ClickAt(b.X+b.W-2, b.Y+b.H/2)
+	st.Frame()
+	has(t, st, "80%")
+	st.ClickAt(b.X+b.W/2, b.Y+b.H/2)
+	st.Frame()
+	has(t, st, "55%")
+}
