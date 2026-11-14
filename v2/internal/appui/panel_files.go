@@ -996,6 +996,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 				muted(c, d.entry.Path)
 			}
 			var ok string
+			submit := false
 			ui.Form(c, func() {
 				switch d.kind {
 				case "cross":
@@ -1011,7 +1012,7 @@ func (a *App) fileDialogView(c *ui.Context) {
 					toggle(c, "覆盖同名文件", &d.overwrite)
 					ok = "发送"
 				default:
-					ui.Field(c, "名称", func() { ui.TextInput(c, &d.text).Label("名称").AutoFocus().Grow(1) }).FillWidth()
+					ui.Field(c, "名称", func() { submit = ui.TextInput(c, &d.text).Label("名称").AutoFocus().Grow(1).Submitted() }).FillWidth()
 					ok = "创建"
 				}
 			}).FillWidth().Gap(FormGap)
@@ -1019,7 +1020,8 @@ func (a *App) fileDialogView(c *ui.Context) {
 				if ui.Button(c, "取消").Clicked() {
 					d.open = false
 				}
-				if ui.PrimaryButton(c, ok).Disabled(strings.TrimSpace(d.text) == "").Clicked() {
+				// Enter in the name field creates, as the button does.
+				if ui.PrimaryButton(c, ok).Disabled(strings.TrimSpace(d.text) == "").Clicked() || submit && strings.TrimSpace(d.text) != "" {
 					a.runFileDialog(id)
 				}
 			})

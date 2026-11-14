@@ -96,6 +96,25 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	if p.actions[2] != [3]string{"mkdir", "/dest/logs", ""} {
 		t.Fatal("mkdir", p.actions)
 	}
+	// Enter in the name field creates, as the button does.
+	click(t, tt, "更多")
+	click(t, tt, "新建文件…")
+	tt.Type("a.txt")
+	tt.Key(0, ui.KeyEnter)
+	if len(p.actions) < 4 || p.actions[3] != [3]string{"create", "/dest/a.txt", ""} || tt.HasText("新建文件") {
+		t.Fatal("Enter in 新建文件", p.actions)
+	}
+	click(t, tt, "更多")
+	click(t, tt, "新建文件夹…")
+	tt.Key(0, ui.KeyEnter) // nothing typed: Enter does nothing, the dialog stays
+	if len(p.actions) != 4 || !tt.HasText("新建文件夹") {
+		t.Fatal("Enter with an empty name", p.actions)
+	}
+	tt.Type("dir2")
+	tt.Key(0, ui.KeyEnter)
+	if len(p.actions) < 5 || p.actions[4] != [3]string{"mkdir", "/dest/dir2", ""} {
+		t.Fatal("Enter in 新建文件夹", p.actions)
+	}
 	click(t, tt, "更多")
 	answer = []string{"/tmp/report.pdf", "/tmp/b.txt"}
 	click(t, tt, "上传文件…")
