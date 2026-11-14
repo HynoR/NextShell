@@ -26,6 +26,7 @@ import (
 	"net"
 	"nextshell.dev/v2/internal/model"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -281,6 +282,11 @@ func Dial(ctx context.Context, o Options) (s *Session, err error) {
 	r, w := io.Pipe()
 	ss.Stdout = w
 	ss.Stderr = w
+	if Encoding(c.Encoding) == nil {
+		// Without it many servers start the shell in the POSIX locale: CJK names show as ? or octal escapes.
+		// OpenSSH takes it only with AcceptEnv LANG (Debian's and Ubuntu's default); a refusal changes nothing.
+		_ = ss.Setenv("LANG", terminalLang(os.Getenv))
+	}
 	if e = ss.RequestPty("xterm-256color", 24, 80, ssh.TerminalModes{ssh.ECHO: 1, ssh.TTY_OP_ISPEED: 14400, ssh.TTY_OP_OSPEED: 14400}); e != nil {
 		r.Close()
 		w.Close()
@@ -354,6 +360,24 @@ func (w *encodedWriter) Close() error {
 	}
 	return e
 }
+
+// localePattern is a locale name a server may have: language_TERRITORY.UTF-8 with an optional @modifier.
+var localePattern = regexp.MustCompile(`^[a-z]{2,3}(_[A-Z]{2})?\.(UTF-8|utf8)(@[a-z]+)?$`)
+
+// terminalLang is the LANG a shell is asked for: the local locale when it is a UTF-8 one a Linux server
+// may know, else C.UTF-8, which every current glibc and musl have.
+func terminalLang(getenv func(string) string) string {
+	for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		if v := getenv(k); v != "" {
+			if localePattern.MatchString(v) {
+				return v
+			}
+			break
+		}
+	}
+	return "C.UTF-8"
+}
+
 func Encoding(name string) encoding.Encoding {
 	switch strings.ToLower(name) {
 	case "gbk":

@@ -18,10 +18,12 @@ import (
 	"io"
 	"net"
 	"nextshell.dev/v2/internal/model"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,6 +41,8 @@ type testSSH struct {
 	wg          sync.WaitGroup
 	noKeepReply bool
 	hangSetup   bool
+	env         chan string // NAME=value of each env request
+	acceptEnv   atomic.Bool // as AcceptEnv LANG would; OpenSSH's default refuses them
 }
 
 func newServer(t *testing.T, noKeep, hang bool) *testSSH {
@@ -63,7 +67,7 @@ func newServer(t *testing.T, noKeep, hang bool) *testSSH {
 	if e != nil {
 		t.Fatal(e)
 	}
-	s := &testSSH{received: make(chan []byte, 16), addr: l.Addr().String(), signer: signer, private: priv, key: model.Key{ID: "test-key", Private: pr, Public: pub}, keep: make(chan bool, 8), resize: make(chan [2]int, 8), listener: l, noKeepReply: noKeep, hangSetup: hang}
+	s := &testSSH{received: make(chan []byte, 16), addr: l.Addr().String(), signer: signer, private: priv, key: model.Key{ID: "test-key", Private: pr, Public: pub}, keep: make(chan bool, 8), resize: make(chan [2]int, 8), env: make(chan string, 8), listener: l, noKeepReply: noKeep, hangSetup: hang}
 	cfg := &ssh.ServerConfig{PasswordCallback: func(c ssh.ConnMetadata, p []byte) (*ssh.Permissions, error) {
 		if c.User() == "tester" && string(p) == "secret" {
 			return nil, nil
@@ -133,6 +137,14 @@ func newServer(t *testing.T, noKeep, hang bool) *testSSH {
 								if !s.hangSetup {
 									r.Reply(true, nil)
 								}
+							case "env":
+								var v struct{ Name, Value string }
+								ssh.Unmarshal(r.Payload, &v)
+								select {
+								case s.env <- v.Name + "=" + v.Value:
+								default:
+								}
+								r.Reply(s.acceptEnv.Load(), nil)
 							case "window-change":
 								var v struct{ Cols, Rows, Width, Height uint32 }
 								ssh.Unmarshal(r.Payload, &v)
@@ -536,5 +548,61 @@ func TestRSAKeyGeneration(t *testing.T) {
 	}
 	if _, _, e = GenerateKeyWithType("unsupported", ""); e == nil {
 		t.Fatal("unsupported key accepted")
+	}
+}
+
+// A shell is asked to run with a UTF-8 LANG, the local one when it is UTF-8; a server that refuses
+// the request (OpenSSH without AcceptEnv LANG) still opens the shell. A legacy encoding asks for none.
+func TestSSHAsksForAUTF8Lang(t *testing.T) {
+	for _, accept := range []bool{true, false} {
+		srv := newServer(t, false, false)
+		srv.acceptEnv.Store(accept)
+		s, e := Dial(context.Background(), srv.options())
+		if e != nil {
+			t.Fatal(accept, e)
+		}
+		select {
+		case got := <-srv.env:
+			if got != "LANG="+terminalLang(os.Getenv) || !strings.HasSuffix(got, "UTF-8") && !strings.HasSuffix(strings.ToLower(got), "utf8") {
+				t.Fatal(got)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("no env request")
+		}
+		echo(t, s, "ok")
+		s.Close()
+	}
+	srv := newServer(t, false, false)
+	o := srv.options()
+	o.Connection.Encoding = "gbk"
+	s, e := Dial(context.Background(), o)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer s.Close()
+	select {
+	case got := <-srv.env:
+		t.Fatal("a GBK session asked for", got)
+	default:
+	}
+
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	for _, tc := range []struct {
+		env  map[string]string
+		want string
+	}{
+		{map[string]string{"LANG": "zh_CN.UTF-8"}, "zh_CN.UTF-8"},
+		{map[string]string{"LANG": "en_US.utf8"}, "en_US.utf8"},
+		{map[string]string{"LC_ALL": "de_DE.UTF-8", "LANG": "en_US.UTF-8"}, "de_DE.UTF-8"},
+		{map[string]string{"LC_CTYPE": "UTF-8"}, "C.UTF-8"}, // macOS's, which no Linux has
+		{map[string]string{"LANG": "zh_CN.GBK"}, "C.UTF-8"},
+		{map[string]string{"LANG": "C"}, "C.UTF-8"},
+		{map[string]string{"LANG": "sr_RS.UTF-8@latin"}, "sr_RS.UTF-8@latin"},
+		{map[string]string{"LANG": "en_US.UTF-8; rm -rf /"}, "C.UTF-8"},
+		{nil, "C.UTF-8"},
+	} {
+		if got := terminalLang(env(tc.env)); got != tc.want {
+			t.Errorf("%v: %q, want %q", tc.env, got, tc.want)
+		}
 	}
 }
