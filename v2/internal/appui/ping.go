@@ -2,10 +2,12 @@ package appui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"nextshell.dev/v2/internal/diagnostics"
 )
 
 // traceState is the route-trace drawer: the host traced and what the trace printed.
@@ -13,6 +15,7 @@ type traceState struct {
 	open, busy       bool
 	name, host, text string
 	id               string // the diagnostic the text answers
+	list             ui.ListState
 }
 
 // pingCard is the left column's 延迟 line: the round trip to the server, which opens the route trace.
@@ -92,12 +95,25 @@ func (a *App) traceDrawer(c *ui.Context) {
 			if missing {
 				ui.Text(c, "未找到 nexttrace。请先安装 nexttrace，再到「设置 → 网络工具」指定它的路径。").FillWidth()
 			}
-			ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-				if tr.text != "" && !missing {
-					ui.Text(c, tr.text).Font("monospace").FontSize(12).Wrap().Selectable().FillWidth().Padding(8).Radius(6).Background(t.Background).Label("路由追踪结果")
+			hops, notes := diagnostics.ParseTrace(tr.text)
+			if len(hops) > 0 && !missing {
+				// nexttrace's lines, one per probe, as a table of hops; what it said around them stays above.
+				if len(notes) > 0 {
+					muted(c, strings.Join(notes, "\n")).FontSize(11).Wrap().Selectable().FillWidth()
 				}
-			})
+				a.hopTable(c, hops)
+			} else {
+				ui.Scroll(c).Grow(1).FillWidth().Children(func() {
+					if tr.text != "" && !missing {
+						ui.Text(c, tr.text).Font("monospace").FontSize(12).Wrap().Selectable().FillWidth().Padding(8).Radius(6).Background(t.Background).Label("路由追踪结果")
+					}
+				})
+			}
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
+				if len(hops) > 0 && !tr.busy && ghost(c, "复制原始输出", "").Clicked() {
+					a.P.CopyText(tr.text)
+					a.toast("已复制路由追踪的原始输出")
+				}
 				if missing && ui.Button(c, "打开设置").Clicked() {
 					a.later(func() { a.openSettings("网络工具") })
 				}
@@ -110,4 +126,47 @@ func (a *App) traceDrawer(c *ui.Context) {
 			})
 		})
 	})
+}
+
+// hopTable is the route, one row per TTL: the addresses that answered, each probe's round trip and what
+// nexttrace knows of the address.
+func (a *App) hopTable(c *ui.Context, hops []diagnostics.Hop) {
+	cols := []ui.TableColumn{{Title: "跳", Width: 36, Align: ui.End}, {Title: "地址"}, {Title: "延迟 (ms)", Width: 130}, {Title: "说明", Width: 92}}
+	ui.Table(c.Key("trace-hops"), &a.monitor.trace.list, cols, len(hops), func(row, col int) {
+		h := hops[row]
+		text := []string{strconv.Itoa(h.TTL), hopAddress(h), hopRTTs(h), h.Note}[col]
+		e := ui.Text(c, text).FontSize(12).SingleLine()
+		if col == 1 || col == 2 {
+			e.Font("monospace")
+		}
+		if h.Timeout() {
+			e.TextColor(c.Theme().TextMuted)
+		}
+		if col == 1 && len(h.IPs) > 1 || col == 3 && h.Note != "" {
+			e.Tooltip(text)
+		}
+	}).Grow(1).FillWidth().Label("路由追踪结果")
+}
+
+// hopAddress is the hop's address, the first one with a count of the others, or * when none answered.
+func hopAddress(h diagnostics.Hop) string {
+	switch len(h.IPs) {
+	case 0:
+		return "*"
+	case 1:
+		return h.IPs[0]
+	}
+	return fmt.Sprintf("%s 等 %d 个", h.IPs[0], len(h.IPs))
+}
+
+// hopRTTs is each probe's round trip, * for one unanswered.
+func hopRTTs(h diagnostics.Hop) string {
+	parts := make([]string, len(h.RTTs))
+	for i, v := range h.RTTs {
+		parts[i] = "*"
+		if v >= 0 {
+			parts[i] = strconv.FormatFloat(v, 'f', 2, 64)
+		}
+	}
+	return strings.Join(parts, " / ")
 }

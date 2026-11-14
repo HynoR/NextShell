@@ -349,6 +349,20 @@ func TestRouteTraceDrawerFromThePingCard(t *testing.T) {
 	if tt.HasText("路由追踪 · one") || !p.cancelled {
 		t.Fatal("drawer stayed open, or the trace was not stopped")
 	}
+
+	// nexttrace's --raw lines, one per probe, show as one row per hop.
+	click(t, tt, "PING 延迟 —，点击路由追踪")
+	raw := "NextTrace v1.7.6\n10.0.0.2 -> 10.0.0.1, 30 hops max, 28 byte packets, ICMP mode\n" +
+		"1|*||||||\n1|*||||||\n1|*||||||\n" +
+		"2|10.1.3.39||0.68||RFC1918|||||0.0000|0.0000\n2|10.1.3.39||1.14||RFC1918|||||0.0000|0.0000\n2|10.1.3.39||1.24||RFC1918|||||0.0000|0.0000\n"
+	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: raw}})
+	tt.Frame()
+	has(t, tt, "跳", "延迟 (ms)", "* / * / *", "10.1.3.39", "0.68 / 1.14 / 1.24", "RFC1918", "10.0.0.2 -> 10.0.0.1, 30 hops max, 28 byte packets, ICMP mode")
+	if tt.HasText("2|10.1.3.39||0.68||RFC1918|||||0.0000|0.0000") {
+		t.Fatal("the raw lines are shown")
+	}
+	click(t, tt, "复制原始输出")
+	has(t, tt, "已复制路由追踪的原始输出")
 }
 
 func TestImportPreviewOpensManagerAndExportUsesChosenHosts(t *testing.T) {

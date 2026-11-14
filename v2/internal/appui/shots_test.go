@@ -214,7 +214,7 @@ func TestScreenshots(t *testing.T) {
 	ptt.Frame()
 	shot(ptt, "02f-ping-card")
 	click(t, ptt, "PING 延迟 18 ms，点击路由追踪")
-	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: "traceroute to 10.0.0.1, 30 hops max\n 1  192.168.1.1     1.21 ms\n 2  10.255.0.1      4.80 ms\n 3  203.0.113.9    12.40 ms\n 4  10.0.0.1       18.10 ms"}})
+	p.events = append(p.events, appui.Event{Diagnostic: &appui.DiagnosticResult{ID: "current", Kind: "traceroute", Text: "NextTrace v1.7.6\n192.168.1.20 -> 10.0.0.1, 30 hops max, 28 byte packets, ICMP mode\n1|192.168.1.1||1.21||RFC1918|||||0.0000|0.0000\n1|192.168.1.1||1.30||RFC1918|||||0.0000|0.0000\n2|*||||||\n2|10.255.0.1||4.80||RFC1918|||||0.0000|0.0000\n3|203.0.113.9||12.40||RFC5737|||||0.0000|0.0000\n4|10.0.0.1||18.10||RFC1918|||||0.0000|0.0000"}})
 	ptt.Frame()
 	shot(ptt, "02g-route-trace-drawer")
 	// A server the probe cannot read (not Linux): after three failed samples it is left alone, said in the left
