@@ -182,6 +182,7 @@ func (p *Platform) AgentOverview() appui.AgentOverview {
 	p.featureMu.Unlock()
 	return appui.AgentOverview{URL: url, Halted: p.gateway.Halted(), Pending: p.gateway.Pending(), Activity: p.gateway.Activity()}
 }
+
 // mcpEnabledKey is the UI state that remembers the user turned MCP on, so the next start turns it on again.
 // It lives outside the preferences: the settings window saves those whole, from its own copy.
 const mcpEnabledKey = "mcp.enabled"
