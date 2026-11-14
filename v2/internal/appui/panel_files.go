@@ -39,6 +39,7 @@ type filesState struct {
 	failed                   map[string]string   // per session: why its first listing could not be read
 	counting                 *removalCount       // the delete confirm waits for this count
 	removing                 map[string]string   // deletions started here: transfer job -> session
+	landing                  map[string]fileSpot // transfers that put files on a server: job -> where they land
 	treeHidden               bool
 	treeWidth                float32
 }
@@ -83,7 +84,52 @@ func (s *filesState) init() {
 	s.trees = map[string]*dirTree{}
 	s.failed = map[string]string{}
 	s.removing = map[string]string{}
+	s.landing = map[string]fileSpot{}
 	s.treeWidth = 200
+}
+
+// fileSpot is a folder of a session's server.
+type fileSpot struct{ session, dir string }
+
+// landsIn is the folder a transfer writes into on a server, if it writes on one.
+func landsIn(r TransferRequest) (fileSpot, bool) {
+	switch r.Kind {
+	case "upload", "upload-packed":
+		return fileSpot{r.Session, path.Dir(r.Remote)}, r.Remote != ""
+	case "copy", "move", "cross":
+		target := r.TargetSession
+		if target == "" {
+			target = r.Session
+		}
+		return fileSpot{target, path.Dir(r.Destination)}, r.Destination != ""
+	}
+	return fileSpot{}, false
+}
+
+// refreshLanded lists the folder shown again when a transfer into it has ended, so an upload or a copy
+// shows up without pressing refresh. It runs every frame.
+func (a *App) refreshLanded() {
+	s := &a.files
+	if len(s.landing) == 0 {
+		return
+	}
+	refresh := false
+	for _, j := range a.P.Transfers() {
+		spot, ok := s.landing[j.ID]
+		if !ok || j.State == "queued" || j.State == "running" {
+			continue
+		}
+		delete(s.landing, j.ID)
+		refresh = refresh || s.shows(spot)
+	}
+	if refresh {
+		a.listFiles(s.session, s.path)
+	}
+}
+
+// shows is whether the list shows the folder spot.
+func (s *filesState) shows(spot fileSpot) bool {
+	return s.session != "" && s.session == spot.session && s.path == spot.dir
 }
 
 func (s *filesState) tree(id string) *dirTree {
@@ -959,8 +1005,11 @@ const transferQueuedID = "transfer-queued"
 func (a *App) queue(reqs ...TransferRequest) {
 	n, failed := 0, map[string]bool{}
 	for _, req := range reqs {
-		if _, e := a.P.QueueTransfer(req); e == nil {
+		if id, e := a.P.QueueTransfer(req); e == nil {
 			n++
+			if spot, ok := landsIn(req); ok {
+				a.files.landing[id] = spot
+			}
 		} else if !failed[e.Error()] {
 			failed[e.Error()] = true
 			a.fail(e)

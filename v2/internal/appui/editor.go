@@ -270,6 +270,10 @@ func (a *App) receiveDocument(r *EditorResult) {
 		dirty := d.dirty()
 		switch {
 		case r.Saved:
+			// The list shows the file's size and time: list its folder again when it is the one shown.
+			if a.files.shows(fileSpot{r.Session, path.Dir(r.Document.Path)}) {
+				a.listFiles(r.Session, a.files.path)
+			}
 			d.Document = r.Document
 			if d.Text == r.Document.Text && d.Code != nil {
 				d.Code.Buffer.MarkSaved()

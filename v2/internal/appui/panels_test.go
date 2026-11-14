@@ -15,6 +15,7 @@ import (
 	"nextshell.dev/v2/internal/monitor"
 	"nextshell.dev/v2/internal/remoteedit"
 	"nextshell.dev/v2/internal/sftpfs"
+	"nextshell.dev/v2/internal/transfer"
 )
 
 func listing(p *fakePlatform, tt *ui.Tester, id, dir string, entries ...sftpfs.Entry) {
@@ -800,5 +801,55 @@ func TestToolTabsGoWithTheirHost(t *testing.T) {
 	click(t, tt, "断开并关闭")
 	if tt.HasText("进程 · one") || p.detailed["one"] {
 		t.Fatal("the process tab outlived its host", p.detailed)
+	}
+}
+
+// An upload into the folder shown, or a save of a file in it, lists the folder again once it has ended.
+func TestFilesListRefreshesAfterAnUploadOrASave(t *testing.T) {
+	a, p, tt := fixture(t)
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{"/tmp/new.txt"}) }
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/dest", sftpfs.Entry{Name: "old.log", Path: "/dest/old.log"})
+	click(t, tt, "更多")
+	click(t, tt, "上传文件…")
+	if last := p.queued[len(p.queued)-1]; last.Kind != "upload" || last.Remote != "/dest/new.txt" {
+		t.Fatal("upload", p.queued)
+	}
+	lists := len(p.listed)
+	p.jobs = []transfer.Job{{ID: "job", State: "running"}}
+	tt.Frame()
+	if len(p.listed) != lists {
+		t.Fatal("listed again while the upload runs", p.listed)
+	}
+	p.jobs[0].State = "done"
+	tt.Frame()
+	if len(p.listed) != lists+1 || p.listed[lists] != "one:/dest" {
+		t.Fatal("not listed again after the upload", p.listed)
+	}
+	tt.Frame()
+	if len(p.listed) != lists+1 {
+		t.Fatal("listed again for the same upload", p.listed)
+	}
+
+	// Saving a file of the folder shown in the editor.
+	doc := remoteedit.Document{Path: "/dest/old.log", Text: "a", Hash: "h1"}
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: doc}})
+	tt.Frame()
+	lists = len(p.listed)
+	doc.Text, doc.Hash = "ab", "h2"
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: doc, Saved: true}})
+	tt.Frame()
+	if len(p.listed) != lists+1 || p.listed[lists] != "one:/dest" {
+		t.Fatal("not listed again after the save", p.listed)
+	}
+	// A file elsewhere does not.
+	other := remoteedit.Document{Path: "/etc/x.conf", Text: "x", Hash: "h3"}
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: other}})
+	tt.Frame()
+	p.events = append(p.events, appui.Event{Editor: &appui.EditorResult{Session: "one", Document: other, Saved: true}})
+	tt.Frame()
+	if len(p.listed) != lists+1 {
+		t.Fatal("listed for a file of another folder", p.listed)
 	}
 }

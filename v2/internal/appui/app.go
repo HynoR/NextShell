@@ -302,6 +302,7 @@ func (a *App) View(c *ui.Context) {
 		}
 	}
 	a.notifyTransfers()
+	a.refreshLanded()
 	a.restoreTabs()
 	a.refreshTitles()
 	a.shortcuts(c)
