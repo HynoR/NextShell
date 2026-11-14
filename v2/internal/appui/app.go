@@ -185,6 +185,7 @@ func humanize(msg string) (string, bool) {
 		{"file exists", "目标已存在"},
 		{"knownhosts: key mismatch", "known_hosts 里的主机密钥与服务器不一致"},
 		{"remote file changed since open", "远程文件在打开后被修改了，请重新载入后再保存"},
+		{"resource is in use", "仍在使用中，无法删除：目录需先清空，密钥 / 代理需先解除主机或凭据的引用"},
 	} {
 		if strings.Contains(m, v.match) {
 			return v.text, true

@@ -151,6 +151,7 @@ func TestHumanizeInteropErrorsAndNaturalOrder(t *testing.T) {
 		"ssh: handshake failed: ssh: unexpected message type 51 (expected 60)": "服务器不支持此认证方式",
 		"wait: remote command exited without exit status or exit signal":       "连接已断开",
 		"dial tcp 10.0.0.1:22: connect: connection refused":                    "连接被拒绝：服务器没有在这个端口提供 SSH 服务",
+		"resource is in use": "仍在使用中，无法删除：目录需先清空，密钥 / 代理需先解除主机或凭据的引用",
 	} {
 		if got, ok := humanize(msg); !ok || got != want {
 			t.Errorf("%q → %q", msg, got)
