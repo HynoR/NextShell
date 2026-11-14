@@ -696,7 +696,7 @@ func (a *App) processTable(c *ui.Context, id string, snap monitor.Snapshot) {
 			}
 		})
 	}
-	cols := []ui.TableColumn{{Title: "PID", Width: 60, Sortable: true}, {Title: "CPU", Width: 68, Sortable: true, Align: ui.End}, {Title: "内存", Width: 68, Sortable: true, Align: ui.End}, {Title: "命令", Sortable: true}}
+	cols := []ui.TableColumn{{Title: "PID", Width: 80, Sortable: true}, {Title: "CPU", Width: 68, Sortable: true, Align: ui.End}, {Title: "内存", Width: 68, Sortable: true, Align: ui.End}, {Title: "命令", Sortable: true}}
 	table := ui.Table(c.Key("process-table"), &s.processList, cols, len(rows), func(row, col int) {
 		v := rows[row]
 		text := []string{strconv.Itoa(v.PID), fmt.Sprintf("%.1f%%", v.CPU), fmt.Sprintf("%.0fM", v.MemoryMB), v.Command}[col]
@@ -733,6 +733,17 @@ func connState(s string) string {
 	}
 	return s
 }
+// hiddenProcess is why a connection has no process: ss and netstat name only the login user's own.
+const hiddenProcess = "进程不可见：服务器只向 root 显示其他用户的进程"
+
+// processLabel is a connection's "PID name", or a dash when the server did not tell.
+func processLabel(v monitor.Network) string {
+	if v.PID == 0 {
+		return "—"
+	}
+	return strings.TrimSpace(fmt.Sprintf("%d %s", v.PID, v.Process))
+}
+
 func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 	s := &a.monitor
 	ui.SearchField(c, &s.netFilter).Label("过滤网络连接").Placeholder("端口、地址或进程").Margin(4, 8)
@@ -751,10 +762,18 @@ func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 	cols := []ui.TableColumn{{Title: "协议", Width: 108}, {Title: "本地"}, {Title: "远端"}, {Title: "进程", Width: 90}}
 	ui.Table(c.Key("network-table"), &s.networkList, cols, len(rows), func(row, col int) {
 		v := rows[row]
-		text := []string{v.Protocol + " " + connState(v.State), fmt.Sprintf("%s:%d", v.LocalIP, v.LocalPort), fmt.Sprintf("%s:%d", v.RemoteIP, v.RemotePort), fmt.Sprintf("%d %s", v.PID, v.Process)}[col]
-		ui.Text(c, text).SingleLine().FontSize(12).Tooltip(fmt.Sprintf("%d 个连接 · %d 个对端", v.Connections, v.UniqueIPs))
+		text := []string{v.Protocol + " " + connState(v.State), fmt.Sprintf("%s:%d", v.LocalIP, v.LocalPort), fmt.Sprintf("%s:%d", v.RemoteIP, v.RemotePort), processLabel(v)}[col]
+		tip := fmt.Sprintf("%d 个连接 · %d 个对端", v.Connections, v.UniqueIPs)
+		if col == 3 && v.PID == 0 {
+			tip = hiddenProcess
+		}
+		ui.Text(c, text).SingleLine().FontSize(12).Tooltip(tip)
 	}).Grow(1).FillWidth()
-	muted(c, fmt.Sprintf("%d / %d 条", len(rows), len(network))).Padding(4, 10)
+	count := fmt.Sprintf("%d / %d 条", len(rows), len(network))
+	if slices.ContainsFunc(network, func(v monitor.Network) bool { return v.PID == 0 }) {
+		count += " · 显示为 — 的进程属于其他用户，需以 root 登录才能看到"
+	}
+	muted(c, count).Padding(4, 10)
 }
 
 // processDrawer details one process under the table; it follows the PID

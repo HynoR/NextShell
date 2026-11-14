@@ -171,7 +171,7 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 	if netdev != "" {
 		for _, line := range strings.Split(netdev, "\n") {
 			parts := strings.SplitN(line, ":", 2)
-			if len(parts) != 2 || strings.TrimSpace(parts[0]) == "lo" {
+			if len(parts) != 2 {
 				continue
 			}
 			f := strings.Fields(parts[1])
@@ -181,6 +181,9 @@ func Parse(raw string, at time.Time, previous *Snapshot) (Snapshot, error) {
 				}
 				name := strings.TrimSpace(parts[0])
 				s.Interfaces[name] = InterfaceRate{RX: uintn(f[0]), TX: uintn(f[8])}
+				if name == "lo" { // loopback can be picked on its own but is not traffic in or out of the server
+					continue
+				}
 				s.RX += uintn(f[0])
 				s.TX += uintn(f[8])
 			}
@@ -328,7 +331,7 @@ func ParseSS(raw string) []Network {
 			continue
 		}
 		extra := strings.Join(f[offset+5:], " ")
-		pid, name := 0, "unknown"
+		pid, name := 0, "" // ss/netstat only name the login user's own processes unless root
 		if m := pidPattern.FindStringSubmatch(extra); len(m) > 1 {
 			pid = intn(m[1])
 		}
@@ -363,7 +366,7 @@ func ParseNetstat(raw string) []Network {
 		} else if len(f) > 6 {
 			pidProg = f[6]
 		}
-		pid, name := 0, "unknown"
+		pid, name := 0, "" // ss/netstat only name the login user's own processes unless root
 		if p := strings.SplitN(pidProg, "/", 2); len(p) == 2 {
 			pid = intn(p[0])
 			name = p[1]

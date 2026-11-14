@@ -58,7 +58,7 @@ func TestPerInterfaceDeltaResetAndTopology(t *testing.T) {
 	raw := strings.Replace(probe, "---NS_NETCOUNTERS---\n1000\n2000", "---NS_NETDEV---\neth0: 1000 0 0 0 0 0 0 0 2000 0 0 0 0 0 0 0\nlo: 99999 0 0 0 0 0 0 0 99999", 1)
 	at := time.Unix(100, 0)
 	a, err := Parse(raw, at, nil)
-	if err != nil || a.HasNetworkDelta || len(a.Interfaces) != 1 {
+	if _, lo := a.Interfaces["lo"]; err != nil || a.HasNetworkDelta || len(a.Interfaces) != 2 || !lo || a.RX != 1000 || a.TX != 2000 { // lo is pickable, not counted
 		t.Fatal(a, err)
 	}
 	b, err := Parse(strings.Replace(raw, "eth0: 1000", "eth0: 1200", 1), at.Add(2*time.Second), &a)

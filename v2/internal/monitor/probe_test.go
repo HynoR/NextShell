@@ -76,7 +76,7 @@ tcp 0 0 10.0.0.1:80 10.0.0.3:53000 ESTABLISHED 99/nginx
 tcp6 0 0 :::443 :::* LISTEN -
 udp 0 0 0.0.0.0:68 0.0.0.0:* -`
 	rows = ParseNetstat(netstat)
-	if len(rows) != 4 || rows[0].Process != "nginx" || rows[0].Connections != 1 || rows[1].RemotePort != 53000 || rows[2].PID != 0 || rows[2].Process != "unknown" {
+	if len(rows) != 4 || rows[0].Process != "nginx" || rows[0].Connections != 1 || rows[1].RemotePort != 53000 || rows[2].PID != 0 || rows[2].Process != "" {
 		t.Fatal(rows)
 	}
 	ps := ParseProcesses("100 1 root S 0 20 1.5 2.5 2048 4096 60 command name\ngarbage\n0 1 root S 0 20 1 1 1 1 1 no")
@@ -212,7 +212,7 @@ func TestParseLightOutputLeavesDetailEmpty(t *testing.T) {
 	if s.Detail || s.Processes != nil || s.Network != nil || len(s.Warnings) != 0 {
 		t.Fatalf("light sample must say 'not sampled', quietly: detail=%v procs=%v net=%v warnings=%v", s.Detail, s.Processes, s.Network, s.Warnings)
 	}
-	if s.Load != "0.10 0.20 0.30 1/100 42" || !strings.HasPrefix(s.Info, "Linux box") || s.SwapTotal != 2048*1024 || s.SwapFree != 1024*1024 || len(s.Disks) != 1 || s.RX != 1500 || s.TX != 2700 || len(s.Interfaces) != 2 {
+	if s.Load != "0.10 0.20 0.30 1/100 42" || !strings.HasPrefix(s.Info, "Linux box") || s.SwapTotal != 2048*1024 || s.SwapFree != 1024*1024 || len(s.Disks) != 1 || s.RX != 1500 || s.TX != 2700 || len(s.Interfaces) != 3 || s.Interfaces["lo"].RX != 999 {
 		t.Fatalf("%+v", s)
 	}
 }

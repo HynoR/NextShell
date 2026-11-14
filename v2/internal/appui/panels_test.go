@@ -305,7 +305,19 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	has(t, tt, "进程 2201")
 	// The network manager is a tab of its own; both keep the full probe until they close.
 	click(t, tt, "网络管理器")
-	has(t, tt, "网络 · one", "tcp 监听")
+	has(t, tt, "网络 · one", "tcp 监听", "812 nginx")
+	if tt.HasText("0 unknown") || tt.HasText("需以 root 登录才能看到") {
+		t.Fatal("every connection has its process here")
+	}
+	// A connection of another user's process: the server does not say which, so neither does the table.
+	hidden := monitorSnapshot(now.Add(12*time.Second), 3)
+	hidden.Network = append(hidden.Network, monitor.Network{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 22, Listener: true})
+	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: hidden}})
+	tt.Frame()
+	has(t, tt, "—", "3 / 3 条 · 显示为 — 的进程属于其他用户，需以 root 登录才能看到")
+	if tt.HasText("0 unknown") {
+		t.Fatal("a process the server hid shows as pid 0")
+	}
 	tt.Key(appMod(), ui.KeyW) // closes the tool tab shown, not the host's session
 	if tt.HasText("网络 · one") || !tt.HasText("进程 · one") || !p.detailed["one"] || len(p.closed) != 0 {
 		t.Fatal("the process tab still needs the full probe", p.detailed, p.closed)
