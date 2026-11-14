@@ -50,12 +50,17 @@ func main() {
 	}
 	defer p.Shutdown()
 	// With a tray option on the window can hide where no icon shows (a Linux desktop without a tray host):
-	// launching the app again then brings it back. A trial profile (--db) runs beside the real one.
-	// The handler is registered for every run on the real profile: the lock may be taken later, when a tray
-	// option is turned on in settings.
-	tr := &tray{create: newTrayIcon, show: func() {}, shared: opts.db == "", lock: mygo.App.RequestSingleInstanceLock}
-	if tr.shared {
-		mygo.App.OnSecondInstance(tr.secondInstance(mygo.RunOnMain))
+	// launching the app again on the same profile then brings it back. A --db profile has a lock of its
+	// own, so it runs beside the real one but not beside itself. The handler is registered for every run:
+	// the lock may be taken later, when a tray option is turned on in settings.
+	tr := &tray{create: newTrayIcon, show: func() {}, shared: sharedProfile(opts)}
+	second := tr.secondInstance(mygo.RunOnMain)
+	var release func()
+	tr.lock, release = profileLock(opts, func() { second(nil, "") })
+	defer release()
+	mygo.App.OnQuit(release)
+	if opts.db == "" {
+		mygo.App.OnSecondInstance(second)
 	}
 	if wantsSingleInstance(p.Preferences(), opts) && !tr.takeLock() {
 		return // handed over to the running instance, which shows its window

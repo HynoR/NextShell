@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"nextshell.dev/v2/internal/appui"
+	"nextshell.dev/v2/internal/instance"
 	"nextshell.dev/v2/internal/model"
 )
 
@@ -27,9 +28,10 @@ type tray struct {
 	icon   trayIcon
 	failed bool
 
-	// shared is a run on the real profile (no --db): it may be launched again, and only while it holds the
-	// single-instance lock does a second launch show its window instead of starting another one, so only
-	// then may it hide the window. lock takes the lock, as mygo's RequestSingleInstanceLock does.
+	// shared is a run on a profile file, the real one or a --db one: it may be launched again, and only
+	// while it holds that profile's single-instance lock does a second launch show its window instead of
+	// opening the file again, so only then may it hide the window. lock takes the lock: mygo's
+	// RequestSingleInstanceLock for the real profile, one keyed by the file for --db (profileLock).
 	shared, locked bool
 	lock           func() bool
 
@@ -65,8 +67,8 @@ func (t *tray) Probe(goos string) {
 	}
 }
 
-// takeLock holds the single-instance lock where a run needs it to hide its window. A trial profile runs
-// beside the real one and needs none. mygo allows the call at any time and answers true again once the lock is
+// takeLock holds the single-instance lock where a run needs it to hide its window. A profile in memory
+// cannot be opened again and needs none. mygo allows the call at any time and answers true again once the lock is
 // held; it answers false when another instance of this app holds it, which no run can change.
 func (t *tray) takeLock() bool {
 	if !t.shared || t.locked {
@@ -110,9 +112,25 @@ func (t *tray) Sync() {
 }
 
 // wantsSingleInstance is whether this launch takes the single-instance lock: a tray option is on, so the
-// window may be hidden, and the profile is the real one. A launch with --db is a trial and runs beside it.
+// window may be hidden, and the profile is a file that may be opened again. A --db profile has a lock of
+// its own and runs beside the real one; where no tray icon shows (a Linux desktop without a tray host),
+// launching it again is what brings its window back.
 func wantsSingleInstance(prefs model.Preferences, o options) bool {
-	return (prefs.MinimizeToTray || prefs.CloseToTray) && o.db == ""
+	return (prefs.MinimizeToTray || prefs.CloseToTray) && sharedProfile(o)
+}
+
+// sharedProfile is whether the run's profile may be opened by another launch: any file, not :memory:.
+func sharedProfile(o options) bool { return o.db != ":memory:" }
+
+// profileLock is the single-instance lock of the run's profile, and how it is let go: mygo's app-wide
+// lock for the real profile, whose second launches reach OnSecondInstance; for a --db profile one keyed
+// by its file, whose second launches call wake.
+func profileLock(o options, wake func()) (take func() bool, release func()) {
+	if o.db == "" {
+		return mygo.App.RequestSingleInstanceLock, func() {}
+	}
+	l := instance.New(o.db, wake)
+	return l.Take, l.Release
 }
 
 // secondInstance is what a later launch does to this one, which holds the lock: show the window as the tray's

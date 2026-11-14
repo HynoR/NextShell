@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"nextshell.dev/v2/internal/appui"
@@ -272,9 +274,9 @@ func TestClosingHidesOnlyWhenNothingIsQuitting(t *testing.T) {
 	}
 }
 
-// The single-instance lock is taken only when a tray option may hide the window, and not for a trial
-// profile, which runs beside the real one.
-func TestSingleInstanceLockOnlyForTheRealProfileWithATrayOption(t *testing.T) {
+// The single-instance lock is taken only when a tray option may hide the window, for the real profile and
+// for a --db one (which has a lock of its own), not for a profile in memory, which nothing opens again.
+func TestSingleInstanceLockForAProfileFileWithATrayOption(t *testing.T) {
 	prefs := func(minimize, closing bool) model.Preferences {
 		p := model.DefaultPreferences()
 		p.MinimizeToTray, p.CloseToTray = minimize, closing
@@ -290,8 +292,10 @@ func TestSingleInstanceLockOnlyForTheRealProfileWithATrayOption(t *testing.T) {
 		{"close to tray", prefs(false, true), "", true},
 		{"minimize to tray", prefs(true, false), "", true},
 		{"both", prefs(true, true), "", true},
-		{"trial profile", prefs(true, true), "/tmp/trial.db", false},
+		{"trial profile", prefs(true, true), "/tmp/trial.db", true},
+		{"trial profile, close to tray", prefs(false, true), "/tmp/trial.db", true},
 		{"trial profile, options off", prefs(false, false), "/tmp/trial.db", false},
+		{"profile in memory", prefs(true, true), ":memory:", false},
 	} {
 		if got := wantsSingleInstance(c.prefs, options{db: c.db}); got != c.want {
 			t.Errorf("%s: %v, want %v", c.what, got, c.want)
@@ -382,13 +386,55 @@ func TestWithoutTheLockTheWindowStaysVisible(t *testing.T) {
 	}
 }
 
-// A trial profile (--db) runs beside the real one and never asks for the lock.
-func TestTrialProfileHidesWithoutTheLock(t *testing.T) {
+// A profile in memory cannot be opened by another launch and never asks for the lock.
+func TestProfileInMemoryHidesWithoutTheLock(t *testing.T) {
 	f := newTrayFixture(t)
-	f.tray.lock = func() bool { t.Fatal("a trial profile took the lock"); return false }
+	f.tray.shared = sharedProfile(options{db: ":memory:"})
+	f.tray.lock = func() bool { t.Fatal("a profile in memory took the lock"); return false }
 	f.app.Prefs.CloseToTray = true
 	f.tray.Sync()
 	if len(f.icons) != 1 || !f.tray.closeHides() {
 		t.Fatal("trial profile cannot hide", len(f.icons))
+	}
+}
+
+// A --db profile has a lock of its own: a second launch on the same file wakes the first, which shows its
+// window, and is told to exit, so a window hidden where no tray icon shows comes back (rc2 M-1); a launch
+// on another file runs beside it.
+func TestTrialProfileLockIsPerFile(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	db := filepath.Join(t.TempDir(), "trial.db")
+	f := newTrayFixture(t)
+	f.tray.shared = sharedProfile(options{db: db})
+	woke := make(chan bool, 2)
+	second := f.tray.secondInstance(func(fn func()) { fn(); woke <- true })
+	var release func()
+	f.tray.lock, release = profileLock(options{db: db}, func() { second(nil, "") })
+	defer release()
+	f.app.Prefs.CloseToTray = true
+	if !wantsSingleInstance(f.app.Prefs, options{db: db}) || !f.tray.takeLock() {
+		t.Fatal("the first launch on the profile did not hold its lock")
+	}
+	f.tray.Sync()
+	if len(f.icons) != 1 || !f.tray.closeHides() {
+		t.Fatal("cannot hide with the lock held", len(f.icons))
+	}
+	take, again := profileLock(options{db: db}, func() { t.Error("the second launch was woken") })
+	defer again()
+	if take() {
+		t.Fatal("a second launch on the same profile was let in")
+	}
+	select {
+	case <-woke:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the first launch was not asked to show its window")
+	}
+	if f.shown != 1 {
+		t.Fatal("window not shown", f.shown)
+	}
+	take, other := profileLock(options{db: filepath.Join(t.TempDir(), "other.db")}, nil)
+	defer other()
+	if !take() {
+		t.Fatal("a launch on another profile was refused")
 	}
 }
