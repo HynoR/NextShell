@@ -62,7 +62,11 @@ func (a *App) TrayLocal() {
 
 // TrayQuit quits as ⌘Q does: with the confirmation when sessions are open or files are unsaved, which the
 // window shows. The host has brought the window forward by then.
-func (a *App) TrayQuit() {
+func (a *App) TrayQuit() { a.RequestQuit() }
+
+// RequestQuit is every quit the user asks for (the tray's 退出, Ctrl+Q / Ctrl+Shift+Q outside macOS): it asks
+// first when sessions are open or files are unsaved, as closing the window does.
+func (a *App) RequestQuit() {
 	if a.ExitNeedsConfirm() {
 		a.ConfirmExit = true
 		a.wake()

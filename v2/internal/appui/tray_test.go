@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image/png"
+	"runtime"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -211,5 +212,37 @@ func TestTrayPendingTellsOnceAndTheSettingsSayWhy(t *testing.T) {
 	st.Frame()
 	if st.HasText("重启 NextShell 后生效") {
 		t.Fatal("the note stayed after the host could hide the window")
+	}
+}
+
+// Outside macOS (where ⌘Q is the menu's) the quit shortcut goes through the same guard as closing the window.
+func TestQuitShortcutUsesTheQuitGuard(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("⌘Q is the app menu's Quit on macOS")
+	}
+	p := newPlatform(t)
+	quits := 0
+	p.SetQuit(func() { quits++ })
+	a, tt := start(p)
+	tt.Key(ui.Ctrl, ui.KeyQ) // nothing open, nothing focused: quits at once
+	tt.Frame()
+	if quits != 1 {
+		t.Fatal("Ctrl+Q with nothing open", quits)
+	}
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	tt.Key(ui.Ctrl, ui.KeyQ) // the terminal has the keyboard: Ctrl+Q is the shell's
+	tt.Frame()
+	if quits != 1 || a.ConfirmExit {
+		t.Fatal("Ctrl+Q in the terminal took the quit", quits, a.ConfirmExit)
+	}
+	tt.Key(ui.Ctrl|ui.Shift, ui.KeyQ)
+	tt.Frame()
+	if quits != 1 || !a.ConfirmExit {
+		t.Fatal("Ctrl+Shift+Q with a session open", quits, a.ConfirmExit)
+	}
+	has(t, tt, "退出 NextShell？", "仍有 1 个会话")
+	click(t, tt, "退出")
+	if quits != 2 || !a.ExitConfirmed {
+		t.Fatal("confirmed quit", quits)
 	}
 }

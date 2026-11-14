@@ -469,6 +469,11 @@ func (a *App) shortcuts(c *ui.Context) {
 	if key(ui.KeyO) {
 		a.openManager()
 	}
+	// ⌘Q is the app menu's Quit on macOS. Elsewhere the menu is not shown, so the window takes the quit
+	// itself: Ctrl+Shift+Q anywhere, Ctrl+Q outside the terminal (in it, Ctrl+Q is the shell's XON).
+	if runtime.GOOS != "darwin" && key(ui.KeyQ) {
+		a.later(a.RequestQuit)
+	}
 	if key(ui.KeyL) && a.current() != nil && a.activeTool() == nil && a.activeEditor() == nil && !a.grid.on {
 		a.cmdbar.focus = true // the command bar takes the keyboard in this frame; Esc in it goes back to the terminal
 	}
