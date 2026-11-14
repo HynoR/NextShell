@@ -236,3 +236,43 @@ func TestMCPClientUsingDiscoveryFileRunsMutationUnderAutoApprove(t *testing.T) {
 		t.Fatal("call allowed after emergency stop")
 	}
 }
+
+// Turning MCP on is remembered: the next start of the same profile turns it on again, and off stays off.
+func TestMCPEnabledSurvivesARestart(t *testing.T) {
+	dir := t.TempDir()
+	open := func() *Platform {
+		p, e := Open(filepath.Join(dir, "t.db"))
+		if e != nil {
+			t.Fatal(e)
+		}
+		p.SetAgentPort("0")
+		return p
+	}
+	p := open()
+	p.RestoreAgentEndpoint()
+	if p.AgentOverview().URL != "" {
+		t.Fatal("MCP on in a new profile")
+	}
+	if e := p.AgentEndpoint(true); e != nil {
+		t.Fatal(e)
+	}
+	p.Shutdown() // quitting is not turning it off
+	p = open()
+	p.RestoreAgentEndpoint()
+	if p.AgentOverview().URL == "" {
+		t.Fatal("MCP was on when the app quit, but is off after the restart")
+	}
+	if _, e := os.Stat(filepath.Join(dir, "mcp.json")); e != nil {
+		t.Fatal("no discovery file after the restart:", e)
+	}
+	if e := p.AgentEndpoint(false); e != nil {
+		t.Fatal(e)
+	}
+	p.Shutdown()
+	p = open()
+	defer p.Shutdown()
+	p.RestoreAgentEndpoint()
+	if p.AgentOverview().URL != "" {
+		t.Fatal("MCP turned off, but on after the restart")
+	}
+}

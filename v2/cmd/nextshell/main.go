@@ -63,6 +63,9 @@ func main() {
 	if e = startDevMode(p, opts, os.Stderr); e != nil {
 		log.Fatal(e)
 	}
+	if !opts.smoke {
+		p.RestoreAgentEndpoint() // MCP stays on across restarts once the user turned it on
+	}
 	a := appui.New(p)
 	a.Cloud = cloudUI
 	a.ProfilePath = path

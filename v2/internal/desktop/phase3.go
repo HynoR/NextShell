@@ -182,7 +182,36 @@ func (p *Platform) AgentOverview() appui.AgentOverview {
 	p.featureMu.Unlock()
 	return appui.AgentOverview{URL: url, Halted: p.gateway.Halted(), Pending: p.gateway.Pending(), Activity: p.gateway.Activity()}
 }
+// mcpEnabledKey is the UI state that remembers the user turned MCP on, so the next start turns it on again.
+// It lives outside the preferences: the settings window saves those whole, from its own copy.
+const mcpEnabledKey = "mcp.enabled"
+
+// AgentEndpoint turns the MCP endpoint on or off and remembers the choice for the next start (see
+// RestoreAgentEndpoint). Auto-approval is never remembered.
 func (p *Platform) AgentEndpoint(on bool) error {
+	e := p.agentEndpoint(on)
+	if e == nil {
+		v := ""
+		if on {
+			v = "1"
+		}
+		e = p.store.SaveUIState(mcpEnabledKey, v)
+	}
+	return e
+}
+
+// RestoreAgentEndpoint turns MCP on at start when it was on when the user last left it; a failure (the port
+// taken by another program, say) is told once and the choice is kept for the next start.
+func (p *Platform) RestoreAgentEndpoint() {
+	if v, _ := p.store.UIState(mcpEnabledKey); v != "1" {
+		return
+	}
+	if e := p.agentEndpoint(true); e != nil {
+		p.emit(appui.Event{Message: "MCP 服务未能启动：" + e.Error()})
+	}
+}
+
+func (p *Platform) agentEndpoint(on bool) error {
 	p.featureMu.Lock()
 	defer p.featureMu.Unlock()
 	if !on {
