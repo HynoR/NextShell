@@ -75,8 +75,13 @@ func (a *App) traceDrawer(c *ui.Context) {
 		a.P.CancelDiagnostic()
 		return
 	}
+	// The drawer sits beside the left column. That column is not drawn without a session, so the drawer starts at the window's edge.
+	inset := float32(leftWidth)
+	if a.current() == nil {
+		inset = 0
+	}
 	ui.Overlay(c, func() {
-		ui.Column(c).Absolute().Top(max(c.TitleBar().Height, 44)).Bottom(0).Left(leftWidth).Width(440).Padding(14).Gap(10).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 1).Shadow(8, 0, 24, 0, ui.RGBA(0, 0, 0, .25)).Label("路由追踪").Children(func() {
+		ui.Column(c).Absolute().Top(max(c.TitleBar().Height, 44)).Bottom(0).Left(inset).Width(440).Padding(14).Gap(10).Background(t.Surface).BorderColor(t.Border).BorderWidth(0, 1, 0, 1).Shadow(8, 0, 24, 0, ui.RGBA(0, 0, 0, .25)).Label("路由追踪").Children(func() {
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "路由追踪 · "+tr.name).Bold().SingleLine().Grow(1).MinWidth(0)
 				if iconButton(c, "关闭路由追踪", "close").Clicked() {

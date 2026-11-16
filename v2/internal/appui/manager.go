@@ -193,7 +193,7 @@ func (a *App) hostTiles(c *ui.Context) {
 	t := c.Theme()
 	hosts := a.shownHosts()
 	ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).Wrap().BorderColor(t.Border).BorderWidth(0, 0, 1, 0).Children(func() {
-		if ui.PrimaryButton(c, "+ 新建连接").Clicked() {
+		if ui.PrimaryButton(c, "+ 新建主机").Clicked() {
 			folder := h.folder
 			if folder == recentFolder {
 				folder = ""
@@ -215,10 +215,11 @@ func (a *App) hostTiles(c *ui.Context) {
 		}
 	}
 	if len(missing) > 0 {
-		// A column: in the narrowest window the text keeps its width and the button sits under it.
-		ui.Column(c).FillWidth().Padding(8, 12).Gap(6).Background(t.Danger.Alpha(.1)).Children(func() {
-			ui.Text(c, fmt.Sprintf("%d 个主机未关联有效密钥", len(missing))).FontSize(12).TextColor(t.Danger).FillWidth()
-			if ui.Button(c, fmt.Sprintf("为 %d 个主机选择密钥", len(missing))).Clicked() {
+		// The text wraps in the narrowest window; the button keeps its width.
+		ui.Row(c).FillWidth().Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(t.Danger.Alpha(.1)).Children(func() {
+			ui.Text(c, "⚠").Label("警告").FontSize(14).TextColor(t.Danger).Shrink(0)
+			ui.Text(c, fmt.Sprintf("%d 个主机未关联有效密钥", len(missing))).FontSize(12).TextColor(t.Danger).Grow(1).MinWidth(0)
+			if ui.Button(c, "选择密钥…").Shrink(0).Clicked() {
 				a.openBatch("缺少密钥的主机", missing, "key")
 			}
 		})
@@ -355,14 +356,6 @@ func (a *App) hostCard(c *ui.Context) {
 	if !ok || cc.Deleted {
 		ui.Text(c, "连接管理器").FontSize(20).Bold()
 		muted(c, "单击查看详情，双击连接；按住 "+modifierName()+" 或 Shift 可多选批量操作。")
-		ui.Row(c).Gap(8).Children(func() {
-			if ui.PrimaryButton(c, "+ 新建主机").Clicked() {
-				a.newHost("")
-			}
-			if ui.Button(c, "新建目录").Clicked() {
-				a.editFolder(model.Folder{})
-			}
-		})
 		return
 	}
 	r := a.resolved(cc)

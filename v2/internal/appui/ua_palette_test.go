@@ -18,7 +18,10 @@ func palette(tt *ui.Tester, query string) {
 // the process and network managers; and the directory-following script is named for what it does.
 func TestPaletteActionsForTheSession(t *testing.T) {
 	a, p, tt := fixture(t)
-	has(t, tt, "未选择服务器")
+	has(t, tt, "快速连接")
+	if tt.HasText("未选择服务器") {
+		t.Fatal("left column shown with nothing to display")
+	}
 	tt.Key(appMod(), ui.KeyK)
 	tt.Type("查找终端")
 	if !tt.HasText("没有结果") {

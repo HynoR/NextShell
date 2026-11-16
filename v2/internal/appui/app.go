@@ -52,7 +52,11 @@ type App struct {
 	// popped out of its tab; HideEditor closes it. Without ShowEditor documents stay in tabs.
 	ShowEditor, HideEditor func()
 
-	layout   layoutState
+	layout layoutState
+	// activityOpen is which sections of the activity column are expanded. It lasts for this run only.
+	activityOpen struct {
+		agent, transfers, edits bool
+	}
 	tabs     tabsState
 	hosts    hostsState
 	welcome  welcomeState
@@ -117,6 +121,7 @@ var appMod = func() ui.Modifiers {
 func New(p Platform) *App {
 	a := &App{P: p, Active: -1}
 	a.layout.load(p.UIState("layout"))
+	a.activityOpen.agent, a.activityOpen.transfers, a.activityOpen.edits = true, true, true
 	a.Prefs = p.Preferences()
 	a.layout.leftHidden = a.layout.leftHidden || a.Prefs.FoldLeft
 	a.layout.benchHidden = a.layout.benchHidden || a.Prefs.FoldBench

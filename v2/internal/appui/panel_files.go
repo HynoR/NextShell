@@ -15,7 +15,6 @@ import (
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/model"
 	"nextshell.dev/v2/internal/sftpfs"
-	"nextshell.dev/v2/internal/transfer"
 )
 
 type filesState struct {
@@ -297,7 +296,7 @@ func (s *filesState) giveUpCount() {
 	}
 }
 
-// removalStatus is the footer's word on a delete: the count it waits for, or its progress, and the way
+// removalStatus is the path row's word on a delete: the count it waits for, or its progress, and the way
 // to stop it. A finished delete refreshes the folder shown.
 func (a *App) removalStatus(c *ui.Context, id string) {
 	s := &a.files
@@ -490,6 +489,36 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 	})
 }
 
+// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, upload,
+// refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
+func (a *App) filesActions(c *ui.Context) {
+	sess := a.remote()
+	if sess == nil {
+		return
+	}
+	id := sess.ID
+	s := &a.files
+	t := c.Theme()
+	exited := a.P.Exited(id)
+	if iconButton(c, "编辑路径", "edit").Clicked() && !s.editingPath {
+		s.editingPath, s.pathInput = true, s.path
+	}
+	follow := iconButton(c, "跟随终端目录", "link")
+	if s.follow {
+		follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+	}
+	if follow.Clicked() {
+		s.follow, s.followed = !s.follow, ""
+	}
+	if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
+		a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
+	}
+	if iconButton(c, "刷新", "refresh").Disabled(exited).Clicked() {
+		a.listFiles(id, orDefault(s.path, "."))
+	}
+	iconButton(c, "更多", "more").Disabled(exited).PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
+}
+
 func (a *App) filesPanel(c *ui.Context) {
 	t := c.Theme()
 	s := &a.files
@@ -522,20 +551,15 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
-		follow := iconButton(c, "跟随终端目录", "link")
-		if s.follow {
-			follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+		if s.session == id {
+			ui.Row(c).Gap(8).Margin(0, 0, 0, 6).AlignItems(ui.Center).Children(func() {
+				if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
+					a.pasteRemoteClipboard(id)
+				}
+				a.removalStatus(c, id)
+				muted(c, filesCount(s)).SingleLine()
+			})
 		}
-		if follow.Clicked() {
-			s.follow, s.followed = !s.follow, ""
-		}
-		if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
-			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
-		}
-		if iconButton(c, "刷新", "refresh").Disabled(exited).Clicked() {
-			a.listFiles(id, orDefault(s.path, "."))
-		}
-		iconButton(c, "更多", "more").Disabled(exited).PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
 	if exited {
 		ui.Row(c).FillWidth().Padding(5, 10).Gap(8).AlignItems(ui.Center).Label("连接已断开的提示").Children(func() {
@@ -559,17 +583,14 @@ func (a *App) filesPanel(c *ui.Context) {
 	} else {
 		ui.Split(c, &s.treeWidth, func() { a.dirTreeView(c, id) }, func() { a.fileList(c, id) }).SplitReset(200).Grow(1).FillWidth().MinHeight(0)
 	}
-	ui.Row(c).FillWidth().Height(26).Padding(0, 10).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
-		info := fmt.Sprintf("%d 项", len(s.entries))
-		if n := s.selection.Len(); n > 0 {
-			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
-		}
-		muted(c, info).Grow(1)
-		a.removalStatus(c, id)
-		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
-			a.pasteRemoteClipboard(id)
-		}
-	})
+}
+
+// filesCount is the tally at the end of the path row: how many entries are listed, or how many of them are selected.
+func filesCount(s *filesState) string {
+	if n := s.selection.Len(); n > 0 {
+		return fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
+	}
+	return fmt.Sprintf("%d 项", len(s.entries))
 }
 
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
@@ -749,9 +770,6 @@ func (a *App) pathBar(c *ui.Context, id string) {
 	box.Children(func() {
 		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").Grow(1).MinWidth(0).Changed() {
 			a.listFiles(id, crumbPath(parts, s.crumb))
-		}
-		if iconButton(c, "编辑路径", "edit").Clicked() {
-			s.editingPath, s.pathInput = true, s.path
 		}
 	})
 	if box.DoubleClicked() {
@@ -1198,152 +1216,4 @@ func (a *App) fileClipboardKeys(e ui.Element, id string) {
 	if e.Shortcut(ui.Cmd, ui.KeyV) {
 		a.pasteRemoteClipboard(id)
 	}
-}
-
-// Transfers: the queue in the activity column.
-
-func transferCount(jobs []transfer.Job, states ...string) int {
-	n := 0
-	for _, j := range jobs {
-		if slices.Contains(states, j.State) {
-			n++
-		}
-	}
-	return n
-}
-func activeTransfers(jobs []transfer.Job) int { return transferCount(jobs, "queued", "running") }
-func failedTransfers(jobs []transfer.Job) int { return transferCount(jobs, "failed") }
-
-func (a *App) transferSection(c *ui.Context) {
-	t := c.Theme()
-	jobs := a.P.Transfers()
-	states := map[string]string{"queued": "等待", "running": "进行中", "done": "完成", "failed": "失败", "cancelled": "已取消"}
-	ui.Column(c).FillWidth().Gap(8).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			sectionLabel(c, "传输队列").Grow(1)
-			if activeTransfers(jobs) > 0 && ghost(c, "全部取消", "").Clicked() {
-				a.P.CancelAllTransfers()
-			}
-			if transferCount(jobs, "done") > 0 && ghost(c, "清除已完成", "").Clicked() {
-				a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearCompletedTransfers()))
-			}
-		})
-		if failed, cancelled := failedTransfers(jobs), transferCount(jobs, "cancelled"); failed+cancelled > 0 {
-			// What went wrong comes first, with its reason; it stays until retried or cleared.
-			jobs = slices.SortedStableFunc(slices.Values(jobs), func(x, y transfer.Job) int {
-				return cmp.Compare(btoi(y.State == "failed"), btoi(x.State == "failed"))
-			})
-			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				var parts []string
-				if failed > 0 {
-					parts = append(parts, fmt.Sprintf("%d 个传输失败", failed))
-				}
-				if cancelled > 0 {
-					parts = append(parts, fmt.Sprintf("%d 个已取消", cancelled))
-				}
-				color := t.TextMuted
-				if failed > 0 {
-					color = t.Danger
-				}
-				ui.Text(c, strings.Join(parts, "，")).FontSize(12).Bold().TextColor(color).Grow(1).MinWidth(0)
-				if ghost(c, "清除失败项", "").Clicked() {
-					a.toast(fmt.Sprintf("已清除 %d 个任务", a.P.ClearFailedTransfers()))
-				}
-			})
-		}
-		if len(jobs) == 0 {
-			muted(c, "暂无传输任务")
-		}
-		for _, j := range jobs {
-			border := t.Border
-			if j.State == "failed" {
-				border = t.Danger.Alpha(.5)
-			}
-			ui.Column(c.Key(j.ID)).FillWidth().Gap(4).Padding(8).Radius(t.Radius).Background(t.Background).Border(1, border).Children(func() {
-				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, j.Label).FontSize(12).Grow(1).MinWidth(0).Tooltip(j.Label) // wraps: the server is the end of it
-					switch j.State {
-					case "queued", "running":
-						if ghost(c, "取消", "").Clicked() {
-							a.P.CancelTransfer(j.ID)
-						}
-					case "failed", "cancelled":
-						if ghost(c, "重试", "").Clicked() {
-							a.report(a.P.RetryTransfer(j.ID), "")
-						}
-						if iconButton(c, "移除 "+j.Label, "close").Clicked() { // one row, not all the failed ones
-							id := j.ID
-							a.later(func() { a.P.DismissTransfer(id) })
-						}
-					}
-				})
-				if j.State == "running" {
-					ui.Progress(c, transferFraction(j)).FillWidth()
-				}
-				detail := transferDetail(j, states[j.State])
-				muted(c, detail).FontSize(11)
-				if j.Error != "" {
-					ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
-						title, _ := humanize(j.Error)
-						ui.Text(c, title).FontSize(12).TextColor(t.Danger).SingleLine().Grow(1).MinWidth(0)
-						if ghost(c, "详情", "").Clicked() {
-							a.dialogs.detail, a.dialogs.detailIn = j.Error, mainWindow
-						}
-					})
-				}
-			})
-		}
-	})
-}
-
-// transferDetail is the grey line of a job: its state, how far it is, the speed and the attempt.
-func transferDetail(j transfer.Job, state string) string {
-	detail := state
-	if j.Bytes > 0 { // nothing moved yet: 「失败 · 0 B」 says nothing
-		detail += " · " + humanSize(j.Bytes)
-	}
-	switch {
-	case j.Items: // a deletion counts items, and has no speed
-		detail = state
-		if j.Total > 0 && j.State == "running" {
-			detail += fmt.Sprintf(" · 已删除 %d / %d 项 · %d%%", j.Bytes, j.Total, int(transferFraction(j)*100))
-		} else if j.Bytes > 0 {
-			detail += fmt.Sprintf(" · 已删除 %d 项", j.Bytes)
-		}
-	case j.Total > 0:
-		detail = fmt.Sprintf("%s · %d%% · %s / %s", state, int(transferFraction(j)*100), humanSize(j.Bytes), humanSize(j.Total))
-	}
-	if elapsed := transferElapsed(j); !j.Items && elapsed > 0 {
-		detail += fmt.Sprintf(" · %s/s", humanSize(int64(float64(j.Bytes)/elapsed.Seconds())))
-	}
-	if j.Attempt > 1 {
-		detail += fmt.Sprintf(" · 第 %d 次", j.Attempt)
-	}
-	return detail
-}
-
-// transferElapsed is how long j ran, or has been running; zero before it starts.
-func transferElapsed(j transfer.Job) time.Duration {
-	switch {
-	case j.Started.IsZero():
-		return 0
-	case j.Finished.IsZero():
-		return time.Since(j.Started)
-	}
-	return j.Finished.Sub(j.Started)
-}
-
-// transferFraction is the share done, or -1 (indeterminate) when the size is unknown.
-func transferFraction(j transfer.Job) float64 {
-	if j.Total <= 0 {
-		return -1
-	}
-	return min(1, float64(j.Bytes)/float64(j.Total))
-}
-
-func btoi(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }

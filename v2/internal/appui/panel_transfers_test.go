@@ -48,7 +48,9 @@ func TestFailedTransfersTakeTheStripBadgeAndLeadTheList(t *testing.T) {
 		t.Fatal("the failure is hidden behind the running count")
 	}
 	click(t, tt, "1 个传输失败，1 个进行中")
-	has(t, tt, "1 个传输失败，1 个已取消", "上传 config.yaml → /etc/app", "权限不足", "清除失败项", "清除已完成")
+	has(t, tt, "1 个传输失败，1 个已取消", "上传 config.yaml → /etc/app", "权限不足")
+	click(t, tt, "传输操作")
+	has(t, tt, "清除失败项", "清除已完成", "全部取消")
 	// What failed comes before what runs.
 	failed, _ := tt.Find("上传 config.yaml → /etc/app")
 	running, _ := tt.Find("上传 release.tar.gz → /srv/app")

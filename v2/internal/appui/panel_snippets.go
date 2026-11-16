@@ -130,8 +130,17 @@ func listNames(names []string, max int) string {
 	return shown
 }
 
+// snippetsActions is 新建片段 and 发送命令…, drawn in the workbench tab row.
+func (a *App) snippetsActions(c *ui.Context) {
+	if ghost(c, "新建片段", "plus").Clicked() {
+		a.editSnippet(model.Command{Group: "默认"})
+	}
+	if ghost(c, "发送命令…", "terminal").Clicked() {
+		a.snippets.commandOpen = true
+	}
+}
+
 func (a *App) snippetsPanel(c *ui.Context) {
-	t := c.Theme()
 	s := &a.snippets
 	groups := []string{"全部"}
 	for _, v := range a.Data.Commands {
@@ -168,15 +177,6 @@ func (a *App) snippetsPanel(c *ui.Context) {
 				muted(c, "没有匹配的片段").Padding(8)
 			}
 		})
-	})
-	ui.Row(c).FillWidth().Padding(6, 8).Gap(6).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
-		if ghost(c, "新建片段", "plus").Clicked() {
-			a.editSnippet(model.Command{Group: "默认"})
-		}
-		ui.Spacer(c)
-		if ghost(c, "发送命令…", "terminal").Clicked() {
-			a.snippets.commandOpen = true
-		}
 	})
 }
 

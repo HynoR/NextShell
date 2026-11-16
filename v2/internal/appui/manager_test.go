@@ -30,7 +30,7 @@ func TestCredentialFromHostFormAndBatch(t *testing.T) {
 	}
 	a, _ := start(p)
 	mt := manager(a)
-	click(t, mt, "+ 新建连接")
+	click(t, mt, "+ 新建主机")
 	mt.Type("with-cred")
 	click(t, mt, "主机")
 	mt.Type("10.0.0.9")
@@ -90,7 +90,7 @@ func TestKeyFromHostFormDedupeAndLastAuth(t *testing.T) {
 	}
 	a, _ := start(p)
 	mt := manager(a)
-	click(t, mt, "+ 新建连接")
+	click(t, mt, "+ 新建主机")
 	mt.Type("k1")
 	click(t, mt, "主机")
 	mt.Type("h1")
@@ -112,7 +112,7 @@ func TestKeyFromHostFormDedupeAndLastAuth(t *testing.T) {
 		t.Fatal("duplicate key saved", snap.Keys)
 	}
 
-	click(t, mt, "+ 新建连接")
+	click(t, mt, "+ 新建主机")
 	mt.Type("k2")
 	click(t, mt, "主机")
 	mt.Type("h2")
@@ -123,7 +123,7 @@ func TestKeyFromHostFormDedupeAndLastAuth(t *testing.T) {
 		t.Fatal("new host did not start with the last key", c)
 	}
 
-	click(t, mt, "+ 新建连接")
+	click(t, mt, "+ 新建主机")
 	click(t, mt, "新建 / 生成…")
 	click(t, mt, "名称")
 	mt.Type("fresh")
@@ -146,7 +146,7 @@ func TestMissingKeyMarkAndChooseKeyForAll(t *testing.T) {
 	a, _ := start(p)
 	mt := manager(a)
 	has(t, mt, "缺少密钥", "2 个主机未关联有效密钥")
-	click(t, mt, "为 2 个主机选择密钥")
+	click(t, mt, "选择密钥…")
 	choose(t, mt, "密钥", "ops")
 	click(t, mt, "应用到 2 个主机")
 	for _, n := range []string{"legacy-1", "legacy-2"} {
