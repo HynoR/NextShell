@@ -46,10 +46,24 @@ func (a *App) benchHeader(c *ui.Context, fold, icon string) {
 			}
 		}
 		ui.Spacer(c).Grow(1)
-		ui.Row(c).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).AlignItems(ui.Center).Gap(2).Children(func() {
+			if !a.layout.benchHidden {
+				a.benchActions(c)
+			}
 			if iconButtonTip(c, fold, fold+" "+appShortcutLabel("J"), icon).Clicked() {
 				a.layout.benchHidden = !a.layout.benchHidden
 			}
 		})
 	})
+}
+
+// benchActions is the active panel's toolbar, sitting in the tab row ahead of the fold button.
+// Folded, the strip keeps the tabs only. 系统信息 has nothing to put here.
+func (a *App) benchActions(c *ui.Context) {
+	switch a.layout.bench {
+	case benchFiles:
+		a.filesActions(c)
+	case benchSnippets:
+		a.snippetsActions(c)
+	}
 }
