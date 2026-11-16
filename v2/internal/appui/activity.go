@@ -115,7 +115,7 @@ func (a *App) agentSection(c *ui.Context) {
 		case state.URL == "":
 			muted(c, "MCP 服务未开启")
 		case state.Halted:
-			ui.Text(c, "已紧急停止 · Agent 的请求都会被拒绝").FontSize(12).TextColor(t.Danger)
+			ui.Text(c, "已紧急停止 · 拒绝所有请求").FontSize(12).TextColor(t.Danger)
 		}
 		for _, p := range state.Pending {
 			a.pendingCard(c, p)
@@ -151,7 +151,7 @@ func (a *App) agentSection(c *ui.Context) {
 			})
 		}
 		if shown == 0 && len(state.Pending) == 0 && state.URL != "" {
-			muted(c, "最近没有 Agent 操作")
+			muted(c, "暂无操作记录")
 		}
 		if ghost(c, "设置 → Agent", "agent").Clicked() {
 			a.openSettings("Agent")
@@ -161,7 +161,7 @@ func (a *App) agentSection(c *ui.Context) {
 
 // agentTools names what each agent tool does; exec shows its command instead.
 var agentTools = map[string]string{"session_list": "列出会话", "host_list": "列出主机", "command_search": "搜索命令库", "session_history": "读取历史",
-	"session_read": "读取终端", "session_send_text": "输入", "session_send_signal": "发送中断等信号", "session_open": "打开连接", "session_close": "关闭会话",
+	"session_read": "读取终端", "session_send_text": "输入", "session_send_signal": "发送控制信号", "session_open": "打开连接", "session_close": "关闭会话",
 	"session_focus": "交还会话", "command_save": "保存到命令库", "agent_status": "查询状态", "request_cancel": "撤回请求", "exec": "执行命令"}
 
 var liveStates = map[remoteedit.LiveState]string{remoteedit.Watching: "监听中", remoteedit.Syncing: "同步中", remoteedit.Synced: "已同步", remoteedit.Conflict: "冲突", remoteedit.Failed: "出错"}
@@ -177,7 +177,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 			}
 		})
 		if len(edits) == 0 {
-			muted(c, "暂无实时编辑。在 SFTP 里右键文件，选「远程编辑」。")
+			muted(c, "暂无实时编辑文件")
 		}
 		for _, l := range edits {
 			color := map[remoteedit.LiveState]ui.Color{remoteedit.Watching: t.TextMuted, remoteedit.Syncing: accentInk(t), remoteedit.Synced: t.Success, remoteedit.Conflict: t.Warning, remoteedit.Failed: t.Danger}[l.State]
@@ -192,7 +192,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 				muted(c, a.sessionTitle(l.Session)+" · "+path.Dir(l.Path)).FontSize(11).SingleLine()
 				switch l.State {
 				case remoteedit.Conflict:
-					ui.Text(c, "服务器上的文件已被别处修改，本次保存未上传").FontSize(12).TextColor(t.Warning)
+					ui.Text(c, "远端文件已变更，本次修改未上传").FontSize(12).TextColor(t.Warning)
 					ui.Row(c).FillWidth().Gap(4).Children(func() {
 						if ghost(c, "重新载入", "").Clicked() {
 							a.P.ResolveLiveEdit(l.ID, false)
@@ -207,7 +207,7 @@ func (a *App) liveEditSection(c *ui.Context, edits []remoteedit.Live) {
 						if ghost(c, "覆盖远端", "").TextColor(t.Danger).Clicked() {
 							id, host := l.ID, a.sessionTitle(l.Session)
 							a.later(func() {
-								a.confirmDanger("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的这个文件在你编辑期间被别处修改过。覆盖后，本地副本会替换它，别处的修改将丢失。", l.Path, host), "覆盖", func() {
+								a.confirmDanger("覆盖 "+host+" 上的 "+path.Base(l.Path), fmt.Sprintf("%s\n%s 上的文件已被其他进程修改，覆盖将丢失远端更改。", l.Path, host), "覆盖", func() {
 									a.P.ResolveLiveEdit(id, true)
 								})
 							})

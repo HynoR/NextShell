@@ -510,11 +510,11 @@ func (a *App) closeDialog(c *ui.Context) {
 	if k == nil {
 		return
 	}
-	title, msg, action := "关闭标签？", "这个连接还在使用。关闭后，正在运行的命令会中断。", "断开并关闭"
+	title, msg, action := "关闭标签？", "当前连接未断开，关闭将中断正在运行的命令。", "断开并关闭"
 	if i := a.tabIndex(k.ids[0]); len(k.ids) == 1 && i >= 0 {
 		title = "关闭 " + a.tabTitle(a.Tabs[i]) + "？"
 	} else if len(k.ids) > 1 {
-		title, msg = fmt.Sprintf("关闭 %d 个标签？", len(k.ids)), fmt.Sprintf("其中 %d 个连接还在使用。关闭后，正在运行的命令会中断。", k.live)
+		title, msg = fmt.Sprintf("关闭 %d 个标签？", len(k.ids)), fmt.Sprintf("其中 %d 个连接未断开，关闭将中断正在运行的命令。", k.live)
 	}
 	if len(k.dirty) > 0 { // unsaved files are asked about whatever 不再询问 says
 		action = "不保存并关闭"
@@ -522,12 +522,12 @@ func (a *App) closeDialog(c *ui.Context) {
 		for _, d := range k.dirty[:min(len(k.dirty), 6)] {
 			names = append(names, d.Document.Path)
 		}
-		msg = "这些文件的修改还没有保存，关闭后会丢失：\n" + strings.Join(names, "\n")
+		msg = "以下文件有未保存的修改，关闭将丢失更改：\n" + strings.Join(names, "\n")
 		if len(k.dirty) > 6 {
 			msg += fmt.Sprintf("\n……共 %d 个", len(k.dirty))
 		}
 		if k.live > 0 {
-			msg += "\n\n连接也会断开，正在运行的命令会中断。"
+			msg += "\n\n同时将断开连接并中断正在运行的命令。"
 		}
 	}
 	open := true

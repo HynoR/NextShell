@@ -216,7 +216,7 @@ func TestPendingApprovalShowsTierReasonTargetAndFullCommand(t *testing.T) {
 	a := appui.New(sp)
 	st := ui.NewTester(a.SettingsView, 880, 900)
 	click(t, st, "Agent")
-	has(t, st, "claude · exec", "风险操作", "敏感文件", "目标 web-1", "目标 db-2", "原因 install the monitoring agent", "cat /srv/app/.env", "即使开启自动批准")
+	has(t, st, "claude · exec", "风险操作", "敏感文件", "目标 web-1", "目标 db-2", "原因 install the monitoring agent", "cat /srv/app/.env", "高风险操作，需手动确认：")
 	if st.HasText("3f2a9c-uuid") || st.HasText("uuid-2") {
 		t.Fatal("the UUID is shown instead of the host or tab name")
 	}

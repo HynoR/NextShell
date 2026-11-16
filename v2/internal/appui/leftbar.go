@@ -34,7 +34,7 @@ func (a *App) leftColumn(c *ui.Context) {
 			})
 			ui.Column(c).Grow(1).FillWidth().Padding(0, 16).Center().Gap(4).Children(func() {
 				muted(c, "未选择服务器")
-				muted(c, "连接服务器后，这里显示实时状态").FontSize(11).Wrap()
+				muted(c, "连接后显示服务器实时状态").FontSize(11).Wrap()
 			})
 			return
 		}
@@ -89,9 +89,9 @@ func (a *App) requestReconnect(s *Session) {
 		a.reconnect(s)
 		return
 	}
-	title, msg, action := "重新连接 "+a.tabTitle(s)+"？", "当前连接会断开，正在运行的命令会中断。", "断开并重新连接"
+	title, msg, action := "重新连接 "+a.tabTitle(s)+"？", "将断开当前连接，正在运行的命令会中断。", "断开并重新连接"
 	if s.Local {
-		title, msg, action = "重新打开 "+a.tabTitle(s)+"？", "终端里正在运行的程序会结束。", "结束并重新打开"
+		title, msg, action = "重新打开 "+a.tabTitle(s)+"？", "将结束终端内正在运行的程序。", "结束并重新打开"
 	}
 	a.confirmDanger(title, msg, action, func() {
 		if a.tabIndex(s.ID) >= 0 { // the tab may have closed while the question was open

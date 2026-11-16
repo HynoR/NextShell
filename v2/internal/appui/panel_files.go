@@ -253,7 +253,7 @@ func (s *filesState) counted(a *App, r *RemovalCount) {
 // linksNote is what a delete confirm adds when links are among the targets: they go, what they lead to stays.
 func linksNote(files []sftpfs.Entry) string {
 	if slices.ContainsFunc(files, func(f sftpfs.Entry) bool { return f.Symlink }) {
-		return "\n链接只会删除链接本身，不会动它指向的内容。"
+		return "\n符号链接仅删除链接本身，不影响目标文件。"
 	}
 	return ""
 }
@@ -302,7 +302,7 @@ func (s *filesState) giveUpCount() {
 func (a *App) removalStatus(c *ui.Context, id string) {
 	s := &a.files
 	if n := s.counting; n != nil && n.session == id {
-		muted(c, "正在统计要删除的内容…")
+		muted(c, "正在统计待删除项…")
 		if ghost(c, "取消", "").Label("取消统计").Clicked() {
 			s.giveUpCount()
 		}
@@ -362,12 +362,12 @@ func (s *filesState) listFailed(a *App, f *FileFailure) {
 // when it is not one of the known causes.
 func listReason(msg string) (reason, detail string) {
 	if strings.Contains(strings.ToLower(msg), "subsystem") {
-		return "这台服务器没有开启文件传输（SFTP）", ""
+		return "服务器未启用 SFTP 服务", ""
 	}
 	if title, known := humanize(msg); known {
 		return title, ""
 	}
-	return "服务器没有返回目录内容", msg
+	return "读取目录失败", msg
 }
 func (s *filesState) filterEntries() {
 	s.entries = s.entries[:0:0]
@@ -495,7 +495,7 @@ func (a *App) filesPanel(c *ui.Context) {
 	s := &a.files
 	sess := a.remote()
 	if sess == nil {
-		emptyState(c, "SFTP 用于远程 SSH 会话", "切换到一个远程标签，或从「服务器」连接主机。")
+		emptyState(c, "SFTP 仅支持远程会话", "请切换至远程会话标签，或连接服务器")
 		return
 	}
 	id := sess.ID
@@ -575,9 +575,9 @@ func (a *App) filesPanel(c *ui.Context) {
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
 func (a *App) followHint(c *ui.Context) {
 	t := c.Theme()
-	text := "还没有收到终端的当前目录，暂时无法跟随。需要服务器使用 bash 或 zsh：按 " + appShortcutLabel("K") + "，选「让文件面板跟随终端目录」，检查后回车执行即可。"
+	text := "未获取到终端当前目录（需 bash 或 zsh）。可按 " + appShortcutLabel("K") + " 执行「让文件面板跟随终端目录」"
 	if a.Prefs.ShellIntegration == "off" {
-		text = "目录跟踪在设置里是关闭的。到设置的「Shell 集成」打开后，文件面板才能跟随终端目录。"
+		text = "目录跟踪已关闭，可在「设置 → 终端 → Shell 集成」中开启"
 	}
 	ui.Row(c).FillWidth().Padding(5, 10).Gap(8).Background(t.Warning.Alpha(.12)).Label("跟随终端目录的提示").Children(func() {
 		ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.Warning)
@@ -623,7 +623,7 @@ func (a *App) fileList(c *ui.Context, id string) {
 	}
 	zone.Children(func() {
 		if len(s.entries) == 0 {
-			emptyState(c, "空目录", "把本地文件拖到这里即可上传。")
+			emptyState(c, "空目录", "拖入本地文件即可上传")
 			return
 		}
 		if s.sort != s.sorted {
@@ -688,7 +688,7 @@ func (a *App) fileList(c *ui.Context, id string) {
 			f := s.entries[s.row]
 			switch {
 			case f.Broken:
-				a.toast("「" + f.Name + "」是失效的链接：它指向的位置不存在或无法访问")
+				a.toast("链接「" + f.Name + "」已失效：目标不存在或无访问权限")
 			case f.Directory:
 				a.listFiles(id, f.Path)
 			default:
@@ -717,7 +717,7 @@ func linkTooltip(f sftpfs.Entry) string {
 	}
 	tip := f.Mode + "\n链接指向 " + orDefault(f.Target, "未知位置")
 	if f.Broken {
-		tip += "，但那里不存在或无法访问"
+		tip += "（目标不存在或无访问权限）"
 	}
 	return tip
 }
@@ -989,7 +989,7 @@ func (a *App) download(id string, files []sftpfs.Entry, to func(sftpfs.Entry) st
 			continue
 		}
 		if f.Broken {
-			a.toast("「" + f.Name + "」是失效的链接，没有可下载的内容")
+			a.toast("链接「" + f.Name + "」已失效，无法下载")
 			continue
 		}
 		reqs = append(reqs, TransferRequest{Session: id, Kind: "download", Remote: f.Path, Local: to(f), Overwrite: overwrite})
@@ -1252,7 +1252,7 @@ func (a *App) transferSection(c *ui.Context) {
 			})
 		}
 		if len(jobs) == 0 {
-			muted(c, "没有传输任务。把文件拖到 SFTP 即可上传。")
+			muted(c, "暂无传输任务")
 		}
 		for _, j := range jobs {
 			border := t.Border

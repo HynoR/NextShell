@@ -204,7 +204,7 @@ func TestHostEditorAsksBeforeDroppingEdits(t *testing.T) {
 	click(t, mt, "名称")
 	mt.Type("-edited")
 	click(t, mt, "beta")
-	has(t, mt, "放弃未保存的修改？", "「alpha-edited」的修改还没有保存，放弃后无法恢复。", "继续编辑", "放弃", "编辑主机")
+	has(t, mt, "放弃未保存的修改？", "「alpha-edited」有未保存的修改，放弃后将丢失。", "继续编辑", "放弃", "编辑主机")
 	click(t, mt, "继续编辑")
 	has(t, mt, "编辑主机")
 	if v := field(t, mt, "名称").Value; v != "alpha-edited" {
@@ -256,7 +256,7 @@ func TestHostEditorAsksBeforeDroppingEdits(t *testing.T) {
 	if e := mt.ChooseMenuItem("编辑…"); e != nil {
 		t.Fatal(e)
 	}
-	has(t, mt, "放弃未保存的修改？", "「new-host」的修改还没有保存，放弃后无法恢复。", "新建主机")
+	has(t, mt, "放弃未保存的修改？", "「new-host」有未保存的修改，放弃后将丢失。", "新建主机")
 	click(t, mt, "放弃")
 	has(t, mt, "编辑主机")
 	if v := field(t, mt, "名称").Value; v != "beta" {
@@ -446,7 +446,7 @@ func TestManagerHintNamesThePlatformModifier(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		mod = "⌘"
 	}
-	has(t, mt, "单击主机查看详情，双击连接；按住 "+mod+" 或 Shift 可选择多个主机批量操作。右键目录可批量绑定认证。")
+	has(t, mt, "单击查看详情，双击连接；按住 "+mod+" 或 Shift 可多选批量操作。")
 }
 
 // A host that logs in through a credential shows the credential's user, and says so, on its tile and in its

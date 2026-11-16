@@ -127,7 +127,7 @@ func splitArgs(s string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, errors.New("外部编辑器参数里有没有闭合的引号")
+		return nil, errors.New("外部编辑器参数引号未闭合")
 	}
 	if started {
 		args = append(args, cur.String())
@@ -256,7 +256,7 @@ func (a *App) receiveDocument(r *EditorResult) {
 	fresh := d == nil
 	if fresh {
 		if len(s.documents) >= 32 {
-			a.toast("最多同时打开 32 个远程文件，请先关闭一些")
+			a.toast("最多同时打开 32 个远程文件")
 			return
 		}
 		d = &remoteDocument{Key: key, Host: host, Session: r.Session, Document: r.Document, Text: r.Document.Text}
@@ -279,7 +279,7 @@ func (a *App) receiveDocument(r *EditorResult) {
 				d.Code.Buffer.MarkSaved()
 			}
 		case dirty:
-			a.inEditor(d.Popped, func() { a.toast("远程文件有更新，已保留未保存的修改；保存时会检查冲突") })
+			a.inEditor(d.Popped, func() { a.toast("远端文件已变更，已保留本地未保存修改") })
 		default:
 			d.Document = r.Document
 			d.Text = r.Document.Text
@@ -385,7 +385,7 @@ func (a *App) saveDocument(d *remoteDocument) {
 	d.sync()
 	session := a.docSession(d)
 	if a.tabIndex(session) < 0 {
-		a.toast("这个服务器的连接已关闭，重新连接后才能保存")
+		a.toast("连接已断开，请重新连接后再保存")
 		return
 	}
 	a.editor.fromWindow = d.Popped
@@ -421,7 +421,7 @@ func (a *App) EditorView(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Padding(8, 12, 12, 12).Gap(8).Background(t.Background).Children(func() {
 		if shown == nil {
-			emptyState(c, "没有打开的远程文件", "在 SFTP 里双击文件即可编辑。")
+			emptyState(c, "没有打开的远程文件", "在 SFTP 中双击文件即可打开")
 			return
 		}
 		a.documentTabs(c, docs, shown)
@@ -658,7 +658,7 @@ func (a *App) documentCloseDialog(c *ui.Context, w window) {
 	}
 	open := true
 	// 保存 has the focus: Enter saves, and a failed save or a conflict leaves the file open; nothing is lost.
-	switch alert(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存。保存失败或有冲突时文件会保持打开。", alertButton{label: "取消"}, alertButton{label: "不保存", risk: true}, alertButton{label: "保存", primary: true, focus: true}) {
+	switch alert(c, &open, "关闭未保存的文件", d.Document.Path+"\n修改尚未保存，是否保存更改？", alertButton{label: "取消"}, alertButton{label: "不保存", risk: true}, alertButton{label: "保存", primary: true, focus: true}) {
 	case 1:
 		key := d.Key
 		a.later(func() { s.removeDocument(key) })

@@ -61,10 +61,10 @@ func (a *App) cloudSettings(c *ui.Context) {
 	s := &a.settings.cloud
 	t := c.Theme()
 	overview := a.P.CloudOverview()
-	muted(c, "同步在本机加密后再上传；登录口令和加密口令是两个不同的口令。目前只支持本机运行的同步服务。")
+	muted(c, "数据在本地端到端加密后同步；登录口令与加密口令相互独立。")
 	group(c, "工作区", func() {
 		if len(overview.Workspaces) == 0 {
-			muted(c, "还没有工作区")
+			muted(c, "暂无工作区")
 		}
 		states := map[string]string{"idle": "已同步", "syncing": "同步中", "conflict": "有冲突", "error": "出错", "disconnected": "未登录"}
 		for i, w := range overview.Workspaces {
@@ -99,7 +99,7 @@ func (a *App) cloudSettings(c *ui.Context) {
 		ui.Field(c, "登录口令", func() { ui.TextInput(c.Key("cloud-auth"), &s.auth).Label("登录口令").Password().Grow(1) }).Description("已登录过的工作区可留空").FillWidth()
 		ui.Field(c, "加密口令", func() {
 			ui.TextInput(c.Key("cloud-encryption"), &s.encryption).Label("加密口令").Password().Grow(1)
-		}).Description("只在本机使用，不会上传").FillWidth()
+		}).Description("仅在本地用于加解密，不会上传").FillWidth()
 		field(c, "新工作区名称", &s.name)
 		field(c, "加入工作区 ID", &s.joinID).Description("加入已有工作区时填写")
 		actions(c, func() {
@@ -138,13 +138,13 @@ func (a *App) cloudSettings(c *ui.Context) {
 				muted(c, "本地恢复快照："+st.RecoveryID)
 			}
 			if st.State == "conflict" {
-				ui.Text(c, "云端和本机都有修改，自动同步已暂停。可以保留本机数据，或用云端版本替换本机（替换前会保存一份恢复快照）。").TextColor(t.Warning)
+				ui.Text(c, "云端与本地数据冲突，自动同步已暂停。可选择保留本地数据，或使用云端版本覆盖（覆盖前将自动备份本地快照）。").TextColor(t.Warning)
 				actions(c, func() {
 					if ui.Button(c, "保留本机并暂停").Clicked() {
 						a.P.CloudBackground(s.workspace, false)
 					}
 					if ui.Button(c, "使用云端版本…").Clicked() {
-						a.confirmDanger("使用云端版本", "这个工作区在本机的数据会被云端版本替换。替换前会保存一份加密的恢复快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
+						a.confirmDanger("使用云端版本", "本地工作区数据将被云端版本覆盖，覆盖前会自动保存本地加密快照。", "替换本机数据", func() { a.P.CloudSync(s.workspace, true) })
 					}
 				})
 			}
@@ -191,7 +191,7 @@ func (a *App) pendingCard(c *ui.Context, p agent.Pending) {
 		}
 		ui.Text(c, p.Summary).Font("monospace").FontSize(12).Selectable()
 		if p.Tier != "" {
-			muted(c, "即使开启自动批准，这类请求也必须手动批准："+orDefault(p.Why, "需要人工确认"))
+			muted(c, "高风险操作，需手动确认："+orDefault(p.Why, "需要人工确认"))
 		}
 		muted(c, "到期 "+p.ExpiresAt.Local().Format("15:04:05"))
 		ui.Row(c).Gap(8).Children(func() {
@@ -214,7 +214,7 @@ func (a *App) agentSettings(c *ui.Context) {
 	t := c.Theme()
 	state := a.P.AgentOverview()
 	c.After(2 * time.Second)
-	muted(c, "开启后，本机的 AI 助手（如 Claude Code）可以通过 MCP 读取会话并请求执行命令；每个修改都要在这里批准。")
+	muted(c, "允许本地 AI 助手（如 Claude Code）通过 MCP 协议访问终端会话，执行操作前需经批准。")
 	group(c, "服务", func() {
 		on := state.URL != ""
 		if toggle(c, "启用 MCP 服务", &on) {
@@ -229,7 +229,7 @@ func (a *App) agentSettings(c *ui.Context) {
 		ui.Field(c, "紧急停止", func() {
 			ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
 				if state.Halted {
-					ui.Text(c, "已紧急停止 · Agent 的请求都会被拒绝").TextColor(t.Danger)
+					ui.Text(c, "已紧急停止 · 拒绝所有请求").TextColor(t.Danger)
 					if ui.Button(c, "恢复 Agent").Clicked() {
 						a.P.AgentHalt(false)
 					}
@@ -241,7 +241,7 @@ func (a *App) agentSettings(c *ui.Context) {
 					a.P.AgentHalt(true)
 				}
 			})
-		}).Description("拒绝待批准的请求、关闭自动批准并中止正在运行的命令；停止后可随时恢复").FillWidth()
+		}).Description("拒绝所有待处理请求、关闭自动批准并中止正在执行的命令").FillWidth()
 	})
 	group(c, "自动批准", func() {
 		auto := a.P.AgentAutoApproval()
@@ -260,7 +260,7 @@ func (a *App) agentSettings(c *ui.Context) {
 					s.auto = choice
 				}
 			}
-		}).Description("风险操作（sudo、rm -r、管道进 shell 等）和敏感文件仍需手动批准，黑名单与危险命令直接拒绝；重启应用后自动关闭。自动批准不是安全沙箱：只在你信任当前 Agent 任务时开启。").FillWidth()
+		}).Description("高风险命令（如 sudo、rm -r）与敏感文件操作仍需手动确认，黑名单命令直接拦截；应用重启后自动关闭。").FillWidth()
 		if auto.On {
 			ui.Text(c, "自动批准中 · "+autoApproveLabel(auto)).TextColor(t.Warning)
 		}
@@ -279,7 +279,7 @@ func (a *App) agentSettings(c *ui.Context) {
 					a.toast("已复制路径")
 				}
 			})
-		}).Description("开启 MCP 服务时写入地址和令牌；Claude Code 插件会自动读取，无需手动填写").FillWidth()
+		}).Description("启用服务后自动生成，供 Claude Code 等客户端读取").FillWidth()
 	})
 	group(c, "令牌", func() {
 		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
@@ -300,7 +300,7 @@ func (a *App) agentSettings(c *ui.Context) {
 		})
 		actions(c, func() {
 			if ui.Button(c, "轮换令牌…").Clicked() {
-				a.confirmDanger("轮换 MCP 令牌", "旧令牌和已连接的助手会立即失效，Agent 会暂停，需要手动恢复。", "轮换令牌", func() {
+				a.confirmDanger("轮换 MCP 令牌", "轮换后旧令牌立即失效，Agent 将暂停，需手动恢复。", "轮换令牌", func() {
 					token, e := a.P.AgentToken(true)
 					a.report(e, "已轮换令牌")
 					if e == nil {
@@ -312,7 +312,7 @@ func (a *App) agentSettings(c *ui.Context) {
 	})
 	group(c, "待批准", func() {
 		if len(state.Pending) == 0 {
-			muted(c, "没有待批准的请求")
+			muted(c, "暂无待批准请求")
 		}
 		for _, p := range state.Pending {
 			a.pendingCard(c, p)
@@ -321,7 +321,7 @@ func (a *App) agentSettings(c *ui.Context) {
 	group(c, "命令黑名单", func() {
 		ui.Field(c, "规则", func() {
 			ui.TextArea(c.Key("agent-blacklist"), &s.blacklist).Label("命令黑名单").Font("monospace").Height(70).Grow(1)
-		}).Description("每行一条，包含即拦截；以 re: 开头为正则。本次运行有效").FillWidth()
+		}).Description("每行一条规则（以 re: 开头表示正则表达式），匹配即拦截；仅本次运行有效").FillWidth()
 		actions(c, func() {
 			if ui.Button(c, "应用黑名单").Clicked() {
 				a.P.AgentBlacklist(s.blacklist)
@@ -346,6 +346,6 @@ func (a *App) agentSettings(c *ui.Context) {
 
 func (a *App) diagnosticSettings(c *ui.Context) {
 	group(c, "", func() {
-		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &a.settings.draft.NexttracePath, FilePick{}).Description("路由追踪使用你自己安装的 nexttrace，在左栏点「PING 延迟」即可对当前服务器追踪。")
+		a.localPath(c, "nexttrace 程序", "在 PATH 中查找", &a.settings.draft.NexttracePath, FilePick{}).Description("用于路由追踪（点击左栏「PING 延迟」触发），留空则从系统 PATH 查找")
 	})
 }

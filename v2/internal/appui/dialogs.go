@@ -108,7 +108,7 @@ func (a *App) dialogsView(c *ui.Context) {
 	d := &a.dialogs
 	if len(d.links) > 0 {
 		open := true
-		if alert(c, &open, "打开外部链接", "请确认完整地址可信：\n"+d.links[0], backOut("取消"), action("打开链接", false)) == 1 {
+		if alert(c, &open, "打开外部链接", "即将打开外部链接：\n"+d.links[0], backOut("取消"), action("打开链接", false)) == 1 {
 			a.report(a.P.OpenURL(d.links[0]), "")
 		}
 		if !open {
@@ -160,7 +160,7 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 				if p.ByAgent {
 					muted(c, agentOrigin)
 				}
-				ui.Text(c, "请与服务器管理员提供的指纹核对，确认无误后再信任。").FillWidth()
+				ui.Text(c, "请核对以下服务器公钥指纹，确认无误后继续连接。").FillWidth()
 				ui.Column(c).FillWidth().Padding(12).Gap(6).Radius(t.Radius).Background(t.Background).Border(1, t.Border).Children(func() {
 					muted(c, "主机 "+p.Host)
 					muted(c, "指纹")
@@ -182,7 +182,7 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 	case PromptHostKeyChanged:
 		if d.changedAsk {
 			open := true
-			switch alert(c, &open, "确定更新主机指纹？", "只有在你确认服务器重装过系统或更换过密钥时才这样做。", backOut("断开"), action("更新指纹并连接", true)) {
+			switch alert(c, &open, "确定更新主机指纹？", "请确认服务器已重装系统或更换密钥。", backOut("断开"), action("更新指纹并连接", true)) {
 			case 1:
 				d.answer([]string{})
 			case 0:
@@ -200,12 +200,12 @@ func (a *App) promptView(c *ui.Context, p *Prompt) {
 				if p.ByAgent {
 					muted(c, agentOrigin)
 				}
-				ui.Text(c, "服务器的身份与上次不同。这可能是服务器重装过，也可能有人在拦截连接。在确认原因之前，请不要继续。").FillWidth()
+				ui.Text(c, "服务器公钥指纹与已存记录不一致，可能因服务器重装或连接被劫持导致。确认安全前请勿继续。").FillWidth()
 				ui.Column(c).FillWidth().Padding(12).Gap(6).Radius(t.Radius).Background(t.Danger.Alpha(.08)).Border(1, t.Danger.Alpha(.4)).Children(func() {
 					muted(c, "主机 "+p.Host)
 					muted(c, "已保存的指纹")
 					ui.Text(c, p.OldFingerprint).Font("monospace").FontSize(12).Selectable()
-					muted(c, "现在的指纹")
+					muted(c, "当前指纹")
 					ui.Text(c, p.Fingerprint).Font("monospace").FontSize(12).Selectable().TextColor(t.Danger)
 				})
 				ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {

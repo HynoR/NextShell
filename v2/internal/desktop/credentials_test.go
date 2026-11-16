@@ -48,7 +48,7 @@ func TestKeyHostWithoutKeyFailsAsAuth(t *testing.T) {
 	}
 	p.Connect(c)
 	ev := awaitEventOrMessage(t, p)
-	if !ev.AuthFailed || ev.Failed != c.ID || !strings.Contains(ev.Message, "未选择密钥") {
+	if !ev.AuthFailed || ev.Failed != c.ID || !strings.Contains(ev.Message, "未配置密钥") {
 		t.Fatal(ev)
 	}
 }

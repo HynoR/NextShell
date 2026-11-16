@@ -119,7 +119,7 @@ func TestEditorSaveConflictKeepsTheTabOpen(t *testing.T) {
 	click(t, tt, "保存") // asks to save, then close
 	p.events = append(p.events, appui.Event{Message: "remote file changed since open; reload before saving", ForEditor: true})
 	tt.Frame()
-	has(t, tt, "远程文件在打开后被修改了，请重新载入后再保存", "关闭标签 app.conf")
+	has(t, tt, "远端文件已变更，请重新载入后再保存", "关闭标签 app.conf")
 	if a.DirtyDocumentCount() != 1 {
 		t.Fatal("the unsaved file was dropped")
 	}
@@ -173,7 +173,7 @@ func TestEditorTabFollowsItsHost(t *testing.T) {
 	session(t, p.fakePlatform, tt, "two", "one", remoteHost("one"))
 	click(t, tt, "关闭标签 one")
 	has(t, tt, "关闭 one？")
-	if tt.HasText("这些文件的修改还没有保存") {
+	if tt.HasText("以下文件有未保存的修改") {
 		t.Fatal("asked about files with a session left")
 	}
 	click(t, tt, "断开并关闭")
@@ -182,7 +182,7 @@ func TestEditorTabFollowsItsHost(t *testing.T) {
 	}
 	// The last session: the unsaved file is named, 取消 keeps everything.
 	click(t, tt, "关闭标签 one")
-	has(t, tt, "这些文件的修改还没有保存，关闭后会丢失：", "/etc/hosts", "连接也会断开")
+	has(t, tt, "以下文件有未保存的修改，关闭将丢失更改：", "/etc/hosts", "同时将断开连接")
 	if tt.HasText("不再询问") {
 		t.Fatal("unsaved files are asked about whatever 不再询问 says")
 	}
@@ -243,7 +243,7 @@ func TestAgentClosingAHostKeepsUnsavedEditorTabs(t *testing.T) {
 	click(t, tt, "app.conf")
 	has(t, tt, "远程文本") // still editable, and the tab strip shows without any session
 	tt.Key(ui.Cmd, ui.KeyS)
-	has(t, tt, "这个服务器的连接已关闭，重新连接后才能保存")
+	has(t, tt, "连接已断开，请重新连接后再保存")
 	if len(p.saved) != 0 {
 		t.Fatal("saved without a session")
 	}

@@ -173,7 +173,7 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	}
 	// A local tab has no file panel.
 	session(t, p, tt, "local", "local", model.Connection{})
-	has(t, tt, "SFTP 用于远程 SSH 会话")
+	has(t, tt, "SFTP 仅支持远程会话")
 }
 
 func TestRemoteEditorOpensFromFilesAndGuardsDirtyClose(t *testing.T) {
@@ -306,7 +306,7 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	// The network manager is a tab of its own; both keep the full probe until they close.
 	click(t, tt, "网络管理器")
 	has(t, tt, "网络 · one", "tcp 监听", "812 nginx")
-	if tt.HasText("0 unknown") || tt.HasText("需以 root 登录才能看到") {
+	if tt.HasText("0 unknown") || tt.HasText("需 root 权限") {
 		t.Fatal("every connection has its process here")
 	}
 	// A connection of another user's process: the server does not say which, so neither does the table.
@@ -314,7 +314,7 @@ func TestMonitorSamplesOnlyWhileVisible(t *testing.T) {
 	hidden.Network = append(hidden.Network, monitor.Network{Protocol: "tcp", State: "LISTEN", LocalIP: "0.0.0.0", LocalPort: 22, Listener: true})
 	p.events = append(p.events, appui.Event{Monitor: &appui.MonitorResult{Session: "one", Snapshot: hidden}})
 	tt.Frame()
-	has(t, tt, "—", "3 / 3 条 · 显示为 — 的进程属于其他用户，需以 root 登录才能看到")
+	has(t, tt, "—", "3 / 3 条 · “—”表示其他用户进程（需 root 权限）")
 	if tt.HasText("0 unknown") {
 		t.Fatal("a process the server hid shows as pid 0")
 	}
@@ -373,29 +373,29 @@ func TestMonitorUnreadableServerStopsSamplingAndCanBeTurnedOff(t *testing.T) {
 	}
 	unsupported := fmt.Errorf("%w: Process exited with status 44", monitor.ErrUnsupported)
 	fail(unsupported, 2)
-	if !p.watching["one"] || !tt.HasText("正在读取服务器状态…") || tt.HasText("无法读取此服务器的状态（目前只支持 Linux）") {
+	if !p.watching["one"] || !tt.HasText("正在读取服务器状态…") || tt.HasText("无法获取服务器状态（仅支持 Linux）") {
 		t.Fatal("two failures already gave up", p.watching, tt.Texts())
 	}
 	fail(unsupported, 1)
-	has(t, tt, "无法读取此服务器的状态（目前只支持 Linux）", "关闭此服务器的监控", "重试")
+	has(t, tt, "无法获取服务器状态（仅支持 Linux）", "关闭监控", "重试")
 	if p.watching["one"] || tt.HasText("正在读取服务器状态…") || tt.HasText("Process exited") {
 		t.Fatal("still sampling, or showed the raw error", p.watching, tt.Texts())
 	}
 	// The 系统信息 tab says the same.
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyM)
-	has(t, tt, "无法读取此服务器的状态（目前只支持 Linux）")
+	has(t, tt, "无法获取服务器状态（仅支持 Linux）")
 	// 重试 samples again, and gives up again after three more.
 	click(t, tt, "重试")
 	tt.Frame()
-	if !p.watching["one"] || tt.HasText("关闭此服务器的监控") {
+	if !p.watching["one"] || tt.HasText("关闭监控") {
 		t.Fatal("retry did not resume", p.watching, tt.Texts())
 	}
 	fail(errors.New("context deadline exceeded"), 3)
-	has(t, tt, "无法读取此服务器的状态（连接不稳定或服务器没有响应）")
-	// 关闭此服务器的监控 is saved with the host, and the panel says it is off.
-	click(t, tt, "关闭此服务器的监控")
+	has(t, tt, "无法获取服务器状态（连接超时或无响应）")
+	// 关闭监控 is saved with the host, and the panel says it is off.
+	click(t, tt, "关闭监控")
 	tt.Frame()
-	has(t, tt, "此服务器的监控已关闭")
+	has(t, tt, "状态监控已关闭")
 	if snap, _ := p.Snapshot(); len(snap.Connections) != 1 || snap.Connections[0].Monitor {
 		t.Fatal("the switch was not saved", snap.Connections)
 	}
@@ -422,14 +422,14 @@ func TestMonitorFailureCountResets(t *testing.T) {
 	send("one", err, 2)
 	send("one", nil, 1)
 	send("one", err, 2)
-	if !p.watching["one"] || tt.HasText("关闭此服务器的监控") {
+	if !p.watching["one"] || tt.HasText("关闭监控") {
 		t.Fatal("failures that were not in a row stopped it")
 	}
 	send("one", err, 1)
-	has(t, tt, "关闭此服务器的监控")
+	has(t, tt, "关闭监控")
 	// The same host, a new session: sampled again, from a clean count.
 	session(t, p, tt, "two", "two", remoteHost("one"))
-	if !p.watching["two"] || tt.HasText("关闭此服务器的监控") {
+	if !p.watching["two"] || tt.HasText("关闭监控") {
 		t.Fatal("a reconnected host stayed given up on", p.watching, tt.Texts())
 	}
 }
@@ -449,7 +449,7 @@ func TestMonitorToolTabsShowTheFailure(t *testing.T) {
 	}
 	tt.Frame()
 	tt.Frame()
-	has(t, tt, "进程 · one", "无法读取此服务器的状态（目前只支持 Linux）")
+	has(t, tt, "进程 · one", "无法获取服务器状态（仅支持 Linux）")
 	if p.detailed["one"] || p.watching["one"] || tt.HasText("个进程") {
 		t.Fatal("the tab kept sampling or showed old rows", p.detailed, p.watching)
 	}
@@ -460,7 +460,7 @@ func TestMonitorOffStopsSampling(t *testing.T) {
 	off := remoteHost("off")
 	off.Monitor = false
 	session(t, p, tt, "off", "off", off)
-	has(t, tt, "此服务器的监控已关闭")
+	has(t, tt, "状态监控已关闭")
 	if p.watching["off"] {
 		t.Fatal("sampled a host whose monitoring is off")
 	}
@@ -762,11 +762,11 @@ func TestToastsShowInTheWindowOfTheirAction(t *testing.T) {
 	}
 	a.Prefs = quoted
 	click(t, ed, "用外部编辑器打开")
-	expect("editor action", "外部编辑器参数里有没有闭合的引号", false, true, false)
+	expect("editor action", "外部编辑器参数引号未闭合", false, true, false)
 	ed.Advance(7 * time.Second) // the toast times out
 	// An error's details open in the window that showed the error.
 	p.events = append(p.events, appui.Event{Message: "dial tcp: connection refused", ForEditor: true})
-	expect("editor error", "连接被拒绝：服务器没有在这个端口提供 SSH 服务", false, true, false)
+	expect("editor error", "连接被拒绝：目标端口未开启 SSH 服务", false, true, false)
 	click(t, ed, "详情")
 	expect("details of an editor error", "dial tcp: connection refused", false, true, false)
 	click(t, ed, "关闭")

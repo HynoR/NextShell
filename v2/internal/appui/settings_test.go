@@ -64,7 +64,7 @@ func TestAgentAutoApproveSettingAndStatusIndicator(t *testing.T) {
 	shown := 0
 	a.ShowSettings = func() { shown++ }
 	click(t, st, "Agent")
-	has(t, st, "/cfg/NextShell-v2/mcp.json", "开启 MCP 服务时写入地址和令牌；Claude Code 插件会自动读取，无需手动填写")
+	has(t, st, "/cfg/NextShell-v2/mcp.json", "启用服务后自动生成，供 Claude Code 等客户端读取")
 	click(t, st, "15 分钟")
 	if len(p.autoSet) != 1 || p.autoSet[0] != 15*time.Minute {
 		t.Fatal(p.autoSet)
@@ -362,7 +362,7 @@ func TestRouteTraceDrawerFromThePingCard(t *testing.T) {
 		t.Fatal("the raw lines are shown")
 	}
 	click(t, tt, "复制原始输出")
-	has(t, tt, "已复制路由追踪的原始输出")
+	has(t, tt, "已复制原始输出")
 }
 
 func TestImportPreviewOpensManagerAndExportUsesChosenHosts(t *testing.T) {
@@ -469,7 +469,7 @@ func TestSSHSettingsListAndForgetHostKeysAndWindowPreferences(t *testing.T) {
 	if keys, _ := p.HostKeys(); len(keys) != 0 {
 		t.Fatal("not forgotten", keys)
 	}
-	has(t, st, "还没有信任过的主机")
+	has(t, st, "首次连接并信任的主机密钥将显示在此处")
 	click(t, st, "窗口行为")
 	flip(t, st, "关闭窗口时确认")
 	flip(t, st, "关闭标签时确认")
@@ -507,7 +507,7 @@ func TestAboutShowsVersionProfileAndOpensReleases(t *testing.T) {
 
 func TestEmptyWelcomeTellsHowToBringOneDotXHostsOver(t *testing.T) {
 	a, p, tt := fixture(t)
-	has(t, tt, "开始使用", "在 NextShell 1.x 中导出连接文件，然后在这里导入")
+	has(t, tt, "开始使用", "支持导入 NextShell 1.x 与 FinalShell 连接配置")
 	click(t, tt, "从 NextShell 1.x 导入连接文件")
 	if p.managerShown != 1 {
 		t.Fatal("manager not opened")

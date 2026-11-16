@@ -95,7 +95,7 @@ func TestLinksExitAndErrorDetails(t *testing.T) {
 	url := "https://example.invalid/real-target"
 	p.events = append(p.events, appui.Event{Link: url})
 	tt.Frame()
-	has(t, tt, "请确认完整地址可信：\n"+url)
+	has(t, tt, "即将打开外部链接：\n"+url)
 	click(t, tt, "取消")
 	if len(p.opened) != 0 {
 		t.Fatal("cancel opened")

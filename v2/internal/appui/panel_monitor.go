@@ -156,20 +156,20 @@ func (a *App) monitorOff(s *Session) {
 	s.Connection.Monitor = false
 	if cc, ok := a.host(s.Connection.ID); ok && s.Connection.ID != "" {
 		cc.Monitor = false
-		a.report(a.P.SaveConnection(cc, nil), "已关闭此服务器的监控")
+		a.report(a.P.SaveConnection(cc, nil), "已关闭该主机监控")
 		a.reload()
 	}
 }
 
 // monitorUnreadable is what the panels show in place of a server's status once it is given up on.
 func (a *App) monitorUnreadable(c *ui.Context, s *Session) {
-	why := "连接不稳定或服务器没有响应"
+	why := "连接超时或无响应"
 	if h := a.monitor.hosts[hostKey(s)]; h != nil && errors.Is(h.failErr, monitor.ErrUnsupported) {
-		why = "目前只支持 Linux"
+		why = "仅支持 Linux"
 	}
 	ui.Column(c).FillWidth().MaxWidth(280).Gap(8).Children(func() {
-		ui.Text(c, "无法读取此服务器的状态（"+why+"）").FontSize(12).Wrap()
-		if ui.Button(c, "关闭此服务器的监控").FillWidth().Clicked() {
+		ui.Text(c, "无法获取服务器状态（"+why+"）").FontSize(12).Wrap()
+		if ui.Button(c, "关闭监控").FillWidth().Clicked() {
 			a.later(func() { a.monitorOff(s) })
 		}
 		if ui.Button(c, "重试").FillWidth().Clicked() {
@@ -232,13 +232,13 @@ func (a *App) watchMonitor() {
 func (a *App) sysinfoPanel(c *ui.Context) {
 	sess := a.remote()
 	if sess == nil {
-		emptyState(c, "系统信息用于远程 SSH 会话", "切换到一个远程标签即可查看系统信息和历史曲线。")
+		emptyState(c, "系统信息仅支持远程会话", "请切换至远程会话标签")
 		return
 	}
 	h := a.monitor.hosts[hostKey(sess)]
 	switch {
 	case !a.monitorOn(sess):
-		emptyState(c, "此服务器的监控已关闭", "在连接设置里开启后，这里会显示系统信息和历史曲线。")
+		emptyState(c, "状态监控已关闭", "可在主机设置中开启「监控状态」")
 	case a.monitorStopped(sess):
 		ui.Column(c).Fill().Padding(24).Center().Children(func() { a.monitorUnreadable(c, sess) })
 	case h == nil || h.snap.At.IsZero():
@@ -335,16 +335,16 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 	t := c.Theme()
 	switch {
 	case sess.Local:
-		muted(c, "本地终端不显示服务器状态")
+		muted(c, "本地终端不支持状态监控")
 		return
 	case !a.monitorOn(sess):
-		muted(c, "此服务器的监控已关闭")
-		muted(c, "可在连接设置里重新开启。")
+		muted(c, "状态监控已关闭")
+		muted(c, "可在主机设置中开启")
 		return
 	}
 	exited := a.P.Exited(sess.ID)
 	if exited {
-		muted(c, "连接断开后不再更新")
+		muted(c, "连接已断开")
 	}
 	if a.monitorStopped(sess) {
 		a.monitorUnreadable(c, sess)
@@ -508,10 +508,10 @@ func (a *App) monitorHistory(c *ui.Context, host *hostMonitor) {
 	s := &a.monitor
 	h := &host.history
 	if len(h.Points) == 0 {
-		muted(c, "还没有历史数据")
+		muted(c, "暂无历史数据")
 		return
 	}
-	muted(c, fmt.Sprintf("最近 %d 次读数，不保存到磁盘", len(h.Points)))
+	muted(c, fmt.Sprintf("最近 %d 次采样", len(h.Points)))
 	interfaces, disks := []string{"全部网卡"}, []string{}
 	knownNet, knownDisk := map[string]bool{}, map[string]bool{}
 	for _, p := range h.Points {
@@ -690,7 +690,7 @@ func (a *App) processTable(c *ui.Context, id string, snap monitor.Snapshot) {
 			for _, sig := range []string{"TERM", "KILL", "STOP", "CONT"} {
 				if m.Item(sig).Chosen() {
 					a.later(func() {
-						a.confirmDanger(fmt.Sprintf("向进程 %d 发送 %s", v.PID, sig), v.Command+"\n这可能会终止或暂停服务器上的程序。", "发送 "+sig, func() { a.P.SignalProcess(id, v.PID, sig) })
+						a.confirmDanger(fmt.Sprintf("向进程 %d 发送 %s", v.PID, sig), v.Command+"\n该操作可能终止或挂起目标进程。", "发送 "+sig, func() { a.P.SignalProcess(id, v.PID, sig) })
 					})
 				}
 			}
@@ -735,7 +735,7 @@ func connState(s string) string {
 }
 
 // hiddenProcess is why a connection has no process: ss and netstat name only the login user's own.
-const hiddenProcess = "进程不可见：服务器只向 root 显示其他用户的进程"
+const hiddenProcess = "仅 root 用户可查看其他用户的进程"
 
 // processLabel is a connection's "PID name", or a dash when the server did not tell.
 func processLabel(v monitor.Network) string {
@@ -772,7 +772,7 @@ func (a *App) networkTable(c *ui.Context, network []monitor.Network) {
 	}).Grow(1).FillWidth()
 	count := fmt.Sprintf("%d / %d 条", len(rows), len(network))
 	if slices.ContainsFunc(network, func(v monitor.Network) bool { return v.PID == 0 }) {
-		count += " · 显示为 — 的进程属于其他用户，需以 root 登录才能看到"
+		count += " · “—”表示其他用户进程（需 root 权限）"
 	}
 	muted(c, count).Padding(4, 10)
 }
@@ -819,7 +819,7 @@ func (a *App) processDrawer(c *ui.Context, id string, snap monitor.Snapshot) {
 					a.toast("已复制命令行")
 				}
 				if ui.Button(c, "结束进程…").Clicked() {
-					a.confirmDanger(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n这可能会终止服务器上的程序。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
+					a.confirmDanger(fmt.Sprintf("向进程 %d 发送 TERM", v.PID), v.Command+"\n该操作将终止目标进程。", "发送 TERM", func() { a.P.SignalProcess(id, v.PID, "TERM") })
 				}
 			})
 		})

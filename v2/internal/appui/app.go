@@ -170,7 +170,7 @@ func humanize(msg string) (string, bool) {
 		{"handshake failed: eof", "服务器不支持此认证方式"},
 		{"unexpected message type 51", "服务器不支持此认证方式"},
 		{"exited without exit status or exit signal", "连接已断开"},
-		{"connection refused", "连接被拒绝：服务器没有在这个端口提供 SSH 服务"},
+		{"connection refused", "连接被拒绝：目标端口未开启 SSH 服务"},
 		{"no route to host", "无法访问主机"},
 		{"network is unreachable", "网络不可达"},
 		{"host is down", "无法访问主机"},
@@ -183,9 +183,9 @@ func humanize(msg string) (string, bool) {
 		{"no such file", "文件或目录不存在"},
 		{"file does not exist", "文件或目录不存在"},
 		{"file exists", "目标已存在"},
-		{"knownhosts: key mismatch", "known_hosts 里的主机密钥与服务器不一致"},
-		{"remote file changed since open", "远程文件在打开后被修改了，请重新载入后再保存"},
-		{"resource is in use", "仍在使用中，无法删除：目录需先清空，密钥 / 代理需先解除主机或凭据的引用"},
+		{"knownhosts: key mismatch", "known_hosts 主机密钥不匹配"},
+		{"remote file changed since open", "远端文件已变更，请重新载入后再保存"},
+		{"resource is in use", "资源正在使用中，请先清空目录或解除关联"},
 	} {
 		if strings.Contains(m, v.match) {
 			return v.text, true

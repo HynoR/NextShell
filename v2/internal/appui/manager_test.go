@@ -43,7 +43,7 @@ func TestCredentialFromHostFormAndBatch(t *testing.T) {
 	clickLast(t, mt, "密码")
 	mt.Type("pw")
 	click(t, mt, "保存凭据")
-	has(t, mt, "运维", "ops", "来自凭据，修改凭据即对所有使用它的主机生效")
+	has(t, mt, "运维", "ops", "继承自所选凭据")
 	click(t, mt, "保存")
 	c := stored(t, p, "with-cred")
 	snap, _ := p.Snapshot()
@@ -70,7 +70,7 @@ func TestCredentialFromHostFormAndBatch(t *testing.T) {
 	click(t, mt, "运维")
 	has(t, mt, "被引用（4）")
 	click(t, mt, "删除")
-	has(t, mt, "有 4 个主机使用这个凭据，删除后它们改用各自的用户名和认证。")
+	has(t, mt, "有 4 个主机正在使用该凭据，删除后将转为独立认证配置。")
 	click(t, mt, "删除凭据")
 	if c := stored(t, p, "n1"); c.CredentialID != "" || c.User != "old" {
 		t.Fatal("fallback", c)
@@ -145,7 +145,7 @@ func TestMissingKeyMarkAndChooseKeyForAll(t *testing.T) {
 	}
 	a, _ := start(p)
 	mt := manager(a)
-	has(t, mt, "缺少密钥", "2 个主机使用密钥认证，但还没有可用的密钥")
+	has(t, mt, "缺少密钥", "2 个主机未关联有效密钥")
 	click(t, mt, "为 2 个主机选择密钥")
 	choose(t, mt, "密钥", "ops")
 	click(t, mt, "应用到 2 个主机")

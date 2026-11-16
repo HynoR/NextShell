@@ -129,7 +129,7 @@ func TestAutoShellIntegrationReportsAndTypesNothingWhenTheServerCannotOrNoPrompt
 		prompt      bool
 	}{
 		"fish":      {"/usr/bin/fish", "not bash or zsh", true},
-		"no prompt": {"/bin/bash", "没有等到提示符", false},
+		"no prompt": {"/bin/bash", "等待终端提示符超时", false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("SHELL", tc.shell)

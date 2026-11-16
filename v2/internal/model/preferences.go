@@ -87,7 +87,7 @@ func (p Preferences) Validate() error {
 		return fmt.Errorf("无效光标")
 	}
 	if p.ScrollbackMiB < 1 || p.ScrollbackMiB > 256 {
-		return fmt.Errorf("滚动缓冲需为1..256 MiB（不是行数）")
+		return fmt.Errorf("滚动缓冲需为 1–256 MiB")
 	}
 	if p.KeepaliveSeconds < 5 || p.KeepaliveSeconds > 600 {
 		return fmt.Errorf("心跳间隔需为5..600秒")

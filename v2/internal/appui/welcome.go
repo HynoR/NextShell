@@ -65,8 +65,8 @@ func (a *App) welcomeView(c *ui.Context) {
 				if len(hosts) == 0 {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {
 						muted(c, "开始使用")
-						guide(c, "新建主机", "填写地址和用户名，保存后双击即可连接", func() { a.newHost("") })
-						guide(c, "从 NextShell 1.x 导入连接文件", "在 NextShell 1.x 中导出连接文件，然后在这里导入", func() { a.openImport("") })
+						guide(c, "新建主机", "添加常用 SSH 服务器", func() { a.newHost("") })
+						guide(c, "从 NextShell 1.x 导入连接文件", "支持导入 NextShell 1.x 与 FinalShell 连接配置", func() { a.openImport("") })
 					})
 				} else {
 					ui.Column(c).FillWidth().Gap(8).Children(func() {

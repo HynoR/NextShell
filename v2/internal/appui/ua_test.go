@@ -62,7 +62,7 @@ func TestReconnectConfirmLocalAndPreference(t *testing.T) {
 	}
 	tt.RightClick("zsh")
 	tt.ChooseMenuItem("重新连接")
-	has(t, tt, "重新打开 zsh？", "终端里正在运行的程序会结束")
+	has(t, tt, "重新打开 zsh？", "将结束终端内正在运行的程序")
 	if p.reconnected != 1 {
 		t.Fatal("a local shell was replaced unasked")
 	}
@@ -79,7 +79,7 @@ func TestUnsavedCloseDefaultsToCancel(t *testing.T) {
 	open(p, tt, "one", "/etc/app.conf", "a=1\n")
 	tt.Type("x")
 	click(t, tt, "关闭标签 one")
-	has(t, tt, "这些文件的修改还没有保存", "不保存并关闭")
+	has(t, tt, "以下文件有未保存的修改", "不保存并关闭")
 	tt.Key(0, ui.KeyEnter)
 	if len(a.Tabs) != 1 || a.DirtyDocumentCount() != 1 || tt.HasText("不保存并关闭") {
 		t.Fatal("Enter discarded the edits", len(a.Tabs), a.DirtyDocumentCount())

@@ -103,7 +103,7 @@ func (a *App) hostsUsing(match func(model.Connection) bool) []string {
 func usedBy(c *ui.Context, hosts, creds []string) {
 	ui.Text(c, fmt.Sprintf("被引用（%d）", len(hosts)+len(creds))).Bold().FontSize(13).Margin(8, 0, 0, 0)
 	if len(hosts)+len(creds) == 0 {
-		muted(c, "没有主机使用")
+		muted(c, "未被引用")
 	}
 	for _, n := range hosts {
 		ui.Text(c.Key("used-"+n), "主机 · "+n).FontSize(12)
@@ -146,7 +146,7 @@ func (a *App) keysPage(c *ui.Context) {
 		}
 	}, func() {
 		if len(a.Data.Keys) == 0 {
-			emptyState(c, "还没有密钥", "生成一个，或导入已有的私钥。同一把私钥只保存一次，所有主机共用。")
+			emptyState(c, "暂无密钥", "生成或导入 SSH 私钥，可供多台主机复用")
 			return
 		}
 		r.keyList.Selected = &r.keyRow
@@ -169,7 +169,7 @@ func (a *App) keysPage(c *ui.Context) {
 		}).Grow(1).FillWidth()
 	}, func() {
 		if r.keyRow < 0 || r.keyRow >= len(a.Data.Keys) {
-			muted(c, "选择一把密钥查看公钥和使用它的主机。")
+			muted(c, "选择密钥查看详情")
 			return
 		}
 		k := a.Data.Keys[r.keyRow]
@@ -198,7 +198,7 @@ func (a *App) keysPage(c *ui.Context) {
 			}
 			del := ui.Button(c, "删除").Disabled(len(hosts)+len(creds) > 0)
 			if len(hosts)+len(creds) > 0 {
-				del.Tooltip("有主机或凭据在使用，不能删除")
+				del.Tooltip("已被主机或凭据引用，无法删除")
 			}
 			if del.Clicked() {
 				a.confirmDanger("删除密钥「"+k.Name+"」", "删除后无法恢复。", "删除密钥", func() {
@@ -248,7 +248,7 @@ func (a *App) keyDialog(c *ui.Context) {
 					d.importing = mode == 1
 				}
 			} else {
-				muted(c, "使用这把密钥的主机和凭据会改用新的私钥。")
+				muted(c, "关联的主机与凭据将自动使用新私钥")
 			}
 			ui.Form(c, func() {
 				if d.replace == "" {
@@ -260,7 +260,7 @@ func (a *App) keyDialog(c *ui.Context) {
 				}
 				a.localPath(c, "私钥文件", "未选择", &d.path, FilePick{DefaultPath: "~/.ssh", Hidden: true})
 				ui.Field(c, "或粘贴私钥", func() { ui.TextArea(c, &d.pem).Label("粘贴私钥").Font("monospace").Height(90).Grow(1) }).FillWidth()
-				password(c, "口令", &d.passphrase, &enter).Description("私钥没有口令时留空")
+				password(c, "口令", &d.passphrase, &enter).Description("无密码保护请留空")
 			}).FillWidth().Gap(FormGap)
 			if d.err != "" {
 				ui.Text(c, d.err).TextColor(c.Theme().Danger)
@@ -338,7 +338,7 @@ func (a *App) proxiesPage(c *ui.Context) {
 		}
 	}, func() {
 		if len(a.Data.Proxies) == 0 {
-			emptyState(c, "还没有代理", "主机可以通过 SOCKS 代理连接。")
+			emptyState(c, "暂无代理", "添加 SOCKS 代理供主机连接使用")
 			return
 		}
 		r.proxyList.Selected = &r.proxyRow
@@ -360,7 +360,7 @@ func (a *App) proxiesPage(c *ui.Context) {
 		}).Grow(1).FillWidth()
 	}, func() {
 		if r.proxyRow < 0 || r.proxyRow >= len(a.Data.Proxies) {
-			muted(c, "选择一个代理查看使用它的主机。")
+			muted(c, "选择代理查看详情")
 			return
 		}
 		p := a.Data.Proxies[r.proxyRow]
@@ -373,7 +373,7 @@ func (a *App) proxiesPage(c *ui.Context) {
 			}
 			del := ui.Button(c, "删除").Disabled(len(users) > 0)
 			if len(users) > 0 {
-				del.Tooltip("有主机在使用，不能删除")
+				del.Tooltip("已被主机引用，无法删除")
 			}
 			if del.Clicked() {
 				a.confirmDanger("删除代理「"+p.Name+"」", "删除后无法恢复。", "删除代理", func() {
@@ -475,10 +475,10 @@ func (a *App) credentialsPage(c *ui.Context) {
 		if ui.PrimaryButton(c, "新建凭据…").Clicked() {
 			a.openCredentialDialog(model.Credential{Auth: "password"}, nil)
 		}
-		muted(c, "一组用户名和认证，多台主机共用；修改一次，所有使用它的主机都生效。").Grow(1).MinWidth(0)
+		muted(c, "保存通用账号与认证信息，供多台主机复用").Grow(1).MinWidth(0)
 	}, func() {
 		if len(a.Data.Credentials) == 0 {
-			emptyState(c, "还没有凭据", "把常用的用户名和密码（或密钥）存成凭据，主机里选「使用凭据」即可。")
+			emptyState(c, "暂无凭据", "创建通用登录凭据，可在主机配置中直接选用")
 			return
 		}
 		r.credList.Selected = &r.credRow
@@ -500,7 +500,7 @@ func (a *App) credentialsPage(c *ui.Context) {
 		}).Grow(1).FillWidth()
 	}, func() {
 		if r.credRow < 0 || r.credRow >= len(a.Data.Credentials) {
-			muted(c, "选择一个凭据查看使用它的主机。")
+			muted(c, "选择凭据查看详情")
 			return
 		}
 		cr := a.Data.Credentials[r.credRow]
@@ -514,7 +514,7 @@ func (a *App) credentialsPage(c *ui.Context) {
 			if ui.Button(c, "删除").Clicked() {
 				msg := "删除后无法恢复。"
 				if len(users) > 0 {
-					msg = fmt.Sprintf("有 %d 个主机使用这个凭据，删除后它们改用各自的用户名和认证。", len(users))
+					msg = fmt.Sprintf("有 %d 个主机正在使用该凭据，删除后将转为独立认证配置。", len(users))
 				}
 				a.confirmDanger("删除凭据「"+cr.Name+"」", msg, "删除凭据", func() {
 					a.report(a.P.Delete("credential", cr.ID), "已删除凭据")
@@ -645,9 +645,9 @@ func (a *App) importDialog(c *ui.Context) {
 				if s.format == "finalshell" {
 					a.localPath(c, "配置目录", "未选择", &s.path, FilePick{Directory: true, Hidden: true}).Description("FinalShell 的配置目录")
 				} else {
-					a.localPath(c, "连接文件", "未选择", &s.path, FilePick{}).Description("NextShell 导出的连接文件，也可以直接拖到连接管理器窗口")
+					a.localPath(c, "连接文件", "未选择", &s.path, FilePick{}).Description("支持将 .json 连接文件直接拖入窗口")
 				}
-				password(c, "解密口令", &s.password).Description("导出时没有加密就留空")
+				password(c, "解密口令", &s.password).Description("未加密文件请留空")
 				a.folderPick(c, "导入到目录", &s.folder)
 				policies := []string{"skip", "rename-copy", "overwrite"}
 				j := max(0, indexOf(policies, s.policy))
@@ -661,10 +661,10 @@ func (a *App) importDialog(c *ui.Context) {
 				ui.Column(c).FillWidth().Padding(10).Gap(4).Radius(t.Radius).Border(1, t.Border).Children(func() {
 					ui.Text(c, fmt.Sprintf("将导入 %d 个主机", p.Count)).Bold()
 					if p.PasswordsUnavailable > 0 {
-						muted(c, fmt.Sprintf("%d 个主机的密码无法导入，连接时会询问", p.PasswordsUnavailable))
+						muted(c, fmt.Sprintf("%d 个主机不含密码，连接时需输入", p.PasswordsUnavailable))
 					}
 					if p.KeysNeedRebind > 0 {
-						muted(c, fmt.Sprintf("%d 个主机使用的密钥还没有导入：它们保持密钥认证并标红，导入密钥后自动绑定", p.KeysNeedRebind))
+						muted(c, fmt.Sprintf("%d 个主机缺少对应私钥，导入密钥后将自动绑定", p.KeysNeedRebind))
 					}
 					muted(c, strings.Join(p.Names, "、"))
 					for _, w := range p.Warnings {
@@ -700,7 +700,7 @@ func importNote(w string) (text, detail string) {
 	case strings.HasPrefix(w, "skipped symlink "):
 		return "已跳过链接文件「" + strings.TrimPrefix(w, "skipped symlink ") + "」", ""
 	case strings.Contains(w, "明文密码"):
-		return "此文件含明文密码；导入后会加密保存在本机", ""
+		return "文件包含明文密码，导入后将加密存储", ""
 	}
 	if name, _, ok := strings.Cut(w, ": "); ok && strings.HasSuffix(strings.ToLower(name), ".json") {
 		return "「" + name + "」无法读取，已跳过", w
@@ -715,7 +715,7 @@ func (a *App) commitImportButton(c *ui.Context) {
 	if ui.PrimaryButton(c, fmt.Sprintf("导入 %d 个主机", s.preview.Count)).Clicked() {
 		run := func() { a.P.CommitImport(s.preview.Token, s.folder, s.policy) }
 		if s.policy == "overwrite" && len(s.preview.Targets) > 0 {
-			a.confirmDanger("覆盖已有主机", fmt.Sprintf("%d 个已有主机会被覆盖；文件里明确为空的密码会清空已保存的密码。", len(s.preview.Targets)), fmt.Sprintf("覆盖 %d 个主机", len(s.preview.Targets)), run)
+			a.confirmDanger("覆盖已有主机", fmt.Sprintf("将覆盖 %d 个同名主机的配置。", len(s.preview.Targets)), fmt.Sprintf("覆盖 %d 个主机", len(s.preview.Targets)), run)
 		} else {
 			run()
 		}
@@ -733,14 +733,14 @@ func (a *App) exportDialog(c *ui.Context) {
 				label = fmt.Sprintf("导出 %d 个主机", len(s.exportIDs))
 			}
 			ui.Text(c, label).FontSize(17).Bold()
-			muted(c, "私钥永远不会导出；使用凭据的主机会带上凭据。在主机磁贴上按住 "+modifierName()+" 多选，可以只导出所选。")
+			muted(c, "导出文件包含主机与关联凭据，不包含私钥。")
 			ui.Form(c, func() {
-				a.localPath(c, "保存到", "未选择", &s.exportPath, FilePick{Save: true, DefaultPath: "~/nextshell-hosts.json"}).Description("不会覆盖已有文件")
+				a.localPath(c, "保存到", "未选择", &s.exportPath, FilePick{Save: true, DefaultPath: "~/nextshell-hosts.json"})
 				toggle(c, "加密并包含密码", &s.encrypt)
 				if s.encrypt {
 					password(c, "加密口令", &s.exportPassword)
 				} else {
-					muted(c, "不加密时不包含任何密码")
+					muted(c, "关闭加密将不导出密码")
 				}
 			}).FillWidth().Gap(FormGap)
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {

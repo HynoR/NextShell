@@ -42,14 +42,14 @@ func (a *App) agentActed(n *AgentNotice) {
 	if n.Pending {
 		// The agent waits for a decision: say so, passively (no raise, no tab switch, no keyboard). 查看 opens
 		// the activity column, where the request can be approved; a later request replaces this toast.
-		a.addToast(ui.Toast{ID: "agent-pending", Title: "Agent 请求等待批准", Description: "在右侧活动栏的「Agent 活动」里批准或拒绝", Timeout: 10 * time.Second, Action: "查看", OnAction: func() { a.layout.rightOpen = true }})
+		a.addToast(ui.Toast{ID: "agent-pending", Title: "Agent 请求等待批准", Description: "请在右侧「Agent 活动」中处理", Timeout: 10 * time.Second, Action: "查看", OnAction: func() { a.layout.rightOpen = true }})
 	}
 	if a.agent.noticed {
 		return
 	}
 	a.agent.noticed = true
 	a.raise(false) // front, never the keyboard
-	a.addToast(ui.Toast{ID: "agent-takeover", Title: "Agent 正在操作 NextShell", Description: "之后不会再打断你的操作；可随时在设置里关闭或紧急停止", Timeout: 10 * time.Second, Action: "管理", OnAction: func() { a.openSettings("Agent") }})
+	a.addToast(ui.Toast{ID: "agent-takeover", Title: "Agent 正在操作 NextShell", Description: "后台运行中，可在设置中关闭或紧急停止", Timeout: 10 * time.Second, Action: "管理", OnAction: func() { a.openSettings("Agent") }})
 }
 
 // agentActive reports recent agent activity, for the status bar.

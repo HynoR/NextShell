@@ -217,7 +217,7 @@ func (a *App) hostTiles(c *ui.Context) {
 	if len(missing) > 0 {
 		// A column: in the narrowest window the text keeps its width and the button sits under it.
 		ui.Column(c).FillWidth().Padding(8, 12).Gap(6).Background(t.Danger.Alpha(.1)).Children(func() {
-			ui.Text(c, fmt.Sprintf("%d 个主机使用密钥认证，但还没有可用的密钥", len(missing))).FontSize(12).TextColor(t.Danger).FillWidth()
+			ui.Text(c, fmt.Sprintf("%d 个主机未关联有效密钥", len(missing))).FontSize(12).TextColor(t.Danger).FillWidth()
 			if ui.Button(c, fmt.Sprintf("为 %d 个主机选择密钥", len(missing))).Clicked() {
 				a.openBatch("缺少密钥的主机", missing, "key")
 			}
@@ -249,9 +249,9 @@ func (a *App) hostTiles(c *ui.Context) {
 	if len(hosts) == 0 {
 		ui.Column(c).Grow(1).FillWidth().Children(func() {
 			if strings.TrimSpace(h.filter) != "" {
-				emptyState(c, "没有匹配的主机", "换个关键字试试。")
+				emptyState(c, "无匹配主机", "请尝试其他关键词")
 			} else {
-				emptyState(c, "这里还没有主机", "新建一个，或把导出的 .json 连接文件拖到这个窗口。")
+				emptyState(c, "暂无主机", "点击新建连接，或拖入 .json 文件导入")
 			}
 		})
 		return
@@ -333,7 +333,7 @@ func (a *App) hostTile(c *ui.Context, cc model.Connection) {
 			})
 		})
 		if a.missingKey(cc) {
-			ui.Text(c, "!").Label("缺少密钥").Bold().FontSize(11).TextColor(ui.RGB(255, 255, 255)).Background(t.Danger).Padding(0, 6).Radius(8).Tooltip("使用密钥认证，但还没有可用的密钥")
+			ui.Text(c, "!").Label("缺少密钥").Bold().FontSize(11).TextColor(ui.RGB(255, 255, 255)).Background(t.Danger).Padding(0, 6).Radius(8).Tooltip("未关联有效密钥")
 		}
 		if color, ok := a.hostStatus(c, cc.ID); ok {
 			dot(c, color)
@@ -354,7 +354,7 @@ func (a *App) hostCard(c *ui.Context) {
 	cc, ok := a.host(a.hosts.selected)
 	if !ok || cc.Deleted {
 		ui.Text(c, "连接管理器").FontSize(20).Bold()
-		muted(c, "单击主机查看详情，双击连接；按住 "+modifierName()+" 或 Shift 可选择多个主机批量操作。右键目录可批量绑定认证。")
+		muted(c, "单击查看详情，双击连接；按住 "+modifierName()+" 或 Shift 可多选批量操作。")
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.PrimaryButton(c, "+ 新建主机").Clicked() {
 				a.newHost("")

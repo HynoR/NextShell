@@ -124,7 +124,7 @@ func (c *Connection) BindKey(id string) {
 }
 
 // ErrNoKey is a key-auth connection without a key to log in with.
-var ErrNoKey = errors.New("未选择密钥：请为这个主机选择或导入密钥")
+var ErrNoKey = errors.New("未配置密钥：请为该主机选择或导入密钥")
 
 // Credential is a user name and a way to log in that hosts share: changing it changes every host using it.
 type Credential struct {

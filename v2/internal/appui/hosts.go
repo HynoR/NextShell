@@ -523,7 +523,7 @@ func (a *App) confirmDiscard(next func()) {
 		return
 	}
 	name := orDefault(strings.TrimSpace(e.edit.Name), "新主机")
-	a.confirmDangerWith("放弃未保存的修改？", "「"+name+"」的修改还没有保存，放弃后无法恢复。", "放弃", "继续编辑", next)
+	a.confirmDangerWith("放弃未保存的修改？", "「"+name+"」有未保存的修改，放弃后将丢失。", "放弃", "继续编辑", next)
 	a.dialogs.pendingIn = managerWindow
 }
 
@@ -651,7 +651,7 @@ func (a *App) hostForm(c *ui.Context) {
 		a.credentialPick(c, &e.edit.CredentialID)
 		if cr, ok := a.credential(e.edit.CredentialID); ok {
 			ui.Field(c, "用户名", func() { ui.Text(c, cr.User).TextColor(t.TextMuted) }).FillWidth()
-			ui.Field(c, "认证", func() { ui.Text(c, authLabel(a, cr.Auth, cr.KeyID)).TextColor(t.TextMuted) }).Description("来自凭据，修改凭据即对所有使用它的主机生效").FillWidth()
+			ui.Field(c, "认证", func() { ui.Text(c, authLabel(a, cr.Auth, cr.KeyID)).TextColor(t.TextMuted) }).Description("继承自所选凭据").FillWidth()
 		} else {
 			field(c, "用户名", &e.edit.User, &e.enter)
 			a.authFields(c, e)
@@ -659,7 +659,7 @@ func (a *App) hostForm(c *ui.Context) {
 		a.folderPick(c, "目录", &e.edit.FolderID)
 		disclosure(c, "安全", &e.more[0], func() {
 			ui.Field(c, "已知主机", func() { ui.Switch(c, &e.edit.UseKnownHosts).Label("已知主机") }).Description("同时使用 ~/.ssh/known_hosts 校验").FillWidth()
-			field(c, "主机指纹", &e.edit.Fingerprint, &e.enter).Description("可选，固定后只信任这个指纹，如 SHA256:…")
+			field(c, "主机指纹", &e.edit.Fingerprint, &e.enter).Description("可选，指定后仅信任该指纹（如 SHA256:…）")
 		})
 		disclosure(c, "网络", &e.more[1], func() {
 			a.proxyPick(c, &e.edit.ProxyID, "")
@@ -669,7 +669,7 @@ func (a *App) hostForm(c *ui.Context) {
 				}
 			}).FillWidth()
 			if e.keepaliveMode == keepaliveCustom {
-				field(c, "间隔", &e.keepalive, &e.enter).Description("单位秒，1–3600")
+				field(c, "间隔", &e.keepalive, &e.enter).Description("1–3600 秒")
 			}
 		})
 		disclosure(c, "终端", &e.more[2], func() {
@@ -781,7 +781,7 @@ func (a *App) authFields(c *ui.Context, e *hostEditor) {
 	case "agent":
 		muted(c, "使用系统 SSH Agent 中的密钥")
 	case "keyboard":
-		muted(c, "连接时在对话框里回答服务器的问题")
+		muted(c, "连接时按服务器提示输入验证信息")
 	}
 }
 
@@ -1127,7 +1127,7 @@ func (a *App) retryDialog(c *ui.Context) {
 		ui.Column(c).Width(480).Gap(14).Children(func() {
 			ui.Text(c, "登录失败："+r.host.Name).FontSize(17).Bold()
 			title, _ := humanize(r.message)
-			muted(c, title+"。可以换一个用户、认证方式或密钥再试，修改会保存到这个主机。")
+			muted(c, title+"。可修改认证信息后重试，更改将保存至该主机。")
 			ui.Form(c, func() {
 				a.credentialPick(c, &r.host.CredentialID)
 				if cr, ok := a.credential(r.host.CredentialID); ok {

@@ -28,7 +28,7 @@ func TestClosingAConnectedTabAsksFirst(t *testing.T) {
 	_ = local
 	// The × asks; 取消 keeps the tab.
 	click(t, tt, "关闭标签 tab-A")
-	has(t, tt, "关闭 tab-A？", "这个连接还在使用。关闭后，正在运行的命令会中断。", "不再询问")
+	has(t, tt, "关闭 tab-A？", "当前连接未断开，关闭将中断正在运行的命令。", "不再询问")
 	click(t, tt, "取消")
 	if ids(a) != "A" || len(p.closed) != 2 {
 		t.Fatal("cancel closed the tab", ids(a), p.closed)

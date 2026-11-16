@@ -45,7 +45,7 @@ func (p *Platform) backgroundFolder() string {
 func (p *Platform) ImportBackground(src string) (string, *ui.Bitmap, error) {
 	dir := p.backgroundFolder()
 	if dir == "" {
-		return "", nil, errors.New("无法设置背景图：没有可用的数据文件夹")
+		return "", nil, errors.New("无法设置背景图：数据目录不可用")
 	}
 	return importBackground(src, dir)
 }
@@ -53,25 +53,25 @@ func (p *Platform) ImportBackground(src string) (string, *ui.Bitmap, error) {
 func importBackground(src, dir string) (string, *ui.Bitmap, error) {
 	f, err := os.Open(src)
 	if err != nil {
-		return "", nil, errors.New("无法打开这个文件")
+		return "", nil, errors.New("无法打开文件")
 	}
 	defer f.Close()
 	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
-		return "", nil, errors.New("这不是一个图片文件")
+		return "", nil, errors.New("无效的图片文件")
 	}
 	data, err := io.ReadAll(io.LimitReader(f, backgroundMaxBytes+1))
 	if err != nil {
-		return "", nil, errors.New("无法读取这个文件")
+		return "", nil, errors.New("无法读取文件")
 	}
 	if len(data) > backgroundMaxBytes {
-		return "", nil, fmt.Errorf("图片太大了（超过 %d MB），请换一张小一点的", backgroundMaxBytes>>20)
+		return "", nil, fmt.Errorf("图片大小超过 %d MB 上限", backgroundMaxBytes>>20)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || !slices.Contains([]string{"png", "jpeg", "gif", "webp", "bmp"}, format) {
-		return "", nil, errors.New("这不是可用的图片，请选择 PNG、JPEG、GIF、WebP 或 BMP 图片")
+		return "", nil, errors.New("不支持的图片格式，请选择 PNG、JPEG、GIF、WebP 或 BMP")
 	}
 	if cfg.Width*cfg.Height > backgroundMaxPixels {
-		return "", nil, fmt.Errorf("图片尺寸太大（%d×%d），请选择不超过 %d 万像素的图片", cfg.Width, cfg.Height, backgroundMaxPixels/10000)
+		return "", nil, fmt.Errorf("图片分辨率过高（%d×%d），上限为 %d 万像素", cfg.Width, cfg.Height, backgroundMaxPixels/10000)
 	}
 	bmp, err := ui.DecodeBitmap(data)
 	if err != nil {
@@ -83,7 +83,7 @@ func importBackground(src, dir string) (string, *ui.Bitmap, error) {
 		ext = "jpg"
 	}
 	name := "background-" + hex.EncodeToString(sum[:6]) + "." + ext
-	unwritable := errors.New("无法保存背景图：数据文件夹不可写")
+	unwritable := errors.New("无法保存背景图：数据目录不可写")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", nil, unwritable
 	}
@@ -109,7 +109,7 @@ func importBackground(src, dir string) (string, *ui.Bitmap, error) {
 func (p *Platform) BackgroundPicture(name string) (*ui.Bitmap, error) {
 	dir := p.backgroundFolder()
 	if dir == "" || name != filepath.Base(name) {
-		return nil, errors.New("没有可用的数据文件夹")
+		return nil, errors.New("数据目录不可用")
 	}
 	data, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {

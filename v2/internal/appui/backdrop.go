@@ -58,7 +58,7 @@ func (a *App) backdropBitmap() *ui.Bitmap {
 	if b.bmp, err = a.P.BackgroundPicture(name); err != nil {
 		b.bmp = nil
 		a.log("背景图无法读取：" + err.Error())
-		a.toast("背景图无法读取，已按没有背景图显示。可以在设置里重新选择")
+		a.toast("背景图读取失败，请在设置中重新选择")
 	}
 	return b.bmp
 }

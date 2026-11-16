@@ -95,7 +95,7 @@ func (a *App) sendToAll(text string, cr bool) {
 		targets, names = append(targets, s), append(names, name)
 	}
 	if len(targets) == 0 {
-		a.toast("没有可发送的会话：所有会话都已断开")
+		a.toast("无已连接的活动会话")
 		return
 	}
 	msg := fmt.Sprintf("将向以下 %d 个会话发送：\n%s\n\n命令：\n%s", len(targets), listNames(names, 10), text)
@@ -117,7 +117,7 @@ func (a *App) sendToAll(text string, cr bool) {
 			a.toast(fmt.Sprintf("已发送到 %d 个会话", len(targets)))
 			return
 		}
-		a.failAs(fmt.Sprintf("%d 个会话没有收到：%s", len(failed), strings.Join(failed, "、")), strings.Join(detail, "\n"))
+		a.failAs(fmt.Sprintf("%d 个会话发送失败：%s", len(failed), strings.Join(failed, "、")), strings.Join(detail, "\n"))
 	})
 }
 
@@ -148,7 +148,7 @@ func (a *App) snippetsPanel(c *ui.Context) {
 	ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 		ui.Column(c).FillWidth().Padding(4, 8).Gap(2).Children(func() {
 			if len(a.Data.Commands) == 0 {
-				emptyState(c, "还没有命令片段", "把常用命令存成片段，单击填入命令输入栏，双击发送到当前会话。")
+				emptyState(c, "暂无命令片段", "单击填入命令栏，双击直接发送")
 				return
 			}
 			visible := 0
@@ -292,7 +292,7 @@ func (a *App) snippetDialogs(c *ui.Context) {
 					ui.Field(c, "名称", func() { ui.TextInput(c, &s.draft.Name).Label("片段名称").AutoFocus().Grow(1) }).FillWidth()
 					field(c, "分组", &s.draft.Group)
 					field(c, "说明", &s.draft.Description)
-					ui.Field(c, "命令", func() { ui.TextArea(c, &s.draft.Text).Label("命令").Font("monospace").Height(110).Grow(1) }).Description("用 [#名称] 标记发送前要填写的参数；片段以明文保存在本机").FillWidth()
+					ui.Field(c, "命令", func() { ui.TextArea(c, &s.draft.Text).Label("命令").Font("monospace").Height(110).Grow(1) }).Description("支持使用 [#参数名] 定义变量，发送前填写").FillWidth()
 					cr := appendCR(s.draft)
 					toggle(c, "发送后按回车", &cr)
 					s.draft.AppendCR = &cr
@@ -375,7 +375,7 @@ func (a *App) commandDialog(c *ui.Context) {
 				}
 				return false
 			})
-			muted(c, "历史以明文保存在本机，请勿输入密码")
+			muted(c, "请勿在此输入敏感密码")
 			if len(a.Data.History) > 0 {
 				ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 					muted(c, "最近发送").Grow(1)

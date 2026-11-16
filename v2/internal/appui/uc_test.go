@@ -68,7 +68,7 @@ func TestConfirmationsAreSafeByDefaultAndDangerIsRed(t *testing.T) {
 	}
 	click(t, st, "回收站")
 	click(t, st, "清空回收站（2）")
-	has(t, st, "清空回收站", "永久删除 2 个主机和它们保存的凭据，无法恢复。", "删除 2 个主机")
+	has(t, st, "清空回收站", "将彻底删除 2 个主机及其保存的密码，无法恢复。", "删除 2 个主机")
 	if !focused(t, st, "取消") || focused(t, st, "删除 2 个主机") {
 		t.Fatal("the focus is not on 取消")
 	}
@@ -82,7 +82,7 @@ func TestConfirmationsAreSafeByDefaultAndDangerIsRed(t *testing.T) {
 	st.SetDark(false)
 	st.Frame()
 	st.Key(0, ui.KeyEnter)
-	if st.HasText("永久删除 2 个主机和它们保存的凭据，无法恢复。") || deleted() != 2 {
+	if st.HasText("将彻底删除 2 个主机及其保存的密码，无法恢复。") || deleted() != 2 {
 		t.Fatal("Enter confirmed, or left the dialog open", deleted())
 	}
 	click(t, st, "清空回收站（2）")
@@ -111,7 +111,7 @@ func TestPlainConfirmationKeepsTheMainColorAndEnterBacksOut(t *testing.T) {
 		t.Fatal("the focus is not on 取消")
 	}
 	tt.Key(0, ui.KeyEnter)
-	if len(p.opened) != 0 || tt.HasText("请确认完整地址可信") {
+	if len(p.opened) != 0 || tt.HasText("即将打开外部链接") {
 		t.Fatal("Enter opened the link", p.opened)
 	}
 }
@@ -185,7 +185,7 @@ func TestConflictCanSaveALocalCopy(t *testing.T) {
 	click(t, tt, "保存")
 	p.events = append(p.events, appui.Event{Message: "remote file changed since open; reload before saving", ForEditor: true})
 	tt.Frame()
-	has(t, tt, "远程文件在打开后被修改了，请重新载入后再保存")
+	has(t, tt, "远端文件已变更，请重新载入后再保存")
 	click(t, tt, "重新载入")
 	has(t, tt, "重新载入会丢弃未保存的修改", "另存本地副本…", "丢弃并重新载入")
 
@@ -229,7 +229,7 @@ func TestEditorArgumentsAreASettingAndSurviveARestart(t *testing.T) {
 	a := appui.New(first)
 	st := ui.NewTester(a.SettingsView, 880, 640)
 	click(t, st, "远端编辑")
-	has(t, st, "外部编辑器参数", "例如 --wait")
+	has(t, st, "外部编辑器参数", "如 --wait")
 	click(t, st, "外部编辑器参数")
 	st.Type(`--wait "my profile"`)
 	if got := first.Preferences().EditorArgs; got != `--wait "my profile"` {
@@ -288,7 +288,7 @@ func TestSettingsErrorIsInlineAndTheRestStillSaves(t *testing.T) {
 
 	// Another page: the error is not forgotten, said at the top, and does not stop what is changed here.
 	click(t, st, "窗口行为")
-	has(t, st, "「终端」里的「字号」须为 10–24 的整数，这一项还没有保存")
+	has(t, st, "「终端 · 字号」须为 10–24 的整数，修改未保存")
 	click(t, st, "深色")
 	click(t, st, "紫")
 	got := p.Preferences()
@@ -298,7 +298,7 @@ func TestSettingsErrorIsInlineAndTheRestStillSaves(t *testing.T) {
 	// 查看 goes to the field, which still holds what was typed.
 	click(t, st, "查看 字号")
 	has(t, st, "须为 10–24 的整数")
-	if tt, ok := st.AccessByRole(ui.RoleTextField, "字号"); !ok || tt.Value != "99" || st.HasText("「终端」里的") {
+	if tt, ok := st.AccessByRole(ui.RoleTextField, "字号"); !ok || tt.Value != "99" || st.HasText("「终端 · ") {
 		t.Fatal("the field lost its text, or the page repeats the error", tt.Value)
 	}
 	click(t, st, "字号")
@@ -318,7 +318,7 @@ func TestSettingsErrorIsInlineAndTheRestStillSaves(t *testing.T) {
 		t.Fatal("empty upload directory", p.Preferences().UploadDir)
 	}
 	click(t, st, "远端编辑")
-	has(t, st, "「文件传输」里的「默认上传目录」不能为空，这一项还没有保存")
+	has(t, st, "「文件传输 · 默认上传目录」不能为空，修改未保存")
 	click(t, st, "外部编辑器参数")
 	st.Type(`--wait "x`)
 	has(t, st, "引号没有闭合")
@@ -347,7 +347,7 @@ func TestSettingsPolish(t *testing.T) {
 	p.agent.Pending = []agent.Pending{{ID: "x", Client: "claude", Tool: "exec", Summary: "uptime", ExpiresAt: time.Now().Add(time.Minute)}}
 	a := appui.New(p)
 	st := ui.NewTester(a.SettingsView, 880, 1400)
-	has(t, st, "外观", "主题", "每次启动时折叠；关闭时保持上次退出时的样子", "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭")
+	has(t, st, "外观", "主题", "启动时默认折叠，关闭则记住上次状态", "关闭活动中的远程连接标签前提示确认")
 	if st.HasText("不勾选") {
 		t.Fatal("the help still talks of ticking a switch")
 	}
@@ -365,7 +365,7 @@ func TestSettingsPolish(t *testing.T) {
 		t.Fatal("the emergency stop is still a switch")
 	}
 	click(t, st, "立即停止")
-	has(t, st, "已紧急停止 · Agent 的请求都会被拒绝", "恢复 Agent")
+	has(t, st, "已紧急停止 · 拒绝所有请求", "恢复 Agent")
 	click(t, st, "恢复 Agent")
 	if len(p.halts) != 2 || !p.halts[0] || p.halts[1] {
 		t.Fatal(p.halts)
@@ -409,7 +409,7 @@ func TestImportPreviewNotesAreInChinese(t *testing.T) {
 	}}})
 	tt.Frame()
 	mt.Frame()
-	has(t, mt, "将导入 2 个主机", "已跳过链接文件「old-config」", "此文件含明文密码；导入后会加密保存在本机", "「broken.json」无法读取，已跳过", "部分内容无法导入")
+	has(t, mt, "将导入 2 个主机", "已跳过链接文件「old-config」", "文件包含明文密码，导入后将加密存储", "「broken.json」无法读取，已跳过", "部分内容无法导入")
 	for _, raw := range []string{"skipped symlink", "v2 设备密钥", "invalid character", "decoder exploded"} {
 		if mt.HasText(raw) {
 			t.Fatalf("%q shows in the preview", raw)

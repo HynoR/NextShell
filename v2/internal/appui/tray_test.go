@@ -26,7 +26,7 @@ func TestTrayOptionsAppearOnlyWhereThereIsATray(t *testing.T) {
 	a.TrayAvailable = true
 	st.Frame()
 	has(t, st, "最小化到托盘", "关闭窗口时最小化到托盘")
-	if st.HasText("这一项管的是退出时的确认") {
+	if st.HasText("此项仅在退出应用时生效") {
 		t.Fatal("the confirmation explained itself before the tray took over closing")
 	}
 	flip(t, st, "最小化到托盘")
@@ -41,13 +41,13 @@ func TestTrayOptionsAppearOnlyWhereThereIsATray(t *testing.T) {
 		t.Fatal("the host was not told", changed)
 	}
 	// 1.x switched the confirmation off here; it stays, because quitting from the tray or with ⌘Q still asks.
-	has(t, st, "关闭窗口只会隐藏窗口；这一项管的是退出时的确认，从托盘退出也一样")
+	has(t, st, "开启「关闭窗口时最小化到托盘」后，此项仅在退出应用时生效")
 	flip(t, st, "关闭窗口时确认")
 	if !p.Preferences().NoCloseConfirm {
 		t.Fatal("the confirmation switch did not work with close-to-tray on")
 	}
 	flip(t, st, "关闭窗口时最小化到托盘")
-	if p.Preferences().CloseToTray || st.HasText("这一项管的是退出时的确认") {
+	if p.Preferences().CloseToTray || st.HasText("此项仅在退出应用时生效") {
 		t.Fatal("close to tray stayed on")
 	}
 }
@@ -169,7 +169,7 @@ func TestTrayIconIsABlackTemplateImage(t *testing.T) {
 
 // Where a desktop may show no tray icons (Linux), the close option says how to get the window back.
 func TestCloseToTrayExplainsTheWayBackOnLinuxOnly(t *testing.T) {
-	const hint = "看不到托盘图标时，再次打开 NextShell 即可显示窗口"
+	const hint = "若桌面环境无托盘图标，重新启动应用即可唤出窗口"
 	for goos, want := range map[string]bool{"linux": true, "darwin": false, "windows": false} {
 		restore := appui.SetOS(goos)
 		p := newPlatform(t)
@@ -179,7 +179,7 @@ func TestCloseToTrayExplainsTheWayBackOnLinuxOnly(t *testing.T) {
 		if got := st.HasText(hint); got != want {
 			t.Errorf("%s: hint shown=%v, want %v", goos, got, want)
 		}
-		has(t, st, "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」")
+		has(t, st, "关闭主窗口时隐藏至托盘，保持后台连接；可通过托盘菜单退出")
 		restore()
 	}
 }
@@ -191,26 +191,26 @@ func TestTrayPendingTellsOnceAndTheSettingsSayWhy(t *testing.T) {
 	a.TrayAvailable = true
 	st := ui.NewTester(a.SettingsView, 880, 900)
 	flip(t, st, "关闭窗口时最小化到托盘")
-	if st.HasText("重启 NextShell 后生效") {
+	if st.HasText("重启应用后生效") {
 		t.Fatal("the option claimed to wait for a restart before the host said so")
 	}
 	a.TrayPending(true)
 	a.TrayPending(true)
 	st.Frame()
 	tt.Frame()
-	has(t, st, "这次运行里还不能生效，重启 NextShell 后生效")
+	has(t, st, "重启应用后生效")
 	if n := countText(tt, "托盘选项重启后生效"); n != 1 {
 		t.Fatal("the toast was shown", n, "times")
 	}
 	flip(t, st, "关闭窗口时最小化到托盘") // turned off again: nothing waits
-	if st.HasText("重启 NextShell 后生效") {
+	if st.HasText("重启应用后生效") {
 		t.Fatal("the note stayed with the option off")
 	}
 	flip(t, st, "关闭窗口时最小化到托盘")
-	has(t, st, "重启 NextShell 后生效")
+	has(t, st, "重启应用后生效")
 	a.TrayPending(false)
 	st.Frame()
-	if st.HasText("重启 NextShell 后生效") {
+	if st.HasText("重启应用后生效") {
 		t.Fatal("the note stayed after the host could hide the window")
 	}
 }

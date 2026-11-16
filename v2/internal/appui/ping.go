@@ -37,7 +37,7 @@ func (a *App) pingCard(c *ui.Context, s *Session) {
 			color = t.Danger
 		}
 	}
-	b := ui.ButtonBase(c).Label("PING 延迟 "+value+"，点击路由追踪").Tooltip("点击对这台服务器做路由追踪").FillWidth().Padding(10, 12).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0)
+	b := ui.ButtonBase(c).Label("PING 延迟 "+value+"，点击路由追踪").Tooltip("点击执行路由追踪").FillWidth().Padding(10, 12).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0)
 	if b.Hovered() {
 		b.Background(t.SurfaceHover)
 	}
@@ -84,7 +84,7 @@ func (a *App) traceDrawer(c *ui.Context) {
 					a.P.CancelDiagnostic()
 				}
 			})
-			muted(c, "从本机到 "+tr.host+" 经过的节点。")
+			muted(c, "目标地址："+tr.host)
 			if tr.busy {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Spinner(c)
@@ -93,7 +93,7 @@ func (a *App) traceDrawer(c *ui.Context) {
 			}
 			missing := !tr.busy && (strings.Contains(tr.text, "executable file not found") || strings.Contains(tr.text, "no such file or directory"))
 			if missing {
-				ui.Text(c, "未找到 nexttrace。请先安装 nexttrace，再到「设置 → 网络工具」指定它的路径。").FillWidth()
+				ui.Text(c, "未找到 nexttrace，请安装后在「设置 → 网络工具」中配置路径。").FillWidth()
 			}
 			hops, notes := diagnostics.ParseTrace(tr.text)
 			if len(hops) > 0 && !missing {
@@ -112,7 +112,7 @@ func (a *App) traceDrawer(c *ui.Context) {
 			ui.Row(c).FillWidth().Gap(8).Justify(ui.End).Children(func() {
 				if len(hops) > 0 && !tr.busy && ghost(c, "复制原始输出", "").Clicked() {
 					a.P.CopyText(tr.text)
-					a.toast("已复制路由追踪的原始输出")
+					a.toast("已复制原始输出")
 				}
 				if missing && ui.Button(c, "打开设置").Clicked() {
 					a.later(func() { a.openSettings("网络工具") })

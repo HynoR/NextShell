@@ -31,7 +31,7 @@ func (p *Platform) integrateShell(session string, t *terminal.Terminal, s *sshcl
 			return
 		}
 		if errors.Is(e, context.DeadlineExceeded) {
-			e = errors.New("十秒内没有等到提示符或服务器没有准备好，已跳过")
+			e = errors.New("等待终端提示符超时，已跳过")
 		}
 		p.emit(appui.Event{ShellHook: &appui.ShellHookResult{Session: session, Err: e}})
 	})

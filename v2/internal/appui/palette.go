@@ -60,7 +60,7 @@ func (a *App) paletteItems() []paletteItem {
 	}
 	if strings.Contains(q, "@") {
 		if cc, e := model.QuickConnect(q); e == nil {
-			out = append(out, paletteItem{"连接", "连接 " + q, "密码会在随后的对话框里询问", func(ui.Modifiers) {
+			out = append(out, paletteItem{"连接", "连接 " + q, "回车直连主机", func(ui.Modifiers) {
 				a.connect(cc)
 				a.toast("正在连接 " + a.login(cc) + "…") // an unsaved host has no 连接中 tab
 			}})
@@ -204,7 +204,7 @@ func (a *App) insertShellHook(s *Session, shell string) {
 		a.fail(e)
 		return
 	}
-	a.report(a.P.Send(s.ID, strings.TrimSpace(command)), "已插入脚本，检查后按回车执行；文件面板即可跟随终端目录")
+	a.report(a.P.Send(s.ID, strings.TrimSpace(command)), "已填入目录跟踪脚本，按回车执行")
 	a.tabs.term.Focus()
 }
 

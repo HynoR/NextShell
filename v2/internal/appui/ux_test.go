@@ -46,7 +46,7 @@ func TestConnectFailureToastNamesTheHostAndADeclinedPasswordIsSilent(t *testing.
 	_, tt := start(p)
 	p.events = append(p.events, appui.Event{Message: "dial tcp 10.0.0.1:22: connect: connection refused", Failed: web.ID, Host: web.Name})
 	tt.Frame()
-	has(t, tt, "连接 prod-web-01 失败：连接被拒绝：服务器没有在这个端口提供 SSH 服务", "详情")
+	has(t, tt, "连接 prod-web-01 失败：连接被拒绝：目标端口未开启 SSH 服务", "详情")
 	click(t, tt, "详情")
 	has(t, tt, "dial tcp 10.0.0.1:22: connect: connection refused") // the original stays in the details
 	click(t, tt, "关闭")

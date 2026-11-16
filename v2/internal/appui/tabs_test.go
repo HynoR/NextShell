@@ -104,7 +104,7 @@ func TestTabMenuCloseVariantsAndDuplicate(t *testing.T) {
 	}
 	tt.RightClick("tab-B")
 	tt.ChooseMenuItem("关闭右侧")
-	has(t, tt, "关闭 2 个标签？", "其中 2 个连接还在使用")
+	has(t, tt, "关闭 2 个标签？", "其中 2 个连接未断开")
 	click(t, tt, "断开并关闭")
 	if ids(a) != "AB" {
 		t.Fatal("close to the right", ids(a))

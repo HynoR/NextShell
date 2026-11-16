@@ -179,12 +179,12 @@ func TestBackgroundSurvivesTheOriginalAndAMissingCopyFallsBack(t *testing.T) {
 	gone := appui.New(p)
 	gt := ui.NewTester(gone.View, 1280, 800)
 	gt.Frame()
-	has(t, gt, "背景图无法读取")
+	has(t, gt, "背景图读取失败")
 	if gone.Glass() {
 		t.Fatal("translucent without a picture")
 	}
 	gt.Frame()
-	if gt.HasText("背景图无法读取") && countText(gt, "背景图无法读取") > 1 {
+	if gt.HasText("背景图读取失败") && countText(gt, "背景图读取失败") > 1 {
 		t.Fatal("told more than once")
 	}
 }
@@ -209,14 +209,14 @@ func TestBackgroundChoiceRefusesWithAMessage(t *testing.T) {
 	notes := write(t, t.TempDir(), "notes.txt", []byte("hello"))
 	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{notes}) }
 	click(t, st, "选择背景图")
-	has(t, st, "这不是可用的图片，请选择 PNG、JPEG、GIF、WebP 或 BMP 图片")
+	has(t, st, "不支持的图片格式，请选择 PNG、JPEG、GIF、WebP 或 BMP")
 	if p.Preferences().BackgroundImage != "" || a.Glass() {
 		t.Fatal("a refused file was taken")
 	}
 	huge := write(t, t.TempDir(), "huge.png", testutil.PNGHeader(8000, 6000))
 	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{huge}) }
 	click(t, st, "选择背景图")
-	has(t, st, "图片尺寸太大（8000×6000）")
+	has(t, st, "图片分辨率过高（8000×6000）")
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Fatal("refused files left something:", entries)
 	}
@@ -224,7 +224,7 @@ func TestBackgroundChoiceRefusesWithAMessage(t *testing.T) {
 	p.SetDataDir("")
 	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{testutil.Picture(t)}) }
 	click(t, st, "选择背景图")
-	has(t, st, "没有可用的数据文件夹")
+	has(t, st, "数据目录不可用")
 }
 
 // Terminals are made transparent, so a picture can be set or cleared with sessions open; without a picture

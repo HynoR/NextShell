@@ -42,7 +42,7 @@ func (s *Service) set(state string, e error, local, remote string) {
 	s.status.RemoteHead = remote
 	s.status.Error = ""
 	if e != nil {
-		s.status.Error = "同步未完成；检查本地服务、密钥或冲突（不会自动覆盖）"
+		s.status.Error = "同步失败，请检查同步服务、口令或数据冲突"
 	}
 	if state == "synced" {
 		s.status.LastSync = time.Now().In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("2006-01-02 15:04:05 UTC+8")

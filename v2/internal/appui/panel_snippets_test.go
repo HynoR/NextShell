@@ -176,7 +176,7 @@ func TestSendToAllNamesTheTabsSkipsDisconnectedOnesAndReportsByName(t *testing.T
 	if len(p.sentTo["web"]) != 1 || len(p.sentTo["loc"]) != 1 || len(p.sentTo["gone"]) != 0 || len(p.sentTo["db"]) != 0 {
 		t.Fatal("sent to", p.sentTo)
 	}
-	has(t, tt, "1 个会话没有收到：db-master")
+	has(t, tt, "1 个会话发送失败：db-master")
 	for _, s := range tt.Texts() {
 		if strings.Contains(s, "db:") || strings.Contains(s, "web") && strings.Contains(s, "会话已") {
 			t.Fatal("an ID reached the user:", s)
@@ -197,7 +197,7 @@ func TestSendToAllWithNoLiveSessionSaysSo(t *testing.T) {
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyS)
 	tt.RightClick("片段 x")
 	tt.ChooseMenuItem("发送到全部会话…")
-	has(t, tt, "没有可发送的会话")
+	has(t, tt, "无已连接的活动会话")
 	if tt.HasText("发送到 0 个会话") {
 		t.Fatal("a confirm for nobody")
 	}

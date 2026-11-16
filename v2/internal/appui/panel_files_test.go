@@ -36,7 +36,7 @@ func TestFirstListingFailureShowsReasonAndRetries(t *testing.T) {
 	// The remembered folder is gone: the home directory is one click away.
 	p.events = append(p.events, appui.Event{FilesFailed: &appui.FileFailure{Session: "one", Path: ".", Err: "ssh: subsystem request failed"}})
 	tt.Frame()
-	has(t, tt, "这台服务器没有开启文件传输（SFTP）")
+	has(t, tt, "服务器未启用 SFTP 服务")
 	listing(p, tt, "one", "/home/u", sftpfs.Entry{Name: "a.txt", Path: "/home/u/a.txt"})
 	has(t, tt, "a.txt")
 	if tt.HasText("无法读取目录") {
@@ -114,7 +114,7 @@ func deleteRow(t *testing.T, tt *ui.Tester, row string) {
 func TestDeletingAFolderCountsFirstThenRemovesWithProgress(t *testing.T) {
 	p, tt := removalFixture(t)
 	deleteRow(t, tt, "打开 src")
-	has(t, tt, "正在统计要删除的内容…")
+	has(t, tt, "正在统计待删除项…")
 	if len(p.counts) != 1 || !slices.Equal(p.counts[0], []string{"/d/src"}) || len(p.actions) != 0 {
 		t.Fatal("the folder is counted before anything is deleted", p.counts, p.actions)
 	}
@@ -251,29 +251,29 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 		t.Fatal("the toggle is still in the menu", tt.Menu())
 	}
 	tt.CloseMenu()
-	if tt.HasText("还没有收到终端的当前目录") {
+	if tt.HasText("未获取到终端当前目录") {
 		t.Fatal("a hint before the toggle is on")
 	}
 	click(t, tt, "跟随终端目录")
-	has(t, tt, "还没有收到终端的当前目录，暂时无法跟随。", "让文件面板跟随终端目录")
+	has(t, tt, "未获取到终端当前目录", "让文件面板跟随终端目录")
 	for _, s := range tt.Texts() {
 		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") {
 			t.Fatal("the hint names a file:", s)
 		}
 	}
 	click(t, tt, "跟随终端目录")
-	if tt.HasText("还没有收到终端的当前目录") {
+	if tt.HasText("未获取到终端当前目录") {
 		t.Fatal("the hint outlives the toggle")
 	}
 	// Tracking off in the settings: the way to turn it on.
 	a.Prefs.ShellIntegration = "off"
 	click(t, tt, "跟随终端目录")
-	has(t, tt, "目录跟踪在设置里是关闭的", "Shell 集成")
+	has(t, tt, "目录跟踪已关闭", "Shell 集成")
 	click(t, tt, "跟随终端目录")
 	// The shell reports its folder: the list goes there, and no hint.
 	p.dir = "/var/www"
 	click(t, tt, "跟随终端目录")
-	if p.listed[len(p.listed)-1] != "one:/var/www" || tt.HasText("暂时无法跟随") {
+	if p.listed[len(p.listed)-1] != "one:/var/www" || tt.HasText("未获取到终端当前目录") {
 		t.Fatal("follow", p.listed)
 	}
 }
@@ -281,7 +281,7 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 func TestDeleteConfirmNamesTheServerEvenAfterATabSwitch(t *testing.T) {
 	p, tt := removalFixture(t)
 	deleteRow(t, tt, "打开 src")
-	has(t, tt, "正在统计要删除的内容…")
+	has(t, tt, "正在统计待删除项…")
 	// The count takes a while; meanwhile another server's tab comes to the front.
 	session(t, p.fakePlatform, tt, "two", "db-master", remoteHost("two"))
 	p.events = append(p.events, appui.Event{Removal: &appui.RemovalCount{Session: "one", Targets: []appui.RemovalTally{{Path: "/d/src", Files: 4, Dirs: 1}}}})
@@ -333,7 +333,7 @@ func TestLinksShowWhereTheyLeadAndOpenAsWhatTheyPointTo(t *testing.T) {
 	n := len(p.opened) + len(p.listed)
 	click(t, tt, "选择 stale")
 	tt.Key(0, ui.KeyEnter)
-	has(t, tt, "「stale」是失效的链接")
+	has(t, tt, "链接「stale」已失效")
 	if len(p.opened)+len(p.listed) != n {
 		t.Fatal("a broken link opened something", p.opened, p.listed)
 	}
@@ -384,7 +384,7 @@ func TestLinkMenusOfferWhatTheTargetAllows(t *testing.T) {
 	}
 	// Deleting a link says it is the link that goes, and is a plain delete: no count of what is behind it.
 	deleteRow(t, tt, "打开 logs")
-	has(t, tt, "删除 one 上的文件", "logs\n删除后无法恢复。\n链接只会删除链接本身，不会动它指向的内容。")
+	has(t, tt, "删除 one 上的文件", "logs\n删除后无法恢复。\n符号链接仅删除链接本身，不影响目标文件。")
 	click(t, tt, "删除 1 项")
 	if len(p.actions) != 1 || p.actions[0] != [3]string{"remove", "/etc/nginx/logs", ""} {
 		t.Fatal("delete", p.actions)

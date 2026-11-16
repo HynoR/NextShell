@@ -141,7 +141,7 @@ func (a *App) toolView(c *ui.Context, tool toolTab) {
 		})
 		switch {
 		case s != nil && !a.monitorOn(s):
-			emptyState(c, "此服务器的监控已关闭", "在连接设置里开启后，才能查看进程和网络连接。")
+			emptyState(c, "状态监控已关闭", "可在主机设置中开启「监控状态」")
 		case s != nil && a.monitorStopped(s):
 			ui.Column(c).Fill().Padding(24).Center().Children(func() { a.monitorUnreadable(c, s) })
 		case h == nil || h.full.At.IsZero():

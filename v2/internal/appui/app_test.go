@@ -42,7 +42,7 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 		t.Fatal("name did not connect the saved host", p.connects)
 	}
 	has(t, tt, "连接中", "正在连接 saved-box…") // the first connect shows its tab at once
-	p.events = append(p.events, appui.Event{Message: "连接被拒绝：服务器没有在这个端口提供 SSH 服务", Failed: saved.ID})
+	p.events = append(p.events, appui.Event{Message: "连接被拒绝：目标端口未开启 SSH 服务", Failed: saved.ID})
 	tt.Frame()
 	click(t, tt, "打开本地终端")
 	if p.local != 1 {
@@ -282,7 +282,7 @@ func TestFoldersFavoritesFilterAndBatchAuth(t *testing.T) {
 	// A failed connect shows in the main window; Failed carries the host's ID.
 	p.events = append(p.events, appui.Event{Failed: p.connects[0].ID, Message: "connection refused"})
 	main.Frame()
-	has(t, main, "连接被拒绝：服务器没有在这个端口提供 SSH 服务")
+	has(t, main, "连接被拒绝：目标端口未开启 SSH 服务")
 	click(t, main, "详情")
 	has(t, main, "connection refused")
 	click(t, main, "关闭")
@@ -452,9 +452,9 @@ func TestShellIntegrationIsManualByDefault(t *testing.T) {
 	}
 	st := ui.NewTester(a.SettingsView, 880, 1400)
 	click(t, st, "终端")
-	has(t, st, "默认。不写服务器文件；需要时在命令面板执行「让文件面板跟随终端目录」，只对当前会话生效")
+	has(t, st, "不修改远端配置；可按需在命令面板执行「让文件面板跟随终端目录」")
 	click(t, st, "自动")
-	has(t, st, "会在服务器上安装一小段目录跟踪脚本，新的 bash / zsh 会话自动加载；文件面板可跟随终端目录。其他 shell 不受影响")
+	has(t, st, "连接时自动配置 bash / zsh 目录跟踪，使 SFTP 跟随终端当前目录")
 	if v := p.Preferences().ShellIntegration; v != "auto" {
 		t.Fatal("not saved", v)
 	}

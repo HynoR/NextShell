@@ -116,7 +116,7 @@ func (a *App) problemsView(c *ui.Context) {
 		}
 		msg := v.msg
 		if v.field != "" {
-			msg = fmt.Sprintf("「%s」里的「%s」%s，这一项还没有保存", v.page, v.field, v.msg)
+			msg = fmt.Sprintf("「%s · %s」%s，修改未保存", v.page, v.field, v.msg)
 		}
 		ui.Row(c.Key("problem-"+v.page+v.field)).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Background(t.Danger.Alpha(.1)).Children(func() {
 			ui.Text(c, msg).FontSize(13).TextColor(t.Danger).Grow(1).MinWidth(0)
@@ -312,15 +312,15 @@ func (a *App) windowSettings(c *ui.Context) {
 	})
 	group(c, "窗口", func() {
 		if a.TrayAvailable {
-			wait := "\n这次运行里还不能生效，重启 NextShell 后生效"
-			minimize := "最小化时把窗口收进系统托盘，点击托盘图标就能找回"
+			wait := "\n重启应用后生效"
+			minimize := "最小化时隐藏至系统托盘"
 			if a.settings.trayRestart && v.MinimizeToTray {
 				minimize += wait
 			}
 			switchField(c, "最小化到托盘", &v.MinimizeToTray, minimize)
-			help := "点关闭只会隐藏窗口，连接和终端继续运行；要退出请用托盘菜单里的「退出」"
+			help := "关闭主窗口时隐藏至托盘，保持后台连接；可通过托盘菜单退出"
 			if osName == "linux" { // some desktops show no tray icons: opening the app again is the way back
-				help += "\n看不到托盘图标时，再次打开 NextShell 即可显示窗口"
+				help += "\n若桌面环境无托盘图标，重新启动应用即可唤出窗口"
 			}
 			if a.settings.trayRestart && v.CloseToTray {
 				help += wait
@@ -334,19 +334,19 @@ func (a *App) windowSettings(c *ui.Context) {
 			}
 		}).FillWidth()
 		if a.TrayAvailable && v.CloseToTray { // closing no longer closes anything: this guards quitting
-			closing.Description("关闭窗口只会隐藏窗口；这一项管的是退出时的确认，从托盘退出也一样")
+			closing.Description("开启「关闭窗口时最小化到托盘」后，此项仅在退出应用时生效")
 		}
 		tabConfirm := !v.NoTabConfirm
-		if switchField(c, "关闭标签时确认", &tabConfirm, "关闭仍在使用的连接前询问；本地终端和已断开的标签直接关闭") {
+		if switchField(c, "关闭标签时确认", &tabConfirm, "关闭活动中的远程连接标签前提示确认") {
 			v.NoTabConfirm = !tabConfirm
 		}
-		switchField(c, "启动时恢复标签", &v.RestoreTabs, "重新打开上次退出时的主机和本地终端；有未保存的远程文件时总会确认")
-		switchField(c, "左栏默认折叠", &v.FoldLeft, "每次启动时折叠；关闭时保持上次退出时的样子")
-		switchField(c, "底部工作区默认折叠", &v.FoldBench, "每次启动时折叠；关闭时保持上次退出时的样子")
+		switchField(c, "启动时恢复标签", &v.RestoreTabs, "启动时自动恢复上次未关闭的会话标签")
+		switchField(c, "左栏默认折叠", &v.FoldLeft, "启动时默认折叠，关闭则记住上次状态")
+		switchField(c, "底部工作区默认折叠", &v.FoldBench, "启动时默认折叠，关闭则记住上次状态")
 	})
 	actions(c, func() {
 		if ui.Button(c, "恢复默认设置…").Clicked() {
-			a.confirmDanger("恢复默认设置", "所有设置都会恢复为默认值；主机和密钥不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
+			a.confirmDanger("恢复默认设置", "所有偏好设置将恢复为默认值，主机与密钥数据不受影响。", "恢复默认", func() { a.settings.load(model.DefaultPreferences()) })
 		}
 	})
 }
@@ -376,7 +376,7 @@ func (a *App) backgroundSettings(c *ui.Context) {
 				})
 			}
 		})
-	}).Description("作为主窗口的背景，终端也会透出它。图片会另存一份，原文件移动或删除不受影响").FillWidth()
+	}).Description("支持 PNG、JPEG、GIF、WebP、BMP 格式").FillWidth()
 	ui.Field(c, "界面不透明度", func() {
 		ui.Row(c).Grow(1).MinWidth(0).Gap(10).AlignItems(ui.Center).Disabled(bmp == nil).Children(func() {
 			o := float64(v.BackgroundOpacity)
@@ -386,7 +386,7 @@ func (a *App) backgroundSettings(c *ui.Context) {
 			}
 			ui.Text(c, fmt.Sprintf("%d%%", v.BackgroundOpacity)).Font("monospace").FontSize(12).Width(40).SingleLine()
 		})
-	}).Description("越小越能看清背景图，越大文字越清晰").FillWidth()
+	}).Description("调节面板与终端背景的不透明度").FillWidth()
 }
 
 // trackClick moves a slider to where its track was clicked. The slider follows a press it sees in a
@@ -415,17 +415,17 @@ func (a *App) transferSettings(c *ui.Context) {
 	v := &a.settings.draft
 	group(c, "", func() {
 		a.localPath(c, "默认下载目录", "", &v.DownloadDir, FilePick{Directory: true})
-		a.settings.helped(field(c, "默认上传目录", &v.UploadDir), "默认上传目录", "远程服务器上的目录，文件面板的「前往默认上传目录」使用")
+		a.settings.helped(field(c, "默认上传目录", &v.UploadDir), "默认上传目录", "SFTP 面板「前往默认上传目录」的目标路径")
 	})
 }
 
 func (a *App) editSettings(c *ui.Context) {
 	v := &a.settings.draft
 	group(c, "", func() {
-		a.localPath(c, "外部编辑器", "系统文本编辑器", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("保存后自动上传，状态显示在右侧「实时编辑」")
-		help := "空格分隔，含空格的参数用引号括起来，例如 --wait"
+		a.localPath(c, "外部编辑器", "系统文本编辑器", &v.EditorCommand, FilePick{DefaultPath: programDir(false)}).Description("用于「远程编辑」，本地保存后自动上传至服务器")
+		help := "多个参数以空格分隔，如 --wait"
 		if v.EditorCommand == "" {
-			help = "只在选择了上面的程序时使用，例如 --wait"
+			help = "指定外部编辑器后生效，如 --wait"
 		}
 		a.settings.helped(field(c, "外部编辑器参数", &v.EditorArgs), "外部编辑器参数", help)
 	})
@@ -458,7 +458,7 @@ func (a *App) terminalSettings(c *ui.Context) {
 		s.helped(field(c, "滚动缓冲（MiB）", &s.scrollback), "滚动缓冲（MiB）", "1–256，新会话生效")
 	})
 	group(c, "行为", func() {
-		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("只影响本地终端。SSH 标签始终显示连接名称，程序设置的标题在标签的悬停提示和左栏会话卡里；手动重命名优先").FillWidth()
+		ui.Field(c, "本地终端标签跟随程序标题", func() { ui.Switch(c, &v.TitleUpdates).Label("本地终端标签跟随程序标题") }).Description("允许本地终端根据运行程序动态更新标签标题").FillWidth()
 		toggle(c, "响铃与通知", &v.Notifications)
 		toggle(c, "打开链接前确认", &v.HyperlinkConfirm)
 		switchField(c, "允许服务器写入剪贴板", &v.ClipboardWrite, "新会话生效")
@@ -472,9 +472,9 @@ func (a *App) terminalSettings(c *ui.Context) {
 				v.ShellIntegration = modes[i]
 			}
 		}).Description([]string{
-			"会在服务器上安装一小段目录跟踪脚本，新的 bash / zsh 会话自动加载；文件面板可跟随终端目录。其他 shell 不受影响",
-			"默认。不写服务器文件；需要时在命令面板执行「让文件面板跟随终端目录」，只对当前会话生效",
-			"不注入，命令面板里也不提供",
+			"连接时自动配置 bash / zsh 目录跟踪，使 SFTP 跟随终端当前目录",
+			"不修改远端配置；可按需在命令面板执行「让文件面板跟随终端目录」",
+			"禁用终端目录跟踪",
 		}[i]).FillWidth()
 	})
 	a.sshSettings(c)
@@ -503,7 +503,7 @@ func (a *App) sshSettings(c *ui.Context) {
 	v := &s.draft
 	group(c, "SSH 心跳", func() {
 		toggle(c, "默认发送心跳", &v.KeepaliveEnabled)
-		s.helped(field(c, "默认间隔（秒）", &s.keepalive), "默认间隔（秒）", "5–600；主机设为「跟随全局设置」时使用，新会话生效")
+		s.helped(field(c, "默认间隔（秒）", &s.keepalive), "默认间隔（秒）", "5–600 秒，新会话生效")
 	})
 	group(c, "密钥、代理与凭据", func() {
 		ui.Field(c, "连接管理器", func() {
@@ -520,7 +520,7 @@ func (a *App) sshSettings(c *ui.Context) {
 					a.openImport("")
 				}
 			})
-		}).Description("密钥、代理、凭据和连接的导入导出都在连接管理器里，可以在编辑主机时直接新建。").FillWidth()
+		}).Description("在连接管理器中集中管理密钥、代理、凭据及连接导入导出").FillWidth()
 	})
 	group(c, "本地终端", func() {
 		a.localPath(c, "本地 Shell", "系统默认", &v.LocalShell, FilePick{DefaultPath: programDir(true), Hidden: true})
@@ -553,7 +553,7 @@ func (a *App) aboutSettings(c *ui.Context) {
 	group(c, "应用", func() {
 		ui.Field(c, "版本", func() { ui.Text(c, orDefault(a.Version, "开发版")).Selectable() }).FillWidth()
 		if a.ProfilePath != "" {
-			ui.Field(c, "配置文件", func() { ui.Text(c, a.ProfilePath).Font("monospace").FontSize(12).Selectable().Grow(1).MinWidth(0) }).Description("主机、设置等数据保存在这个文件里").FillWidth()
+			ui.Field(c, "配置文件", func() { ui.Text(c, a.ProfilePath).Font("monospace").FontSize(12).Selectable().Grow(1).MinWidth(0) }).Description("本地配置与数据存储路径").FillWidth()
 		}
 		ui.Field(c, "发布页", func() {
 			ui.Row(c).Grow(1).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -562,11 +562,11 @@ func (a *App) aboutSettings(c *ui.Context) {
 					a.report(a.P.OpenURL(releasesURL), "")
 				}
 			})
-		}).Description("新版本发布在这里，NextShell 不会自动检查更新").FillWidth()
+		}).Description("前往 GitHub Releases 查看版本更新").FillWidth()
 	})
 	group(c, "最近操作", func() {
 		if len(a.logs) == 0 {
-			muted(c, "暂无记录（不记录密码和终端内容）")
+			muted(c, "暂无记录")
 		}
 		for i := len(a.logs) - 1; i >= 0; i-- {
 			ui.Text(c.Key(fmt.Sprint("log-", i)), a.logs[i]).FontSize(12).Selectable()
@@ -583,7 +583,7 @@ func (a *App) hostKeySettings(c *ui.Context) {
 		if e != nil {
 			ui.Text(c, e.Error()).TextColor(t.Danger)
 		} else if len(keys) == 0 {
-			muted(c, "还没有信任过的主机。首次连接时核对指纹后会记在这里。")
+			muted(c, "暂无记录。首次连接并信任的主机密钥将显示在此处")
 		}
 		for _, k := range keys {
 			ui.Row(c.Key("hostkey-"+k.Address)).FillWidth().Padding(8).Gap(8).AlignItems(ui.Center).Radius(t.Radius).Border(1, t.Border).Children(func() {
@@ -592,7 +592,7 @@ func (a *App) hostKeySettings(c *ui.Context) {
 					ui.Text(c, k.Fingerprint).Font("monospace").FontSize(11).TextColor(t.TextMuted).SingleLine().Selectable()
 				})
 				if ghost(c, "移除", "").Label("移除 " + k.Address).Clicked() {
-					a.confirmDanger("移除主机密钥", k.Address+"\n下次连接时会重新显示指纹并询问是否信任。", "移除密钥", func() {
+					a.confirmDanger("移除主机密钥", k.Address+"\n移除后，下次连接该主机时将重新询问是否信任。", "移除密钥", func() {
 						a.report(a.P.ForgetHostKey(k.Address), "已移除 "+k.Address+" 的主机密钥")
 					})
 				}

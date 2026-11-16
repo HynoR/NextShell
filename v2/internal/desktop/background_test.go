@@ -56,13 +56,13 @@ func TestImportBackgroundCopiesAPictureAndRefusesTheRest(t *testing.T) {
 		what, path, message string
 	}{
 		{"missing", filepath.Join(scratch, "nope.png"), "无法打开"},
-		{"folder", scratch, "不是一个图片文件"},
-		{"text", writeFile(t, scratch, "notes.png", []byte("not a picture at all")), "不是可用的图片"},
-		{"empty", writeFile(t, scratch, "empty.png", nil), "不是可用的图片"},
-		{"svg", writeFile(t, scratch, "logo.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>`)), "不是可用的图片"},
+		{"folder", scratch, "无效的图片文件"},
+		{"text", writeFile(t, scratch, "notes.png", []byte("not a picture at all")), "不支持的图片格式"},
+		{"empty", writeFile(t, scratch, "empty.png", nil), "不支持的图片格式"},
+		{"svg", writeFile(t, scratch, "logo.svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>`)), "不支持的图片格式"},
 		{"truncated", writeFile(t, scratch, "cut.png", good[:len(good)/2]), "已损坏"},
-		{"many pixels", writeFile(t, scratch, "huge.png", testutil.PNGHeader(6000, 5000)), "图片尺寸太大（6000×5000）"},
-		{"many bytes", writeFile(t, scratch, "heavy.png", append(testutil.PNGHeader(10, 10), make([]byte, 21<<20)...)), "图片太大了（超过 20 MB）"},
+		{"many pixels", writeFile(t, scratch, "huge.png", testutil.PNGHeader(6000, 5000)), "图片分辨率过高（6000×5000）"},
+		{"many bytes", writeFile(t, scratch, "heavy.png", append(testutil.PNGHeader(10, 10), make([]byte, 21<<20)...)), "图片大小超过 20 MB 上限"},
 	}
 	for _, c := range cases {
 		t.Run(c.what, func(t *testing.T) {
@@ -93,7 +93,7 @@ func TestImportBackgroundCopiesAPictureAndRefusesTheRest(t *testing.T) {
 
 	// A profile in memory has no folder to keep it in.
 	p.SetDataDir("")
-	if _, _, e := p.ImportBackground(again); e == nil || !strings.Contains(e.Error(), "没有可用的数据文件夹") {
+	if _, _, e := p.ImportBackground(again); e == nil || !strings.Contains(e.Error(), "数据目录不可用") {
 		t.Fatal(e)
 	}
 }
