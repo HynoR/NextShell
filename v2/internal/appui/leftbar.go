@@ -9,35 +9,27 @@ import (
 )
 
 // leftColumn is the active session's card and its server's live status; ⌘B
-// folds it to a strip that keeps the status dot.
+// folds it to a strip that keeps the status dot. With no session to show
+// (welcome, connecting, or only a background tab) it draws nothing, and the
+// remembered fold is left as it is.
 func (a *App) leftColumn(c *ui.Context) {
-	t := c.Theme()
 	s := a.current()
 	a.traceDrawer(c)
+	if s == nil {
+		return
+	}
+	t := c.Theme()
 	if a.layout.leftHidden {
 		ui.Column(c).Width(stripWidth).FillHeight().Padding(8, 0).Gap(10).AlignItems(ui.Center).Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
 			if iconButtonTip(c, "展开左栏", "展开左栏 "+appShortcutLabel("B"), "panel-left").Clicked() {
 				a.layout.leftHidden = false
 			}
-			if s != nil {
-				label, color := a.sessionStatus(c, s)
-				ui.Box(c).Size(10, 10).Radius(5).Background(color).Label(label).Tooltip(label)
-			}
+			label, color := a.sessionStatus(c, s)
+			ui.Box(c).Size(10, 10).Radius(5).Background(color).Label(label).Tooltip(label)
 		})
 		return
 	}
 	ui.Column(c).Width(leftWidth).FillHeight().Background(a.pane(t)).BorderColor(t.Border).BorderWidth(0, 1, 0, 0).Children(func() {
-		if s == nil {
-			ui.Row(c).FillWidth().Padding(8, 8, 0, 12).AlignItems(ui.Center).Children(func() {
-				ui.Spacer(c).Grow(1)
-				a.foldLeft(c)
-			})
-			ui.Column(c).Grow(1).FillWidth().Padding(0, 16).Center().Gap(4).Children(func() {
-				muted(c, "未选择服务器")
-				muted(c, "连接服务器后，这里显示实时状态").FontSize(11).Wrap()
-			})
-			return
-		}
 		a.sessionCard(c, s)
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
 			ui.Column(c).FillWidth().Padding(12).Gap(10).Children(func() { a.monitorSidebar(c, s) })

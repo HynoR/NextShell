@@ -28,7 +28,16 @@ func TestWelcomeQuickConnectAndLayoutShortcuts(t *testing.T) {
 	p := newPlatform(t)
 	saved := saveHost(t, p, model.Connection{Name: "saved-box", Host: "10.9.9.9", User: "ops"})
 	a, tt := start(p)
-	has(t, tt, "NextShell", "最近", "saved-box", "+ 新建主机", "导入…", "打开本地终端", "未选择服务器")
+	has(t, tt, "NextShell", "最近", "saved-box", "+ 新建主机", "导入…", "打开本地终端")
+	if tt.HasText("未选择服务器") || tt.HasText("收起左栏") {
+		t.Fatal("left column shown with nothing to display")
+	}
+	// ⌘B still remembers the fold, and does not bring the strip back while there is no session.
+	tt.Key(appMod(), ui.KeyB)
+	if tt.HasText("展开左栏") || !strings.HasPrefix(p.UIState("layout"), "true ") {
+		t.Fatal("⌘B showed the strip, or forgot the fold", p.UIState("layout"))
+	}
+	tt.Key(appMod(), ui.KeyB)
 	click(t, tt, "快速连接")
 	tt.Type("tester@localhost:2222")
 	tt.Key(0, ui.KeyEnter)
