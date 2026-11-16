@@ -297,7 +297,7 @@ func (s *filesState) giveUpCount() {
 	}
 }
 
-// removalStatus is the footer's word on a delete: the count it waits for, or its progress, and the way
+// removalStatus is the path row's word on a delete: the count it waits for, or its progress, and the way
 // to stop it. A finished delete refreshes the folder shown.
 func (a *App) removalStatus(c *ui.Context, id string) {
 	s := &a.files
@@ -490,6 +490,36 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 	})
 }
 
+// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, upload,
+// refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
+func (a *App) filesActions(c *ui.Context) {
+	sess := a.remote()
+	if sess == nil {
+		return
+	}
+	id := sess.ID
+	s := &a.files
+	t := c.Theme()
+	exited := a.P.Exited(id)
+	if iconButton(c, "编辑路径", "edit").Clicked() && !s.editingPath {
+		s.editingPath, s.pathInput = true, s.path
+	}
+	follow := iconButton(c, "跟随终端目录", "link")
+	if s.follow {
+		follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+	}
+	if follow.Clicked() {
+		s.follow, s.followed = !s.follow, ""
+	}
+	if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
+		a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
+	}
+	if iconButton(c, "刷新", "refresh").Disabled(exited).Clicked() {
+		a.listFiles(id, orDefault(s.path, "."))
+	}
+	iconButton(c, "更多", "more").Disabled(exited).PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
+}
+
 func (a *App) filesPanel(c *ui.Context) {
 	t := c.Theme()
 	s := &a.files
@@ -522,20 +552,15 @@ func (a *App) filesPanel(c *ui.Context) {
 			a.listFiles(id, path.Dir(s.path))
 		}
 		a.pathBar(c, id)
-		follow := iconButton(c, "跟随终端目录", "link")
-		if s.follow {
-			follow.Background(t.SurfacePressed).TextColor(accentInk(t))
+		if s.session == id {
+			ui.Row(c).Gap(8).Margin(0, 0, 0, 6).AlignItems(ui.Center).Children(func() {
+				if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
+					a.pasteRemoteClipboard(id)
+				}
+				a.removalStatus(c, id)
+				muted(c, filesCount(s)).SingleLine()
+			})
 		}
-		if follow.Clicked() {
-			s.follow, s.followed = !s.follow, ""
-		}
-		if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
-			a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
-		}
-		if iconButton(c, "刷新", "refresh").Disabled(exited).Clicked() {
-			a.listFiles(id, orDefault(s.path, "."))
-		}
-		iconButton(c, "更多", "more").Disabled(exited).PopoverMenuButton(func(m *ui.Menu) { a.filesMenuItems(m, id) }, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
 	})
 	if exited {
 		ui.Row(c).FillWidth().Padding(5, 10).Gap(8).AlignItems(ui.Center).Label("连接已断开的提示").Children(func() {
@@ -559,17 +584,14 @@ func (a *App) filesPanel(c *ui.Context) {
 	} else {
 		ui.Split(c, &s.treeWidth, func() { a.dirTreeView(c, id) }, func() { a.fileList(c, id) }).SplitReset(200).Grow(1).FillWidth().MinHeight(0)
 	}
-	ui.Row(c).FillWidth().Height(26).Padding(0, 10).Gap(8).AlignItems(ui.Center).BorderColor(t.Border).BorderWidth(1, 0, 0, 0).Children(func() {
-		info := fmt.Sprintf("%d 项", len(s.entries))
-		if n := s.selection.Len(); n > 0 {
-			info = fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
-		}
-		muted(c, info).Grow(1)
-		a.removalStatus(c, id)
-		if len(s.clipboard.Paths) > 0 && ghost(c, "粘贴到当前目录", "").Clicked() {
-			a.pasteRemoteClipboard(id)
-		}
-	})
+}
+
+// filesCount is the tally at the end of the path row: how many entries are listed, or how many of them are selected.
+func filesCount(s *filesState) string {
+	if n := s.selection.Len(); n > 0 {
+		return fmt.Sprintf("已选 %d / %d 项", n, len(s.entries))
+	}
+	return fmt.Sprintf("%d 项", len(s.entries))
 }
 
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
@@ -749,9 +771,6 @@ func (a *App) pathBar(c *ui.Context, id string) {
 	box.Children(func() {
 		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").Grow(1).MinWidth(0).Changed() {
 			a.listFiles(id, crumbPath(parts, s.crumb))
-		}
-		if iconButton(c, "编辑路径", "edit").Clicked() {
-			s.editingPath, s.pathInput = true, s.path
 		}
 	})
 	if box.DoubleClicked() {
