@@ -241,7 +241,7 @@ func TestHostEditorAsksBeforeDroppingEdits(t *testing.T) {
 	mt = editing(t, a, "alpha")
 	click(t, mt, "名称")
 	mt.Type("3")
-	click(t, mt, "+ 新建连接")
+	click(t, mt, "+ 新建主机")
 	has(t, mt, "放弃未保存的修改？", "编辑主机")
 	click(t, mt, "放弃")
 	has(t, mt, "新建主机")

@@ -81,6 +81,6 @@ func TestScreenshotsUC(t *testing.T) {
 	gm := ui.NewTester(ga.ManagerView, appui.ManagerMinWidth, 560)
 	click(t, gm, "build-01")
 	shot(gm, "uc-6a-manager-min-width")
-	click(t, gm, "+ 新建连接")
+	click(t, gm, "+ 新建主机")
 	shot(gm, "uc-6b-manager-min-width-form")
 }
