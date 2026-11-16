@@ -228,7 +228,8 @@ func (a *App) watchMonitor() {
 	}
 }
 
-// sysinfoPanel is the workbench's 系统信息 tab: what the server is, and its history.
+// sysinfoPanel is the workbench's 系统信息 tab: static facts on the left, history
+// charts on the right, stacked when the panel is narrower than about 720.
 func (a *App) sysinfoPanel(c *ui.Context) {
 	sess := a.remote()
 	if sess == nil {
@@ -245,40 +246,58 @@ func (a *App) sysinfoPanel(c *ui.Context) {
 		reading(c)
 	default:
 		ui.Scroll(c).Grow(1).FillWidth().Children(func() {
-			ui.Column(c).FillWidth().Padding(8).Gap(12).Children(func() {
-				a.systemInfo(c, sess, h)
-				a.monitorHistory(c, h)
+			body := ui.Column(c.Key("sysinfo")).FillWidth().Padding(8).Gap(12)
+			// LayoutBounds is the previous frame. The first frame has no width and stays side by side.
+			// 720 leaves the charts room beside the 360-wide facts; narrower than that, the history selects overflow.
+			w := body.LayoutBounds().W
+			if w <= 0 {
+				c.Invalidate()
+			}
+			wide := w == 0 || w >= 720
+			body.Children(func() {
+				ui.Row(c).Gap(2 * Space).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "系统信息").Bold()
+					if a.cached(sess, h) {
+						cachedChip(c)
+					}
+				})
+				if !wide {
+					systemInfo(c, h)
+					a.monitorHistory(c, h)
+					return
+				}
+				ui.Row(c).FillWidth().Gap(4 * Space).AlignItems(ui.Start).Children(func() {
+					ui.Column(c).Width(360).Shrink(0).Children(func() { systemInfo(c, h) })
+					ui.Column(c).Grow(1).MinWidth(0).Gap(12).Children(func() { a.monitorHistory(c, h) })
+				})
 			})
 		})
 	}
 }
 
-// systemInfo is the static part: the system, its sizes and its disks.
-func (a *App) systemInfo(c *ui.Context, sess *Session, h *hostMonitor) {
+// systemInfo is the static part: the system, its memory, swap and disks.
+// Load changes with every sample, so the left column shows it and this list does not.
+func systemInfo(c *ui.Context, h *hostMonitor) {
 	t := c.Theme()
 	m := h.snap
-	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, "系统信息").Bold().Grow(1)
-		if a.cached(sess, h) {
-			cachedChip(c)
-		}
-	})
-	rows := [][2]string{{"系统", strings.ReplaceAll(m.Info, "\n", " · ")}, {"负载", m.Load}, {"内存", humanSize(int64(m.MemoryTotal))}}
+	rows := [][2]string{{"系统", strings.ReplaceAll(m.Info, "\n", " · ")}, {"内存", humanSize(int64(m.MemoryTotal))}}
 	if m.SwapTotal > 0 {
 		rows = append(rows, [2]string{"交换", humanSize(int64(m.SwapTotal))})
 	}
 	for _, d := range m.Disks {
 		rows = append(rows, [2]string{"磁盘 " + d.Mount, fmt.Sprintf("%s / %s（%.0f%%）", humanSize(int64(d.UsedKB)*1024), humanSize(int64(d.TotalKB)*1024), d.UsedPercent)})
 	}
-	for _, kv := range rows {
-		if kv[1] == "" {
-			continue
+	ui.Column(c).FillWidth().Gap(2 * Space).Children(func() {
+		for _, kv := range rows {
+			if kv[1] == "" {
+				continue
+			}
+			ui.Row(c).FillWidth().Gap(8).Children(func() {
+				ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(96).SingleLine()
+				ui.Text(c, kv[1]).Font("monospace").FontSize(12).Wrap().Selectable().Grow(1).MinWidth(0)
+			})
 		}
-		ui.Row(c).FillWidth().Gap(8).Children(func() {
-			ui.Text(c, kv[0]).FontSize(12).TextColor(t.TextMuted).Width(96).SingleLine()
-			ui.Text(c, kv[1]).Font("monospace").FontSize(12).Wrap().Selectable().Grow(1).MinWidth(0)
-		})
-	}
+	})
 }
 
 func reading(c *ui.Context) {
@@ -304,8 +323,8 @@ func metricColor(t *ui.Theme, name string) ui.Color {
 	return ui.Hex(light[name])
 }
 
-// monitorSidebar is the left column's 系统监控: a section that folds, with bars for CPU, memory, swap and
-// disk, load, the network of one interface with its graph, and the buttons of the process and network tabs.
+// monitorSidebar is the left column's 系统监控: a section that folds, with the system line, load, bars for
+// CPU, memory, swap and disk, one interface's network and its graph, and the process and network buttons.
 func (a *App) monitorSidebar(c *ui.Context, sess *Session) {
 	t := c.Theme()
 	h := a.monitor.hosts[hostKey(sess)]
@@ -360,10 +379,14 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 		return
 	}
 	m := h.snap
+	if m.Info != "" {
+		line := strings.ReplaceAll(m.Info, "\n", " · ")
+		muted(c, line).SingleLine().FillWidth().MinWidth(0).Tooltip(line)
+	}
 	if m.Load != "" {
-		ui.Row(c).FillWidth().Gap(8).Padding(6, 8).Radius(6).Background(t.Background).Border(1, t.Border).Children(func() {
-			muted(c, "负载")
-			ui.Text(c, m.Load).Font("monospace").FontSize(12).SingleLine()
+		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+			muted(c, "负载").Grow(1)
+			ui.Text(c, m.Load).Font("monospace").FontSize(12).TextColor(t.TextMuted).SingleLine()
 		})
 	}
 	used := func(total, free uint64) string {
@@ -387,9 +410,6 @@ func (a *App) monitorBody(c *ui.Context, sess *Session, h *hostMonitor, has bool
 		}
 	}
 	a.networkRows(c, h)
-	if m.Info != "" {
-		muted(c, m.Info).FontSize(11).Tooltip(m.Info)
-	}
 	if len(m.Warnings) > 0 {
 		ui.Text(c, "部分信息无法读取").FontSize(11).TextColor(t.Warning).Tooltip(strings.Join(m.Warnings, "\n"))
 	}
@@ -424,7 +444,7 @@ func (a *App) networkRows(c *ui.Context, h *hostMonitor) {
 	sort.Strings(names)
 	rx, tx, suffix := m.RXPerSecond, m.TXPerSecond, ""
 	ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
-		muted(c, "网络").Width(32)
+		muted(c, "网络")
 		if len(names) == 0 {
 			return
 		}
@@ -432,7 +452,8 @@ func (a *App) networkRows(c *ui.Context, h *hostMonitor) {
 		if !slices.Contains(options, h.nic) {
 			h.nic = allNICs
 		}
-		ui.Select(c, &h.nic, options).Label("网卡").Grow(1).MinWidth(0)
+		ui.Spacer(c).Grow(1)
+		ui.Select(c, &h.nic, options).Label("网卡")
 	})
 	if r, ok := m.Interfaces[h.nic]; ok {
 		rx, tx, suffix = r.RXPerSecond, r.TXPerSecond, ":"+h.nic
