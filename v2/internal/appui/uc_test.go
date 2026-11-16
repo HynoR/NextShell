@@ -382,7 +382,7 @@ func TestManagerAtItsMinimumWidthKeepsAWholeTile(t *testing.T) {
 	mt := ui.NewTester(a.ManagerView, appui.ManagerMinWidth, 420)
 	for _, editing := range []bool{false, true} {
 		if editing {
-			click(t, mt, "+ 新建连接")
+			click(t, mt, "+ 新建主机")
 		}
 		tile := 0.0
 		for _, info := range mt.AccessAll() {

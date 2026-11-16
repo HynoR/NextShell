@@ -75,6 +75,7 @@ func TestActivityBarAgentFeedAndLiveEdits(t *testing.T) {
 	click(t, tt, "覆盖")
 	click(t, tt, "重新载入")
 	click(t, tt, "断开 hosts")
+	click(t, tt, "编辑操作")
 	click(t, tt, "全部断开")
 	if !slices.Equal(p.resolved, []string{"overwrite e4", "reload e4"}) || !slices.Equal(p.stopped, []string{"e4", ""}) {
 		t.Fatal(p.resolved, p.stopped)
@@ -84,7 +85,7 @@ func TestActivityBarAgentFeedAndLiveEdits(t *testing.T) {
 		t.Fatal("approval", p.responses)
 	}
 	click(t, tt, "紧急停止")
-	has(t, tt, "恢复 Agent")
+	has(t, tt, "已紧急停止 · Agent 的请求都会被拒绝", "恢复 Agent")
 	click(t, tt, "恢复 Agent")
 	if !slices.Equal(p.halts, []bool{true, false}) {
 		t.Fatal("halt", p.halts)

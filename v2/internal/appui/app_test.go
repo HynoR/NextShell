@@ -150,7 +150,7 @@ func TestHostEditorCreateEditValidateAndTrash(t *testing.T) {
 		}
 	}
 	tt := manager(a)
-	click(t, tt, "+ 新建连接")
+	click(t, tt, "+ 新建主机")
 	has(t, tt, "新建主机", "使用凭据", "认证方式", "安全", "网络", "终端")
 	tt.Type("web-a")
 	click(t, tt, "主机")
