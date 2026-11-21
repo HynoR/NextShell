@@ -541,3 +541,38 @@ func TestHiddenFilesShowByDefaultAndTheToolbarToggleIsRemembered(t *testing.T) {
 		t.Fatal("hidden not remembered", bt.Texts())
 	}
 }
+
+// The path row is an address bar: crumbs to click, and a click on the rest of it takes a typed path;
+// Enter goes there (~ is the home folder), Escape leaves it as it was.
+func TestAddressBarTakesATypedPath(t *testing.T) {
+	p := newPlatform(t)
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/var/log/nginx")
+	has(t, tt, "var", "log", "nginx", "输入路径")
+	click(t, tt, "log")
+	if p.listed[len(p.listed)-1] != "one:/var/log" {
+		t.Fatal("crumb", p.listed)
+	}
+	listing(p, tt, "one", "/var/log/nginx")
+	n := len(p.listed)
+	click(t, tt, "输入路径")
+	tt.Key(appMod()&^ui.Shift, ui.KeyA)
+	tt.Type("/etc")
+	tt.Key(0, ui.KeyEscape)
+	if len(p.listed) != n || tt.HasText("/etc") {
+		t.Fatal("Escape went somewhere", p.listed[n:])
+	}
+	has(t, tt, "输入路径")
+	for typed, want := range map[string]string{"  /opt/app ": "one:/opt/app", "~": "one:.", "~/logs": "one:logs"} {
+		click(t, tt, "输入路径")
+		tt.Key(appMod()&^ui.Shift, ui.KeyA)
+		tt.Type(typed)
+		tt.Key(0, ui.KeyEnter)
+		if p.listed[len(p.listed)-1] != want {
+			t.Fatalf("typed %q: listed %v", typed, p.listed[len(p.listed)-1])
+		}
+	}
+}

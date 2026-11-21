@@ -790,8 +790,9 @@ func linkTooltip(f sftpfs.Entry) string {
 // and a double click (or the last segment) edits the path as text.
 func (a *App) pathBar(c *ui.Context, id string) {
 	s := &a.files
+	t := c.Theme()
 	if s.editingPath {
-		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Grow(1).MinWidth(0).Height(26).FontSize(12).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Placeholder("输入路径，回车跳转").Grow(1).MinWidth(0).Height(26).FontSize(12).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
 			if k.Key == ui.KeyEscape {
 				s.editingPath = false
 				return true
@@ -800,25 +801,45 @@ func (a *App) pathBar(c *ui.Context, id string) {
 		})
 		if in.Submitted() {
 			s.editingPath = false
-			a.listFiles(id, strings.TrimSpace(s.pathInput))
+			if dir := addressPath(s.pathInput); dir != "" {
+				a.listFiles(id, dir)
+			}
 		}
 		if in.FocusLeft() {
 			s.editingPath = false
 		}
 		return
 	}
+	// The address bar: the folder's crumbs to click, in a box that takes a typed path where it has none.
 	parts := crumbs(s.path)
 	s.crumb = len(parts) - 1
-	box := ui.Row(c).Grow(1).MinWidth(0).Height(26).AlignItems(ui.Center).Label("远程目录 " + s.path)
+	box := ui.Row(c).Grow(1).MinWidth(0).Height(26).Padding(0, 2, 0, 4).AlignItems(ui.Center).Border(1, t.Border).Radius(5).Label("远程目录 " + s.path)
 	box.Children(func() {
-		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").Grow(1).MinWidth(0).Changed() {
+		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").MinWidth(0).Changed() {
 			a.listFiles(id, crumbPath(parts, s.crumb))
+		}
+		if ui.Row(c).Grow(1).MinWidth(16).Height(24).Cursor(ui.CursorText).Label("输入路径").Tooltip("点击输入路径").Clicked() {
+			s.editingPath, s.pathInput = true, s.path
 		}
 	})
 	if box.DoubleClicked() {
 		s.editingPath, s.pathInput = true, s.path
 	}
 }
+
+// addressPath is the folder a typed address names: trimmed, and ~ for the home folder, which SFTP
+// resolves relative paths against.
+func addressPath(typed string) string {
+	p := strings.TrimSpace(typed)
+	switch {
+	case p == "~" || p == "~/":
+		return "."
+	case strings.HasPrefix(p, "~/"):
+		return strings.TrimPrefix(p, "~/")
+	}
+	return p
+}
+
 func crumbs(dir string) []string {
 	if dir == "" {
 		return []string{"/"}
