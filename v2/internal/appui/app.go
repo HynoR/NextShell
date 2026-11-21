@@ -487,7 +487,7 @@ func (a *App) shortcuts(c *ui.Context) {
 		a.later(a.RequestQuit)
 	}
 	if key(ui.KeyL) && a.current() != nil && a.activeTool() == nil && a.activeEditor() == nil && !a.grid.on {
-		a.cmdbar.focus = true // the command bar takes the keyboard in this frame; Esc in it goes back to the terminal
+		a.swapFocus() // the command bar takes the keyboard; pressed there, back to the terminal (so does Esc)
 	}
 	for _, v := range []struct {
 		key   ui.Key

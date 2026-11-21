@@ -3,6 +3,7 @@ package appui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 	"nextshell.dev/v2/internal/commandtemplate"
@@ -20,6 +21,61 @@ type cmdbarState struct {
 	searched    string         // the session and the text last searched
 	snippet     *model.Command // the snippet last put in the bar, until a line is sent
 	focus       bool           // the next frame moves the keyboard focus into the bar
+	focused     bool           // the bar had the keyboard focus in the last frame
+	taps        ctrlTaps       // Ctrl tapped twice, between the terminal and the bar, swaps the focus
+}
+
+// ctrlTapGap is how long a tap of Ctrl may take, and the most between two taps of a double tap.
+const ctrlTapGap = 400 * time.Millisecond
+
+// ctrlTaps tells a double tap of Ctrl alone, as FinalShell's, from Ctrl used with a key: any other key
+// between the presses, or a press held long, is no tap. It only watches the keys; the terminal still
+// gets every one of them.
+type ctrlTaps struct {
+	down          bool // Ctrl is down, with no other key since
+	pressed, last time.Time
+	fired         bool
+}
+
+func (d *ctrlTaps) see(ev ui.InputEvent, now time.Time) {
+	ctrl := ev.Code == ui.CodeControlLeft || ev.Code == ui.CodeControlRight
+	switch ev.Kind {
+	case ui.InputKeyDown:
+		switch {
+		case ctrl && ev.Repeat:
+		case ctrl && ev.Mods&^ui.Ctrl == 0:
+			d.down, d.pressed = true, now
+		default: // another key, or Ctrl with another modifier: no tap
+			d.down, d.last = false, time.Time{}
+		}
+	case ui.InputKeyUp:
+		if ctrl && d.down && now.Sub(d.pressed) < ctrlTapGap {
+			if !d.last.IsZero() && now.Sub(d.last) < ctrlTapGap {
+				d.fired, d.last = true, time.Time{}
+			} else {
+				d.last = now
+			}
+		} else if ctrl {
+			d.last = time.Time{}
+		}
+		d.down = false
+	}
+}
+
+// take reports a double tap seen since the last call.
+func (d *ctrlTaps) take() bool {
+	f := d.fired
+	d.fired = false
+	return f
+}
+
+// swapFocus moves the keyboard between the terminal and the command bar.
+func (a *App) swapFocus() {
+	if a.cmdbar.focused {
+		a.tabs.term.Focus()
+		return
+	}
+	a.cmdbar.focus = true
 }
 
 // cmdDraft is what the command bar held for a tab it is not showing.
@@ -66,7 +122,8 @@ func (b *cmdbarState) rehome(old, next string) {
 	}
 }
 
-// commandBar sends a line to the session; ↑/↓ walk the saved history, as a shell does. It names its
+// commandBar sends a line to the session; ↑/↓ walk the saved history, as a shell does; Esc, a double
+// tap of Ctrl or the app's L shortcut go back to the terminal. It names its
 // target, so there is no doubt which server a line goes to.
 func (a *App) commandBar(c *ui.Context, s *Session) {
 	t := c.Theme()
@@ -75,7 +132,7 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 	title := a.tabTitle(s)
 	exited := a.P.Exited(s.ID)
 	status, _ := a.sessionStatus(c, s)
-	placeholder := "输入命令，回车发送，↑/↓ 历史"
+	placeholder := "回车发送 · ↑/↓ 历史 · 双击 Ctrl 或 " + appShortcutLabel("L") + " 切换终端/命令栏"
 	switch {
 	case status == "连接中":
 		placeholder = "正在重新连接…"
@@ -132,6 +189,7 @@ func (a *App) commandBar(c *ui.Context, s *Session) {
 			b.focus = false
 			in.Focus()
 		}
+		b.focused = in.Focused()
 		if ghost(c, "发送", "").Disabled(exited || strings.TrimSpace(b.text) == "").Clicked() {
 			a.sendLine(s, b.text)
 			b.text = ""
