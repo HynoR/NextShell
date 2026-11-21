@@ -106,7 +106,7 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 		if e = os.WriteFile(path, []byte(k.Private), 0600); e != nil {
 			t.Fatal(e)
 		}
-		copy, e := p.ImportKey(path, "")
+		copy, e := p.ImportKey(path, "", "")
 		var dup *model.KeyExistsError
 		if !errors.As(e, &dup) || copy.ID != k.ID { // the same key again is the one already saved
 			t.Fatal(copy, e)
@@ -117,7 +117,7 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 	}
 	bad := filepath.Join(t.TempDir(), "bad-key")
 	os.WriteFile(bad, []byte("public/not a key"), 0600)
-	if _, e := p.ImportKey(bad, ""); e == nil {
+	if _, e := p.ImportKey(bad, "", ""); e == nil {
 		t.Fatal("bad key imported")
 	}
 	if e := p.SaveHistory([]string{"uptime"}); e != nil {

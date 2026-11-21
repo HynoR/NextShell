@@ -63,7 +63,7 @@ func TestKeyDedupeAndRebind(t *testing.T) {
 	}
 	path := filepath.Join(t.TempDir(), "id_ops")
 	os.WriteFile(path, []byte(k.Private), 0600)
-	got, e := p.ImportKey(path, "")
+	got, e := p.ImportKey(path, "", "")
 	var dup *model.KeyExistsError
 	if !errors.As(e, &dup) || got.ID != k.ID {
 		t.Fatal("duplicate imported", got, e)
@@ -139,6 +139,29 @@ func TestCredentialExportImport(t *testing.T) {
 	for _, c := range snap.Connections {
 		if c.User != "" {
 			t.Fatal("host got the credential's user", c)
+		}
+	}
+}
+
+// An imported key keeps the name typed for it; without one it is named for its file.
+func TestImportKeyKeepsTheTypedName(t *testing.T) {
+	p, other := desktopFixture(t), desktopFixture(t)
+	for _, tc := range []struct{ typed, want string }{{"  生产跳板机 ", "生产跳板机"}, {"", "id_ed25519"}} {
+		k, e := other.GenerateKey("x", "ed25519")
+		if e != nil {
+			t.Fatal(e)
+		}
+		path := filepath.Join(t.TempDir(), "id_ed25519")
+		os.WriteFile(path, []byte(k.Private), 0600)
+		got, e := p.ImportKey(path, tc.typed, "")
+		if e != nil || got.Name != tc.want {
+			t.Fatalf("typed %q: %q %v", tc.typed, got.Name, e)
+		}
+		snap, _ := p.Snapshot()
+		for _, v := range snap.Keys {
+			if v.ID == got.ID && v.Name != tc.want {
+				t.Fatal("saved as", v.Name)
+			}
 		}
 	}
 }

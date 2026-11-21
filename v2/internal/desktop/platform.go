@@ -266,12 +266,17 @@ func (p *Platform) ReplaceKey(id, path, pem, pass string) error {
 	k.Private, k.Passphrase = pem, pass
 	return p.SaveKey(k)
 }
-func (p *Platform) ImportKey(path, pass string) (model.Key, error) {
+
+// ImportKey saves the private key in the file at path as name, or under the file's name without one.
+func (p *Platform) ImportKey(path, name, pass string) (model.Key, error) {
 	b, e := readKeyFile(path)
 	if e != nil {
 		return model.Key{}, e
 	}
-	k := model.Key{ID: p.NewID(), Name: filepath.Base(path), Private: b, Passphrase: pass}
+	if name = strings.TrimSpace(name); name == "" {
+		name = filepath.Base(path)
+	}
+	k := model.Key{ID: p.NewID(), Name: name, Private: b, Passphrase: pass}
 	k.Public, e = sshclient.InspectKey(k.Private, pass)
 	if e != nil {
 		return k, e
