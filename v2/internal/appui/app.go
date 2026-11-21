@@ -131,7 +131,8 @@ func New(p Platform) *App {
 	a.hosts.recent = strings.Fields(p.UIState("recent"))
 	a.files.init()
 	a.files.treeHidden = p.UIState("sftp-tree") == "true"
-	a.files.follow = a.Prefs.ShellIntegration != "off" // the list follows the terminal unless tracking is off
+	a.files.hidden = p.UIState("sftp-hidden") != "false" // dotfiles show unless hidden: a home of dotfiles is not empty
+	a.files.follow = a.Prefs.ShellIntegration != "off"   // the list follows the terminal unless tracking is off
 	a.files.hooks = map[string]error{}
 	a.monitor.init()
 	a.snippets.init()

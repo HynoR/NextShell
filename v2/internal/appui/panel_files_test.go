@@ -505,3 +505,39 @@ func TestFilesPanelOfAnEndedConnectionSaysSoAndOffersNothing(t *testing.T) {
 		t.Fatal("Return acted on a dead connection", p.opened, p.listed[n:])
 	}
 }
+
+// A home of dotfiles is not an empty folder: they show by default. The toolbar toggle hides them, in the
+// list and the tree, and the choice outlives the window.
+func TestHiddenFilesShowByDefaultAndTheToolbarToggleIsRemembered(t *testing.T) {
+	p := newPlatform(t)
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/home/u", sftpfs.Entry{Name: ".bashrc", Path: "/home/u/.bashrc"}, sftpfs.Entry{Name: ".ssh", Path: "/home/u/.ssh", Directory: true})
+	has(t, tt, ".bashrc", ".ssh", "2 项")
+	if tt.HasText("空目录") {
+		t.Fatal("a home of dotfiles looks empty")
+	}
+	click(t, tt, "更多")
+	if slices.Contains(tt.Menu(), "显示隐藏文件") {
+		t.Fatal("the toggle is still in the menu too", tt.Menu())
+	}
+	tt.CloseMenu()
+	click(t, tt, "显示隐藏文件")
+	if tt.HasText(".bashrc") || tt.HasText("目录 /home/u/.ssh") {
+		t.Fatal("dotfiles shown after hiding", tt.Texts())
+	}
+	if v := p.UIState("sftp-hidden"); v != "false" {
+		t.Fatal("not remembered", v)
+	}
+	// A new window keeps them hidden.
+	b := appui.New(p)
+	bt := ui.NewTester(b.View, 1280, 800)
+	session(t, p, bt, "two", "two", remoteHost("two"))
+	click(t, bt, "SFTP")
+	listing(p, bt, "two", "/home/u", sftpfs.Entry{Name: ".bashrc", Path: "/home/u/.bashrc"}, sftpfs.Entry{Name: "app", Path: "/home/u/app"})
+	if bt.HasText(".bashrc") || !bt.HasText("app") {
+		t.Fatal("hidden not remembered", bt.Texts())
+	}
+}

@@ -149,12 +149,13 @@ func TestFilesPanelBrowseClipboardAndOperations(t *testing.T) {
 	if last := p.queued[len(p.queued)-1]; last.Kind != "upload" || last.Local != "/tmp/dropped.bin" || last.Remote != "/dest/dropped.bin" {
 		t.Fatal("drop upload", last)
 	}
-	// Dotfiles show on request.
+	// Dotfiles show by default; the toolbar hides them.
 	listing(p, tt, "two", "/dest", sftpfs.Entry{Name: ".env", Path: "/dest/.env"}, sftpfs.Entry{Name: "app", Path: "/dest/app"})
-	if tt.HasText(".env") {
-		t.Fatal("dotfile shown")
+	has(t, tt, ".env", "2 项")
+	click(t, tt, "显示隐藏文件")
+	if tt.HasText(".env") || !tt.HasText("1 项") {
+		t.Fatal("dotfile shown", tt.Texts())
 	}
-	click(t, tt, "更多")
 	click(t, tt, "显示隐藏文件")
 	has(t, tt, ".env", "2 项")
 	// Breadcrumbs jump to a parent; the path stays editable.

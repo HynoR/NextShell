@@ -490,8 +490,16 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 	})
 }
 
-// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, upload,
-// refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
+// toggleHidden shows or hides dotfiles, in the list and the tree, and remembers it.
+func (a *App) toggleHidden() {
+	s := &a.files
+	s.hidden = !s.hidden
+	s.filterEntries()
+	a.report(a.P.SaveUIState("sftp-hidden", fmt.Sprint(s.hidden)), "")
+}
+
+// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, show
+// dotfiles, upload, refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
 func (a *App) filesActions(c *ui.Context) {
 	sess := a.remote()
 	if sess == nil {
@@ -510,6 +518,13 @@ func (a *App) filesActions(c *ui.Context) {
 	}
 	if follow.Clicked() {
 		s.follow, s.followed = !s.follow, ""
+	}
+	dots := iconButton(c, "显示隐藏文件", "eye")
+	if s.hidden {
+		dots.Background(t.SurfacePressed).TextColor(accentInk(t))
+	}
+	if dots.Clicked() {
+		a.toggleHidden()
 	}
 	if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
 		a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
@@ -906,10 +921,6 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 		a.later(func() { a.pasteRemoteClipboard(id) })
 	}
 	m.Separator()
-	if m.Item("显示隐藏文件").Checked(s.hidden).Chosen() {
-		s.hidden = !s.hidden
-		s.filterEntries()
-	}
 	if m.Item("在终端中 cd 到此处").Chosen() {
 		a.later(func() { a.cdInTerminal(id, s.path) })
 	}
