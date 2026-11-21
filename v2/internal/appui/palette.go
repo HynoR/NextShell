@@ -204,7 +204,7 @@ func (a *App) insertShellHook(s *Session, shell string) {
 		a.fail(e)
 		return
 	}
-	a.report(a.P.Send(s.ID, strings.TrimSpace(command)), "已填入目录跟踪脚本，按回车执行")
+	a.report(a.P.Send(s.ID, strings.TrimRight(command, "\r\n")), "已填入目录跟踪脚本，按回车执行") // one line; the leading space keeps it out of the history
 	a.tabs.term.Focus()
 }
 

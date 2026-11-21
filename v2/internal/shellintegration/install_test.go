@@ -149,8 +149,24 @@ func TestFileSourcesInBashAndZsh(t *testing.T) {
 }
 
 func TestSourceLineIsOneShortLine(t *testing.T) {
-	if strings.Count(SourceLine, "\r") != 1 || !strings.HasPrefix(SourceLine, " ") || len(SourceLine) > 40 || strings.Contains(SourceLine, "\n") {
-		t.Fatalf("%q", SourceLine)
+	for _, line := range []string{SourceLine(0), SourceLine(3)} {
+		if strings.Count(line, "\r") != 1 || !strings.HasPrefix(line, " ") || len(line) > 40 || strings.Contains(line, "\n") {
+			t.Fatalf("%q", line)
+		}
+	}
+	if SourceLine(2) != " . ~/.cache/nextshell/osc7.sh 2\r" {
+		t.Fatal(SourceLine(2))
+	}
+	// The rows the prompt and the typed line take: a short prompt on a wide screen is one row, a long one
+	// wraps, and wide characters count twice.
+	for _, tc := range []struct {
+		prompt string
+		cols   int
+		want   int
+	}{{"nstest@box:~$", 80, 1}, {"nstest@box:~$", 30, 2}, {strings.Repeat("x", 79) + "$", 80, 2}, {"用户@主机:~/目录$", 40, 2}, {"$", 0, 0}} {
+		if got := EchoRows(tc.prompt, tc.cols); got != tc.want {
+			t.Errorf("EchoRows(%q, %d) = %d, want %d", tc.prompt, tc.cols, got, tc.want)
+		}
 	}
 }
 
@@ -161,4 +177,42 @@ func mustStat(t *testing.T, p string) os.FileInfo {
 		t.Fatal(e)
 	}
 	return i
+}
+
+// Sourced with a row count, the file erases the prompt and the line that sourced it (the shell draws its
+// prompt again) and, in bash, takes that line out of the history; a manual Command is one line.
+func TestFileLeavesNoTrace(t *testing.T) {
+	testutil.RequirePOSIXRemote(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "osc7.sh")
+	if e := os.WriteFile(file, []byte(File()), 0o600); e != nil {
+		t.Fatal(e)
+	}
+	for _, bash := range bashes(t) {
+		t.Run(bash.name(), func(t *testing.T) {
+			script := `set -o history; HISTFILE=/dev/null; history -s 'ls -l'; history -s ' . ~/.cache/nextshell/osc7.sh 2'; . ` + file + ` 2; echo; history`
+			out, e := exec.Command(bash.path, "--noprofile", "--norc", "-c", script).CombinedOutput()
+			s := string(out)
+			if e != nil || !strings.Contains(s, "\x1b[2A\r\x1b[J") || strings.Contains(s, "osc7.sh") || !strings.Contains(s, "ls -l") {
+				t.Fatalf("%v %q", e, s)
+			}
+		})
+	}
+	if zsh, e := exec.LookPath("zsh"); e == nil {
+		out, e := exec.Command(zsh, "-f", "-c", ". "+file+" 3").CombinedOutput()
+		if e != nil || !strings.HasSuffix(string(out), "\x1b[3A\r\x1b[J") {
+			t.Fatalf("zsh: %v %q", e, out)
+		}
+	}
+	// Without a count (or with junk) nothing is erased.
+	out, _ := exec.Command("sh", "-c", ". "+file+"; . "+file+" 'x;y'").CombinedOutput()
+	if strings.Contains(string(out), "\x1b[") {
+		t.Fatalf("%q", out)
+	}
+	for _, shell := range []string{"bash", "zsh"} {
+		c, e := Command(shell)
+		if e != nil || strings.ContainsAny(c, "\n\r") || !strings.HasPrefix(c, " eval $'") {
+			t.Fatalf("%s: %v %q", shell, e, c)
+		}
+	}
 }

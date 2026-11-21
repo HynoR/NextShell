@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -51,6 +52,14 @@ func TestPaletteActionsForTheSession(t *testing.T) {
 	has(t, tt, "让文件面板跟随终端目录（bash）", "让文件面板跟随终端目录（zsh）")
 	if tt.HasText("插入目录跟踪脚本") {
 		t.Fatal("the old name")
+	}
+	// It types one line, with a leading space to keep it out of the history: no "> '" continuation prompts.
+	tt.Key(0, ui.KeyEnter)
+	if len(p.sent) == 0 {
+		t.Fatal("nothing typed")
+	}
+	if line := p.sent[len(p.sent)-1]; !strings.HasPrefix(line, " eval $'") || strings.ContainsAny(line, "\r\n") {
+		t.Fatalf("typed %q", line)
 	}
 }
 

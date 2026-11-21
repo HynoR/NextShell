@@ -77,8 +77,8 @@ type Event struct {
 	Prompt               *Prompt
 }
 
-// ShellHookResult says why the platform's automatic shell integration left a session alone
-// (it has nothing to report when it types the line). The platform does the work itself: see
+// ShellHookResult is how the platform's automatic shell integration ended for a session: the line typed
+// (Err nil), or why it left the session alone. The platform does the work itself: see
 // Preferences.ShellIntegration.
 type ShellHookResult struct {
 	Session string

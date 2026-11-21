@@ -22,9 +22,10 @@ var bash string
 var zsh string
 
 const (
-	// SourceLine is the one line the automatic mode types into a session. The
-	// leading space keeps it out of the history of shells that ignore such lines.
-	SourceLine = " . ~/.cache/nextshell/osc7.sh\r"
+	// sourceCommand is what the automatic mode types into a session, as SourceLine makes it. The
+	// leading space keeps it out of the history of shells that ignore such lines; the file drops it
+	// from bash's history either way.
+	sourceCommand = " . ~/.cache/nextshell/osc7.sh"
 
 	// Where the hook lives, relative to the home directory an SFTP session starts in.
 	remoteDir  = ".cache/nextshell"
@@ -45,19 +46,61 @@ func Script(shell string) (string, error) {
 // quote single-quotes a script for eval, so a shell that does not match never parses it.
 func quote(script string) string { return "'" + strings.ReplaceAll(script, "'", "'\"'\"'") + "'" }
 
+// lineQuote quotes a script as one $'...' word, which bash and zsh both read: the whole script stays on
+// one line, so typing it leaves no continuation prompts ("> ") on the screen.
+func lineQuote(script string) string {
+	r := strings.NewReplacer(`\`, `\\`, `'`, `\'`, "\n", `\n`, "\t", `\t`, "\r", `\r`, "\x1b", `\e`)
+	return "$'" + r.Replace(strings.TrimRight(script, "\n")) + "'"
+}
+
+// Command is the manual mode's hook: one line that evals the shell's script.
 func Command(shell string) (string, error) {
 	script, e := Script(shell)
 	if e != nil {
 		return "", e
 	}
-	return "eval " + quote(script), nil
+	return " eval " + lineQuote(script), nil
 }
 
-// File is the content of osc7.sh: both hooks behind a shell check, so one file serves bash and zsh.
+// SourceLine is the line the automatic mode types at a prompt. rows is how many screen rows the prompt and
+// the typed line take, which the file moves back over and clears once the hook is in: the screen shows the
+// prompt as if nothing had been typed. 0 clears nothing.
+func SourceLine(rows int) string {
+	if rows <= 0 {
+		return sourceCommand + "\r"
+	}
+	return fmt.Sprintf("%s %d\r", sourceCommand, rows)
+}
+
+// EchoRows is how many rows the prompt line (the screen's last line, as Terminal.Text joins wrapped lines)
+// and SourceLine take on a screen cols wide: what SourceLine(rows) is to clear.
+func EchoRows(prompt string, cols int) int {
+	if cols <= 0 {
+		return 0
+	}
+	w := 0
+	for _, r := range prompt {
+		w += runeWidth(r)
+	}
+	// Terminal text drops trailing blanks: a prompt ends with a space after its $, # or %.
+	w += 1 + len(SourceLine(9)) - 1 // the line with a one-digit count, without its \r
+	return (w + cols - 1) / cols
+}
+
+// bashForget drops the line that sourced the file from bash's history, when it is the last entry there (a
+// HISTCONTROL with ignorespace has already left it out).
+const bashForget = `__nextshell_h=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null)
+if [[ $__nextshell_h == *nextshell/osc7.sh* && $__nextshell_h =~ ^[[:space:]]*([0-9]+) ]]; then builtin history -d "${BASH_REMATCH[1]}" 2>/dev/null; fi
+unset __nextshell_h`
+
+// File is the content of osc7.sh: both hooks behind a shell check, so one file serves bash and zsh. Sourced
+// with a row count ($1), it then erases that many rows above the cursor: the prompt and the line that
+// sourced it, which the shell draws again.
 func File() string {
 	return "# NextShell directory tracking (OSC 7). Written by NextShell; safe to delete.\n" +
 		"if [ -n \"$ZSH_VERSION\" ]; then\n  eval " + quote(zsh) + "\n" +
-		"elif [ -n \"$BASH_VERSION\" ]; then\n  eval " + quote(bash) + "\nfi\n"
+		"elif [ -n \"$BASH_VERSION\" ]; then\n  eval " + quote(bash) + "\n  eval " + quote(bashForget) + "\nfi\n" +
+		"case \"${1:-}\" in ''|*[!0-9]*) ;; *) printf '\\033[%sA\\r\\033[J' \"$1\" ;; esac\n"
 }
 
 // Install detects the login shell over a separate exec channel and, for bash
