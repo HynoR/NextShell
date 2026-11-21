@@ -27,8 +27,16 @@ func desktopFixture(t *testing.T) *Platform {
 		t.Fatal(e)
 	}
 	t.Cleanup(p.Shutdown)
+	// Directory tracking is automatic by default: it would exec on and type into every test server.
+	// The tests of it turn it back on (autoIntegration).
+	prefs := p.Preferences()
+	prefs.ShellIntegration = "manual"
+	if e := p.SavePreferences(prefs); e != nil {
+		t.Fatal(e)
+	}
 	return p
 }
+
 func awaitEvent(t *testing.T, p *Platform, pick func(appui.Event) bool) appui.Event {
 	t.Helper()
 	// The first terminal of a fresh Linux container downloads libghostty-vt: seconds, depending on the network.
@@ -98,7 +106,7 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 		if e = os.WriteFile(path, []byte(k.Private), 0600); e != nil {
 			t.Fatal(e)
 		}
-		copy, e := p.ImportKey(path, "")
+		copy, e := p.ImportKey(path, "", "")
 		var dup *model.KeyExistsError
 		if !errors.As(e, &dup) || copy.ID != k.ID { // the same key again is the one already saved
 			t.Fatal(copy, e)
@@ -109,7 +117,7 @@ func TestDesktopKeysProxiesAndHistory(t *testing.T) {
 	}
 	bad := filepath.Join(t.TempDir(), "bad-key")
 	os.WriteFile(bad, []byte("public/not a key"), 0600)
-	if _, e := p.ImportKey(bad, ""); e == nil {
+	if _, e := p.ImportKey(bad, "", ""); e == nil {
 		t.Fatal("bad key imported")
 	}
 	if e := p.SaveHistory([]string{"uptime"}); e != nil {

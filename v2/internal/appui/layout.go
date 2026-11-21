@@ -118,7 +118,10 @@ func (a *App) terminalArea(c *ui.Context) {
 		return
 	}
 	s := a.current()
-	ui.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+	if a.cmdbar.taps.take() {
+		a.swapFocus()
+	}
+	ui.Column(c).Fill().MinWidth(0).MinHeight(0).ObserveInput(func(ev ui.InputEvent) { a.cmdbar.taps.see(ev, time.Now()) }).Children(func() {
 		if a.tabs.mru.Active() {
 			a.mruOverlay(c)
 		}

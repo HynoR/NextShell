@@ -77,8 +77,8 @@ type Event struct {
 	Prompt               *Prompt
 }
 
-// ShellHookResult says why the platform's automatic shell integration left a session alone
-// (it has nothing to report when it types the line). The platform does the work itself: see
+// ShellHookResult is how the platform's automatic shell integration ended for a session: the line typed
+// (Err nil), or why it left the session alone. The platform does the work itself: see
 // Preferences.ShellIntegration.
 type ShellHookResult struct {
 	Session string
@@ -130,7 +130,7 @@ type Platform interface {
 	GenerateKey(name, algorithm string) (model.Key, error)
 	// ImportKey and SaveKey fail with *model.KeyExistsError for a key already saved. A new key is bound
 	// to the imported hosts waiting for it (by fingerprint or name), which a Message event reports.
-	ImportKey(path, passphrase string) (model.Key, error)
+	ImportKey(path, name, passphrase string) (model.Key, error) // name "" is the file's name
 	// ReplaceKey gives key id a new private key, read from path unless pem is set; it keeps its name.
 	ReplaceKey(id, path, pem, passphrase string) error
 	Connect(model.Connection)

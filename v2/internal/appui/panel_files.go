@@ -33,6 +33,7 @@ type filesState struct {
 	row                      int
 	clipboard                remoteClipboard
 	follow                   bool
+	hooks                    map[string]error // per session: how the automatic directory hook ended (nil: typed)
 	dialog                   fileDialog
 	trees                    map[string]*dirTree // per session
 	failed                   map[string]string   // per session: why its first listing could not be read
@@ -489,8 +490,16 @@ func (a *App) dirTreeView(c *ui.Context, id string) {
 	})
 }
 
-// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, upload,
-// refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
+// toggleHidden shows or hides dotfiles, in the list and the tree, and remembers it.
+func (a *App) toggleHidden() {
+	s := &a.files
+	s.hidden = !s.hidden
+	s.filterEntries()
+	a.report(a.P.SaveUIState("sftp-hidden", fmt.Sprint(s.hidden)), "")
+}
+
+// filesActions is the SFTP half of the workbench tab row: edit the path, follow the terminal, show
+// dotfiles, upload, refresh, and the ⋯ menu. Without a remote session the panel only explains itself, so the buttons stay off.
 func (a *App) filesActions(c *ui.Context) {
 	sess := a.remote()
 	if sess == nil {
@@ -509,6 +518,13 @@ func (a *App) filesActions(c *ui.Context) {
 	}
 	if follow.Clicked() {
 		s.follow, s.followed = !s.follow, ""
+	}
+	dots := iconButton(c, "显示隐藏文件", "eye")
+	if s.hidden {
+		dots.Background(t.SurfacePressed).TextColor(accentInk(t))
+	}
+	if dots.Clicked() {
+		a.toggleHidden()
 	}
 	if iconButton(c, "上传", "upload").Disabled(exited).Clicked() {
 		a.pick(FilePick{Title: "上传文件", Multiple: true}, func(p []string) { a.upload(id, p) })
@@ -593,12 +609,39 @@ func filesCount(s *filesState) string {
 	return fmt.Sprintf("%d 项", len(s.entries))
 }
 
+// followHintText is why the terminal's folder is not known yet, and what to do: tracking is off; the
+// automatic hook is on its way (nothing to do); it could not be set up, and why; or, in manual mode, how
+// to set it up.
+func followHintText(p model.Preferences, hooks map[string]error, session string) string {
+	manual := "未获取到终端当前目录。可按 " + appShortcutLabel("K") + " 执行「让文件面板跟随终端目录」"
+	switch {
+	case p.ShellIntegration == "off":
+		return "目录跟踪已关闭，可在「设置 → 终端 → Shell 集成」中开启"
+	case !p.ShellAuto():
+		return manual
+	}
+	e, done := hooks[session]
+	switch {
+	case !done:
+		return "正在配置目录跟踪…"
+	case e == nil:
+		return "" // typed: the shell reports its folder at its next prompt
+	case strings.Contains(e.Error(), "is not bash or zsh"):
+		return "登录 shell 不是 bash 或 zsh，无法自动跟随目录"
+	}
+	reason, ok := humanize(e.Error())
+	if !ok {
+		reason = e.Error()
+	}
+	return "目录跟踪未能自动配置（" + reason + "）。可按 " + appShortcutLabel("K") + " 手动执行「让文件面板跟随终端目录」"
+}
+
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
 func (a *App) followHint(c *ui.Context) {
 	t := c.Theme()
-	text := "未获取到终端当前目录（需 bash 或 zsh）。可按 " + appShortcutLabel("K") + " 执行「让文件面板跟随终端目录」"
-	if a.Prefs.ShellIntegration == "off" {
-		text = "目录跟踪已关闭，可在「设置 → 终端 → Shell 集成」中开启"
+	text := followHintText(a.Prefs, a.files.hooks, a.files.session)
+	if text == "" {
+		return
 	}
 	ui.Row(c).FillWidth().Padding(5, 10).Gap(8).Background(t.Warning.Alpha(.12)).Label("跟随终端目录的提示").Children(func() {
 		ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.Warning)
@@ -747,8 +790,9 @@ func linkTooltip(f sftpfs.Entry) string {
 // and a double click (or the last segment) edits the path as text.
 func (a *App) pathBar(c *ui.Context, id string) {
 	s := &a.files
+	t := c.Theme()
 	if s.editingPath {
-		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Grow(1).MinWidth(0).Height(26).FontSize(12).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
+		in := ui.TextInput(c.Key("files-path"), &s.pathInput).Label("远程目录").Placeholder("输入路径，回车跳转").Grow(1).MinWidth(0).Height(26).FontSize(12).AutoFocus().OnTextKey(func(k ui.TextKey) bool {
 			if k.Key == ui.KeyEscape {
 				s.editingPath = false
 				return true
@@ -757,25 +801,45 @@ func (a *App) pathBar(c *ui.Context, id string) {
 		})
 		if in.Submitted() {
 			s.editingPath = false
-			a.listFiles(id, strings.TrimSpace(s.pathInput))
+			if dir := addressPath(s.pathInput); dir != "" {
+				a.listFiles(id, dir)
+			}
 		}
 		if in.FocusLeft() {
 			s.editingPath = false
 		}
 		return
 	}
+	// The address bar: the folder's crumbs to click, in a box that takes a typed path where it has none.
 	parts := crumbs(s.path)
 	s.crumb = len(parts) - 1
-	box := ui.Row(c).Grow(1).MinWidth(0).Height(26).AlignItems(ui.Center).Label("远程目录 " + s.path)
+	box := ui.Row(c).Grow(1).MinWidth(0).Height(26).Padding(0, 2, 0, 4).AlignItems(ui.Center).Border(1, t.Border).Radius(5).Label("远程目录 " + s.path)
 	box.Children(func() {
-		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").Grow(1).MinWidth(0).Changed() {
+		if ui.Breadcrumbs(c, parts, &s.crumb).Label("路径").MinWidth(0).Changed() {
 			a.listFiles(id, crumbPath(parts, s.crumb))
+		}
+		if ui.Row(c).Grow(1).MinWidth(16).Height(24).Cursor(ui.CursorText).Label("输入路径").Tooltip("点击输入路径").Clicked() {
+			s.editingPath, s.pathInput = true, s.path
 		}
 	})
 	if box.DoubleClicked() {
 		s.editingPath, s.pathInput = true, s.path
 	}
 }
+
+// addressPath is the folder a typed address names: trimmed, and ~ for the home folder, which SFTP
+// resolves relative paths against.
+func addressPath(typed string) string {
+	p := strings.TrimSpace(typed)
+	switch {
+	case p == "~" || p == "~/":
+		return "."
+	case strings.HasPrefix(p, "~/"):
+		return strings.TrimPrefix(p, "~/")
+	}
+	return p
+}
+
 func crumbs(dir string) []string {
 	if dir == "" {
 		return []string{"/"}
@@ -878,10 +942,6 @@ func (a *App) filesMenuItems(m *ui.Menu, id string) {
 		a.later(func() { a.pasteRemoteClipboard(id) })
 	}
 	m.Separator()
-	if m.Item("显示隐藏文件").Checked(s.hidden).Chosen() {
-		s.hidden = !s.hidden
-		s.filterEntries()
-	}
 	if m.Item("在终端中 cd 到此处").Chosen() {
 		a.later(func() { a.cdInTerminal(id, s.path) })
 	}

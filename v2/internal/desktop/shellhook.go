@@ -27,7 +27,9 @@ func (p *Platform) integrateShell(session string, t *terminal.Terminal, s *sshcl
 			e = waitForPrompt(ctx, t)
 		}
 		if e == nil {
-			t.Send([]byte(shellintegration.SourceLine))
+			cols, _ := t.Size()
+			t.Send([]byte(shellintegration.SourceLine(shellintegration.EchoRows(lastLine(t.Text()), cols))))
+			p.emit(appui.Event{ShellHook: &appui.ShellHookResult{Session: session}})
 			return
 		}
 		if errors.Is(e, context.DeadlineExceeded) {
@@ -55,7 +57,12 @@ func waitForPrompt(ctx context.Context, t *terminal.Terminal) error {
 
 // promptShown is true when the screen's last line looks like a shell prompt.
 func promptShown(screen string) bool {
-	lines := strings.Split(strings.TrimRight(screen, " \n"), "\n")
-	last := strings.TrimSpace(lines[len(lines)-1])
+	last := strings.TrimSpace(lastLine(screen))
 	return last != "" && strings.ContainsAny(last[len(last)-1:], "$#%>")
+}
+
+// lastLine is the screen's last line that has text: the prompt, once promptShown.
+func lastLine(screen string) string {
+	lines := strings.Split(strings.TrimRight(screen, " \n"), "\n")
+	return strings.TrimRight(lines[len(lines)-1], " ")
 }

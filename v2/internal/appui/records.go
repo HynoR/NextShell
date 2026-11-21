@@ -32,6 +32,7 @@ type keyDialog struct {
 	name, algorithm, path, passphrase, pem string
 	err                                    string
 	target                                 *string // the field that takes the new key
+	in                                     window  // the window it shows in: the one whose form opened it
 }
 
 type proxyDialog struct {
@@ -220,15 +221,21 @@ func keyKind(k model.Key) string {
 }
 
 // openKeyDialog opens the key dialog; the key it makes goes into *target.
+// openKeyDialog opens 新建密钥 over the form whose 新建 / 生成… was pressed: in the manager, or in the
+// main window for the login retry there (it used to open in the manager, out of sight behind it).
 func (a *App) openKeyDialog(target *string) {
-	a.openManager()
+	in := mainWindow
+	if a.view == managerWindow || target == nil {
+		in = managerWindow
+		a.openManager()
+	}
 	d := &a.hosts.records.key
-	*d = keyDialog{open: true, algorithm: orDefault(d.algorithm, "ed25519"), target: target}
+	*d = keyDialog{open: true, algorithm: orDefault(d.algorithm, "ed25519"), target: target, in: in}
 }
 
 func (a *App) keyDialog(c *ui.Context) {
 	d := &a.hosts.records.key
-	if !d.open {
+	if !d.open || d.in != a.view {
 		return
 	}
 	enter := false // Enter in a field, or ⌘S, saves
@@ -285,6 +292,7 @@ func (a *App) keyDialog(c *ui.Context) {
 }
 func (a *App) saveKeyDialog() {
 	d := &a.hosts.records.key
+	d.err = "" // a new try: the last one's error goes
 	name := strings.TrimSpace(d.name)
 	var k model.Key
 	var e error
@@ -298,7 +306,7 @@ func (a *App) saveKeyDialog() {
 		k = model.Key{ID: a.P.NewID(), Name: orDefault(name, "导入的密钥"), Private: d.pem, Passphrase: d.passphrase}
 		e = a.P.SaveKey(k)
 	default:
-		k, e = a.P.ImportKey(strings.TrimSpace(d.path), d.passphrase)
+		k, e = a.P.ImportKey(strings.TrimSpace(d.path), name, d.passphrase) // the name typed, not the file's
 	}
 	var dup *model.KeyExistsError
 	if errors.As(e, &dup) {
@@ -325,7 +333,7 @@ func (a *App) saveKeyDialog() {
 			}
 		}
 	}
-	*d = keyDialog{algorithm: d.algorithm}
+	*d = keyDialog{algorithm: d.algorithm, in: d.in}
 }
 
 // Proxies.

@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -251,14 +252,27 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 		t.Fatal("the toggle is still in the menu", tt.Menu())
 	}
 	tt.CloseMenu()
-	if tt.HasText("未获取到终端当前目录") {
-		t.Fatal("a hint before the toggle is on")
+	// Following is on by default, and tracking sets itself up: nothing to do while it does.
+	has(t, tt, "正在配置目录跟踪…")
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one"}})
+	tt.Frame()
+	if tt.HasText("正在配置目录跟踪…") || tt.HasText("未获取到终端当前目录") {
+		t.Fatal("a hint once the hook is typed", tt.Texts())
 	}
-	click(t, tt, "跟随终端目录")
-	has(t, tt, "未获取到终端当前目录", "让文件面板跟随终端目录")
+	// It could not be: why, in words; a bash login shell never reads "needs bash".
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one", Err: errors.New(`login shell "fish" is not bash or zsh`)}})
+	tt.Frame()
+	has(t, tt, "登录 shell 不是 bash 或 zsh，无法自动跟随目录")
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one", Err: errors.New("open sftp: permission denied")}})
+	tt.Frame()
+	has(t, tt, "目录跟踪未能自动配置（权限不足）。可按 "+paletteKey("K")+" 手动执行「让文件面板跟随终端目录」")
+	// Manual: how to set it up, and no "needs bash or zsh".
+	a.Prefs.ShellIntegration = "manual"
+	tt.Frame()
+	has(t, tt, "未获取到终端当前目录。可按 "+paletteKey("K")+" 执行「让文件面板跟随终端目录」")
 	for _, s := range tt.Texts() {
-		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") {
-			t.Fatal("the hint names a file:", s)
+		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") || strings.Contains(s, "需 bash") {
+			t.Fatal("the hint:", s)
 		}
 	}
 	click(t, tt, "跟随终端目录")
@@ -489,5 +503,76 @@ func TestFilesPanelOfAnEndedConnectionSaysSoAndOffersNothing(t *testing.T) {
 	tt.Key(0, ui.KeyEnter)
 	if len(p.opened) != 0 || len(p.listed) != n {
 		t.Fatal("Return acted on a dead connection", p.opened, p.listed[n:])
+	}
+}
+
+// A home of dotfiles is not an empty folder: they show by default. The toolbar toggle hides them, in the
+// list and the tree, and the choice outlives the window.
+func TestHiddenFilesShowByDefaultAndTheToolbarToggleIsRemembered(t *testing.T) {
+	p := newPlatform(t)
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/home/u", sftpfs.Entry{Name: ".bashrc", Path: "/home/u/.bashrc"}, sftpfs.Entry{Name: ".ssh", Path: "/home/u/.ssh", Directory: true})
+	has(t, tt, ".bashrc", ".ssh", "2 项")
+	if tt.HasText("空目录") {
+		t.Fatal("a home of dotfiles looks empty")
+	}
+	click(t, tt, "更多")
+	if slices.Contains(tt.Menu(), "显示隐藏文件") {
+		t.Fatal("the toggle is still in the menu too", tt.Menu())
+	}
+	tt.CloseMenu()
+	click(t, tt, "显示隐藏文件")
+	if tt.HasText(".bashrc") || tt.HasText("目录 /home/u/.ssh") {
+		t.Fatal("dotfiles shown after hiding", tt.Texts())
+	}
+	if v := p.UIState("sftp-hidden"); v != "false" {
+		t.Fatal("not remembered", v)
+	}
+	// A new window keeps them hidden.
+	b := appui.New(p)
+	bt := ui.NewTester(b.View, 1280, 800)
+	session(t, p, bt, "two", "two", remoteHost("two"))
+	click(t, bt, "SFTP")
+	listing(p, bt, "two", "/home/u", sftpfs.Entry{Name: ".bashrc", Path: "/home/u/.bashrc"}, sftpfs.Entry{Name: "app", Path: "/home/u/app"})
+	if bt.HasText(".bashrc") || !bt.HasText("app") {
+		t.Fatal("hidden not remembered", bt.Texts())
+	}
+}
+
+// The path row is an address bar: crumbs to click, and a click on the rest of it takes a typed path;
+// Enter goes there (~ is the home folder), Escape leaves it as it was.
+func TestAddressBarTakesATypedPath(t *testing.T) {
+	p := newPlatform(t)
+	a := appui.New(p)
+	tt := ui.NewTester(a.View, 1280, 800)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	click(t, tt, "SFTP")
+	listing(p, tt, "one", "/var/log/nginx")
+	has(t, tt, "var", "log", "nginx", "输入路径")
+	click(t, tt, "log")
+	if p.listed[len(p.listed)-1] != "one:/var/log" {
+		t.Fatal("crumb", p.listed)
+	}
+	listing(p, tt, "one", "/var/log/nginx")
+	n := len(p.listed)
+	click(t, tt, "输入路径")
+	tt.Key(appMod()&^ui.Shift, ui.KeyA)
+	tt.Type("/etc")
+	tt.Key(0, ui.KeyEscape)
+	if len(p.listed) != n || tt.HasText("/etc") {
+		t.Fatal("Escape went somewhere", p.listed[n:])
+	}
+	has(t, tt, "输入路径")
+	for typed, want := range map[string]string{"  /opt/app ": "one:/opt/app", "~": "one:.", "~/logs": "one:logs"} {
+		click(t, tt, "输入路径")
+		tt.Key(appMod()&^ui.Shift, ui.KeyA)
+		tt.Type(typed)
+		tt.Key(0, ui.KeyEnter)
+		if p.listed[len(p.listed)-1] != want {
+			t.Fatalf("typed %q: listed %v", typed, p.listed[len(p.listed)-1])
+		}
 	}
 }

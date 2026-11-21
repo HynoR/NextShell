@@ -76,3 +76,42 @@ func inputIs(t *testing.T, tt *ui.Tester, want string) {
 	}
 	t.Fatal("no command bar")
 }
+
+// The bar's hint names its real keys; a double tap of Ctrl (as in FinalShell) or the app's L shortcut moves
+// the keyboard between the terminal and the bar, and Ctrl used with a key does not.
+func TestCommandBarHintAndCtrlDoubleTapSwapsFocus(t *testing.T) {
+	_, p, tt := fixture(t)
+	session(t, p, tt, "one", "one", remoteHost("one"))
+	if got := barPlaceholder(tt); got != "回车发送 · ↑/↓ 历史 · 双击 Ctrl 或 "+paletteKey("L")+" 切换终端/命令栏" {
+		t.Fatal("placeholder", got)
+	}
+	tap := func() {
+		tt.CodeDown(ui.Ctrl, ui.CodeControlLeft)
+		tt.CodeUp(0, ui.CodeControlLeft)
+	}
+	tap()
+	tap()
+	tt.Frame()
+	tt.Type("ab")
+	inputIs(t, tt, "ab") // the bar has the keys
+	tap()
+	tap()
+	tt.Frame()
+	tt.Type("x")
+	inputIs(t, tt, "ab") // the terminal has them again
+	// Ctrl+C then a tap: one tap, not two.
+	tt.CodeDown(ui.Ctrl, ui.CodeControlLeft)
+	tt.Key(ui.Ctrl, ui.KeyC)
+	tt.CodeUp(0, ui.CodeControlLeft)
+	tap()
+	tt.Frame()
+	tt.Type("y")
+	inputIs(t, tt, "ab")
+	// The shortcut goes in and, pressed again, out.
+	tt.Key(appMod(), ui.KeyL)
+	tt.Type("c")
+	inputIs(t, tt, "abc")
+	tt.Key(appMod(), ui.KeyL)
+	tt.Type("z")
+	inputIs(t, tt, "abc")
+}

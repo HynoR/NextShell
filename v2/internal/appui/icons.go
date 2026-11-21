@@ -40,5 +40,6 @@ var appIcons = map[string]*ui.SVG{
 	"globe":         iconSVG(`<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>`),
 	"play":          iconSVG(`<path d="M7 4.5v15l12-7.5z"/>`),
 	"link":          iconSVG(`<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1m1 5.7a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>`),
+	"eye":           iconSVG(`<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>`),
 	"more":          iconSVG(`<path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/>`),
 }

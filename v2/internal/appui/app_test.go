@@ -448,23 +448,27 @@ func TestShellIntegrationFailureIsLoggedQuietlyAndTheWindowNeverTypes(t *testing
 	}
 }
 
-func TestShellIntegrationIsManualByDefault(t *testing.T) {
+func TestShellIntegrationIsAutomaticByDefault(t *testing.T) {
 	p := newPlatform(t)
-	if v := p.Preferences().ShellIntegration; v != "" {
-		t.Fatal("default preference", v)
+	if v := p.Preferences(); !v.ShellAuto() {
+		t.Fatal("default preference", v.ShellIntegration)
 	}
 	a, tt := start(p)
 	remoteSession(t, p, tt, "r", "u@r:~$ ")
 	session(t, p, tt, "l", "本地", model.Connection{})
 	if len(p.sent) != 0 {
-		t.Fatal("manual mode typed into the terminal", p.sent)
+		t.Fatal("the window typed into the terminal (the platform does it)", p.sent)
 	}
 	st := ui.NewTester(a.SettingsView, 880, 1400)
 	click(t, st, "终端")
-	has(t, st, "不修改远端配置；可按需在命令面板执行「让文件面板跟随终端目录」")
-	click(t, st, "自动")
 	has(t, st, "连接时自动配置 bash / zsh 目录跟踪，使 SFTP 跟随终端当前目录")
-	if v := p.Preferences().ShellIntegration; v != "auto" {
-		t.Fatal("not saved", v)
+	click(t, st, "手动")
+	has(t, st, "不修改远端配置；可按需在命令面板执行「让文件面板跟随终端目录」")
+	if v := p.Preferences(); v.ShellIntegration != "manual" || v.ShellAuto() {
+		t.Fatal("not saved", v.ShellIntegration)
+	}
+	click(t, st, "自动")
+	if v := p.Preferences(); !v.ShellAuto() {
+		t.Fatal("not saved", v.ShellIntegration)
 	}
 }

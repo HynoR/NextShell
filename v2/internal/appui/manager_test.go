@@ -1,6 +1,8 @@
 package appui_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -198,5 +200,53 @@ func TestHostColorFromForm(t *testing.T) {
 	click(t, mt, "保存")
 	if c := stored(t, p, "c1"); c.Color != "#22c55e" {
 		t.Fatal("color not saved", c.Color)
+	}
+}
+
+// 新建 / 生成… in the main window's login retry opens 新建密钥 there, over the form, not in the manager out
+// of sight; the key made is chosen in the form, and an imported key keeps the name typed for it.
+func TestKeyDialogOpensOverTheFormThatAskedAndKeepsTheTypedName(t *testing.T) {
+	p := newPlatform(t)
+	donor := newPlatform(t)
+	k, e := donor.GenerateKey("x", "ed25519")
+	if e != nil {
+		t.Fatal(e)
+	}
+	file := filepath.Join(t.TempDir(), "id_ed25519")
+	if e := os.WriteFile(file, []byte(k.Private), 0o600); e != nil {
+		t.Fatal(e)
+	}
+	h := saveHost(t, p, model.Connection{Name: "box", Host: "10.0.0.3", User: "u"})
+	a, tt := start(p)
+	a.PickFiles = func(o appui.FilePick, done func([]string)) { done([]string{file}) }
+	p.events = append(p.events, appui.Event{Failed: h.ID, AuthFailed: true, Message: "ssh: handshake failed: ssh: unable to authenticate"})
+	tt.Frame()
+	choose(t, tt, "认证方式", "密钥")
+	shown := p.managerShown
+	click(t, tt, "新建 / 生成…")
+	has(t, tt, "新建密钥")
+	if p.managerShown != shown {
+		t.Fatal("the manager was opened for it")
+	}
+	mt := manager(a)
+	if mt.HasText("新建密钥") {
+		t.Fatal("the dialog shows in the manager too")
+	}
+	click(t, tt, "导入私钥")
+	click(t, tt, "名称")
+	tt.Type("生产跳板机")
+	click(t, tt, "选择…")
+	click(t, tt, "导入密钥")
+	if tt.HasText("新建密钥") {
+		t.Fatal("dialog stays", tt.Texts())
+	}
+	snap, _ := p.Snapshot()
+	if len(snap.Keys) != 1 || snap.Keys[0].Name != "生产跳板机" {
+		t.Fatal("saved as", snap.Keys)
+	}
+	has(t, tt, "生产跳板机") // chosen in the retry form
+	click(t, tt, "保存并重试")
+	if c := stored(t, p, "box"); c.Auth != "key" || c.KeyID != snap.Keys[0].ID {
+		t.Fatal("key not chosen", c)
 	}
 }
