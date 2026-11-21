@@ -131,6 +131,8 @@ func New(p Platform) *App {
 	a.hosts.recent = strings.Fields(p.UIState("recent"))
 	a.files.init()
 	a.files.treeHidden = p.UIState("sftp-tree") == "true"
+	a.files.follow = a.Prefs.ShellIntegration != "off" // the list follows the terminal unless tracking is off
+	a.files.hooks = map[string]error{}
 	a.monitor.init()
 	a.snippets.init()
 	a.reload()
@@ -370,8 +372,11 @@ func (a *App) poll() bool {
 		if e.Session != nil {
 			a.addSession(e.Session)
 		}
-		if e.ShellHook != nil && e.ShellHook.Err != nil {
-			a.log("Shell 集成未启用：" + e.ShellHook.Err.Error())
+		if e.ShellHook != nil {
+			a.files.hooks[e.ShellHook.Session] = e.ShellHook.Err
+			if e.ShellHook.Err != nil {
+				a.log("Shell 集成未启用：" + e.ShellHook.Err.Error())
+			}
 		}
 		// A password the user declined to give is no failure: nothing to report, no red mark.
 		declined := e.Host != "" && strings.Contains(e.Message, "已取消")

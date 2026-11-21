@@ -1,6 +1,7 @@
 package appui_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -251,14 +252,27 @@ func TestFollowToggleIsInTheToolbarAndHintsWhatToDo(t *testing.T) {
 		t.Fatal("the toggle is still in the menu", tt.Menu())
 	}
 	tt.CloseMenu()
-	if tt.HasText("未获取到终端当前目录") {
-		t.Fatal("a hint before the toggle is on")
+	// Following is on by default, and tracking sets itself up: nothing to do while it does.
+	has(t, tt, "正在配置目录跟踪…")
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one"}})
+	tt.Frame()
+	if tt.HasText("正在配置目录跟踪…") || tt.HasText("未获取到终端当前目录") {
+		t.Fatal("a hint once the hook is typed", tt.Texts())
 	}
-	click(t, tt, "跟随终端目录")
-	has(t, tt, "未获取到终端当前目录", "让文件面板跟随终端目录")
+	// It could not be: why, in words; a bash login shell never reads "needs bash".
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one", Err: errors.New(`login shell "fish" is not bash or zsh`)}})
+	tt.Frame()
+	has(t, tt, "登录 shell 不是 bash 或 zsh，无法自动跟随目录")
+	p.events = append(p.events, appui.Event{ShellHook: &appui.ShellHookResult{Session: "one", Err: errors.New("open sftp: permission denied")}})
+	tt.Frame()
+	has(t, tt, "目录跟踪未能自动配置（权限不足）。可按 "+paletteKey("K")+" 手动执行「让文件面板跟随终端目录」")
+	// Manual: how to set it up, and no "needs bash or zsh".
+	a.Prefs.ShellIntegration = "manual"
+	tt.Frame()
+	has(t, tt, "未获取到终端当前目录。可按 "+paletteKey("K")+" 执行「让文件面板跟随终端目录」")
 	for _, s := range tt.Texts() {
-		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") {
-			t.Fatal("the hint names a file:", s)
+		if strings.Contains(s, "osc7") || strings.Contains(s, ".sh") || strings.Contains(s, "需 bash") {
+			t.Fatal("the hint:", s)
 		}
 	}
 	click(t, tt, "跟随终端目录")

@@ -20,3 +20,24 @@ func TestPreferencesValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestShellIntegrationIsAutomaticUnlessManualOrOff(t *testing.T) {
+	if !DefaultPreferences().ShellAuto() {
+		t.Fatal("not automatic by default")
+	}
+	for v, auto := range map[string]bool{"": true, "auto": true, "manual": false, "off": false} {
+		p := DefaultPreferences()
+		p.ShellIntegration = v
+		if p.ShellAuto() != auto {
+			t.Errorf("%q: auto %v", v, !auto)
+		}
+		if e := p.Validate(); e != nil {
+			t.Errorf("%q: %v", v, e)
+		}
+	}
+	p := DefaultPreferences()
+	p.ShellIntegration = "sometimes"
+	if p.Validate() == nil {
+		t.Fatal("an unknown mode is accepted")
+	}
+}

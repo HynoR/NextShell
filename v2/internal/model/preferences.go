@@ -39,7 +39,7 @@ type Preferences struct {
 	RestoreTabs      bool    `json:"restoreTabs"`      // reopen last run's hosts and local shells
 	FoldLeft         bool    `json:"foldLeft"`         // start with the left column folded
 	FoldBench        bool    `json:"foldBench"`        // start with the bottom workbench folded
-	ShellIntegration string  `json:"shellIntegration"` // "" manual, "auto" or "off"
+	ShellIntegration string  `json:"shellIntegration"` // "" or "auto" automatic (the default), "manual" or "off"
 
 	// BackgroundImage is the file name of the picture behind the main window, a copy kept in the app's data
 	// folder; "" shows no picture and the window looks as it always has. BackgroundOpacity is how opaque the
@@ -58,6 +58,12 @@ const (
 	BackgroundOpacityMax     = 80
 	BackgroundOpacityDefault = 60
 )
+
+// ShellAuto is whether directory tracking sets itself up on connect: the default. Before 2.0 "" meant manual;
+// a choice of manual is now kept as "manual".
+func (p Preferences) ShellAuto() bool {
+	return p.ShellIntegration == "" || p.ShellIntegration == "auto"
+}
 
 // HostKey is a trusted server key fingerprint.
 type HostKey struct{ Address, Fingerprint string }
@@ -97,7 +103,7 @@ func (p Preferences) Validate() error {
 			return fmt.Errorf("路径和字体不得含控制字符")
 		}
 	}
-	if p.ShellIntegration != "" && p.ShellIntegration != "auto" && p.ShellIntegration != "off" {
+	if p.ShellIntegration != "" && p.ShellIntegration != "auto" && p.ShellIntegration != "manual" && p.ShellIntegration != "off" {
 		return fmt.Errorf("无效 Shell 集成模式")
 	}
 	if p.UploadDir == "" || p.DownloadDir == "" {

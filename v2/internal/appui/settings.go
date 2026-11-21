@@ -465,8 +465,8 @@ func (a *App) terminalSettings(c *ui.Context) {
 		switchField(c, "服务器读取剪贴板时询问", &v.ClipboardReadAsk, "新会话生效")
 	})
 	group(c, "Shell 集成", func() {
-		modes := []string{"auto", "", "off"}
-		i := max(0, indexOf(modes, v.ShellIntegration))
+		modes := []string{"", "manual", "off"}
+		i := max(0, indexOf(modes, v.ShellIntegration)) // "auto", as 2.0 betas saved it, is 自动 too
 		ui.Field(c, "目录跟踪", func() {
 			if ui.Segmented(c, &i, "自动", "手动", "关闭").Label("目录跟踪").Changed() {
 				v.ShellIntegration = modes[i]

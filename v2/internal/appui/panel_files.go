@@ -33,6 +33,7 @@ type filesState struct {
 	row                      int
 	clipboard                remoteClipboard
 	follow                   bool
+	hooks                    map[string]error // per session: how the automatic directory hook ended (nil: typed)
 	dialog                   fileDialog
 	trees                    map[string]*dirTree // per session
 	failed                   map[string]string   // per session: why its first listing could not be read
@@ -593,12 +594,39 @@ func filesCount(s *filesState) string {
 	return fmt.Sprintf("%d 项", len(s.entries))
 }
 
+// followHintText is why the terminal's folder is not known yet, and what to do: tracking is off; the
+// automatic hook is on its way (nothing to do); it could not be set up, and why; or, in manual mode, how
+// to set it up.
+func followHintText(p model.Preferences, hooks map[string]error, session string) string {
+	manual := "未获取到终端当前目录。可按 " + appShortcutLabel("K") + " 执行「让文件面板跟随终端目录」"
+	switch {
+	case p.ShellIntegration == "off":
+		return "目录跟踪已关闭，可在「设置 → 终端 → Shell 集成」中开启"
+	case !p.ShellAuto():
+		return manual
+	}
+	e, done := hooks[session]
+	switch {
+	case !done:
+		return "正在配置目录跟踪…"
+	case e == nil:
+		return "" // typed: the shell reports its folder at its next prompt
+	case strings.Contains(e.Error(), "is not bash or zsh"):
+		return "登录 shell 不是 bash 或 zsh，无法自动跟随目录"
+	}
+	reason, ok := humanize(e.Error())
+	if !ok {
+		reason = e.Error()
+	}
+	return "目录跟踪未能自动配置（" + reason + "）。可按 " + appShortcutLabel("K") + " 手动执行「让文件面板跟随终端目录」"
+}
+
 // followHint says what to do when the list is to follow the terminal, which has not told its folder.
 func (a *App) followHint(c *ui.Context) {
 	t := c.Theme()
-	text := "未获取到终端当前目录（需 bash 或 zsh）。可按 " + appShortcutLabel("K") + " 执行「让文件面板跟随终端目录」"
-	if a.Prefs.ShellIntegration == "off" {
-		text = "目录跟踪已关闭，可在「设置 → 终端 → Shell 集成」中开启"
+	text := followHintText(a.Prefs, a.files.hooks, a.files.session)
+	if text == "" {
+		return
 	}
 	ui.Row(c).FillWidth().Padding(5, 10).Gap(8).Background(t.Warning.Alpha(.12)).Label("跟随终端目录的提示").Children(func() {
 		ui.Icon(c, appIcons["info"]).FontSize(14).TextColor(t.Warning)

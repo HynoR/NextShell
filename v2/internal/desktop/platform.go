@@ -610,7 +610,7 @@ func (p *Platform) registerFrom(byAgent bool, t *terminal.Terminal, c model.Conn
 	p.edits.Move(replace, id) // a reconnect keeps the session's live edits
 	p.emit(appui.Event{Session: &appui.Session{Replaces: replace, ID: id, Title: title, Terminal: t, Connection: c, Local: local, ByAgent: byAgent}})
 	// A reconnect is a new shell too: it needs the line again (the file is already on the server).
-	if len(sshConn) > 0 && p.Preferences().ShellIntegration == "auto" {
+	if len(sshConn) > 0 && p.Preferences().ShellAuto() {
 		p.integrateShell(id, t, sshConn[0])
 	}
 }

@@ -50,7 +50,7 @@ func autoIntegration(t *testing.T, mode string) *Platform {
 func TestAutoShellIntegrationTypesTheLineAtThePromptWithoutAWindow(t *testing.T) {
 	testutil.RequirePOSIXRemote(t)
 	t.Setenv("SHELL", "/bin/bash")
-	p := autoIntegration(t, "auto")
+	p := autoIntegration(t, "") // the default
 	server := testServer(t)
 	p.Connect(server.Options().Connection)
 	s := awaitEvent(t, p, func(e appui.Event) bool { return e.Session != nil }).Session
@@ -73,6 +73,13 @@ func TestAutoShellIntegrationTypesTheLineAtThePromptWithoutAWindow(t *testing.T)
 		if time.Now().After(deadline) {
 			t.Fatal("the line was not typed at the prompt:", s.Terminal.Text())
 		}
+	}
+	// It says how many rows to erase: the prompt and the line fit one row of a wide terminal.
+	if !strings.Contains(s.Terminal.Text(), " . ~/.cache/nextshell/osc7.sh 1") {
+		t.Fatal("no row count:", s.Terminal.Text())
+	}
+	if r := awaitEvent(t, p, func(e appui.Event) bool { return e.ShellHook != nil }).ShellHook; r.Session != s.ID || r.Err != nil {
+		t.Fatal("hook result", r)
 	}
 	// once only
 	time.Sleep(300 * time.Millisecond)
@@ -157,7 +164,7 @@ func TestAutoShellIntegrationReportsAndTypesNothingWhenTheServerCannotOrNoPrompt
 
 func TestShellIntegrationManualOffAndLocalLeaveTheSessionAlone(t *testing.T) {
 	t.Setenv("SHELL", "/bin/sh")
-	for _, mode := range []string{"", "off"} {
+	for _, mode := range []string{"manual", "off"} {
 		p := autoIntegration(t, mode)
 		server := testServer(t)
 		p.Connect(server.Options().Connection)
