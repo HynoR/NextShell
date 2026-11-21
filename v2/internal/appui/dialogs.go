@@ -103,6 +103,7 @@ func (a *App) dialogsView(c *ui.Context) {
 	a.snippetDialogs(c)
 	a.editorDialogs(c)
 	a.retryDialog(c)
+	a.keyDialog(c) // over the retry's form, when its 新建 / 生成… opened it
 	a.closeDialog(c)
 	a.confirmView(c, mainWindow)
 	d := &a.dialogs
